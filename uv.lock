@@ -1022,7 +1022,7 @@ wheels = [
 
 [[package]]
 name = "clawd-code-sdk"
-version = "0.1.70"
+version = "0.1.72"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "anthropic" },
@@ -1030,9 +1030,9 @@ dependencies = [
     { name = "anyio" },
     { name = "mcp" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/a9/e0/142f563b25cd8ece3cadc91da88a6af2a61af3dece9c7021ecf0c7ddf906/clawd_code_sdk-0.1.70.tar.gz", hash = "sha256:920584954b2209e1541c20e359581f516afa1694ced0921060e7f3667bd6dbae", size = 89915, upload-time = "2026-02-19T10:51:02.638Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/ae/3b/bb62aa68baadf0d67ac5e9ce888e68309ccc035511e85fd0ccd2377fed4f/clawd_code_sdk-0.1.72.tar.gz", hash = "sha256:f08fe1f5d72ef7d12eb3256d54a613afadacc50c0113b4709e5af906f6854a7b", size = 89952, upload-time = "2026-02-19T11:27:57.624Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/17/6c/9afd8f4cfd526fd051727cdc0f1366072b1cfe4e33bfd2022aa869a30ae2/clawd_code_sdk-0.1.70-py3-none-any.whl", hash = "sha256:25fbed7dedd1a56f2493bf4c786ff13d9709c3910e43faf48e3ecb063db299cc", size = 76719, upload-time = "2026-02-19T10:50:56.583Z" },
+    { url = "https://files.pythonhosted.org/packages/00/d4/ece0e6b344fcc1846725e513d2145e6135d629a50799fe61832bf862bd4a/clawd_code_sdk-0.1.72-py3-none-any.whl", hash = "sha256:048d754495a197f81b279f4241a36d99f026d014057bac47151ed4e2f368fe1b", size = 76755, upload-time = "2026-02-19T11:27:49.567Z" },
 ]
 
 [[package]]
@@ -2643,7 +2643,7 @@ wheels = [
 
 [[package]]
 name = "langfuse"
-version = "3.14.3"
+version = "3.14.4"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "backoff" },
@@ -2657,9 +2657,9 @@ dependencies = [
     { name = "requests" },
     { name = "wrapt" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/86/44/1da5d5fb5a07949cd5bd53cabef1dafc1af272792f51277e6226eb96ceaa/langfuse-3.14.3.tar.gz", hash = "sha256:6d1529ae88d6f2ab74e255bb79537ae37aa1a576a1ec78f4643a7a6a00502f12", size = 235121, upload-time = "2026-02-17T17:43:25.903Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/9f/b8/8a165154fa5597a831cd87375622f23bb63871d6e9e4de60f5a114bac859/langfuse-3.14.4.tar.gz", hash = "sha256:f05f853d17eadb1f54ef29b974409ddfcec275753adcf0a2e4d99fa4386b521a", size = 235283, upload-time = "2026-02-19T11:03:09.432Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/bd/cf/708c3aefa7687995eb4d3ae556e1adcaf1c4e99f5315810e9809c8cd9219/langfuse-3.14.3-py3-none-any.whl", hash = "sha256:e65f4168279dbc45b800021c59855a3268cf85d81e3275f7015441bf7f365bcb", size = 420438, upload-time = "2026-02-17T17:43:24.097Z" },
+    { url = "https://files.pythonhosted.org/packages/b7/1c/68ba27f42c52b3869d32521796fad2e5c7db63473e1569b30c13f233892b/langfuse-3.14.4-py3-none-any.whl", hash = "sha256:effb053601bfcdfd46639bfc99066b04d1312623448d445bfde31d9f448a490c", size = 420450, upload-time = "2026-02-19T11:03:07.341Z" },
 ]
 
 [[package]]
