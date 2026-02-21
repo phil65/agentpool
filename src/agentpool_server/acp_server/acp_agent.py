@@ -61,13 +61,15 @@ logger = get_logger(__name__)
 
 
 async def get_session_model_state(agent: BaseAgent) -> SessionModelState | None:
-    """Get SessionModelState from an agent using its get_available_models() method.
+    """Get SessionModelState from an agent, including configured variants.
 
-    Converts tokonomics ModelInfo to ACP ModelInfo format.
+    Converts tokonomics ModelInfo to ACP ModelInfo format, then merges
+    with configured model variants from the manifest.
+
+    Configured variants take precedence over discovered models with the same ID.
 
     Args:
         agent: Any agent with get_available_models() method
-        current_model: Currently active model ID (defaults to first available)
 
     Returns:
         SessionModelState with all available models, None if no models available
@@ -78,8 +80,22 @@ async def get_session_model_state(agent: BaseAgent) -> SessionModelState | None:
         logger.exception("Failed to get available models from agent")
         return None
 
+    # Get configured variants from manifest
+    configured = []
+    agent_pool = getattr(agent, "agent_pool", None)
+    manifest = getattr(agent_pool, "manifest", None) if agent_pool else None
+
+    if manifest and manifest.model_variants:
+        configured = [
+            ACPModelInfo(
+                model_id=name,
+                name=name,
+            )
+            for name in manifest.model_variants
+        ]
+
     # Convert tokonomics ModelInfo to ACP ModelInfo
-    acp_models = [
+    acp_models_from_tokonomics = [
         ACPModelInfo(
             model_id=toko.id_override if toko.id_override else toko.id,
             name=toko.name,
@@ -87,21 +103,36 @@ async def get_session_model_state(agent: BaseAgent) -> SessionModelState | None:
         )
         for toko in toko_models or []
     ]
-    if not acp_models:
+
+    # Merge lists (configured variants take precedence over discovered)
+    all_models: dict[str, ACPModelInfo] = {}
+
+    # Add tokonomics models first
+    for model in acp_models_from_tokonomics:
+        all_models[model.model_id] = model
+
+    # Override/add configured variants (they take precedence)
+    for model in configured:
+        all_models[model.model_id] = model
+
+    if not all_models:
         return None
+
     # Ensure current model is in the list
-    all_ids = [model.model_id for model in acp_models]
+    acp_models_list = list(all_models.values())
+    all_ids = [model.model_id for model in acp_models_list]
     current_model = agent.model_name
+
     if current_model and current_model not in all_ids:
         # Add current model to the list so the UI shows it
         desc = "Currently configured model"
         model_info = ACPModelInfo(model_id=current_model, name=current_model, description=desc)
-        acp_models.insert(0, model_info)
+        acp_models_list.insert(0, model_info)
         current_model_id = current_model
     else:
         current_model_id = current_model if current_model in all_ids else all_ids[0]
 
-    return SessionModelState(available_models=acp_models, current_model_id=current_model_id)
+    return SessionModelState(available_models=acp_models_list, current_model_id=current_model_id)
 
 
 async def get_session_mode_state(agent: BaseAgent) -> SessionModeState | None:
@@ -595,7 +626,8 @@ class AgentPoolACPAgent(ACPAgent):
         """Set the session model.
 
         Changes the model for the active agent in the session.
-        Validates that the requested model is available via agent.get_available_models().
+        Validates that the requested model is available via agent.get_available_models()
+        OR is a configured variant in the manifest.
         """
         session = self.session_manager.get_session(params.session_id)
         if not session:
@@ -603,13 +635,29 @@ class AgentPoolACPAgent(ACPAgent):
             logger.warning(msg, session_id=params.session_id)
             return None
         try:
-            # Get available models from agent and validate
+            # Build list of valid model IDs from both tokonomics and configured variants
+            valid_model_ids: set[str] = set()
+
+            # Get tokonomics models
             if toko_models := await session.agent.get_available_models():
-                # Build list of valid model IDs (using id_override if set)
-                ids = [m.id_override if m.id_override else m.id for m in toko_models]
-                if (id_ := params.model_id) not in ids:
-                    logger.warning("Model not in available models", model_id=id_, available=ids)
-                    return None
+                valid_model_ids.update(
+                    m.id_override if m.id_override else m.id for m in toko_models
+                )
+
+            # Get configured variants from manifest
+            agent_pool = getattr(session.agent, "agent_pool", None)
+            manifest = getattr(agent_pool, "manifest", None) if agent_pool else None
+            if manifest and manifest.model_variants:
+                valid_model_ids.update(manifest.model_variants.keys())
+
+            # Validate the requested model
+            if params.model_id not in valid_model_ids:
+                logger.warning(
+                    "Model not in available models",
+                    model_id=params.model_id,
+                    available=list(valid_model_ids),
+                )
+                return None
 
             # Set the model on the agent (all agents now have async set_model)
             await session.agent.set_model(params.model_id)
