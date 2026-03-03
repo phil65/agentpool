@@ -146,7 +146,7 @@ def wrap_tool[TReturn](  # noqa: PLR0915
             if result == "allow":
                 # Populate AgentContext with RunContext data if needed
                 if agent_ctx.data is None:
-                    agent_ctx.data = ctx.deps
+                    agent_ctx.data = ctx.deps.data if ctx.deps else ctx.deps
 
                 if agent_ctx_key:  # inject AgentContext
                     # Build model_name from RunContext's model (provider:model_name format)

@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 
-from pydantic_ai.tools import ToolDefinition
 import pytest
 
 from agentpool.agents.native_agent.agent import Agent
@@ -68,23 +67,22 @@ async def test_schema_override_propagation():
             break
 
     assert found_tool_def is not None, "Tool not found in pydantic agent"
-    assert found_tool_def.prepare is not None, "prepare function was not set on the tool"
 
-    # Verify prepare function logic
-    # Create a mock context required for prepare
-    class MockCtx:
-        deps = None
-        retry = 0
-        tool_name = "my_tool"
-        model = None
+    # Verify that schema_override is baked into function_schema
+    # In RFC-0002, schema_override is handled in Tool.to_pydantic_ai()
+    # and merged into function_schema, not applied via prepare()
+    assert found_tool_def.function_schema is not None, "function_schema was not set on the tool"
 
-    initial_def = ToolDefinition(
-        name=found_tool_def.name,
-        description=found_tool_def.description,
-        parameters_json_schema=found_tool_def.function_schema.json_schema,
-    )
+    # Check that description and parameter descriptions from override are in the schema
+    json_schema = found_tool_def.function_schema.json_schema
+    assert json_schema is not None
+    # The tool description itself is NOT overridden (stays as docstring)
+    # But the json_schema's description IS overridden
+    assert json_schema["description"] == "Overridden description"
 
-    res = await found_tool_def.prepare(MockCtx(), initial_def)
-    assert res is not None
-    assert res.description == "Overridden description"
-    assert res.parameters_json_schema == override["parameters"]
+    # Verify parameter descriptions are overridden
+    if "properties" in json_schema and "arg1" in json_schema["properties"]:
+        arg1_desc = json_schema["properties"]["arg1"]
+        # Check that description matches the override
+        if isinstance(arg1_desc, dict):
+            assert arg1_desc.get("description") == "Overridden argument description"

@@ -13,9 +13,11 @@ from uuid import uuid4
 
 import logfire
 from pydantic_ai import Agent as PydanticAgent, CallToolsNode, ModelRequestNode, RunContext
+from pydantic_ai.models import Model
 from pydantic_ai.tools import ToolDefinition
 
 from agentpool.agents.base_agent import BaseAgent
+from agentpool.agents.context import AgentContext
 from agentpool.agents.events import RunStartedEvent, StreamCompleteEvent
 from agentpool.agents.exceptions import UnknownCategoryError, UnknownModeError
 from agentpool.agents.native_agent.helpers import process_tool_event
@@ -25,7 +27,6 @@ from agentpool.storage import StorageManager
 from agentpool.tools import ToolManager
 from agentpool.tools.base import FunctionTool
 from agentpool.tools.exceptions import ToolError
-from agentpool.utils.inspection import get_argument_key
 from agentpool.utils.result_utils import to_type
 from agentpool.utils.streams import merge_queue_into_iterator
 
@@ -46,7 +47,6 @@ if TYPE_CHECKING:
     from toprompt import AnyPromptType
     from upathtools import JoinablePathLike
 
-    from agentpool.agents.context import AgentContext
     from agentpool.agents.events import RichAgentStreamEvent
     from agentpool.agents.modes import ModeCategory
     from agentpool.common_types import (
@@ -592,7 +592,7 @@ class Agent[TDeps = None, OutputDataT = str](BaseAgent[TDeps, OutputDataT]):
         model: ModelType | None,
         output_type: type[AgentOutputType] | None,
         input_provider: InputProvider | None = None,
-    ) -> PydanticAgent[TDeps, AgentOutputType]:
+    ) -> PydanticAgent[AgentContext[TDeps], Any]:
         """Create pydantic-ai agent from current state."""
         from agentpool.agents.native_agent.tool_wrapping import wrap_tool
 
@@ -604,7 +604,16 @@ class Agent[TDeps = None, OutputDataT = str](BaseAgent[TDeps, OutputDataT]):
         else:
             model_ = actual_model
 
-        agent = PydanticAgent(
+        context_for_tools = self.get_context(input_provider=input_provider)
+
+        # Collect pydantic_ai.tools.Tool instances using Tool.to_pydantic_ai()
+        pydantic_ai_tools = []
+        for tool in tools:
+            wrapped = wrap_tool(tool, context_for_tools, hooks=self._hook_manager)
+            pydantic_ai_tool = tool.to_pydantic_ai(function_override=wrapped)
+            pydantic_ai_tools.append(pydantic_ai_tool)
+
+        return PydanticAgent(
             name=self.name,
             model=model_,
             model_settings=self.model_settings,
@@ -612,43 +621,12 @@ class Agent[TDeps = None, OutputDataT = str](BaseAgent[TDeps, OutputDataT]):
             retries=self._retries,
             end_strategy=self._end_strategy,
             output_retries=self._output_retries,
-            deps_type=self.deps_type or NoneType,
+            deps_type=AgentContext[TDeps],
             output_type=final_type,
+            tools=pydantic_ai_tools,
             builtin_tools=self._builtin_tools,
             history_processors=self._history_processors or None,
         )
-
-        context_for_tools = self.get_context(input_provider=input_provider)
-
-        for tool in tools:
-            wrapped = wrap_tool(tool, context_for_tools, hooks=self._hook_manager)
-
-            prepare_fn = None
-            if tool.schema_override:
-
-                def create_prepare(
-                    t: Tool,
-                ) -> Callable[[RunContext[Any], ToolDefinition], Awaitable[ToolDefinition | None]]:
-                    async def prepare_schema(
-                        ctx: RunContext[Any], tool_def: ToolDefinition
-                    ) -> ToolDefinition | None:
-                        if not t.schema_override:
-                            return None
-                        return ToolDefinition(
-                            name=t.schema_override.get("name") or t.name,
-                            description=t.schema_override.get("description") or t.description,
-                            parameters_json_schema=t.schema_override.get("parameters"),
-                        )
-
-                    return prepare_schema
-
-                prepare_fn = create_prepare(tool)
-
-            if get_argument_key(wrapped, RunContext):
-                agent.tool(prepare=prepare_fn)(wrapped)
-            else:
-                agent.tool_plain(prepare=prepare_fn)(wrapped)
-        return agent  # type: ignore[return-value]
 
     async def _stream_events(
         self,
@@ -680,7 +658,7 @@ class Agent[TDeps = None, OutputDataT = str](BaseAgent[TDeps, OutputDataT]):
         # Prepend pending context parts (prompts are already pydantic-ai UserContent format)
         async with agentlet.iter(
             prompts,
-            deps=deps,  # type: ignore[arg-type]
+            deps=agent_deps,
             message_history=[m for run in history_list for m in run.to_pydantic_ai()],
             usage_limits=self._default_usage_limits,
         ) as agent_run:

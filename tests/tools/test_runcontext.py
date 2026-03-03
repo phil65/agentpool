@@ -20,9 +20,9 @@ async def agent_ctx_tool(ctx: AgentContext) -> str:
     return "AgentContext tool"
 
 
-async def data_with_run_ctx(ctx: RunContext) -> str:
+async def data_with_run_ctx(ctx: RunContext[AgentContext[dict[str, str]]]) -> str:
     """Tool accessing data through RunContext."""
-    return f"Data from RunContext: {ctx.deps}"
+    return f"Data from RunContext: {ctx.deps.data}"
 
 
 async def data_with_agent_ctx(ctx: AgentContext) -> str:
