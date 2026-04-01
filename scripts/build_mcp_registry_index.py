@@ -190,7 +190,7 @@ async def main(output_path: Path) -> None:
         test_table = db.create_table("servers", table)
         query_vec = next(iter(model.embed(["github repository issues"]))).tolist()
         results = test_table.search(query_vec).limit(3).to_arrow()
-        for i in range(len(results)):
+        for i, results in enumerate(results):
             name = results["name"][i].as_py()
             desc = results["description"][i].as_py()[:60]
             print(f"  - {name}: {desc}...")
