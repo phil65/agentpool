@@ -102,7 +102,7 @@ class Connection:
             name="acp.Connection.receive",
             on_error=self._on_receive_error,
         )
-        dispatcher_factory = dispatcher_factory or self._default_dispatcher_factory
+        dispatcher_factory = dispatcher_factory or _default_dispatcher_factory
         self._dispatcher = dispatcher_factory(
             self._queue,
             self._tasks,
@@ -260,18 +260,18 @@ class Connection:
     def _on_task_error(self, task: asyncio.Task[Any], exc: BaseException) -> None:
         logging.exception("Background task failed", exc_info=exc)
 
-    def _default_dispatcher_factory(
-        self,
-        queue: MessageQueue,
-        supervisor: TaskSupervisor,
-        state: MessageStateStore,
-        request_runner: RequestRunner,
-        notification_runner: NotificationRunner,
-    ) -> MessageDispatcher:
-        return DefaultMessageDispatcher(
-            queue=queue,
-            supervisor=supervisor,
-            store=state,
-            request_runner=request_runner,
-            notification_runner=notification_runner,
-        )
+
+def _default_dispatcher_factory(
+    queue: MessageQueue,
+    supervisor: TaskSupervisor,
+    state: MessageStateStore,
+    request_runner: RequestRunner,
+    notification_runner: NotificationRunner,
+) -> MessageDispatcher:
+    return DefaultMessageDispatcher(
+        queue=queue,
+        supervisor=supervisor,
+        store=state,
+        request_runner=request_runner,
+        notification_runner=notification_runner,
+    )

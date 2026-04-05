@@ -4,20 +4,18 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 
-from acp import (
-    Agent,
-    Implementation,
-    InitializeResponse,
-    LoadSessionResponse,
-    NewSessionResponse,
-    PromptResponse,
-)
+from acp import Agent
 from acp.schema import (
     AuthenticateResponse,
     CloseSessionResponse,
     ForkSessionResponse,
+    Implementation,
+    InitializeResponse,
     ListSessionsResponse,
+    LoadSessionResponse,
     LogoutResponse,
+    NewSessionResponse,
+    PromptResponse,
     ResumeSessionResponse,
     SetSessionConfigOptionResponse,
     SetSessionModelResponse,
