@@ -18,11 +18,15 @@ If no content is emitted, the return value is automatically converted for UI (fa
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Any, Literal
+from typing import TYPE_CHECKING, Annotated, Any, Literal
 
+import pydantic
 from pydantic_ai import (
-    AgentStreamEvent,
+    FinalResultEvent,
+    FunctionToolCallEvent,
+    FunctionToolResultEvent,
     PartDeltaEvent as PyAIPartDeltaEvent,
+    PartEndEvent,
     PartStartEvent as PyAIPartStartEvent,
     TextPart,
     TextPartDelta,
@@ -31,13 +35,16 @@ from pydantic_ai import (
     ToolCallPart,
     ToolCallPartDelta,
 )
-
-from agentpool.messaging import ChatMessage  # noqa: TC001
+from pydantic_ai.messages import (
+    BuiltinToolCallEvent,  # ty:ignore[deprecated]
+    BuiltinToolResultEvent,  # ty:ignore[deprecated]
+)
 
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
 
+    from agentpool.messaging import ChatMessage
     from agentpool.tools.base import ToolKind
     from agentpool.utils.todos import PlanEntry
 
@@ -662,6 +669,25 @@ class CompactionEvent:
         return (
             f"\n\n---\n\n📦 **Manual compaction** requested{token_info}. Summarizing...\n\n---\n\n"
         )
+
+
+HandleResponseEvent = Annotated[
+    FunctionToolCallEvent
+    | FunctionToolResultEvent
+    | BuiltinToolCallEvent  # pyright: ignore[reportDeprecated]  # ty:ignore[deprecated]
+    | BuiltinToolResultEvent,  # pyright: ignore[reportDeprecated]  # ty:ignore[deprecated]
+    pydantic.Discriminator("event_kind"),
+]
+"""An event yielded when handling a model response, indicating tool calls and results."""
+
+ModelResponseStreamEvent = Annotated[
+    PyAIPartStartEvent | PyAIPartDeltaEvent | PartEndEvent | FinalResultEvent,
+    pydantic.Discriminator("event_kind"),
+]
+AgentStreamEvent = Annotated[
+    ModelResponseStreamEvent | HandleResponseEvent, pydantic.Discriminator("event_kind")
+]
+"""An event in the agent stream: model response stream events and response-handling events."""
 
 
 type RichAgentStreamEvent[OutputDataT] = (
