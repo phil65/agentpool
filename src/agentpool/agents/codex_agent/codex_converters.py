@@ -375,7 +375,6 @@ def _turn_to_chat_messages(turn: Turn) -> list[ChatMessage[list[UserContent]]]: 
 
     user_content: list[UserContent] = []
     assistant_responses: list[ModelRequest | ModelResponse] = []  # One per ThreadItem
-    assistant_display_parts: list[str] = []
 
     for item in turn.items:
         match item:
@@ -383,7 +382,6 @@ def _turn_to_chat_messages(turn: Turn) -> list[ChatMessage[list[UserContent]]]: 
                 user_content.extend(_user_input_to_content(i) for i in msg_content)
             case ThreadItemAgentMessage(text=text):
                 assistant_responses.append(ModelResponse(parts=[TextPart(content=text)]))
-                assistant_display_parts.append(text)
             case ThreadItemReasoning(summary=summary):
                 # summary is list[str] - create one ThinkingPart per summary item
                 # But we want one ModelResponse per ThreadItem, so combine them
@@ -391,19 +389,12 @@ def _turn_to_chat_messages(turn: Turn) -> list[ChatMessage[list[UserContent]]]: 
                 assistant_responses.append(ModelResponse(parts=thinking_parts))
             case ThreadItemCommandExecution(command=cmd, cwd=cwd, id=tc_id, aggregated_output=out):
                 output = out or ""
-                display = f"[Executed: {cmd}]" + (f"\n{output[:200]}" if output else "")
-                assistant_display_parts.append(display)
                 cmd_args = {"command": cmd, "cwd": cwd}
                 parts = get_tool_parts(tool_name="bash", args=cmd_args, tc_id=tc_id, output=output)
                 assistant_responses.append(ModelResponse(parts=parts))
 
             case ThreadItemFileChange(changes=changes, id=tc_id):
                 paths = [c.path for c in changes]
-                if len(paths) > 3:  # noqa: PLR2004
-                    display = f"[Files: {', '.join(paths[:3])} +{len(paths) - 3} more]"
-                else:
-                    display = f"[Files: {', '.join(paths)}]"
-                assistant_display_parts.append(display)
                 diffs = [c.diff for c in changes if c.diff]
                 text = "\n".join(diffs) or "OK"
                 args: dict[str, Any] = {"files": paths}
@@ -415,13 +406,11 @@ def _turn_to_chat_messages(turn: Turn) -> list[ChatMessage[list[UserContent]]]: 
                 if mcp_result and mcp_result.content:
                     texts = [str(b.model_dump().get("text", "")) for b in mcp_result.content]
                     result_text = " ".join(texts)
-                assistant_display_parts.append(f"[Tool: {tool}] {result_text[:100]}")
                 args = mcp_args or {}
                 parts = get_tool_parts(tool_name=tool, args=args, tc_id=tc_id, output=result_text)
                 assistant_responses.append(ModelResponse(parts=parts))
 
             case ThreadItemWebSearch(query=query, id=tc_id):
-                assistant_display_parts.append(f"[Web Search: {query}]")
                 parts = get_tool_parts(
                     tool_name="web_search",
                     args={"query": query},
@@ -431,7 +420,6 @@ def _turn_to_chat_messages(turn: Turn) -> list[ChatMessage[list[UserContent]]]: 
                 assistant_responses.append(ModelResponse(parts=parts))
 
             case ThreadItemImageView(path=path, id=tc_id):
-                assistant_display_parts.append(f"[Viewed Image: {path}]")
                 parts = get_tool_parts(
                     tool_name="view_image",
                     args={"path": path},
@@ -441,12 +429,10 @@ def _turn_to_chat_messages(turn: Turn) -> list[ChatMessage[list[UserContent]]]: 
                 assistant_responses.append(ModelResponse(parts=parts))
 
             case ThreadItemEnteredReviewMode(review=review):
-                assistant_display_parts.append(f"[Entered Review Mode: {review}]")
                 tp = TextPart(content=f"Entered review mode: {review}")
                 assistant_responses.append(ModelResponse(parts=[tp]))
 
             case ThreadItemExitedReviewMode(review=review):
-                assistant_display_parts.append(f"[Exited Review Mode: {review}]")
                 tp = TextPart(content=f"Exited review mode: {review}")
                 assistant_responses.append(ModelResponse(parts=[tp]))
 
@@ -461,9 +447,6 @@ def _turn_to_chat_messages(turn: Turn) -> list[ChatMessage[list[UserContent]]]: 
                 # Get first agent state from the dict, if any
                 first_state = next(iter(agents_states.values()), None)
                 status = first_state.status if first_state else "unknown"
-                receiver_ids = ", ".join(receiver_thread_ids)
-                display = f"[Collab Agent: {tool}] {receiver_ids} ({status})"
-                assistant_display_parts.append(display)
                 collab_args: dict[str, Any] = {"tool": tool, "sender_thread_id": sender_thread_id}
                 if receiver_thread_ids:
                     collab_args["receiver_thread_ids"] = receiver_thread_ids
@@ -484,7 +467,7 @@ def _turn_to_chat_messages(turn: Turn) -> list[ChatMessage[list[UserContent]]]: 
     # Validate user content exists
     if not user_content:
         return []  # Skip turns with no user content
-    result: list[ChatMessage[list[UserContent]]] = []
+    result: list[ChatMessage[Any]] = []
     user_msg = ChatMessage[list[UserContent]](
         content=user_content,
         role="user",
@@ -495,10 +478,8 @@ def _turn_to_chat_messages(turn: Turn) -> list[ChatMessage[list[UserContent]]]: 
 
     # Create assistant message only if there are assistant responses
     if assistant_responses:
-        display_text = "\n\n".join(assistant_display_parts) if assistant_display_parts else ""
-        content: list[UserContent] = [display_text] if display_text else []
-        assistant_msg = ChatMessage[list[UserContent]](
-            content=content,
+        assistant_msg = ChatMessage[str](
+            content=turn.final_response or "",
             role="assistant",
             message_id=f"{turn.id}-assistant",
             messages=assistant_responses,
