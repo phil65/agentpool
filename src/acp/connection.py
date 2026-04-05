@@ -171,14 +171,17 @@ class Connection:
         self._state.reject_all_outgoing(ConnectionError("Connection closed: remote end sent EOF"))
 
     async def _process_message(self, message: dict[str, Any]) -> None:
-        method = message.get("method")
-        has_id = "id" in message
-        if method is not None:
-            task = RpcTask("request" if has_id else "notification", message)
-            await self._queue.publish(task)
-            return
-        if has_id:
-            await self._handle_response(message)
+        match message:
+            case {"method": _method, "id": _id}:
+                task = RpcTask("request", message)
+                await self._queue.publish(task)
+            case {"method": _method}:
+                task = RpcTask("notification", message)
+                await self._queue.publish(task)
+            case {"id": _id}:
+                await self._handle_response(message)
+            case _:
+                raise ValueError(f"Invalid message: {message}")
 
     def _notify_observers(self, direction: StreamDirection, message: dict[str, Any]) -> None:
         if not self._observers:
