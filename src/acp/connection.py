@@ -22,12 +22,7 @@ from acp.task import (
     DefaultMessageDispatcher,
     InMemoryMessageQueue,
     InMemoryMessageStateStore,
-    MessageDispatcher,
-    MessageQueue,
     MessageSender,
-    MessageStateStore,
-    NotificationRunner,
-    RequestRunner,
     RpcTask,
     TaskSupervisor,
 )
@@ -36,16 +31,11 @@ from acp.task import (
 if TYPE_CHECKING:
     from anyio.abc import ByteReceiveStream, ByteSendStream
 
-    from acp.task.sender import SenderFactory
+    from acp.task import MessageDispatcher, MessageQueue, MessageStateStore
 
 
 JsonValue = Any
 MethodHandler = Callable[[str, JsonValue | None, bool], Awaitable[JsonValue | None]]
-
-DispatcherFactory = Callable[
-    [MessageQueue, TaskSupervisor, MessageStateStore, RequestRunner, NotificationRunner],
-    MessageDispatcher,
-]
 
 
 logger = structlog.get_logger(__name__)
@@ -83,8 +73,8 @@ class Connection:
         *,
         queue: MessageQueue | None = None,
         state_store: MessageStateStore | None = None,
-        dispatcher_factory: DispatcherFactory | None = None,
-        sender_factory: SenderFactory | None = None,
+        dispatcher_type: type[MessageDispatcher] | None = None,
+        sender_type: type[MessageSender] | None = None,
         observers: list[StreamObserver] | None = None,
     ) -> None:
         self._handler = handler
@@ -96,19 +86,20 @@ class Connection:
         self._tasks = TaskSupervisor(source="acp.Connection", error_handlers=[self._on_task_error])
         self._queue = queue or InMemoryMessageQueue()
         self._closed = False
-        self._sender = (sender_factory or MessageSender)(self._writer, self._tasks)
+        sender_type = sender_type or MessageSender
+        self._sender = sender_type(self._writer, self._tasks)
         self._recv_task = self._tasks.create(
             self._receive_loop(),
             name="acp.Connection.receive",
             on_error=self._on_receive_error,
         )
-        dispatcher_factory = dispatcher_factory or _default_dispatcher_factory
-        self._dispatcher = dispatcher_factory(
-            self._queue,
-            self._tasks,
-            self._state,
-            self._run_request,
-            self._run_notification,
+        dispatcher_type = dispatcher_type or DefaultMessageDispatcher
+        self._dispatcher = dispatcher_type(
+            queue=self._queue,
+            supervisor=self._tasks,
+            store=self._state,
+            request_runner=self._run_request,
+            notification_runner=self._run_notification,
         )
         self._dispatcher.start()
         self._observers: list[StreamObserver] = list(observers or [])
@@ -259,19 +250,3 @@ class Connection:
 
     def _on_task_error(self, task: asyncio.Task[Any], exc: BaseException) -> None:
         logging.exception("Background task failed", exc_info=exc)
-
-
-def _default_dispatcher_factory(
-    queue: MessageQueue,
-    supervisor: TaskSupervisor,
-    state: MessageStateStore,
-    request_runner: RequestRunner,
-    notification_runner: NotificationRunner,
-) -> MessageDispatcher:
-    return DefaultMessageDispatcher(
-        queue=queue,
-        supervisor=supervisor,
-        store=state,
-        request_runner=request_runner,
-        notification_runner=notification_runner,
-    )

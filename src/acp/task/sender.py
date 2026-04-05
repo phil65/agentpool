@@ -3,22 +3,23 @@
 from __future__ import annotations
 
 import asyncio
-from collections.abc import Callable
 import contextlib
 from dataclasses import dataclass
 import logging
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import anyenv
 import anyio
-from anyio.abc import ByteSendStream
 
-from acp.task.supervisor import TaskSupervisor
+
+if TYPE_CHECKING:
+    from anyio.abc import ByteSendStream
+
+    from acp.task.supervisor import TaskSupervisor
 
 
 logger = logging.getLogger(__name__)
 
-SenderFactory = Callable[[ByteSendStream, TaskSupervisor], "MessageSender"]
 
 _JSON_PRIMITIVE = (str, int, float, bool, type(None))
 

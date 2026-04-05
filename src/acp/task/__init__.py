@@ -24,7 +24,7 @@ from .dispatcher import (
     RequestRunner,
 )
 from .queue import InMemoryMessageQueue, MessageQueue
-from .sender import MessageSender, SenderFactory
+from .sender import MessageSender
 from .state import InMemoryMessageStateStore, MessageStateStore
 from .supervisor import TaskSupervisor
 from .debug import DebugEntry, DebuggingMessageStateStore
@@ -43,6 +43,5 @@ __all__ = [
     "RequestRunner",
     "RpcTask",
     "RpcTaskKind",
-    "SenderFactory",
     "TaskSupervisor",
 ]
