@@ -7,7 +7,6 @@ points for agentpool infrastructure.
 
 from __future__ import annotations
 
-from contextlib import asynccontextmanager
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Protocol, Self
 
@@ -15,7 +14,7 @@ from bashkit import Bash, ScriptedTool
 
 
 if TYPE_CHECKING:
-    from collections.abc import AsyncIterator, Callable
+    from collections.abc import Callable
 
     from bashkit import ExecResult
 
@@ -444,37 +443,6 @@ class SandboxScriptedTool:
     def output_schema(self) -> str:
         """Get JSON output schema."""
         return self._tool.output_schema()
-
-
-@asynccontextmanager
-async def sandbox_bash(
-    *,
-    username: str | None = None,
-    hostname: str | None = None,
-    max_commands: int | None = None,
-    max_loop_iterations: int | None = None,
-) -> AsyncIterator[SandboxBash]:
-    """Context manager for creating a sandboxed bash environment.
-
-    Args:
-        username: Custom username for the virtual environment.
-        hostname: Custom hostname for the virtual environment.
-        max_commands: Maximum total commands allowed.
-        max_loop_iterations: Maximum loop iterations allowed.
-
-    Yields:
-        Configured SandboxBash instance.
-    """
-    bash = SandboxBash(
-        username=username,
-        hostname=hostname,
-        max_commands=max_commands,
-        max_loop_iterations=max_loop_iterations,
-    )
-    try:
-        yield bash
-    finally:
-        bash.reset()
 
 
 def _shell_quote(value: str) -> str:
