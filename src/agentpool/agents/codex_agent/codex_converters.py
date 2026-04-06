@@ -7,6 +7,7 @@ Provides converters for:
 
 from __future__ import annotations
 
+import base64
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any, assert_never, overload
 
@@ -207,7 +208,9 @@ def user_content_to_codex(content: Sequence[UserContent]) -> Iterator[UserInput]
             case ImageUrl(url=url):
                 yield ImageUserInput(url=url)
             case BinaryContent(data=data, media_type=media_type, is_image=is_image) if is_image:
-                yield ImageUserInput.from_bytes(data=data, media_type=media_type)
+                b64 = base64.b64encode(data).decode()
+                data_uri = f"data:{media_type};base64,{b64}"
+                yield ImageUserInput(url=data_uri)
             case FileUrl() | BinaryContent() | CachePoint() | UploadedFile():
                 pass
             case _ as unreachable:
