@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, assert_never
 
@@ -9,8 +10,6 @@ from agentpool.log import get_logger
 
 
 if TYPE_CHECKING:
-    from collections.abc import Awaitable, Callable
-
     from mcp import types
     from mcp.shared.session import RequestResponder
 
@@ -19,6 +18,7 @@ if TYPE_CHECKING:
 logger = get_logger(__name__)
 
 MetaDict = dict[str, Any]
+ChangeCallback = Callable[[MetaDict], Awaitable[None]]
 
 
 @dataclass
@@ -27,11 +27,11 @@ class MCPMessageHandler:
 
     client: MCPClient
     """The MCP client instance."""
-    tool_change_callback: Callable[[MetaDict], Awaitable[None]] | None = None
+    tool_change_callback: ChangeCallback | None = None
     """Tool change callback."""
-    prompt_change_callback: Callable[[MetaDict], Awaitable[None]] | None = None
+    prompt_change_callback: ChangeCallback | None = None
     """Prompt change callback."""
-    resource_change_callback: Callable[[MetaDict], Awaitable[None]] | None = None
+    resource_change_callback: ChangeCallback | None = None
     """Resource change callback."""
 
     async def __call__(
