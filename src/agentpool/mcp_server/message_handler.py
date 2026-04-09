@@ -19,6 +19,7 @@ logger = get_logger(__name__)
 
 MetaDict = dict[str, Any]
 ChangeCallback = Callable[[MetaDict], Awaitable[None]]
+ProgressCallback = Callable[[float, float | None, str | None, MetaDict], Awaitable[None]]
 
 
 @dataclass
@@ -33,6 +34,8 @@ class MCPMessageHandler:
     """Prompt change callback."""
     resource_change_callback: ChangeCallback | None = None
     """Resource change callback."""
+    progress_callback: ProgressCallback | None = None
+    """Progress callback: (progress, total, message, meta)."""
 
     async def __call__(
         self,
@@ -139,9 +142,11 @@ class MCPMessageHandler:
         logger.info("MCP resource updated", uri=getattr(message, "uri", "unknown"))
 
     async def on_progress(self, message: types.ProgressNotification) -> None:
-        """Handle progress notifications with proper context."""
-        # Note: Progress notifications from MCP servers are now handled per-tool-call
-        # with the contextual progress handler, so global notifications are ignored
+        """Handle progress notifications with metadata."""
+        if self.progress_callback:
+            params = message.params
+            meta = params.meta.model_dump() if params.meta else {}
+            await self.progress_callback(params.progress, params.total, params.message, meta)
 
     async def on_prompt_list_changed(self, message: types.PromptListChangedNotification) -> None:
         """Handle prompt list changes."""
