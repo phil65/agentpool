@@ -521,15 +521,7 @@ class ClaudeCodeAgent[TDeps = None, TResult = str](BaseAgent[TDeps, TResult]):
         if self._tool_bridge._current_context is None:
             raise RuntimeError("Elicitation callback invoked outside of an active run")
         input_provider = self._tool_bridge._current_context.get_input_provider()
-
-        match request.mode:
-            case "url" | "form":
-                params = request.to_mcp()
-            case None:
-                raise ValueError("Elicitation request mode must be 'url' or 'form'")
-            case _ as unreachable:
-                assert_never(unreachable)
-
+        params = request.to_mcp()
         match await input_provider.get_elicitation(params=params):
             case ElicitResult() as result:
                 return result
