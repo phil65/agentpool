@@ -632,7 +632,8 @@ class CodexAgent[TDeps = None, OutputDataT = str](BaseAgent[TDeps, OutputDataT])
             return None
 
         try:
-            models = [to_model_info(i) for i in await self._client.model_list()]
+            response = await self._client.model_list()
+            models = [to_model_info(i) for i in response.data]
         except Exception:
             self.log.exception("Failed to fetch models from Codex")
             return None

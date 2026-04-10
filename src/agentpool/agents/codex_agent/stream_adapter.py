@@ -157,7 +157,7 @@ class CodexStreamedResponse(StreamedResponse):
                         if isinstance(data.item, ThreadItemFileChange):
                             diff_parts = []
                             for change in data.item.changes:
-                                diff_parts.append(f"{change.kind.kind.upper()}: {change.path}")
+                                diff_parts.append(f"{change.kind.type.upper()}: {change.path}")
                                 if change.diff:
                                     diff_parts.append(change.diff)
                             if diff_parts:

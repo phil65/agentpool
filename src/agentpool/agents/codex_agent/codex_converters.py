@@ -241,7 +241,7 @@ async def _format_tool_result(item: ThreadItem) -> str | list[str | BinaryConten
             # Format file changes with their diffs
             parts = []
             for change in changes:
-                parts.append(f"{change.kind.kind.upper()}: {change.path}")
+                parts.append(f"{change.kind.type.upper()}: {change.path}")
                 if change.diff:
                     parts.append(change.diff)
             return "\n".join(parts)
@@ -438,7 +438,7 @@ def _turn_to_chat_messages(turn: Turn) -> list[ChatMessage[list[UserContent]]]: 
                     texts = [str(b.model_dump().get("text", "")) for b in items]
                     result_text = " ".join(texts)
                 parts = get_builtin_tool_parts(
-                    tool_name=tool, args=args, tc_id=tc_id, content=result_text
+                    tool_name=tool, args=args or {}, tc_id=tc_id, content=result_text
                 )
                 assistant_responses.append(ModelResponse(parts=parts))
 
