@@ -5,7 +5,15 @@ from __future__ import annotations
 import base64
 from typing import TYPE_CHECKING, Any
 
-from pydantic_ai import AudioUrl, BinaryContent, DocumentUrl, ImageUrl, ToolReturn, VideoUrl
+from pydantic_ai import (
+    AudioUrl,
+    BinaryContent,
+    DocumentUrl,
+    ImageUrl,
+    TextContent,
+    ToolReturn,
+    VideoUrl,
+)
 
 from acp.schema import (
     AudioContentBlock,
@@ -101,13 +109,16 @@ def to_acp_content_blocks(  # noqa: PLR0911
                 name = f"{resource_type}_{parsed.netloc}" if parsed.netloc else resource_type
             return [
                 ResourceContentBlock(
-                    uri=str(file_url.url),
+                    uri=file_url.url,
                     name=name,
                     description=f"{resource_type.title()} resource",
                     mime_type=file_url.media_type,
                 )
             ]
 
+        case str(content) | TextContent(content=content):
+            return [TextContentBlock(text=content)]
+        # case UploadedFile() | CachePoint():
         case _:
             return [TextContentBlock(text=str(tool_output))]
 

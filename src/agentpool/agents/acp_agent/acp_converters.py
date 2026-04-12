@@ -127,8 +127,6 @@ def model_messages_to_session_updates(
     Yields:
         SessionUpdate instances ready to be sent via a client.
     """
-    from pydantic_ai import TextPart, ThinkingPart, ToolCallPart
-
     tool_call_inputs: dict[str, dict[str, Any]] = {}
     for message in messages:
         for part in message.parts:
@@ -204,7 +202,7 @@ def model_messages_to_session_updates(
                     assert_never(unreachable)
 
 
-def _user_content_to_updates(content: Any) -> Iterator[SessionUpdate]:
+def _user_content_to_updates(content: Sequence[UserContent]) -> Iterator[SessionUpdate]:
     """Convert multi-modal user content to ACP session updates."""
     converted_content = to_acp_content_blocks(content)
     for block in converted_content:
