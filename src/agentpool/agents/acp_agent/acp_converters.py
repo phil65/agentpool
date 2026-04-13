@@ -24,6 +24,7 @@ from pydantic_ai import (
     BuiltinToolCallPart,
     BuiltinToolReturnPart,
     CachePoint,
+    CompactionPart,
     DocumentUrl,
     FilePart,
     ImageUrl,
@@ -196,7 +197,7 @@ def model_messages_to_session_updates(
                     )
                     tool_call_inputs.pop(tool_call_id, None)
 
-                case SystemPromptPart() | RetryPromptPart():
+                case SystemPromptPart() | RetryPromptPart() | CompactionPart():
                     pass
                 case _ as unreachable:
                     assert_never(unreachable)
