@@ -23,12 +23,10 @@ if TYPE_CHECKING:
 
     from fastmcp import Client
     from mcp.types import (
-        BlobResourceContents,
         ContentBlock,
         PromptMessage,
         SamplingMessage,
         SamplingMessageContentBlock,
-        TextResourceContents,
     )
     from pydantic_ai import ModelRequestPart, ModelResponsePart, UserContent
 
@@ -100,7 +98,7 @@ def content_block_to_user_content(content: SamplingMessageContentBlock) -> UserC
 
 
 async def from_mcp_content(
-    mcp_content: Sequence[ContentBlock | TextResourceContents | BlobResourceContents],
+    mcp_content: Sequence[ContentBlock],
     client: Client[Any] | None = None,
 ) -> list[str | BinaryContent]:
     """Convert MCP content blocks to PydanticAI content types.
@@ -142,9 +140,9 @@ async def from_mcp_content(
             case ResourceLink(uri=uri, mimeType=mime_type) if client:
                 try:
                     res = await client.read_resource(uri)
-                    nested = await from_mcp_content(res, client)
+                    emb_resources = [EmbeddedResource(type="resource", resource=r) for r in res]
+                    nested = await from_mcp_content(emb_resources, client)
                     contents.extend(nested)
-                    continue
                 except Exception:  # noqa: BLE001
                     # Fallback to URL if reading fails
                     logger.warning("Failed to read resource", uri=uri)
