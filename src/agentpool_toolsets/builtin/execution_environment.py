@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+import time
 from typing import TYPE_CHECKING
 
 from agentpool import log
@@ -50,6 +51,7 @@ class ProcessManagementTools(ResourceProvider):
         """
         super().__init__(name=name)
         self._env = env
+        self._start_times: dict[str, float] = {}  # process_id -> monotonic timestamp
 
     def get_env(self, agent_ctx: AgentContext) -> ExecutionEnvironment:
         """Get execution environment, falling back to agent's env if not set.
@@ -107,6 +109,7 @@ class ProcessManagementTools(ResourceProvider):
                 env=env,
                 output_limit=output_limit,
             )
+            self._start_times[process_id] = time.monotonic()
             await agent_ctx.events.process_started(process_id, command, success=True)
 
         except Exception as e:  # noqa: BLE001
@@ -144,6 +147,9 @@ class ProcessManagementTools(ResourceProvider):
                 suffix_parts.append(f"Exit code: {output.exit_code}")
             if output.truncated:
                 suffix_parts.append("[output truncated]")
+            if start := self._start_times.get(process_id):
+                elapsed = time.monotonic() - start
+                suffix_parts.append(f"Elapsed: {elapsed:.1f}s")
 
             return (
                 f"{combined}\n\n{' | '.join(suffix_parts)}"
@@ -187,6 +193,9 @@ class ProcessManagementTools(ResourceProvider):
                 suffix_parts.append("[output truncated]")
             if exit_code != 0:
                 suffix_parts.append(f"Exit code: {exit_code}")
+            if start := self._start_times.pop(process_id, None):
+                elapsed = time.monotonic() - start
+                suffix_parts.append(f"Execution time: {elapsed:.1f}s")
 
             if suffix_parts:
                 return f"{combined}\n\n{' | '.join(suffix_parts)}"

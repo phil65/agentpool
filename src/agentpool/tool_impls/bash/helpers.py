@@ -16,6 +16,7 @@ def format_output(
     stderr: str,
     exit_code: int | None,
     truncated: bool,
+    elapsed: float | None = None,
 ) -> str:
     """Format the final output string."""
     # Combine stdout and stderr
@@ -29,6 +30,11 @@ def format_output(
         suffix_parts.append("[output truncated]")
     if exit_code and exit_code != 0:
         suffix_parts.append(f"Exit code: {exit_code}")
+    if elapsed is not None:
+        if elapsed < 1:
+            suffix_parts.append(f"Execution time: {elapsed:.2f}s")
+        else:
+            suffix_parts.append(f"Execution time: {elapsed:.1f}s")
 
     if suffix_parts:
         return f"{output}\n\n{' | '.join(suffix_parts)}"

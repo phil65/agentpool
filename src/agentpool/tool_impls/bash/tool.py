@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 import re
+import time
 from typing import TYPE_CHECKING
 import uuid
 
@@ -80,6 +81,8 @@ class BashTool(Tool[ToolResult]):
             filter_lines: Optional regex pattern to filter output lines
                           (only matching lines returned)
         """
+        from exxec.acp_provider import ACPExecutionEnvironment
+
         effective_limit = output_limit or self.output_limit
         effective_timeout = timeout if timeout is not None else self.timeout
         process_id: str | None = None
@@ -88,12 +91,8 @@ class BashTool(Tool[ToolResult]):
         exit_code: int | None = None
         error_msg: str | None = None
         env = self._get_env(ctx)
-
-        # Check if we're running in ACP - terminal streams client-side
-        from exxec.acp_provider import ACPExecutionEnvironment
-
         is_acp = isinstance(env, ACPExecutionEnvironment)
-
+        start_time = time.monotonic()
         try:
             async for event in env.stream_command(command, timeout=effective_timeout):
                 match event:
@@ -166,7 +165,8 @@ class BashTool(Tool[ToolResult]):
             )
 
         # Format success response
-        formatted_output = format_output(stdout, stderr, exit_code, truncated)
+        elapsed = time.monotonic() - start_time
+        formatted_output = format_output(stdout, stderr, exit_code, truncated, elapsed)
         combined_output = stdout + stderr
         return ToolResult(
             content=formatted_output,
