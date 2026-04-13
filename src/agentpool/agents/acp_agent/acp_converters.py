@@ -241,14 +241,14 @@ def _user_content_to_updates(content: Sequence[UserContent]) -> Iterator[Session
                 )
             case EmbeddedResourceContentBlock(resource=resource):
                 match resource:
-                    case TextResourceContents(text=text):
-                        yield UserMessageChunk.text(text=text)
-                    case BlobResourceContents(blob=blob, mime_type=mime_type):
-                        blob_size = len(blob) * 3 // 4
-                        size_mb = blob_size / (1024 * 1024)
-                        mime = mime_type or "unknown"
-                        msg = f"Embedded resource: {mime} ({size_mb:.2f} MB)"
-                        yield UserMessageChunk.text(text=msg)
+                    case TextResourceContents(text=text, uri=uri, mime_type=mime_type):
+                        yield UserMessageChunk.embedded_text_resource(
+                            text=text, uri=uri or "", mime_type=mime_type
+                        )
+                    case BlobResourceContents(blob=blob, uri=uri, mime_type=mime_type):
+                        yield UserMessageChunk.embedded_blob_resource(
+                            data=blob, uri=uri or "", mime_type=mime_type
+                        )
                     case _ as unreachable:
                         assert_never(unreachable)  # ty: ignore[type-assertion-failure]
             case _ as unreachable:
