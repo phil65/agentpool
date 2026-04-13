@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 import re
 import time
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 import uuid
 
 from exxec.events import (
@@ -28,6 +28,12 @@ if TYPE_CHECKING:
 
 
 logger = get_logger(__name__)
+
+
+def apply_linewise_regex_filter(text: str, pattern_str: str) -> str:
+    pattern = re.compile(pattern_str)
+    lines = [i for i in text.splitlines(keepends=True) if pattern.search(i)]
+    return "".join(lines)
 
 
 @dataclass
@@ -119,56 +125,37 @@ class BashTool(Tool[ToolResult]):
 
             stdout = "".join(stdout_parts)
             stderr = "".join(stderr_parts)
-
-            # Apply regex filter if specified
-            if filter_lines:
+            if filter_lines:  # Apply regex filter if specified
                 try:
-                    pattern = re.compile(filter_lines)
-                    stdout_lines = [
-                        line for line in stdout.splitlines(keepends=True) if pattern.search(line)
-                    ]
-                    stderr_lines = [
-                        line for line in stderr.splitlines(keepends=True) if pattern.search(line)
-                    ]
-                    stdout = "".join(stdout_lines)
-                    stderr = "".join(stderr_lines)
+                    stdout = apply_linewise_regex_filter(stdout, filter_lines)
+                    stderr = apply_linewise_regex_filter(stderr, filter_lines)
                 except re.error as regex_err:
                     error_msg = f"Invalid filter regex: {regex_err}"
-                    return ToolResult(
-                        content=error_msg,
-                        metadata={"output": "", "exit": None, "description": command},
-                    )
-
+                    meta: dict[str, Any] = {"output": "", "exit": None, "description": command}
+                    return ToolResult(content=error_msg, metadata=meta)
             # Apply output limit if specified
             truncated = False
             if effective_limit:
                 stdout, stdout_truncated = truncate_output(stdout, effective_limit)
                 stderr, stderr_truncated = truncate_output(stderr, effective_limit)
                 truncated = stdout_truncated or stderr_truncated
-
             # Format error response
             if error_msg:
                 output = stdout + stderr if stdout or stderr else ""
                 result_output = f"{output}\n\nError: {error_msg}\nExit code: {exit_code}"
-                return ToolResult(
-                    content=result_output,
-                    metadata={"output": output, "exit": exit_code, "description": command},
-                )
+                meta = {"output": output, "exit": exit_code, "description": command}
+                return ToolResult(content=result_output, metadata=meta)
 
         except Exception as e:  # noqa: BLE001
             error_id = process_id or f"cmd_{uuid.uuid4().hex[:8]}"
             await ctx.events.process_started(error_id, command, success=False, error=str(e))
             error_msg = f"Error executing command: {e}"
-            return ToolResult(
-                content=error_msg,
-                metadata={"output": "", "exit": None, "description": command},
-            )
+            meta = {"output": "", "exit": None, "description": command}
+            return ToolResult(content=error_msg, metadata=meta)
 
         # Format success response
         elapsed = time.monotonic() - start_time
         formatted_output = format_output(stdout, stderr, exit_code, truncated, elapsed)
         combined_output = stdout + stderr
-        return ToolResult(
-            content=formatted_output,
-            metadata={"output": combined_output, "exit": exit_code, "description": command},
-        )
+        meta = {"output": combined_output, "exit": exit_code, "description": command}
+        return ToolResult(content=formatted_output, metadata=meta)
