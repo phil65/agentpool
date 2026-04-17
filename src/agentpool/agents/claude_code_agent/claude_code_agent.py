@@ -89,7 +89,7 @@ ThinkingMode = Literal["off", "4k", "8k", "16k", "32k"]
 _MCP_TOOL_PATTERN = re.compile(r"^mcp__agentpool-(.+)-tools__(.+)$")
 """Pattern to detect CC-provided tool names ( mcp__agentpool-{agent_name}-tools__{tool_name} )."""
 
-VALID_EFFORTS: set[str] = {"low", "medium", "high", "max"}
+VALID_EFFORTS: set[str] = {"low", "medium", "high", "xhigh", "max"}
 
 # see https://github.com/zed-industries/claude-agent-acp/blob/main/src/acp-agent.ts for a list
 UNSUPPORTED_COMMANDS = frozenset({
@@ -837,7 +837,7 @@ class ClaudeCodeAgent[TDeps = None, TResult = str](BaseAgent[TDeps, TResult]):
         The current session is preserved via session resumption.
 
         Args:
-            effort: Reasoning effort level ("low", "medium", "high", "max")
+            effort: Reasoning effort level
         """
         await self._set_mode(effort, "effort")
 

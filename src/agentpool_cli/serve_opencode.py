@@ -72,6 +72,7 @@ def opencode_command(
     from agentpool import AgentPool, log as ap_log
     from agentpool.config_resources import CLAUDE_CODE_ASSISTANT
     from agentpool.models.manifest import AgentsManifest
+    from agentpool.observability import registry
     from agentpool_config.resolution import resolve_config
     from agentpool_server.opencode_server.server import OpenCodeServer
 
@@ -95,24 +96,19 @@ def opencode_command(
 
     # Initialize observability BEFORE configuring logging
     # This ensures logfire is configured before StructlogProcessor is added
-    from agentpool.observability import registry
-
     registry.configure_observability(manifest.observability)
-
     # Always log to file with rollover
     log_dir = user_log_path("agentpool", appauthor=False)
     log_dir.mkdir(parents=True, exist_ok=True)
     log_file = log_dir / "opencode.log"
     ap_log.configure_logging(force=True, log_file=str(log_file))
     logger.info("Configured file logging with rollover", log_file=str(log_file))
-
     # Log which config layers were used
     if resolved.layers:
         sources = [f"{layer.source}:{layer.path}" for layer in resolved.layers if layer.path]
         logger.info("Config layers loaded", sources=sources, host=host, port=port)
     else:
         logger.info("Starting OpenCode server with built-in defaults only", host=host, port=port)
-
     # Load agent from merged manifest
     pool = AgentPool(manifest, main_agent_name=agent)
 

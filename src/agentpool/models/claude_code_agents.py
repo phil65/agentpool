@@ -112,7 +112,7 @@ class AgentDefinition(Schema):
     # hooks: AgentHooksConfig | None = Field(default=None, title="Agent Hooks")
     # """Hook configurations for this agent."""
 
-    effort: Literal["low", "medium", "high", "max"] | int | None = Field(
+    effort: Literal["low", "medium", "high", "xhigh", "max"] | int | None = Field(
         default=None,
         title="Reasoning effort",
         examples=["high"],

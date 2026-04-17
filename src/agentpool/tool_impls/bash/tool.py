@@ -96,10 +96,10 @@ class BashTool(Tool[ToolResult]):
         stderr_parts: list[str] = []
         exit_code: int | None = None
         error_msg: str | None = None
-        env = self._get_env(ctx)
-        is_acp = isinstance(env, ACPExecutionEnvironment)
         start_time = time.monotonic()
         try:
+            env = self._get_env(ctx)
+            is_acp = isinstance(env, ACPExecutionEnvironment)
             async for event in env.stream_command(command, timeout=effective_timeout):
                 match event:
                     case ProcessStartedEvent(process_id=pid, command=cmd):
@@ -122,36 +122,34 @@ class BashTool(Tool[ToolResult]):
                     case ProcessErrorEvent(error=err, exit_code=code_):
                         error_msg = err
                         exit_code = code_
-
-            stdout = "".join(stdout_parts)
-            stderr = "".join(stderr_parts)
-            if filter_lines:  # Apply regex filter if specified
-                try:
-                    stdout = apply_linewise_regex_filter(stdout, filter_lines)
-                    stderr = apply_linewise_regex_filter(stderr, filter_lines)
-                except re.error as regex_err:
-                    error_msg = f"Invalid filter regex: {regex_err}"
-                    meta: dict[str, Any] = {"output": "", "exit": None, "description": command}
-                    return ToolResult(content=error_msg, metadata=meta)
-            # Apply output limit if specified
-            truncated = False
-            if effective_limit:
-                stdout, stdout_truncated = truncate_output(stdout, effective_limit)
-                stderr, stderr_truncated = truncate_output(stderr, effective_limit)
-                truncated = stdout_truncated or stderr_truncated
-            # Format error response
-            if error_msg:
-                output = stdout + stderr if stdout or stderr else ""
-                result_output = f"{output}\n\nError: {error_msg}\nExit code: {exit_code}"
-                meta = {"output": output, "exit": exit_code, "description": command}
-                return ToolResult(content=result_output, metadata=meta)
-
         except Exception as e:  # noqa: BLE001
             error_id = process_id or f"cmd_{uuid.uuid4().hex[:8]}"
             await ctx.events.process_started(error_id, command, success=False, error=str(e))
-            error_msg = f"Error executing command: {e}"
             meta = {"output": "", "exit": None, "description": command}
-            return ToolResult(content=error_msg, metadata=meta)
+            return ToolResult(content=f"Error executing command: {e}", metadata=meta)
+
+        stdout = "".join(stdout_parts)
+        stderr = "".join(stderr_parts)
+        if filter_lines:  # Apply regex filter if specified
+            try:
+                stdout = apply_linewise_regex_filter(stdout, filter_lines)
+                stderr = apply_linewise_regex_filter(stderr, filter_lines)
+            except re.error as regex_err:
+                error_msg = f"Invalid filter regex: {regex_err}"
+                meta: dict[str, Any] = {"output": "", "exit": None, "description": command}
+                return ToolResult(content=error_msg, metadata=meta)
+            # Apply output limit if specified
+        truncated = False
+        if effective_limit:
+            stdout, stdout_truncated = truncate_output(stdout, effective_limit)
+            stderr, stderr_truncated = truncate_output(stderr, effective_limit)
+            truncated = stdout_truncated or stderr_truncated
+        # Format error response
+        if error_msg:
+            output = stdout + stderr if stdout or stderr else ""
+            result_output = f"{output}\n\nError: {error_msg}\nExit code: {exit_code}"
+            meta = {"output": output, "exit": exit_code, "description": command}
+            return ToolResult(content=result_output, metadata=meta)
 
         # Format success response
         elapsed = time.monotonic() - start_time
