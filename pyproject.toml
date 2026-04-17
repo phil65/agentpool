@@ -60,6 +60,7 @@ dependencies = [
   "pydantic>=2.10.0",
   "pydantic-ai-slim[openai,google,anthropic,mistral,retries]>=1.0.0",
   # Only add below (Copier)
+  "pydantic-monty>=0.0.11",
   "pydocket>=0.16.1",
   "python-dotenv>=1.0.1",
   "rich",
