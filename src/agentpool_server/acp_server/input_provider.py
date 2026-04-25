@@ -212,75 +212,82 @@ class ACPInputProvider(InputProvider):
         """
         try:
             # Handle URL mode elicitation (OAuth, credentials, payments)
-            if isinstance(params, types.ElicitRequestURLParams):
-                msg = "URL elicitation request"
-                elicit_id = params.elicitationId
-                logger.info(msg, message=params.message, url=params.url, elicitation_id=elicit_id)
-                tool_call_id = f"elicit_url_{elicit_id}"
-                title = f"URL Authorization: {params.message}"
-                url_options = [
-                    PermissionOption(option_id="accept", name="Open URL", kind="allow_once"),
-                    PermissionOption(option_id="decline", name="Decline", kind="reject_once"),
-                ]
-                response = await self.session.requests.request_permission(
-                    tool_call_id=tool_call_id,
-                    title=title,
-                    options=url_options,
-                )
-                match response.outcome:
-                    case AllowedOutcome(option_id="accept"):
-                        webbrowser.open(params.url)
-                        return types.ElicitResult(action="accept")
-                    case AllowedOutcome():
-                        return types.ElicitResult(action="decline")
-                    case DeniedOutcome():
-                        return types.ElicitResult(action="cancel")
-                    case _ as unreachable:
-                        assert_never(unreachable)  # ty:ignore[type-assertion-failure]
+            match params:
+                case types.ElicitRequestURLParams(
+                    elicitationId=elicit_id,
+                    message=message,
+                    url=url,
+                ):
+                    msg = "URL elicitation request"
+                    logger.info(msg, message=message, url=url, elicitation_id=elicit_id)
+                    tool_call_id = f"elicit_url_{elicit_id}"
+                    title = f"URL Authorization: {message}"
+                    url_options = [
+                        PermissionOption(option_id="accept", name="Open URL", kind="allow_once"),
+                        PermissionOption(option_id="decline", name="Decline", kind="reject_once"),
+                    ]
+                    response = await self.session.requests.request_permission(
+                        tool_call_id=tool_call_id,
+                        title=title,
+                        options=url_options,
+                    )
+                    match response.outcome:
+                        case AllowedOutcome(option_id="accept"):
+                            webbrowser.open(params.url)
+                            return types.ElicitResult(action="accept")
+                        case AllowedOutcome():
+                            return types.ElicitResult(action="decline")
+                        case DeniedOutcome():
+                            return types.ElicitResult(action="cancel")
+                        case _ as unreachable:
+                            assert_never(unreachable)
+                case types.ElicitRequestFormParams(requestedSchema=schema, message=message):
+                    logger.info("Elicitation request", message=message, schema=schema)
+                    tool_call_id = f"elicit_{hash(message)}"
+                    title = f"Elicitation: {message}"
+                    if _is_boolean_schema(schema):
+                        options: list[PermissionOption] | None = (
+                            _create_boolean_elicitation_options()
+                        )
+                        response = await self.session.requests.request_permission(
+                            tool_call_id=tool_call_id,
+                            title=title,
+                            options=options,
+                        )
+                        return self._handle_boolean_elicitation_response(response, schema)
+                    if _is_enum_schema(schema) and (
+                        options := _create_enum_elicitation_options(schema)
+                    ):
+                        response = await self.session.requests.request_permission(
+                            tool_call_id=tool_call_id,
+                            title=title,
+                            options=options,
+                        )
+                        return _handle_enum_elicitation_response(response, schema)
 
-            # Form mode elicitation
-            schema = params.requestedSchema
-            logger.info("Elicitation request", message=params.message, schema=schema)
-            tool_call_id = f"elicit_{hash(params.message)}"
-            title = f"Elicitation: {params.message}"
+                    options = [
+                        PermissionOption(option_id="accept", name="Accept", kind="allow_once"),
+                        PermissionOption(option_id="decline", name="Decline", kind="reject_once"),
+                    ]
+                    response = await self.session.requests.request_permission(
+                        tool_call_id=tool_call_id,
+                        title=title,
+                        options=options,
+                    )
 
-            if _is_boolean_schema(schema):
-                options: list[PermissionOption] | None = _create_boolean_elicitation_options()
-                response = await self.session.requests.request_permission(
-                    tool_call_id=tool_call_id,
-                    title=title,
-                    options=options,
-                )
-                return self._handle_boolean_elicitation_response(response, schema)
-            if _is_enum_schema(schema) and (options := _create_enum_elicitation_options(schema)):
-                response = await self.session.requests.request_permission(
-                    tool_call_id=tool_call_id,
-                    title=title,
-                    options=options,
-                )
-                return _handle_enum_elicitation_response(response, schema)
-
-            options = [
-                PermissionOption(option_id="accept", name="Accept", kind="allow_once"),
-                PermissionOption(option_id="decline", name="Decline", kind="reject_once"),
-            ]
-            response = await self.session.requests.request_permission(
-                tool_call_id=tool_call_id,
-                title=title,
-                options=options,
-            )
-
-            # Convert permission response to elicitation result
-            match response.outcome:
-                case AllowedOutcome(option_id="accept"):
-                    # For non-boolean schemas, return empty content
-                    return types.ElicitResult(action="accept", content={})
-                case AllowedOutcome():
-                    return types.ElicitResult(action="decline")
-                case DeniedOutcome():
-                    return types.ElicitResult(action="cancel")
+                    # Convert permission response to elicitation result
+                    match response.outcome:
+                        case AllowedOutcome(option_id="accept"):
+                            # For non-boolean schemas, return empty content
+                            return types.ElicitResult(action="accept", content={})
+                        case AllowedOutcome():
+                            return types.ElicitResult(action="decline")
+                        case DeniedOutcome():
+                            return types.ElicitResult(action="cancel")
+                        case _ as unreachable:
+                            assert_never(unreachable)
                 case _ as unreachable:
-                    assert_never(unreachable)  # ty:ignore[type-assertion-failure]
+                    assert_never(unreachable)
 
         except Exception as e:
             logger.exception("Failed to handle elicitation")

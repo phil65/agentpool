@@ -397,7 +397,8 @@ class MCPClient:
                         return ElicitResult(action="cancel")
                     case MCPElicitResult(action="decline"):
                         return ElicitResult(action="decline")
-                    case ErrorData():
+                    case ErrorData(code=code, message=message, data=data):
+                        logger.error("Elicitation error", code=code, message=message, data=data)
                         return ElicitResult(action="decline")
                     case _:
                         return ElicitResult(action="decline")

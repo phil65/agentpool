@@ -263,7 +263,7 @@ class Talk[TTransmittedData = Any]:
             for target in self.targets
             if await self._evaluate_condition(
                 self.filter_condition,
-                processed_message,
+                processed_message,  # ty:ignore[invalid-argument-type]
                 target,
                 default_return=True,
             )
@@ -271,7 +271,7 @@ class Talk[TTransmittedData = Any]:
         # 7. emit connection processed event
         await self.connection_processed.emit(
             self.ConnectionProcessed(
-                message=processed_message,
+                message=processed_message,  # ty:ignore[invalid-argument-type]
                 source=self.source,
                 targets=target_list,
                 queued=self.queued,
@@ -288,9 +288,9 @@ class Talk[TTransmittedData = Any]:
         responses: list[ChatMessage[Any]] = []
         for target in target_list:
             if self.queued:
-                self._pending_messages[target.name].append(processed_message)
+                self._pending_messages[target.name].append(processed_message)  # ty:ignore[invalid-argument-type]
                 continue
-            if response := await self._process_for_target(processed_message, target, prompt):
+            if response := await self._process_for_target(processed_message, target, prompt):  # ty:ignore[invalid-argument-type]
                 responses.append(response)
 
         return responses
@@ -447,9 +447,9 @@ class Talk[TTransmittedData = Any]:
                 intermediate = await execute(oldtransform_fn, data)
                 return await execute(transformer, intermediate)  # ty: ignore[invalid-return-type]
 
-            new_talk.transform_fn = chainedtransform_fn  # type: ignore[assignment]
+            new_talk.transform_fn = chainedtransform_fn  # type: ignore[assignment]  # ty:ignore[invalid-assignment]
         else:
-            new_talk.transform_fn = transformer  # type: ignore[assignment]
+            new_talk.transform_fn = transformer  # type: ignore[assignment]  # ty:ignore[invalid-assignment]
 
         return new_talk
 

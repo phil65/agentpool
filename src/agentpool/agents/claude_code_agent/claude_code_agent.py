@@ -528,7 +528,7 @@ class ClaudeCodeAgent[TDeps = None, TResult = str](BaseAgent[TDeps, TResult]):
             case ErrorData():
                 return ElicitResult(action="decline")
             case _ as unreachable_:
-                assert_never(unreachable_)  # ty:ignore[type-assertion-failure]
+                assert_never(unreachable_)
 
     async def __aenter__(self) -> Self:
         """Connect to Claude Code with deferred client connection."""

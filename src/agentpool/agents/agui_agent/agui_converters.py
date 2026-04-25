@@ -126,7 +126,7 @@ def agui_to_native_event(event: Event) -> Iterator[RichAgentStreamEvent[Any]]:
         # === Thinking/Reasoning Events ===
 
         case (
-            ThinkingTextMessageContentEvent(delta=delta)  # type: ignore[misc]
+            ThinkingTextMessageContentEvent(delta=delta)
             | ReasoningMessageContentEvent(delta=delta)
             | ReasoningMessageChunkEvent(delta=str() as delta)
         ):

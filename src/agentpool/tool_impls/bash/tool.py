@@ -125,7 +125,7 @@ class BashTool(Tool[ToolResult]):
         except Exception as e:  # noqa: BLE001
             error_id = process_id or f"cmd_{uuid.uuid4().hex[:8]}"
             await ctx.events.process_started(error_id, command, success=False, error=str(e))
-            meta = {"output": "", "exit": None, "description": command}
+            meta: dict[str, Any] = {"output": "", "exit": None, "description": command}
             return ToolResult(content=f"Error executing command: {e}", metadata=meta)
 
         stdout = "".join(stdout_parts)
@@ -136,7 +136,7 @@ class BashTool(Tool[ToolResult]):
                 stderr = apply_linewise_regex_filter(stderr, filter_lines)
             except re.error as regex_err:
                 error_msg = f"Invalid filter regex: {regex_err}"
-                meta: dict[str, Any] = {"output": "", "exit": None, "description": command}
+                meta = {"output": "", "exit": None, "description": command}
                 return ToolResult(content=error_msg, metadata=meta)
             # Apply output limit if specified
         truncated = False

@@ -112,7 +112,7 @@ class MCPDiscoveryToolset(ResourceProvider):
             raise FileNotFoundError(msg)
 
         # Load parquet
-        arrow_table = pq.read_table(PARQUET_PATH)
+        arrow_table = pq.read_table(PARQUET_PATH)  # type: ignore[no-untyped-call]
 
         # Convert vector column to fixed-size list for LanceDB vector search
         # LanceDB requires fixed-size vectors, not variable-length lists
