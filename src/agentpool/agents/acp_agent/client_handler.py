@@ -237,7 +237,7 @@ class ACPClientHandler(Client):
                     case "abort_chain" | "abort_run":
                         return RequestPermissionResponse.denied()
                     case _ as unreachable:
-                        assert_never(unreachable)  # ty:ignore[type-assertion-failure]
+                        assert_never(unreachable)
             except Exception:
                 logger.exception("Failed to get permission via input provider")
                 return RequestPermissionResponse.denied()

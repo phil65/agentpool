@@ -49,6 +49,10 @@ from clawd_code_sdk.models import (
     HookStartedSystemMessage,
     InitSystemMessage,
     LocalCommandOutputMessage,
+    MemoryRecallSystemMessage,
+    MirrorErrorSystemMessage,
+    NotificationSystemMessage,
+    PluginInstallSystemMessage,
     PromptSuggestionMessage,
     RateLimitMessage,
     ResultErrorMessage,
@@ -58,6 +62,7 @@ from clawd_code_sdk.models import (
     TaskNotificationSystemMessage,
     TaskProgressSystemMessage,
     TaskStartedSystemMessage,
+    TaskUpdatedSystemMessage,
     ToolProgressMessage,
     ToolUseSummaryMessage,
 )
@@ -326,6 +331,11 @@ class ClaudeCodeStreamedResponse(StreamedResponse):
                     | ElicitationCompleteMessage()
                     | LocalCommandOutputMessage()
                     | APIRetrySystemMessage()
+                    | MirrorErrorSystemMessage()
+                    | PluginInstallSystemMessage()
+                    | NotificationSystemMessage()
+                    | MemoryRecallSystemMessage()
+                    | TaskUpdatedSystemMessage()
                 ):
                     pass
                 case _ as unreachable:

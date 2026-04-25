@@ -410,7 +410,7 @@ class CodexAgent[TDeps = None, OutputDataT = str](BaseAgent[TDeps, OutputDataT])
                     # User declined or cancelled
                     answers[question.id] = _Answer(answers=[])
                 case _ as unreachable:
-                    assert_never(unreachable)  # ty:ignore[type-assertion-failure]
+                    assert_never(unreachable)
 
         return _Response(answers=answers)
 

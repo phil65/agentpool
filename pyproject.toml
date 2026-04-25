@@ -118,6 +118,7 @@ clipboard = ["copykitten"]  # Clipboard functionality
 coding = [
   "rustworkx>=0.17.1",
   "grep-ast",
+  "tree-sitter-language-pack==1.6.2",
   "ast-grep-py>=0.40.0",
   "tree-sitter>=0.25.2",
   "tree-sitter-python>=0.25.0",
