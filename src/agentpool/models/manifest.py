@@ -368,10 +368,25 @@ class AgentsManifest(Schema):
     """
 
     model_config = ConfigDict(
+        extra="allow",
         json_schema_extra={
             "x-icon": "octicon:file-code-16",
             "x-doc-title": "Manifest Overview",
             "documentation_url": "https://phil65.github.io/agentpool/YAML%20Configuration/manifest_configuration/",
+            "patternProperties": {
+                # Allow YAML anchors (dot prefix)
+                r"^\.": {
+                    "description": "YAML anchor or hidden field",
+                },
+                # Allow internal metadata (underscore prefix)
+                r"^_": {
+                    "description": "Internal metadata field",
+                },
+                # Allow custom extensions (x- prefix)
+                r"^x-": {
+                    "description": "Custom extension field",
+                },
+            },
         },
     )
 
@@ -683,6 +698,31 @@ class AgentsManifest(Schema):
             response_def = self.responses[agent_config.output_type]
             return response_def.response_schema.get_schema()
         return agent_config.output_type.response_schema.get_schema()
+
+    @model_validator(mode="after")
+    def validate_extra_fields(self) -> Self:
+        """Validate and warn about unknown extra fields.
+
+        Allowed prefixes:
+        - `.` (dot): YAML anchors
+        - `_` (underscore): Internal metadata
+        - `x-` (x-prefix): Custom extensions
+
+        Unknown fields trigger a WARNING but do not raise ValidationError.
+        """
+        if hasattr(self, "model_extra") and self.model_extra:
+            for key in self.model_extra:
+                # Check if key starts with allowed prefixes
+                if key.startswith((".", "_", "x-")):
+                    continue  # Silently allow these
+
+                # Warn about unknown fields
+                logger.warning(
+                    "Unknown field '%s' in manifest. This field will be IGNORED.",
+                    key,
+                    stacklevel=2,
+                )
+        return self
 
 
 if __name__ == "__main__":

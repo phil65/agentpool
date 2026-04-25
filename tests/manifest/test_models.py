@@ -36,11 +36,16 @@ agents:
 """
 
 INVALID_RESPONSE_CONFIG = """\
-responses: {}
-agent:
-  name: Test Agent
-  model: test
-  output_type: NonExistentResponse
+responses:
+  InvalidResponse:
+    type: object
+
+agents:
+  test_agent:
+    type: native
+    model: "openai:gpt-4o"
+    system_prompt: "test"
+    output_type: NonExistentResponse
 """
 
 
