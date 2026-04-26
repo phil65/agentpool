@@ -84,35 +84,35 @@ def to_acp_content_blocks(  # noqa: PLR0911
             for item in items:
                 list_blocks.extend(to_acp_content_blocks(item))
             return list_blocks
-
-        case BinaryContent(data=data, media_type=media_type) if tool_output.is_image:
-            image_data = base64.b64encode(data).decode()
-            return [ImageContentBlock(data=image_data, mime_type=media_type)]
-
-        case BinaryContent(data=data, media_type=media_type) if tool_output.is_audio:
-            audio_data = base64.b64encode(data).decode()
-            return [AudioContentBlock(data=audio_data, mime_type=media_type)]
-
         case BinaryContent(data=data, media_type=media_type):
             blob_data = base64.b64encode(data).decode()
+            if tool_output.is_image:
+                return [ImageContentBlock(data=blob_data, mime_type=media_type)]
+            if tool_output.is_audio:
+                return [AudioContentBlock(data=blob_data, mime_type=media_type)]
             uri = f"data:{media_type};base64,{blob_data[:50]}..."
             blob_resource = BlobResourceContents(blob=blob_data, mime_type=media_type, uri=uri)
             return [EmbeddedResourceContentBlock(resource=blob_resource)]
 
-        case ImageUrl() | AudioUrl() | VideoUrl() | DocumentUrl() as file_url:
+        case (
+            ImageUrl(url=url, kind=kind, media_type=media_type)
+            | AudioUrl(url=url, kind=kind, media_type=media_type)
+            | VideoUrl(url=url, kind=kind, media_type=media_type)
+            | DocumentUrl(url=url, kind=kind, media_type=media_type)
+        ):
             from urllib.parse import urlparse
 
-            parsed = urlparse(str(file_url.url))
-            resource_type = file_url.kind.replace("-url", "")
+            parsed = urlparse(str(url))
+            resource_type = kind.replace("-url", "")
             name = parsed.path.split("/")[-1] if parsed.path else resource_type
             if not name or name == "/":
                 name = f"{resource_type}_{parsed.netloc}" if parsed.netloc else resource_type
             return [
                 ResourceContentBlock(
-                    uri=file_url.url,
+                    uri=url,
                     name=name,
                     description=f"{resource_type.title()} resource",
-                    mime_type=file_url.media_type,
+                    mime_type=media_type,
                 )
             ]
 
