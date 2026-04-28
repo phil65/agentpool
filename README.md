@@ -1,3 +1,5 @@
+[![MseeP.ai Security Assessment Badge](https://mseep.net/pr/phil65-agentpool-badge.png)](https://mseep.ai/app/phil65-agentpool)
+
 # AgentPool
 
 [![PyPI License](https://img.shields.io/pypi/l/agentpool.svg)](https://pypi.org/project/agentpool/)
