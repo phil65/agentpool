@@ -103,9 +103,33 @@ class MCPServer(BaseServer):
         tool_count = 0
         if toolset is not None:
             # SubagentCapability provides a FunctionToolset with static methods
-            # Register them directly via FastMCP's @tool decorator
-            self.fastmcp.tool()(SubagentCapability.spawn_subagent)
-            self.fastmcp.tool()(SubagentCapability.get_available_agents)
+            # Create wrapper functions without generic type parameters to avoid
+            # Pydantic TypeAdapter errors with unbound generics
+
+            async def spawn_subagent_wrapper(name: str, prompt: str) -> str:
+                """Delegate a task to a named subagent.
+
+                Args:
+                    name: Name of the agent to delegate to.
+                    prompt: Task description to send to the subagent.
+
+                Returns:
+                    The subagent's response.
+                """
+                # Call the pool's run_agent method directly
+                return await self.pool.run_agent(name, prompt)
+
+            async def get_available_agents_wrapper() -> list[str]:
+                """List all agents available for delegation.
+
+                Returns:
+                    Sorted list of agent names in the registry.
+                """
+                return sorted(self.pool.agent_configs.keys())
+
+            # Register the wrapper functions
+            self.fastmcp.tool()(spawn_subagent_wrapper)
+            self.fastmcp.tool()(get_available_agents_wrapper)
             tool_count = 2
 
         self._tools_registered = True
