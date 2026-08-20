@@ -492,42 +492,39 @@ async def get_console_state() -> dict[str, Any]:
 async def list_mcp_resources(state: StateDep) -> dict[str, McpResource]:
     """Get all available MCP resources from connected servers.
 
-    Returns a dictionary mapping resource keys to McpResource objects.
-    Keys are formatted as "{client}:{resource_name}" for uniqueness.
+    Returns a dictionary mapping resource keys to ``McpResource`` objects.
+    Keys are formatted as ``{escaped_client}:{uri}`` matching the upstream
+    OpenCode catalog key format (percent-encoding ``%`` and ``:`` in the
+    client name via :func:`make_catalog_key`).
 
     Uses the ``ExtensionRegistry`` to discover ``ResourceAccess`` providers
-    at SESSION scope (POOL + AGENT + SESSION).
+    at SESSION scope (POOL + AGENT + SESSION).  Per-provider failures are
+    isolated — a single provider erroring does not prevent other providers'
+    resources from being returned.
     """
-    try:
-        result: dict[str, McpResource] = {}
-        import asyncio
+    import asyncio
 
-        from wolfharness.capabilities.extension_registry import Scope, ScopeLevel
-        from wolfharness.capabilities.resource_protocols import ResourceAccess
+    from wolfharness.capabilities.extension_registry import Scope, ScopeLevel
+    from wolfharness.capabilities.resource_protocols import (
+        NamedResourceAccess,
+        ResourceAccess,
+        make_catalog_key,
+    )
 
-        agent = state.agent
-        host_ctx = agent.host_context
-        registry = host_ctx.extension_registry if host_ctx is not None else None
-        if registry is not None:
-            session_id = agent.session_id or ""
-            if session_id:
-                scope = Scope(
-                    level=ScopeLevel.SESSION,
-                    agent_name=agent.name,
-                    session_id=session_id,
-                )
-            else:
-                scope = Scope(level=ScopeLevel.AGENT, agent_name=agent.name)
-            resource_caps = registry.get_resource_access(scope)
-        else:
-            caps = agent._all_capabilities
-            resource_caps = [cap for cap in caps if isinstance(cap, ResourceAccess)]
+    result: dict[str, McpResource] = {}
 
-        if resource_caps:
-            results = await asyncio.gather(
-                *(cap.list_resources() for cap in resource_caps),
-                return_exceptions=True,
+    agent = state.agent
+    host_ctx = agent.host_context
+    registry = host_ctx.extension_registry if host_ctx is not None else None
+    if registry is not None:
+        session_id = agent.session_id or ""
+        if session_id:
+            scope = Scope(
+                level=ScopeLevel.SESSION,
+                agent_name=agent.name,
+                session_id=session_id,
             )
+<<<<<<< Updated upstream
             for cap, res in zip(resource_caps, results, strict=False):
                 if isinstance(res, BaseException):
                     continue
@@ -546,8 +543,38 @@ async def list_mcp_resources(state: StateDep) -> dict[str, McpResource]:
                     )
     except Exception:  # noqa: BLE001
         return {}
+=======
+        else:
+            scope = Scope(level=ScopeLevel.AGENT, agent_name=agent.name)
+        resource_caps = registry.get_resource_access(scope)
+>>>>>>> Stashed changes
     else:
+        caps = agent._all_capabilities
+        resource_caps = [cap for cap in caps if isinstance(cap, ResourceAccess)]
+
+    if not resource_caps:
         return result
+
+    results = await asyncio.gather(
+        *(cap.list_resources() for cap in resource_caps),
+        return_exceptions=True,
+    )
+    for cap, res in zip(resource_caps, results, strict=False):
+        if isinstance(res, BaseException):
+            continue
+        client_name = (
+            cap.client_name if isinstance(cap, NamedResourceAccess) else type(cap).__name__
+        )
+        for resource in res:
+            key = make_catalog_key(client_name, resource.uri)
+            result[key] = McpResource(
+                name=resource.name,
+                uri=resource.uri,
+                description=resource.description,
+                mime_type=resource.mime_type,
+                client=client_name,
+            )
+    return result
 
 
 @router.post("/experimental/worktree")

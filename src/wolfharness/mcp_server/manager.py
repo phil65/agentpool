@@ -193,6 +193,13 @@ class McpSessionContext:
     toolset_cache: dict[str, Any] = field(default_factory=dict)
     snapshot: McpConfigSnapshot | None = None
     acp_connection_ids: list[tuple[str, int]] = field(default_factory=list)
+    #: Session-scoped ``McpServerCap`` instances for resource access, keyed by
+    #: ``client_id``. Created lazily by ``get_resource_providers()`` and cleared
+    #: during ``cleanup_session()``. Unlike pool-level providers (which own
+    #: their MCPClient connections via ``setup_server``), these caps use the
+    #: session's ``connection_pool`` for lazy client initialization — no
+    #: duplicate connections.
+    resource_providers: dict[str, McpServerCap] = field(default_factory=dict)
     _cleanup_lock: asyncio.Lock = field(default_factory=asyncio.Lock)
 
 
@@ -453,6 +460,122 @@ class MCPManager:
     def get_mcp_providers(self) -> list[McpServerCap]:
         """Get all MCP resource providers managed by this manager."""
         return list(self.providers)
+
+    @staticmethod
+    async def _filter_resource_providers(
+        providers: list[McpServerCap],
+    ) -> list[McpServerCap]:
+        """Keep only providers whose servers advertised resources."""
+        supported: list[McpServerCap] = []
+        for provider in providers:
+            try:
+                if await provider.supports_resources():
+                    supported.append(provider)
+            except (OSError, TimeoutError, RuntimeError) as exc:
+                logger.warning(
+                    "Failed to negotiate MCP resource capability",
+                    server=provider.client_name,
+                    error=str(exc),
+                )
+        return supported
+
+    async def get_resource_providers(
+        self,
+        session_id: str | None = None,
+        *,
+        session_only: bool = False,
+    ) -> list[McpServerCap]:
+        """Return ``McpServerCap`` instances for resource access.
+
+        Pool-level servers reuse the existing instances created by
+        ``setup_server()`` during ``__aenter__``.  Session-scoped servers
+        (from the session's ``McpConfigSnapshot``) get lazily-created
+        ``McpServerCap`` instances backed by the session's connection pool —
+        no duplicate connections are opened.
+
+        Only servers that advertised the MCP ``resources`` capability are
+        returned. Capability discovery may initialize a lazy session-scoped
+        connection, but it reuses the session connection pool.
+
+        ACP servers are excluded from the session-scoped path (their
+        transports are managed separately via ``add_acp_transport`` and
+        surfaced through ``get_aggregating_provider()``).
+
+        Args:
+            session_id: Optional session identifier. When provided and a
+                session context with a config snapshot exists, session-scoped
+                providers are appended to the pool-level providers. When
+                ``None`` or no session context exists, only pool-level
+                providers are returned.
+            session_only: When ``True``, return **only** session-scoped
+                providers (excluding pool-level ones). Requires
+                ``session_id``; returns an empty list if no session context
+                exists. Use this when registering at SESSION scope to avoid
+                duplicating pool-level providers that are registered
+                separately at POOL scope.
+
+        Returns:
+            List of ``McpServerCap`` instances. Deduplicated by ``client_id``
+            (pool-level providers take precedence over session-scoped ones
+            with the same ``client_id``).
+        """
+        if session_only:
+            if session_id is None:
+                return []
+            ctx = self._session_contexts.get(session_id)
+            if ctx is None or ctx.snapshot is None or ctx.connection_pool is None:
+                return []
+            existing_ids = {p.config.client_id for p in self.providers}
+            result: list[McpServerCap] = []
+            for entry in ctx.snapshot.session_scoped_configs:
+                server = entry.server_config
+                if not server.enabled:
+                    continue
+                if server.client_id in existing_ids:
+                    continue
+                if isinstance(server, AcpMCPServerConfig):
+                    continue
+                if server.client_id not in ctx.resource_providers:
+                    cap = McpServerCap(
+                        config=server,
+                        session_pool=ctx.connection_pool,
+                        name=f"{self.name}_{server.display_name}",
+                    )
+                    ctx.resource_providers[server.client_id] = cap
+                result.append(ctx.resource_providers[server.client_id])
+            return await self._filter_resource_providers(result)
+
+        providers = list(self.providers)
+
+        if session_id is None:
+            return await self._filter_resource_providers(providers)
+
+        ctx = self._session_contexts.get(session_id)
+        if ctx is None or ctx.snapshot is None or ctx.connection_pool is None:
+            return await self._filter_resource_providers(providers)
+
+        existing_ids = {p.config.client_id for p in providers}
+
+        for entry in ctx.snapshot.session_scoped_configs:
+            server = entry.server_config
+            if not server.enabled:
+                continue
+            if server.client_id in existing_ids:
+                continue
+            if isinstance(server, AcpMCPServerConfig):
+                continue
+
+            if server.client_id not in ctx.resource_providers:
+                cap = McpServerCap(
+                    config=server,
+                    session_pool=ctx.connection_pool,
+                    name=f"{self.name}_{server.display_name}",
+                )
+                ctx.resource_providers[server.client_id] = cap
+
+            providers.append(ctx.resource_providers[server.client_id])
+
+        return await self._filter_resource_providers(providers)
 
     async def get_server_status(self) -> dict[str, MCPServerStatus]:
         """Get status of all configured MCP servers.
@@ -953,6 +1076,12 @@ class MCPManager:
                                 session_id=session_id,
                             )
                 ctx.toolset_cache.clear()
+
+                # Clear session-scoped resource provider caps. These don't own
+                # connections (they borrow from the session connection pool),
+                # so we only need to drop references — the pool cleanup below
+                # handles transport teardown.
+                ctx.resource_providers.clear()
 
                 if ctx.connection_pool is not None:
                     try:

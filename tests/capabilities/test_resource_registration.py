@@ -151,18 +151,41 @@ async def test_resource_capability_not_registered_before_enter(minimal_manifest)
 
 
 async def test_agent_with_resources_disabled_does_not_get_capability(disabled_resources_pool):
-    """Agent with resources.enabled=false should not get ResourceCapability tools.
-
-    This test verifies that the per-agent opt-out works by checking that
-    the agent config has ``resources.enabled = False``.
-    """
+    """Agent with resources.enabled=false must not expose resource tools."""
     pool = disabled_resources_pool
     config = pool.agent_configs["test_agent"]
     assert config.resources.enabled is False
+    agent = await pool.session_pool.sessions.get_or_create_session_agent(
+        "disabled-resource-tools",
+        "test_agent",
+    )
+    tool_names = {tool.name for tool in await agent._get_all_tools()}
+    assert {
+        "list_mcp_resources",
+        "list_mcp_resource_templates",
+        "read_mcp_resource",
+    }.isdisjoint(tool_names)
 
 
 async def test_agent_with_resources_enabled_gets_capability(minimal_pool):
-    """Agent with default resources config should have enabled=True."""
+    """Agent with default resources config exposes exactly the formal tools."""
     pool = minimal_pool
     config = pool.agent_configs["test_agent"]
     assert config.resources.enabled is True
+    agent = await pool.session_pool.sessions.get_or_create_session_agent(
+        "enabled-resource-tools",
+        "test_agent",
+    )
+    tool_names = {tool.name for tool in await agent._get_all_tools()}
+    assert {
+        "list_mcp_resources",
+        "list_mcp_resource_templates",
+        "read_mcp_resource",
+    } <= tool_names
+    assert {
+        "list_resources",
+        "resource_exists",
+        "read_resource",
+        "list_resource_templates",
+        "complete_resource_template",
+    }.isdisjoint(tool_names)

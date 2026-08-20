@@ -51,9 +51,11 @@ class FakeResourceAccess:
         self,
         read_result: list[TextResourceContent | BlobResourceContent] | None = None,
         raise_exc: Exception | None = None,
+        client_name: str = "test",
     ) -> None:
         self._read_result = read_result
         self._raise_exc = raise_exc
+        self.client_name = client_name
 
     async def list_resources(self) -> Sequence[ResourceEntry]:
         return []
@@ -136,9 +138,10 @@ async def test_resolve_resource_binary_content() -> None:
     """Binary resource via ResourceAccess returns [str, BinaryContent, str]."""
     blob_data = base64.b64encode(b"img").decode()
     cap = FakeResourceAccess(
+        client_name="viking",
         read_result=[
             BlobResourceContent(blob=blob_data, mime_type="image/png", uri="viking://img.png")
-        ]
+        ],
     )
     result = await resolve_resource_content("viking://img.png", resource_caps=[cap], skill_caps=[])
     assert result is not None
@@ -450,9 +453,10 @@ async def test_extract_user_prompt_with_binary_resource() -> None:
 
     blob_data = base64.b64encode(b"img").decode()
     cap = FakeResourceAccess(
+        client_name="viking",
         read_result=[
             BlobResourceContent(blob=blob_data, mime_type="image/png", uri="viking://img.png")
-        ]
+        ],
     )
     agent = FakeAgent(capabilities=[cap])
 
@@ -510,7 +514,8 @@ async def test_extract_user_prompt_mixed_parts() -> None:
     from wolfharness_server.opencode_server.models.parts import ResourceSource
 
     cap = FakeResourceAccess(
-        read_result=[TextResourceContent(text="resource content", uri="viking://doc")]
+        client_name="viking",
+        read_result=[TextResourceContent(text="resource content", uri="viking://doc")],
     )
     agent = FakeAgent(capabilities=[cap])
 

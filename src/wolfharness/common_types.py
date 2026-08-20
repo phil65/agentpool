@@ -36,8 +36,6 @@ if TYPE_CHECKING:
     # Import path string for dynamic tool loading (e.g., "mymodule:my_tool")
     type ImportPathString = str
     type ToolType = ImportPathString | AnyCallable | Tool
-    # Define what we consider JSON-serializable
-    type JsonPrimitive = bool | int | float | str | None
     type SessionIdType = str | UUID | None
     type ProcessorCallback[TResult] = Callable[..., TResult | Awaitable[TResult]]
 
@@ -45,6 +43,7 @@ if TYPE_CHECKING:
 SimpleJsonType = dict[
     str, bool | int | float | str | list[str] | dict[str, bool | int | float | str]
 ]
+type JsonPrimitive = bool | int | float | str | None
 type JsonValue = JsonPrimitive | JsonArray | JsonObject
 type JsonObject = dict[str, JsonValue]
 type JsonArray = list[JsonValue]

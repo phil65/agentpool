@@ -4,11 +4,13 @@ from __future__ import annotations
 
 import inspect
 from typing import Any
+from unittest.mock import AsyncMock, patch
 
 from pydantic import HttpUrl
 from pydantic_ai.mcp import MCPToolset
 import pytest
 
+from wolfharness.capabilities.mcp_server_cap import McpServerCap
 from wolfharness.mcp_server.manager import MCPManager, _make_elicitation_handler
 from wolfharness_config.mcp_server import (
     AcpMCPServerConfig,
@@ -24,6 +26,50 @@ pytestmark = pytest.mark.unit
 # =============================================================================
 # get_capabilities() tests
 # =============================================================================
+
+
+async def test_resource_provider_registration_requires_negotiated_capability() -> None:
+    """Tool providers remain connected when only some advertise resources."""
+    resource_config = StdioMCPServerConfig(name="resource", command="resource-server")
+    tools_only_config = StdioMCPServerConfig(name="tools", command="tools-server")
+    resource_provider = McpServerCap(resource_config)
+    tools_only_provider = McpServerCap(tools_only_config)
+    manager = MCPManager(servers=[resource_config, tools_only_config])
+    manager.providers.extend([tools_only_provider, resource_provider])
+
+    with (
+        patch.object(
+            resource_provider,
+            "supports_resources",
+            new=AsyncMock(return_value=True),
+        ),
+        patch.object(
+            tools_only_provider,
+            "supports_resources",
+            new=AsyncMock(return_value=False),
+        ),
+    ):
+        resource_providers = await manager.get_resource_providers()
+
+    assert resource_providers == [resource_provider]
+    assert manager.get_mcp_providers() == [tools_only_provider, resource_provider]
+
+
+async def test_resource_provider_with_empty_catalog_stays_registered() -> None:
+    """Capability negotiation, not the current resource count, controls registration."""
+    config = StdioMCPServerConfig(name="empty-resource-server", command="server")
+    provider = McpServerCap(config)
+    manager = MCPManager(servers=[config])
+    manager.providers.append(provider)
+
+    with patch.object(
+        provider,
+        "supports_resources",
+        new=AsyncMock(return_value=True),
+    ):
+        resource_providers = await manager.get_resource_providers()
+
+    assert resource_providers == [provider]
 
 
 async def test_empty_servers_returns_empty_list() -> None:

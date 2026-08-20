@@ -16,8 +16,12 @@ this module does NOT define a duplicate.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Any, Protocol, runtime_checkable
+from typing import TYPE_CHECKING, Any, Literal, Protocol, runtime_checkable
 import warnings
+
+from pydantic import BaseModel, ConfigDict, Field as PydanticField
+
+from wolfharness.common_types import JsonObject
 
 
 if TYPE_CHECKING:
@@ -87,14 +91,22 @@ class ResourceEntry:
     Attributes:
         uri: Resource URI (e.g., ``"file:///path/to/resource"``).
         name: Human-readable resource name.
+        title: Optional display title.
         description: Optional description.
         mime_type: MIME type of the resource content.
+        size: Optional resource size in bytes.
+        annotations: Optional MCP annotations.
+        meta: Optional MCP protocol metadata.
     """
 
     uri: str
     name: str = ""
+    title: str = ""
     description: str = ""
     mime_type: str = ""
+    size: int | None = None
+    annotations: JsonObject | None = None
+    meta: JsonObject | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -131,7 +143,7 @@ class ResourceContent:
 
     uri: str
     mime_type: str | None = None
-    meta: dict[str, Any] | None = None
+    meta: JsonObject | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -177,6 +189,7 @@ class ResourceTemplateEntry:
         description: Optional description.
         mime_type: MIME type of expanded resources.
         annotations: Optional MCP annotations dict.
+        meta: Optional MCP protocol metadata.
     """
 
     uri_template: str
@@ -184,7 +197,167 @@ class ResourceTemplateEntry:
     title: str = ""
     description: str = ""
     mime_type: str = ""
-    annotations: dict[str, Any] | None = None
+    annotations: JsonObject | None = None
+    meta: JsonObject | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class ResourcePage:
+    """One upstream MCP ``resources/list`` page."""
+
+    entries: list[ResourceEntry]
+    next_cursor: str | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class ResourceTemplatePage:
+    """One upstream MCP ``resources/templates/list`` page."""
+
+    entries: list[ResourceTemplateEntry]
+    next_cursor: str | None = None
+
+
+type McpResourceErrorCode = Literal[
+    "unknown_server",
+    "resources_not_supported",
+    "invalid_cursor",
+    "resource_not_found",
+    "permission_denied",
+    "timeout",
+    "provider_unavailable",
+    "unsupported_mime_type",
+    "content_too_large",
+]
+
+
+class _McpResourceResultModel(BaseModel):
+    """Frozen base model for agent-facing structured resource results."""
+
+    model_config = ConfigDict(frozen=True)
+
+
+class McpResourceError(_McpResourceResultModel):
+    """Actionable error returned by an agent-facing MCP resource tool."""
+
+    code: McpResourceErrorCode
+    message: str
+    retryable: bool
+    suggestion: str
+    server: str | None = None
+    uri: str | None = None
+
+
+class McpResourceItem(_McpResourceResultModel):
+    """Server-attributed resource descriptor returned to an agent."""
+
+    server: str
+    uri: str
+    name: str
+    title: str = ""
+    description: str = ""
+    mime_type: str = ""
+    size: int | None = None
+    annotations: JsonObject | None = None
+    meta: JsonObject | None = None
+
+
+class McpResourceTemplateItem(_McpResourceResultModel):
+    """Server-attributed resource template returned to an agent."""
+
+    server: str
+    uri_template: str
+    name: str
+    title: str = ""
+    description: str = ""
+    mime_type: str = ""
+    annotations: JsonObject | None = None
+    meta: JsonObject | None = None
+
+
+class McpResourceListResult(_McpResourceResultModel):
+    """Structured result for ``list_mcp_resources``."""
+
+    summary: str
+    resources: list[McpResourceItem]
+    next_cursor: str | None = None
+    errors: list[McpResourceError] = PydanticField(default_factory=list)
+
+
+class McpResourceTemplateListResult(_McpResourceResultModel):
+    """Structured result for ``list_mcp_resource_templates``."""
+
+    summary: str
+    templates: list[McpResourceTemplateItem]
+    next_cursor: str | None = None
+    errors: list[McpResourceError] = PydanticField(default_factory=list)
+
+
+class McpTextContentResult(_McpResourceResultModel):
+    """Model-visible text content from an MCP resource read."""
+
+    type: Literal["text"]
+    uri: str
+    mime_type: str | None
+    text: str
+    truncated: bool
+    original_char_count: int
+    meta: JsonObject | None = None
+
+
+class McpBlobContentResult(_McpResourceResultModel):
+    """Metadata for binary MCP content; base64 is never exposed to the model."""
+
+    type: Literal["blob"]
+    uri: str
+    mime_type: str
+    size: int
+    attached: bool
+    omission_reason: str | None = None
+    meta: JsonObject | None = None
+
+
+class McpResourceReadResult(_McpResourceResultModel):
+    """Structured result for ``read_mcp_resource``."""
+
+    summary: str
+    server: str
+    requested_uri: str
+    contents: list[McpTextContentResult | McpBlobContentResult]
+    error: McpResourceError | None = None
+
+
+def escape_catalog_client_name(client_name: str) -> str:
+    """Escape a client name for use in a catalog key.
+
+    Mirrors the upstream OpenCode ``mcp/catalog.ts`` escaping: percent signs
+    are encoded first (``%`` → ``%25``), then colons (``:`` → ``%3A``),
+    so the resulting string is safe to join with ``:`` as a key separator.
+
+    Args:
+        client_name: The raw client (server display) name.
+
+    Returns:
+        The escaped client name, with ``%`` and ``:`` percent-encoded.
+    """
+    return client_name.replace("%", "%25").replace(":", "%3A")
+
+
+def make_catalog_key(client_name: str, uri: str) -> str:
+    """Construct a catalog key in the canonical ``{escapedClient}:{uri}`` form.
+
+    The client name is escaped via :func:`escape_catalog_client_name` so that
+    any ``%`` or ``:`` inside it cannot collide with the key separator.  The
+    URI portion is used verbatim (URIs are not expected to contain raw colons
+    in positions that would break parsing — the scheme ``:`` is unambiguous).
+
+    Args:
+        client_name: The raw client (server display) name.
+        uri: The resource URI (or template URI pattern).
+
+    Returns:
+        A string of the form ``"{escaped_client}:{uri}"``.
+    """
+    return f"{escape_catalog_client_name(client_name)}:{uri}"
 
 
 @dataclass(frozen=True, slots=True)
@@ -326,6 +499,16 @@ class ResourceAccess(Protocol):
         Returns:
             ``True`` if the resource exists, ``False`` otherwise.
         """
+        ...
+
+
+@runtime_checkable
+class NamedResourceAccess(ResourceAccess, Protocol):
+    """Resource provider with a stable server/client routing identity."""
+
+    @property
+    def client_name(self) -> str:
+        """Return the configured provider name used with resource URIs."""
         ...
 
 

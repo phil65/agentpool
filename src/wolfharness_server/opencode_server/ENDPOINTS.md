@@ -1,7 +1,7 @@
 # OpenCode API Compatibility Checklist
 
 This document tracks the implementation status of OpenCode-compatible API endpoints.
-Last audited against OpenCode source: **2026-02-24**
+Last audited against OpenCode source: **2026-08-17**
 
 ## Status Legend
 - [ ] Not implemented
@@ -168,8 +168,19 @@ Last audited against OpenCode source: **2026-02-24**
 |--------|--------|------|-------------|
 | [x] | GET | `/experimental/tool/ids` | List all tool IDs |
 | [x] | GET | `/experimental/tool?provider=&model=` | List tools with schemas |
-| [x] | GET | `/experimental/resource` | List MCP resources from connected servers |
+| [x] | GET | `/experimental/resource` | List MCP resources from connected servers (keys: escaped `{client}:{uri}`, per-provider failure isolation) |
 | [x] | GET | `/experimental/session` | List sessions globally (cross-project, paginated) |
+
+### `/experimental/resource` Details
+
+- **Response**: `Record<string, McpResource>` — a map keyed by `"{escaped_client}:{uri}"`.
+  - Client name escaping: `%` → `%25`, then `:` → `%3A` (matches upstream `mcp/catalog.ts`).
+  - `McpResource` fields: `{name, uri, description?, mime_type?, client}`.
+- **Scope**: Aggregates POOL + AGENT + SESSION scopes. The effective SESSION query carries both `agent_name` and `session_id`, so AGENT-scoped and SESSION-scoped providers remain visible together.
+- **Failure isolation**: Per-provider errors are isolated via `asyncio.gather(return_exceptions=True)`. A failing server does not prevent other servers' resources from appearing.
+- **Templates**: No HTTP endpoint for resource templates (verified upstream — OpenCode has no such route). Templates are accessible only via the agent-facing `list_mcp_resource_templates` tool.
+- **Model tools**: When `resources.enabled` is true, the agent sees exactly `list_mcp_resources`, `list_mcp_resource_templates`, and `read_mcp_resource`. The read tool requires `server + uri`; list tools support opaque cursor pagination.
+- **Gate split**: `resources.enabled: false` hides only those three model tools. Connected resource providers, this Host catalog, and `FilePart` / `ResourceSource` injection remain available.
 
 ---
 

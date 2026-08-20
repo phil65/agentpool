@@ -60,6 +60,8 @@ class FakeMCPClient:
     _resources: list[Any] = field(default_factory=list)
     _read_results: dict[str, list[Any]] = field(default_factory=dict)
     _resource_templates: list[Any] = field(default_factory=list)
+    _resource_next_cursor: str | None = None
+    _template_next_cursor: str | None = None
     _completion_result: Any = None
     _connected: bool = False
     _tool_change_callback: Any = None
@@ -87,10 +89,29 @@ class FakeMCPClient:
             raise RuntimeError("Not connected")
         return list(self._resources)
 
+    def supports_resources(self) -> bool:
+        return True
+
+    async def list_resources_page(self, cursor: str | None = None) -> mcp.types.ListResourcesResult:
+        del cursor
+        return mcp.types.ListResourcesResult(
+            resources=list(self._resources),
+            nextCursor=self._resource_next_cursor,
+        )
+
     async def list_resource_templates(self) -> list[Any]:
         if not self._connected:
             raise RuntimeError("Not connected")
         return list(self._resource_templates)
+
+    async def list_resource_templates_page(
+        self, cursor: str | None = None
+    ) -> mcp.types.ListResourceTemplatesResult:
+        del cursor
+        return mcp.types.ListResourceTemplatesResult(
+            resourceTemplates=list(self._resource_templates),
+            nextCursor=self._template_next_cursor,
+        )
 
     async def read_resource(self, uri: str) -> list[Any]:
         if not self._connected:
@@ -177,8 +198,9 @@ def _make_tool(name: str = "test_tool", description: str = "A test tool") -> Mag
 
 def _make_resource(
     uri: str, name: str = "", description: str = "", mime_type: str = ""
-) -> MagicMock:
+) -> mcp.types.Resource:
     """Create a fake MCP resource."""
+<<<<<<< Updated upstream
     res = MagicMock()
     res.uri = uri
     res.name = name
@@ -186,26 +208,32 @@ def _make_resource(
     res.description = description
     res.mimeType = mime_type
     return res
+=======
+    return mcp.types.Resource(
+        uri=AnyUrl(uri),
+        name=name,
+        description=description or None,
+        mimeType=mime_type or None,
+    )
+>>>>>>> Stashed changes
 
 
-def _make_text_content(text: str) -> MagicMock:
+def _make_text_content(text: str, uri: str = "file:///resource") -> mcp.types.TextResourceContents:
     """Create a fake TextResourceContents."""
-    content = MagicMock()
-    content.text = text
-    content.blob = None
-    content.mimeType = None
-    content.meta = None
-    return content
+    return mcp.types.TextResourceContents(uri=AnyUrl(uri), text=text)
 
 
-def _make_blob_content(blob: str, mime_type: str = "application/octet-stream") -> MagicMock:
+def _make_blob_content(
+    blob: str,
+    mime_type: str = "application/octet-stream",
+    uri: str = "file:///resource",
+) -> mcp.types.BlobResourceContents:
     """Create a fake BlobResourceContents."""
-    content = MagicMock()
-    content.blob = blob
-    content.text = None
-    content.mimeType = mime_type
-    content.meta = None
-    return content
+    return mcp.types.BlobResourceContents(
+        uri=AnyUrl(uri),
+        blob=blob,
+        mimeType=mime_type,
+    )
 
 
 def _make_resource_template(
@@ -214,16 +242,15 @@ def _make_resource_template(
     title: str = "",
     description: str = "",
     mime_type: str = "",
-) -> MagicMock:
+) -> mcp.types.ResourceTemplate:
     """Create a fake MCP ResourceTemplate."""
-    tmpl = MagicMock()
-    tmpl.uriTemplate = uri_template
-    tmpl.name = name
-    tmpl.title = title
-    tmpl.description = description
-    tmpl.mimeType = mime_type
-    tmpl.annotations = None
-    return tmpl
+    return mcp.types.ResourceTemplate(
+        uriTemplate=uri_template,
+        name=name,
+        title=title or None,
+        description=description or None,
+        mimeType=mime_type or None,
+    )
 
 
 def _make_completion(
@@ -243,6 +270,7 @@ def _make_config(client_id: str = "test_server") -> MagicMock:
     """Create a fake BaseMCPServerConfig."""
     config = MagicMock()
     config.client_id = client_id
+    config.display_name = client_id
     return config
 
 
@@ -369,6 +397,7 @@ async def test_list_resources_delegation() -> None:
 
 
 @pytest.mark.anyio
+<<<<<<< Updated upstream
 async def test_list_resources_prefers_title() -> None:
     """Title is used as the ResourceEntry name when present."""
     titled = MagicMock()
@@ -383,12 +412,42 @@ async def test_list_resources_prefers_title() -> None:
     result = await cap.list_resources()
 
     assert result[0].name == "Human Readable Title"
+=======
+async def test_resource_pages_preserve_all_mcp_fields_and_cursor() -> None:
+    """Single-page mapping keeps identity, metadata, annotations, and cursor."""
+    resource = mcp.types.Resource(
+        uri=AnyUrl("kb:///resources"),
+        name="catalog",
+        title="Knowledge catalog",
+        description="Available manuals",
+        mimeType="application/json",
+        size=123,
+        annotations=mcp.types.Annotations(audience=["assistant"], priority=0.8),
+        _meta={"tenant": "factory-a"},
+    )
+    client = FakeMCPClient(
+        _resources=[resource],
+        _resource_next_cursor="upstream-resource-cursor",
+    )
+    cap = McpServerCap(config=_make_config(), session_pool=FakeSessionPool(client))
+
+    page = await cap.list_resources_page()
+
+    assert page.next_cursor == "upstream-resource-cursor"
+    assert page.entries[0].title == "Knowledge catalog"
+    assert page.entries[0].size == 123
+    assert page.entries[0].annotations == {
+        "audience": ["assistant"],
+        "priority": 0.8,
+    }
+    assert page.entries[0].meta == {"tenant": "factory-a"}
+>>>>>>> Stashed changes
 
 
 @pytest.mark.anyio
 async def test_read_resource_existing() -> None:
     """read_resource() returns TextResourceContent list for existing resource."""
-    text_content = _make_text_content("hello world")
+    text_content = _make_text_content("hello world", "file:///path1")
     client = FakeMCPClient(
         _resources=[_make_resource("file:///path1")],
         _read_results={"file:///path1": [text_content]},
@@ -469,6 +528,32 @@ async def test_list_resource_templates() -> None:
 
 
 @pytest.mark.anyio
+async def test_template_pages_preserve_metadata_and_cursor() -> None:
+    """Template pages retain MCP annotations, meta, and continuation state."""
+    template = mcp.types.ResourceTemplate(
+        uriTemplate="kb:///resources/{resource_id}",
+        name="resource",
+        title="Knowledge resource",
+        description="Read a resource",
+        mimeType="application/json",
+        annotations=mcp.types.Annotations(audience=["assistant"]),
+        _meta={"provider": "unikb"},
+    )
+    client = FakeMCPClient(
+        _resource_templates=[template],
+        _template_next_cursor="upstream-template-cursor",
+    )
+    cap = McpServerCap(config=_make_config(), session_pool=FakeSessionPool(client))
+
+    page = await cap.list_resource_templates_page()
+
+    assert page.next_cursor == "upstream-template-cursor"
+    assert page.entries[0].title == "Knowledge resource"
+    assert page.entries[0].annotations == {"audience": ["assistant"]}
+    assert page.entries[0].meta == {"provider": "unikb"}
+
+
+@pytest.mark.anyio
 async def test_list_resource_templates_empty() -> None:
     """list_resource_templates() returns empty sequence when no templates."""
     client = FakeMCPClient(_resource_templates=[])
@@ -525,8 +610,8 @@ async def test_complete_resource_template_with_context() -> None:
 @pytest.mark.anyio
 async def test_read_resource_multimodal_text_and_blob() -> None:
     """read_resource() returns both TextResourceContent and BlobResourceContent."""
-    text_content = _make_text_content("hello")
-    blob_content = _make_blob_content("SGVsbG8=", "application/octet-stream")
+    text_content = _make_text_content("hello", "file:///mixed")
+    blob_content = _make_blob_content("SGVsbG8=", "application/octet-stream", "file:///mixed")
     client = FakeMCPClient(
         _resources=[_make_resource("file:///mixed")],
         _read_results={"file:///mixed": [text_content, blob_content]},
@@ -548,7 +633,7 @@ async def test_read_resource_multimodal_text_and_blob() -> None:
 @pytest.mark.anyio
 async def test_read_resource_blob_only() -> None:
     """read_resource() returns BlobResourceContent for binary resources."""
-    blob_content = _make_blob_content("iVBORw0KGgo=", "image/png")
+    blob_content = _make_blob_content("iVBORw0KGgo=", "image/png", "file:///image.png")
     client = FakeMCPClient(
         _resources=[_make_resource("file:///image.png")],
         _read_results={"file:///image.png": [blob_content]},

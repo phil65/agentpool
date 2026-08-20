@@ -136,8 +136,9 @@ async def _resolve_resource(
     """Resolve a resource and return its content as a list of UserContent items.
 
     Uses the agent's ``ExtensionRegistry`` (via ``host_context``) with a
-    session-scoped ``Scope`` (including ``agent_name``) to find
-    ``ResourceAccess`` and ``SkillResource`` providers.
+    session-scoped ``Scope`` to find ``ResourceAccess`` and
+    ``SkillResource`` providers. The agent name is required so AGENT-scoped
+    providers remain visible while SESSION-scoped providers are merged in.
 
     Returns None if the resource is not found.
     """
@@ -157,8 +158,17 @@ async def _resolve_resource(
         raise RuntimeError(
             f"Agent extension_registry is None, cannot resolve resource {source.uri!r}"
         )
-    resource_caps = registry.get_resource_access(scope)
+    from wolfharness.capabilities.resource_protocols import NamedResourceAccess, ResourceAccess
+
+    resource_caps: list[ResourceAccess] = [
+        provider
+        for provider in registry.get_resource_access(scope)
+        if isinstance(provider, NamedResourceAccess) and provider.client_name == source.client_name
+    ]
     skill_caps = registry.get_skill_resources(scope)
+
+    if source.uri.startswith("skill://"):
+        resource_caps = []
 
     content = await resolve_resource_content(source.uri, resource_caps, skill_caps)
     if content is None:

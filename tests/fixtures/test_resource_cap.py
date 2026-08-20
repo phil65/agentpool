@@ -50,6 +50,7 @@ class TestResourceAccessCap(AbstractCapability[Any]):
 
     read_text: str = "hello world"
     read_uri: str = "test://doc.md"
+    client_name: str = "test"
     _owns_client: bool = field(default=False, repr=False)
 
     def __post_init__(self) -> None:
@@ -119,6 +120,7 @@ class TestToolAndResourceCap(AbstractCapability[Any]):
 
     read_text: str = "tool+resource content"
     read_uri: str = "test://tool-doc.md"
+    client_name: str = "test"
     _owns_client: bool = field(default=False, repr=False)
 
     def __post_init__(self) -> None:

@@ -32,6 +32,7 @@ if TYPE_CHECKING:
     from pydantic_ai.capabilities import AbstractCapability
     from upathtools import JoinablePathLike, UPath
 
+    from wolfharness.capabilities.resource_capability import ResourceCapability
     from wolfharness.common_types import AnyEventHandlerType
     from wolfharness.host.context import HostContext
     from wolfharness.host.factory import AgentFactory
@@ -185,7 +186,7 @@ class AgentPool[TPoolDeps = None]:
             # Pool-level ExtensionRegistry for global capability scoping.
             self._extension_registry: ExtensionRegistry = ExtensionRegistry()
             # ResourceCapability instance — created in _setup_resource_capability()
-            self._resource_capability: Any = None
+            self._resource_capability: ResourceCapability[object] | None = None
             skill_scopes = getattr(self.manifest, "model_extra", None) or {}
             raw_skill_scopes = skill_scopes.get("_skill_scopes", {})
             self._default_skill_scope = str(raw_skill_scopes.get("default_scope", "host"))
@@ -280,6 +281,23 @@ class AgentPool[TPoolDeps = None]:
             try:
                 # Initialize MCP manager first, then add aggregating provider
                 await self.exit_stack.enter_async_context(self.mcp)
+                # Register pool-level MCP resource providers (McpServerCap)
+                # at POOL scope.  These are created by ``setup_server()``
+                # during ``MCPManager.__aenter__`` and implement
+                # ``ResourceAccess``.  Registration is unconditional — not
+                # gated by ``resources.enabled`` — so host-side surfaces
+                # (``/experimental/resource``, message-part injection) work
+                # even when model-visible resource tools are disabled.
+                # Session-scoped providers are registered separately at
+                # SESSION scope in ``native_agent/agent.py``.
+                from wolfharness.capabilities.extension_registry import (
+                    Scope,
+                    ScopeLevel,
+                )
+
+                pool_scope = Scope(level=ScopeLevel.POOL)
+                for provider in await self.mcp.get_resource_providers():
+                    self._extension_registry.register(provider, pool_scope)
                 await self.exit_stack.enter_async_context(self.skills)
                 # Initialize skill provider and resolver BEFORE skill capabilities
                 # so that skill_provider is available when syncing commands
@@ -708,7 +726,7 @@ class AgentPool[TPoolDeps = None]:
         return self._skill_capabilities
 
     @property
-    def resource_capability(self) -> Any:
+    def resource_capability(self) -> ResourceCapability[object] | None:
         """Get the pool-scoped ``ResourceCapability`` instance.
 
         Created during ``__aenter__`` via ``_setup_resource_capability()``.
@@ -720,10 +738,10 @@ class AgentPool[TPoolDeps = None]:
     async def _setup_resource_capability(self) -> None:
         """Create the ``ResourceCapability`` instance.
 
-        The capability provides 5 agent-facing tools (``list_resources``,
-        ``read_resource``, ``resource_exists``, ``list_resource_templates``,
-        ``complete_resource_template``) that aggregate resource access
-        across all visible providers in the ``ExtensionRegistry``.
+        The capability provides exactly three agent-facing tools:
+        ``list_mcp_resources``, ``list_mcp_resource_templates``, and
+        ``read_mcp_resource``. They aggregate MCP resource access across all
+        visible providers in the ``ExtensionRegistry``.
 
         The capability is stateless — it reads ``AgentContext`` at runtime
         to resolve providers. Per-agent opt-out is handled in

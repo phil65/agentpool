@@ -16,6 +16,8 @@ import logging
 from typing import TYPE_CHECKING, Any, Self
 
 import anyio
+from fastmcp.exceptions import ClientError, FastMCPError
+from mcp.shared.exceptions import McpError
 from pydantic_ai import BinaryContent, RunContext, ToolReturn
 from schemez import FunctionSchema
 
@@ -52,6 +54,8 @@ if TYPE_CHECKING:
         GetPromptResult,
         Icon,
         Implementation,
+        ListResourcesResult,
+        ListResourceTemplatesResult,
         Prompt as MCPPrompt,
         Resource as MCPResource,
         ResourceTemplate,
@@ -202,6 +206,11 @@ class MCPClient:
         if caps is None:
             return False
         return getattr(caps, capability, None) is not None
+
+    def supports_resources(self) -> bool:
+        """Return whether the connected server advertised ``resources``."""
+        self._ensure_connected()
+        return self._has_server_capability("resources")
 
     async def __aenter__(self) -> Self:
         """Enter context manager."""
@@ -439,6 +448,16 @@ class MCPClient:
             return []
         try:
             return await self._client.list_resources()
+        except (ClientError, FastMCPError, McpError, OSError, RuntimeError, ValueError) as e:
+            raise RuntimeError(f"Failed to list resources: {e}") from e
+
+    async def list_resources_page(self, cursor: str | None = None) -> ListResourcesResult:
+        """Return one MCP ``resources/list`` page without auto-pagination."""
+        self._ensure_connected()
+        if not self._has_server_capability("resources"):
+            raise RuntimeError("MCP server does not support resources")
+        try:
+            return await self._client.list_resources_mcp(cursor=cursor)
         except Exception as e:
             raise RuntimeError(f"Failed to list resources: {e}") from e
 
@@ -455,8 +474,22 @@ class MCPClient:
             List of resource templates from the server
         """
         self._ensure_connected()
+        if not self._has_server_capability("resources"):
+            return []
         try:
             return await self._client.list_resource_templates()
+        except (ClientError, FastMCPError, McpError, OSError, RuntimeError, ValueError) as e:
+            raise RuntimeError(f"Failed to list resource templates: {e}") from e
+
+    async def list_resource_templates_page(
+        self, cursor: str | None = None
+    ) -> ListResourceTemplatesResult:
+        """Return one MCP ``resources/templates/list`` page without auto-pagination."""
+        self._ensure_connected()
+        if not self._has_server_capability("resources"):
+            raise RuntimeError("MCP server does not support resources")
+        try:
+            return await self._client.list_resource_templates_mcp(cursor=cursor)
         except Exception as e:
             raise RuntimeError(f"Failed to list resource templates: {e}") from e
 

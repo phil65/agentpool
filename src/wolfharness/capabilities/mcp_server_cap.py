@@ -15,9 +15,12 @@ Implements:
 from __future__ import annotations
 
 import asyncio
+from collections.abc import Mapping, Sequence
 import logging
 from typing import TYPE_CHECKING, Any
 
+from mcp.types import BlobResourceContents, TextResourceContents
+from pydantic import BaseModel
 from pydantic_ai.capabilities import AbstractCapability
 from pydantic_ai.tools import AgentDepsT, RunContext
 
@@ -31,8 +34,10 @@ from wolfharness.capabilities.resource_protocols import (
     CompletionResult,
     ResourceAccess,
     ResourceEntry,
+    ResourcePage,
     ResourceTemplateAccess,
     ResourceTemplateEntry,
+    ResourceTemplatePage,
     SkillEntry,
     SkillResource,
     TextResourceContent,
@@ -43,11 +48,12 @@ from wolfharness.capabilities.resource_protocols import (
 
 
 if TYPE_CHECKING:
-    from collections.abc import AsyncIterator, Sequence
+    from collections.abc import AsyncIterator
     from types import TracebackType
 
     from pydantic_ai.toolsets import AbstractToolset
 
+    from wolfharness.common_types import JsonObject, JsonValue
     from wolfharness.mcp_server.client import MCPClient
     from wolfharness.mcp_server.session_pool import SessionConnectionPool
     from wolfharness_config.mcp_server import MCPServerConfig
@@ -58,6 +64,42 @@ logger = logging.getLogger(__name__)
 # Retry constants (migrated from SkillMcpManager).
 _DEFAULT_MAX_RETRIES = 3
 _RETRY_BASE_DELAY = 1  # seconds
+
+
+def _normalize_json_object(value: object | None) -> JsonObject | None:
+    """Normalize SDK metadata models and mappings to ``JsonObject``."""
+    if value is None:
+        return None
+    if isinstance(value, BaseModel):
+        value = value.model_dump(mode="json", by_alias=True, exclude_none=True)
+    if not isinstance(value, Mapping):
+        return None
+    result: JsonObject = {}
+    for key, nested in value.items():
+        if isinstance(key, str):
+            result[key] = _normalize_json_value(nested)
+    return result
+
+
+def _normalize_json_value(value: object) -> JsonValue:
+    """Recursively normalize an SDK metadata value to JSON-compatible types."""
+    match value:
+        case None | bool() | int() | float() | str():
+            return value
+        case BaseModel():
+            return _normalize_json_value(
+                value.model_dump(mode="json", by_alias=True, exclude_none=True)
+            )
+        case Mapping():
+            result: JsonObject = {}
+            for key, nested in value.items():
+                if isinstance(key, str):
+                    result[key] = _normalize_json_value(nested)
+            return result
+        case Sequence() if not isinstance(value, (str, bytes, bytearray)):
+            return [_normalize_json_value(item) for item in value]
+        case _:
+            return str(value)
 
 
 class McpServerCap(
@@ -132,6 +174,20 @@ class McpServerCap(
     def config(self) -> MCPServerConfig:
         """Return the MCP server config."""
         return self._config
+
+    @property
+    def client_name(self) -> str:
+        """Return the bare configured server display name.
+
+        Unlike ``name`` (which may be manager-prefixed), this returns the
+        server's canonical display name from configuration — the value used
+        for catalog keys and resource identity across the system.
+
+        Returns:
+            The configured display name (stripped ``name`` field) or the
+            generated ``client_id`` if no name is configured.
+        """
+        return self._config.display_name
 
     @property
     def client(self) -> MCPClient | None:
@@ -370,12 +426,46 @@ class McpServerCap(
         return [
             ResourceEntry(
                 uri=str(r.uri),
+<<<<<<< Updated upstream
                 name=r.title or r.name,
+=======
+                name=r.name,
+                title=r.title or "",
+>>>>>>> Stashed changes
                 description=r.description or "",
                 mime_type=r.mimeType if r.mimeType else "",
+                size=r.size,
+                annotations=_normalize_json_object(r.annotations),
+                meta=_normalize_json_object(r.meta),
             )
             for r in resources
         ]
+
+    async def supports_resources(self) -> bool:
+        """Return whether this server advertised the MCP resources capability."""
+        client = await self._ensure_client()
+        return client.supports_resources()
+
+    async def list_resources_page(self, cursor: str | None = None) -> ResourcePage:
+        """Return one upstream resource page for model-visible pagination."""
+        client = await self._ensure_client()
+        page = await client.list_resources_page(cursor)
+        return ResourcePage(
+            entries=[
+                ResourceEntry(
+                    uri=str(resource.uri),
+                    name=resource.name,
+                    title=resource.title or "",
+                    description=resource.description or "",
+                    mime_type=resource.mimeType or "",
+                    size=resource.size,
+                    annotations=_normalize_json_object(resource.annotations),
+                    meta=_normalize_json_object(resource.meta),
+                )
+                for resource in page.resources
+            ],
+            next_cursor=str(page.nextCursor) if page.nextCursor else None,
+        )
 
     async def read_resource(
         self, uri: str
@@ -392,35 +482,32 @@ class McpServerCap(
         client = await self._ensure_client()
         try:
             contents = await client.read_resource(uri)
-        except Exception:
-            logger.warning("Failed to read resource %r", uri, exc_info=True)
-            return None
+        except RuntimeError as exc:
+            if "not found" in str(exc).lower():
+                return None
+            raise
         if not contents:
             return None
         result: list[TextResourceContent | BlobResourceContent] = []
         for c in contents:
-            # MCP TextResourceContents has .text, BlobResourceContents has .blob
-            text_val: str | None = getattr(c, "text", None)
-            if text_val is not None:
+            if isinstance(c, TextResourceContents):
                 result.append(
                     TextResourceContent(
-                        uri=uri,
-                        mime_type=getattr(c, "mimeType", None),
-                        meta=getattr(c, "meta", None),
-                        text=text_val,
+                        uri=str(c.uri),
+                        mime_type=c.mimeType,
+                        meta=_normalize_json_object(c.meta),
+                        text=c.text,
                     )
                 )
-            else:
-                blob_val: str | None = getattr(c, "blob", None)
-                if blob_val is not None:
-                    result.append(
-                        BlobResourceContent(
-                            uri=uri,
-                            mime_type=getattr(c, "mimeType", None),
-                            meta=getattr(c, "meta", None),
-                            blob=blob_val,
-                        )
+            elif isinstance(c, BlobResourceContents):
+                result.append(
+                    BlobResourceContent(
+                        uri=str(c.uri),
+                        mime_type=c.mimeType,
+                        meta=_normalize_json_object(c.meta),
+                        blob=c.blob,
                     )
+                )
         return result if result else None
 
     async def resource_exists(self, uri: str) -> bool:
@@ -453,13 +540,34 @@ class McpServerCap(
             ResourceTemplateEntry(
                 uri_template=str(t.uriTemplate),
                 name=t.name or "",
-                title=getattr(t, "title", "") or "",
+                title=t.title or "",
                 description=t.description or "",
                 mime_type=t.mimeType if t.mimeType else "",
-                annotations=getattr(t, "annotations", None),
+                annotations=_normalize_json_object(t.annotations),
+                meta=_normalize_json_object(t.meta),
             )
             for t in templates
         ]
+
+    async def list_resource_templates_page(self, cursor: str | None = None) -> ResourceTemplatePage:
+        """Return one upstream resource-template page."""
+        client = await self._ensure_client()
+        page = await client.list_resource_templates_page(cursor)
+        return ResourceTemplatePage(
+            entries=[
+                ResourceTemplateEntry(
+                    uri_template=str(template.uriTemplate),
+                    name=template.name,
+                    title=template.title or "",
+                    description=template.description or "",
+                    mime_type=template.mimeType or "",
+                    annotations=_normalize_json_object(template.annotations),
+                    meta=_normalize_json_object(template.meta),
+                )
+                for template in page.resourceTemplates
+            ],
+            next_cursor=str(page.nextCursor) if page.nextCursor else None,
+        )
 
     async def complete_resource_template(
         self,

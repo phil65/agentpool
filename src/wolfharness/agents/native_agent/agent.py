@@ -424,6 +424,18 @@ class Agent[TDeps = None, OutputDataT = str](BaseAgent[TDeps, OutputDataT]):
             self._external_capabilities.extend(built_caps)
             self._config_capabilities_built.extend(built_caps)
 
+    async def _get_all_tools(self) -> list[Tool[object]]:
+        """Collect legacy tools plus the gated formal MCP resource tools."""
+        tools = await super()._get_all_tools()
+        tool_map: dict[str, Tool[object]] = {tool.name: tool for tool in tools}
+        pool = self._agent_pool
+        if self.config is not None and self.config.resources.enabled and pool is not None:
+            resource_cap = pool.resource_capability
+            if resource_cap is not None:
+                for tool in await resource_cap.get_tools():
+                    tool_map[tool.name] = tool
+        return list(tool_map.values())
+
     def _build_pool_configs(self) -> tuple[McpConfigEntry, ...]:
         """Build MCP config entries from pool-level servers.
 
@@ -1161,13 +1173,21 @@ class Agent[TDeps = None, OutputDataT = str](BaseAgent[TDeps, OutputDataT]):
                 if resource_cap is not None:
                     tool_capabilities.append(resource_cap)
 
-        # Register per-session capabilities (MCP, SkillManagerCap)
-        # at SESSION scope in the ExtensionRegistry.
+        # Register per-session capabilities (MCP, SkillManagerCap, resource
+        # providers) at SESSION scope in the ExtensionRegistry.
         # This is done once per session — subsequent get_agentlet() calls
         # within the same session skip registration.
         #
-        # Note: ResourceCapability is NOT registered here. It is a tool
-        # wrapper, not a ResourceAccess provider. See pool._setup_resource_capability().
+        # Note: ResourceCapability (the tool wrapper) is NOT registered here.
+        # It is a tool wrapper, not a ResourceAccess provider.
+        # See pool._setup_resource_capability().
+        #
+        # Resource providers (McpServerCap) are registered unconditionally —
+        # not gated by ``resources.enabled``.  The gate controls only whether
+        # the model-visible resource tools (ResourceCapability) are added to
+        # the tool set (step 6 above).  Host-side surfaces (/experimental/
+        # resource, message-part injection) rely on providers being in the
+        # registry regardless of the tools gate.
         if self.host_context is not None and run_ctx is not None:
             registry = self.host_context.extension_registry
             if registry is not None:
@@ -1191,6 +1211,15 @@ class Agent[TDeps = None, OutputDataT = str](BaseAgent[TDeps, OutputDataT]):
                             for cap in pool_caps:
                                 if isinstance(cap, SkillManagerCap):
                                     registry.register(cap, session_scope)
+                    # Register session-scoped resource providers (McpServerCap)
+                    # at SESSION scope.  Pool-level providers are registered
+                    # separately at POOL scope by the factory.
+                    session_resource_providers = await self.mcp.get_resource_providers(
+                        session_id=session_id,
+                        session_only=True,
+                    )
+                    for res_cap in session_resource_providers:
+                        registry.register(res_cap, session_scope)
                     self._registered_session_ids.add(session_id)
 
         # Collect pydantic-ai compatible instructions from SystemPrompts and providers

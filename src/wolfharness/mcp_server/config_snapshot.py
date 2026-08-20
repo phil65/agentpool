@@ -7,7 +7,7 @@ from typing import TYPE_CHECKING, Literal
 
 
 if TYPE_CHECKING:
-    from wolfharness_config.mcp_server import BaseMCPServerConfig
+    from wolfharness_config.mcp_server import MCPServerConfig
 
 SourceScope = Literal["pool", "agent", "session", "skill"]
 
@@ -22,7 +22,7 @@ class McpConfigEntry:
         skill_name: Name of the skill that contributed this config, if source is "skill".
     """
 
-    server_config: BaseMCPServerConfig
+    server_config: MCPServerConfig
     source: SourceScope
     skill_name: str | None = None
 

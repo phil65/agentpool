@@ -432,6 +432,7 @@ def session_e2e_config_with_mcp(tmp_path_factory: pytest.TempPathFactory) -> Pat
                 "type": "native",
                 "model": "test",
                 "system_prompt": "You are a test assistant.",
+                "resources": {"enabled": True},
             }
         },
         "mcp_servers": [
@@ -970,6 +971,101 @@ async def subprocess_server_with_mcp(
     async for server in _spawn_server(
         serve_command,
         session_e2e_config_with_mcp,
+        process_registry=process_registry,
+        host=host,
+        is_stdio=is_stdio,
+        health_timeout=health_timeout,
+        health_path=health_path,
+        extra_args=extra_args,
+    ):
+        yield server
+
+
+@pytest.fixture(scope="session")
+def session_e2e_config_with_mcp_resources(tmp_path_factory: pytest.TempPathFactory) -> Path:
+    """Session-scoped e2e config with a fake MCP server that exposes resources.
+
+    Defines a single native agent (``test_agent`` using TestModel) and one
+    pool-level stdio MCP server (``fake_resources``) backed by
+    ``tests/fixtures/fake_mcp_server_resources.py``. The fake server exposes:
+
+    - Text resource: ``config://app/settings``
+    - Blob resource: ``image://logo`` (1x1 PNG)
+    - Resource template: ``file:///{path}``
+    - Tool: ``ping``
+
+    Includes ``storage: {providers: [{type: memory}]}`` to eliminate
+    cross-run SQLite leakage.
+    """
+    config_dir = tmp_path_factory.mktemp("e2e_mcp_res")
+    config_path = config_dir / "e2e_config_mcp_resources.yml"
+    fixtures_dir = Path(__file__).resolve().parent.parent / "fixtures"
+    fake_server_path = fixtures_dir / "fake_mcp_server_resources.py"
+    config = {
+        "default_agent": "test_agent",
+        "agents": {
+            "test_agent": {
+                "type": "native",
+                "model": "test",
+                "system_prompt": "You are a test assistant.",
+            },
+            "resource_tools_disabled_agent": {
+                "type": "native",
+                "model": "test",
+                "system_prompt": "You are a test assistant.",
+                "resources": {"enabled": False},
+            },
+        },
+        "mcp_servers": [
+            {
+                "name": "fake_resources",
+                "type": "stdio",
+                "command": sys.executable,
+                "args": [str(fake_server_path)],
+                "enabled": True,
+            },
+            {
+                "name": "fake_resources_secondary",
+                "type": "stdio",
+                "command": sys.executable,
+                "args": [str(fake_server_path), "--variant", "secondary"],
+                "enabled": True,
+            },
+        ],
+        "storage": {"providers": [{"type": "memory"}]},
+    }
+    config_path.write_text(yaml.dump(config, default_flow_style=False))
+    return config_path
+
+
+@pytest.fixture
+async def subprocess_server_with_mcp_resources(
+    request: pytest.FixtureRequest,
+    process_registry: ProcessRegistry,
+    session_e2e_config_with_mcp_resources: Path,
+    allow_model_requests: Any,
+) -> AsyncIterator[SubprocessServer]:
+    """Spawn an ``wolfharness serve-*`` subprocess with the resource-exposing MCP server.
+
+    Uses ``_spawn_server`` (non-cached) because the MCP-resources-config variant is
+    unique to resource integration tests. The fake MCP server adds startup time
+    (subprocess spawn + MCP handshake), so the default health timeout is 20s.
+
+    Parametrize via ``indirect=True`` with the same dict shape as
+    ``subprocess_server`` (minus ``config_path``, which is fixed to
+    ``session_e2e_config_with_mcp_resources``).
+    """
+    params = getattr(request, "param", {"serve_command": "serve-opencode"})
+    serve_command: str = params.get("serve_command", "serve-opencode")
+    host: str = params.get("host", "127.0.0.1")
+    is_stdio: bool = params.get("is_stdio", False)
+    health_timeout: float = params.get("health_timeout", 20.0)
+    health_path: str = params.get("health_path", "/session")
+    extra_args: list[str] | None = params.get("extra_args")
+
+    async for server in _spawn_server(
+        serve_command,
+        session_e2e_config_with_mcp_resources,
         process_registry=process_registry,
         host=host,
         is_stdio=is_stdio,
