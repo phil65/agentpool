@@ -74,9 +74,9 @@ We've implemented **OpenCode-compatible metadata** for all core agentpool tools,
 ```python
 @dataclass
 class ToolResult:
-    content: str | list[Any]           # → LLM sees this
-    structured_content: dict | None    # → JSON for programmatic use
-    metadata: dict[str, Any] | None    # → UI ONLY (not sent to LLM)
+    content: str | list[Any]  # → LLM sees this
+    structured_content: dict | None  # → JSON for programmatic use
+    metadata: dict[str, Any] | None  # → UI ONLY (not sent to LLM)
 ```
 
 ### Data Flow
@@ -155,9 +155,9 @@ ToolResult(
     metadata={
         "todos": [
             {"content": "Fix bug", "status": "pending"},
-            {"content": "Write tests", "status": "completed"}
+            {"content": "Write tests", "status": "completed"},
         ]
-    }
+    },
 )
 ```
 
@@ -167,7 +167,7 @@ ToolResult(
     content="Python, TypeScript",
     metadata={
         "answers": [["Python", "TypeScript"]]  # One question, two selections
-    }
+    },
 )
 ```
 
@@ -177,8 +177,8 @@ ToolResult(
     content="<full file content>",
     metadata={
         "preview": "import os\nimport sys\n...",  # First 20 lines
-        "truncated": False
-    }
+        "truncated": False,
+    },
 )
 ```
 
@@ -186,11 +186,7 @@ ToolResult(
 ```python
 ToolResult(
     content="Command output:\nHello world\n",
-    metadata={
-        "output": "Hello world\n",
-        "exit": 0,
-        "description": "echo 'Hello world'"
-    }
+    metadata={"output": "Hello world\n", "exit": 0, "description": "echo 'Hello world'"},
 )
 ```
 

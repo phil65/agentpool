@@ -379,9 +379,11 @@ The project uses entry points for extensibility:
 ```python
 from agentpool.agents import Agent
 
+
 def greet(name: str) -> str:
     """Greet someone."""
     return f"Hello, {name}!"
+
 
 async with Agent(
     name="my_agent",

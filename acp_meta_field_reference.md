@@ -25,23 +25,17 @@ session_request = NewSessionRequest(
     field_meta={
         # Disable built-in tools to prefer custom implementations
         "disableBuiltInTools": False,
-        
         # Custom system prompt
-        "systemPrompt": {
-            "append": "Always write tests for new functions."
-        },
-        
+        "systemPrompt": {"append": "Always write tests for new functions."},
         # Agent-specific options (e.g., for claude-code-acp)
         "claudeCode": {
             "options": {
                 "resume": "previous-session-id",
                 "maxTurns": 50,
-                "extraArgs": {
-                    "session-id": "custom-session-123"
-                }
+                "extraArgs": {"session-id": "custom-session-123"},
             }
-        }
-    }
+        },
+    },
 )
 ```
 
@@ -59,12 +53,12 @@ update = ToolCallUpdate(
     field_meta={
         "claudeCode": {
             "toolName": "Edit",  # Internal tool name
-            "toolResponse": {    # Structured response
+            "toolResponse": {  # Structured response
                 "files_modified": ["file.py"],
-                "lines_changed": 10
-            }
+                "lines_changed": 10,
+            },
         }
-    }
+    },
 )
 ```
 
@@ -73,9 +67,9 @@ update = ToolCallUpdate(
 The protocol reserves certain root-level keys for [W3C trace context](https://www.w3.org/TR/trace-context/):
 
 ```python
-field_meta={
+field_meta = {
     "traceparent": "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01",
-    "tracestate": "congo=t61rcWkgMzE"
+    "tracestate": "congo=t61rcWkgMzE",
 }
 ```
 
@@ -177,27 +171,25 @@ To make `ClaudeACPAgentConfig` functional, implement `_meta` support:
 # In acp_agent.py
 async def start(self) -> None:
     # ... existing code ...
-    
+
     # Build _meta from config
     meta: dict[str, Any] = {}
-    
+
     if isinstance(self.config, ClaudeACPAgentConfig):
         meta["disableBuiltInTools"] = False  # Or from config
-        
+
         claude_options: dict[str, Any] = {}
         if self.config.builtin_tools is not None:
             claude_options["allowedTools"] = self.config.builtin_tools
         if self.config.model:
             # Note: This would need to be handled in claude-code-acp's extraArgs
             pass
-        
+
         if claude_options:
             meta["claudeCode"] = {"options": claude_options}
-    
+
     session_request = NewSessionRequest(
-        cwd=cwd,
-        mcp_servers=mcp_servers,
-        field_meta=meta if meta else None
+        cwd=cwd, mcp_servers=mcp_servers, field_meta=meta if meta else None
     )
 ```
 
