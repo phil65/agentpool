@@ -49,7 +49,7 @@ dependencies = [
   "jinja2",
   "jinjarope",
   "keyring>=25.6.0",
-  "llmling-models>=1.4.1",
+  "llmling-models>=1.7.0",
   "logfire[fastapi]",
   "mcp>=1.2.0",
   "pillow>=11.3.0",
@@ -76,7 +76,7 @@ dependencies = [
   "tokonomics>=0.1.2",
   "toprompt>=0.0.1",
   "typer",
-  "upathtools[httpx]>=0.1.0",
+  "upathtools[httpx]>=1.20.5",
   "uvicorn[standard]",
   "watchfiles>=1.1.1",
   "websockets>=15.0",
@@ -377,6 +377,7 @@ ignore = [
   "PLC0415",
   "PLR0912",  # Too many branches
   "PLR0913",  # Too many arguments to function call
+  "PLR0917",  # Too many positional arguments
   # "PLR2004", # Magic values instead of named consts
   "SLF001",  # Private member accessed
   "TRY003",  # Avoid specifying long messages outside the exception class
@@ -433,10 +434,13 @@ preview = true
 exclude = []
 
 [tool.ty.environment]
+python = ".venv"
 python-version = "3.13"
 python-platform = "all"
 
 [tool.ty.rules]
+# Pydantic discriminated unions narrow `type: str` to `Literal[...]` in subclasses
+incompatible-mutable-override = "ignore"
 unused-type-ignore-comment = "ignore"
 invalid-type-form = "ignore"
 not-subscriptable = "ignore"
