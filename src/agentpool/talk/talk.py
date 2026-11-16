@@ -18,7 +18,7 @@ from agentpool.utils.time_utils import get_now
 
 
 if TYPE_CHECKING:
-    from collections.abc import AsyncIterator, Awaitable, Iterator
+    from collections.abc import AsyncGenerator, Awaitable, Iterator
     from datetime import datetime, timedelta
 
     from evented.event_data import EventData
@@ -454,7 +454,7 @@ class Talk[TTransmittedData = Any]:
         return new_talk
 
     @asynccontextmanager
-    async def paused(self) -> AsyncIterator[Self]:
+    async def paused(self) -> AsyncGenerator[Self]:
         """Temporarily set inactive."""
         previous = self.active
         self.active = False
@@ -553,7 +553,7 @@ class TeamTalk[TTransmittedData = Any](list["Talk | TeamTalk"]):
         return cls([Talk(agent, targets or []) for agent in agents])
 
     @asynccontextmanager
-    async def paused(self) -> AsyncIterator[Self]:
+    async def paused(self) -> AsyncGenerator[Self]:
         """Temporarily set inactive."""
         previous = self.active
         self.active = False

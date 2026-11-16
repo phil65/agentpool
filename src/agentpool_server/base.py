@@ -11,7 +11,7 @@ from agentpool.utils.tasks import TaskManager
 
 
 if TYPE_CHECKING:
-    from collections.abc import AsyncIterator
+    from collections.abc import AsyncGenerator
     from types import TracebackType
 
     from agentpool import AgentPool
@@ -166,7 +166,7 @@ class BaseServer:
         return self._server_task is not None and not self._server_task.done()
 
     @asynccontextmanager
-    async def run_context(self) -> AsyncIterator[None]:
+    async def run_context(self) -> AsyncGenerator[None]:
         """Async context manager for automatic server start/stop.
 
         Starts the server in background when entering context,

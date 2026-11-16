@@ -13,7 +13,7 @@ from agentpool import log
 
 
 if TYPE_CHECKING:
-    from collections.abc import AsyncIterator, Callable, Coroutine
+    from collections.abc import AsyncGenerator, Callable, Coroutine
     from typing import Any
 
     from anyio.abc import ByteReceiveStream, Process
@@ -81,7 +81,7 @@ async def monitor_process(
     process: Process,
     *,
     context: str = "operation",
-) -> AsyncIterator[None]:
+) -> AsyncGenerator[None]:
     """Context manager that monitors a subprocess for unexpected exit.
 
     Races the wrapped code against process termination. If the process

@@ -52,7 +52,7 @@ from acp.stdio import stdio_streams
 
 
 if TYPE_CHECKING:
-    from collections.abc import AsyncIterator
+    from collections.abc import AsyncGenerator
 
     from acp.agent.protocol import Agent
     from acp.schema import SessionUpdate
@@ -62,7 +62,7 @@ logger = structlog.get_logger(__name__)
 
 
 @asynccontextmanager
-async def lifespan(app: FastAPI) -> AsyncIterator[None]:
+async def lifespan(app: FastAPI) -> AsyncGenerator[None]:
     """FastAPI lifespan manager."""
     logger.info("Debug server FastAPI starting up")
     yield

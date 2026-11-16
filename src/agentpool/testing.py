@@ -35,7 +35,7 @@ from typing import TYPE_CHECKING, Any, Literal
 
 
 if TYPE_CHECKING:
-    from collections.abc import AsyncIterator, Sequence
+    from collections.abc import AsyncGenerator, Sequence
 
     from evented_config import EventConfig
 
@@ -55,7 +55,7 @@ async def acp_test_session(
     cwd: str | Path | None = None,
     event_configs: Sequence[EventConfig] | None = None,
     event_handlers: Sequence[AnyEventHandlerType] | None = None,
-) -> AsyncIterator[ACPAgent[Any]]:
+) -> AsyncGenerator[ACPAgent[Any]]:
     """Create an end-to-end ACP test session using agentpool as server.
 
     This context manager starts an ACPAgent connected to a agentpool serve-acp

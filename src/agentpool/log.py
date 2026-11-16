@@ -13,7 +13,7 @@ import structlog
 
 
 if TYPE_CHECKING:
-    from collections.abc import Iterator, MutableMapping, Sequence
+    from collections.abc import Generator, MutableMapping, Sequence
 
     from slashed import OutputWriter
 
@@ -209,7 +209,7 @@ def set_handler_level(
     logger_names: Sequence[str],
     *,
     session_handler: OutputWriter | None = None,
-) -> Iterator[None]:
+) -> Generator[None]:
     """Temporarily set logging level and optionally add session handler.
 
     Args:

@@ -13,7 +13,7 @@ from agentpool.utils.baseregistry import AgentPoolError
 
 
 if TYPE_CHECKING:
-    from collections.abc import AsyncIterator
+    from collections.abc import AsyncGenerator
 
     from agentpool.common_types import MCPServerStatus, ToolType
     from agentpool.prompts.prompts import MCPClientPrompt
@@ -239,7 +239,7 @@ class ToolManager:
         tools: ToolType | Sequence[ToolType],
         *,
         exclusive: bool = False,
-    ) -> AsyncIterator[list[Tool]]:
+    ) -> AsyncGenerator[list[Tool]]:
         """Temporarily register tools.
 
         Args:

@@ -16,7 +16,7 @@ from acp.transports import spawn_stdio_transport
 
 
 if TYPE_CHECKING:
-    from collections.abc import AsyncIterator, Callable, Mapping
+    from collections.abc import AsyncGenerator, Callable, Mapping
     from pathlib import Path
 
     from anyio.abc import Process
@@ -84,7 +84,7 @@ async def spawn_stdio_connection(
     cwd: str | Path | None = None,
     observers: list[StreamObserver] | None = None,
     log_stderr: bool = False,
-) -> AsyncIterator[tuple[Connection, Process]]:
+) -> AsyncGenerator[tuple[Connection, Process]]:
     """Spawn a subprocess and bind its stdio to a low-level Connection.
 
     Args:
@@ -117,7 +117,7 @@ async def spawn_agent_process(
     cwd: str | Path | None = None,
     log_stderr: bool = False,
     **connection_kwargs: Any,
-) -> AsyncIterator[tuple[ClientSideConnection, Process]]:
+) -> AsyncGenerator[tuple[ClientSideConnection, Process]]:
     """Spawn an ACP agent subprocess and return a ClientSideConnection to it.
 
     Args:
@@ -152,7 +152,7 @@ async def spawn_client_process(
     cwd: str | Path | None = None,
     log_stderr: bool = False,
     **connection_kwargs: Any,
-) -> AsyncIterator[tuple[AgentSideConnection, Process]]:
+) -> AsyncGenerator[tuple[AgentSideConnection, Process]]:
     """Spawn an ACP client subprocess and return an AgentSideConnection to it.
 
     Args:

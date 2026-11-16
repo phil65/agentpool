@@ -14,7 +14,7 @@ from agentpool.messaging import ChatMessage
 
 
 if TYPE_CHECKING:
-    from collections.abc import AsyncIterator, Sequence
+    from collections.abc import AsyncGenerator, Sequence
 
     from toprompt import AnyPromptType
 
@@ -95,7 +95,7 @@ class Interactions:
     @asynccontextmanager
     async def _with_structured_output(
         self, output_type: type
-    ) -> AsyncIterator[SupportsStructuredOutput]:
+    ) -> AsyncGenerator[SupportsStructuredOutput]:
         """Context manager to temporarily set structured output type and restore afterwards.
 
         Args:

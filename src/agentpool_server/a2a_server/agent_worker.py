@@ -30,7 +30,7 @@ from pydantic_ai import (
 
 
 if TYPE_CHECKING:
-    from collections.abc import AsyncIterator, Sequence
+    from collections.abc import AsyncGenerator, Sequence
 
     from fasta2a.broker import Broker
     from fasta2a.schema import AgentProvider, Skill, TaskIdParams, TaskSendParams
@@ -44,7 +44,7 @@ if TYPE_CHECKING:
 
 
 @asynccontextmanager
-async def worker_lifespan(app: FastA2A, worker: Worker, agent: BaseAgent) -> AsyncIterator[None]:
+async def worker_lifespan(app: FastA2A, worker: Worker, agent: BaseAgent) -> AsyncGenerator[None]:
     """Custom lifespan that runs the worker during application startup.
 
     This ensures the worker is started and ready to process tasks as soon as the application starts.

@@ -13,7 +13,7 @@ from agentpool_cli import log, resolve_agent_config
 
 
 if TYPE_CHECKING:
-    from collections.abc import AsyncIterator
+    from collections.abc import AsyncGenerator, AsyncIterator
 
     from agentpool import ChatMessage
 
@@ -75,7 +75,7 @@ def vercel_command(  # noqa: PLR0915
             agent.message_sent.connect(on_message)
 
     @asynccontextmanager
-    async def lifespan(app: FastAPI) -> AsyncIterator[None]:
+    async def lifespan(app: FastAPI) -> AsyncGenerator[None]:
         await pool.__aenter__()
         logger.info("Agent pool initialized")
         try:

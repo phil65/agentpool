@@ -14,7 +14,7 @@ from agentpool.utils.inspection import get_fn_name
 
 
 if TYPE_CHECKING:
-    from collections.abc import AsyncIterator
+    from collections.abc import AsyncGenerator
     from datetime import timedelta
 
     from agentpool.common_types import AgentName, AnyTransformFn, AsyncFilterFn, QueueStrategy
@@ -224,7 +224,7 @@ class ConnectionManager:
             await self.wait_for_connections()
 
     @asynccontextmanager
-    async def paused_routing(self) -> AsyncIterator[Self]:
+    async def paused_routing(self) -> AsyncGenerator[Self]:
         """Temporarily pause message routing to connections."""
         active_talks = [talk for talk in self._connections if talk.active]
         for talk in active_talks:

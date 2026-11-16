@@ -44,7 +44,7 @@ from opencode_sdk.models import (
 
 
 if TYPE_CHECKING:
-    from collections.abc import AsyncIterator, Set as AbstractSet
+    from collections.abc import AsyncGenerator, Set as AbstractSet
 
     from httpx import Headers
 
@@ -164,7 +164,7 @@ def create_app(*, agent: BaseAgent[Any, Any], working_dir: str | None = None) ->
     file_watcher: Any = None
 
     @asynccontextmanager
-    async def lifespan(app: FastAPI) -> AsyncIterator[None]:
+    async def lifespan(app: FastAPI) -> AsyncGenerator[None]:
         nonlocal branch_watcher, file_watcher
 
         from watchfiles import Change

@@ -15,7 +15,7 @@ from agentpool_config.session import SessionQuery
 
 
 if TYPE_CHECKING:
-    from collections.abc import AsyncIterator, Coroutine, Sequence
+    from collections.abc import AsyncGenerator, Coroutine, Sequence
 
     from pydantic_ai import UserContent
     from toprompt import AnyPromptType
@@ -197,7 +197,7 @@ class MessageHistory:
         history: list[AnyPromptType] | SessionQuery | None = None,
         *,
         replace_history: bool = False,
-    ) -> AsyncIterator[Self]:
+    ) -> AsyncGenerator[Self]:
         """Temporarily set conversation history.
 
         Args:

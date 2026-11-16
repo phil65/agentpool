@@ -20,7 +20,7 @@ from anyio.abc import ByteReceiveStream, ByteSendStream
 
 
 if TYPE_CHECKING:
-    from collections.abc import AsyncIterator, Callable, Mapping
+    from collections.abc import AsyncGenerator, Callable, Mapping
     from pathlib import Path
 
     from anyio.abc import Process
@@ -396,7 +396,7 @@ async def spawn_stdio_transport(
     shutdown_timeout: float = 2.0,
     log_stderr: bool = False,
     stderr_log_level: int = logging.WARNING,
-) -> AsyncIterator[tuple[ByteReceiveStream, ByteSendStream, Process]]:
+) -> AsyncGenerator[tuple[ByteReceiveStream, ByteSendStream, Process]]:
     """Launch a subprocess and expose its stdio streams as anyio streams.
 
     This mirrors the defensive shutdown behaviour used by the MCP Python SDK:

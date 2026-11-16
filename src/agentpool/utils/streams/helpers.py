@@ -8,14 +8,14 @@ from typing import TYPE_CHECKING
 
 
 if TYPE_CHECKING:
-    from collections.abc import AsyncIterable, AsyncIterator
+    from collections.abc import AsyncGenerator, AsyncIterable, AsyncIterator
 
 
 @asynccontextmanager
 async def merge_queue_into_iterator[T, V](  # noqa: PLR0915
     primary_stream: AsyncIterable[T],
     secondary_queue: asyncio.Queue[V],
-) -> AsyncIterator[AsyncIterator[T | V]]:
+) -> AsyncGenerator[AsyncIterator[T | V]]:
     """Merge a primary async stream with events from a secondary queue.
 
     Args:

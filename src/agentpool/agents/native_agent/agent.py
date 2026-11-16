@@ -32,7 +32,14 @@ from agentpool.utils.streams import merge_queue_into_iterator
 
 
 if TYPE_CHECKING:
-    from collections.abc import AsyncIterator, Awaitable, Callable, Coroutine, Sequence
+    from collections.abc import (
+        AsyncGenerator,
+        AsyncIterator,
+        Awaitable,
+        Callable,
+        Coroutine,
+        Sequence,
+    )
     from types import TracebackType
 
     from exxec import ExecutionEnvironment
@@ -807,7 +814,7 @@ class Agent[TDeps = None, OutputDataT = str](BaseAgent[TDeps, OutputDataT]):
         replace_history: bool = False,
         pause_routing: bool = False,
         model: ModelType | None = None,
-    ) -> AsyncIterator[Self | Agent[T]]:
+    ) -> AsyncGenerator[Self | Agent[T]]:
         """Temporarily modify agent state.
 
         Args:

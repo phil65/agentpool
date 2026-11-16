@@ -24,7 +24,7 @@ from agentpool.utils.inspection import get_fn_name
 
 
 if TYPE_CHECKING:
-    from collections.abc import AsyncIterator, Sequence
+    from collections.abc import AsyncGenerator, Sequence
     from contextlib import AbstractAsyncContextManager
     from types import TracebackType
 
@@ -313,7 +313,7 @@ class AgentPool[TPoolDeps = None](BaseRegistry[NodeName, MessageNode[Any, Any]])
         return team
 
     @asynccontextmanager
-    async def track_message_flow(self) -> AsyncIterator[MessageFlowTracker]:
+    async def track_message_flow(self) -> AsyncGenerator[MessageFlowTracker]:
         """Track message flow during a context."""
         tracker = MessageFlowTracker()
         self.connection_registry.message_flow.connect(tracker.track)

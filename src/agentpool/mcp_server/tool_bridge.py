@@ -29,7 +29,7 @@ from agentpool.utils.signatures import filter_schema_params, get_params_matching
 
 
 if TYPE_CHECKING:
-    from collections.abc import AsyncIterator, Callable, Sequence
+    from collections.abc import AsyncGenerator, Callable, Sequence
 
     from fastmcp import Context, FastMCP
     from fastmcp.tools import ToolResult as FastMCPToolResult
@@ -442,7 +442,7 @@ class ToolManagerBridge:
         self,
         context: AgentContext[Any],
         prompt: str | Sequence[UserContent] | None = None,
-    ) -> AsyncIterator[Self]:
+    ) -> AsyncGenerator[Self]:
         """Context manager for setting run-scoped state.
 
         Stores the AgentContext for the duration of the run so that
