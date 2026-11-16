@@ -209,7 +209,8 @@ class MCPServer(BaseServer):
                     await fastmcp_set_level.handler(ctx, params)
                 logger.setLevel(constants.MCP_TO_LOGGING[level])
                 data = f"Log level set to {level}"
-                await ctx.session.send_log_message(level, data, logger=self.name)
+                # Logging is deprecated in MCP 2026-07-28 (SEP-2577), still used by older clients
+                await ctx.session.send_log_message(level, data, logger=self.name)  # ty: ignore[deprecated]
             except Exception as exc:
                 msg = "Error setting log level"
                 raise mcp.MCPError(types.INTERNAL_ERROR, msg, str(exc)) from exc

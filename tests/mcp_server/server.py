@@ -19,7 +19,7 @@ async def sample_test(ctx: Context, message: str) -> str:
     """Analyze code, ask user which issues to fix, then return improved code."""
     # Step 1: Use sampling to check if there are issues (yes/no)
     prefs = ModelPreferences(hints=[ModelHint(name="gpt-5-nano")])
-    has_issues_result = await ctx.session.create_message(
+    has_issues_result = await ctx.session.create_message(  # ty: ignore[deprecated]  # sampling, SEP-2577
         [SamplingMessage(role="user", content=TextContent(type="text", text=message))],
         max_tokens=500,
         system_prompt="only 'yes' or 'no'.",

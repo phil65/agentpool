@@ -86,7 +86,8 @@ def setup_logging(
     logger.info("Logging initialized")
     if log_to_file:
         msg = "Console logging level: %s, File logging level: DEBUG (%s)"
-        logger.debug(msg, logging.getLevelName(level), LOG_FILE)
+        level_name = level if isinstance(level, str) else logging.getLevelName(level)
+        logger.debug(msg, level_name, LOG_FILE)
 
 
 def complete_config_names() -> list[str]:

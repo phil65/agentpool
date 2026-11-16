@@ -35,7 +35,7 @@ from pydantic_ai import (
     NativeToolCallPart,
     NativeToolReturnPart,
     RetryFeedbackPart,
-    RetryPromptPart,
+    RetryPromptPart,  # ty: ignore[deprecated]
     SpeechPart,
     SystemPromptPart,
     TextContent,
@@ -214,7 +214,8 @@ def model_messages_to_session_updates(
                     | ModelSettingsDeltaPart()
                     | InstructionDeltaPart()
                     | InstructionBaselinePart()
-                    | RetryPromptPart()  # deprecated; only kept in the union for typing
+                    # deprecated; only kept in the union for typing
+                    | RetryPromptPart()  # ty: ignore[deprecated]
                 ):
                     pass
                 case _ as unreachable:

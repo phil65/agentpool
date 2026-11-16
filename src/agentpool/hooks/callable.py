@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import inspect
 from typing import TYPE_CHECKING, Any
 
 from agentpool.hooks.base import Hook, HookResult
@@ -86,7 +87,7 @@ class CallableHook(Hook):
             # Merge input data with additional arguments
             kwargs = {**dict(input_data), **self.arguments}
             # Execute with timeout
-            if asyncio.iscoroutinefunction(fn):
+            if inspect.iscoroutinefunction(fn):
                 result = await asyncio.wait_for(fn(**kwargs), timeout=self.timeout)
             else:
                 # Run sync function in executor

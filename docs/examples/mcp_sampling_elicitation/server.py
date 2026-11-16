@@ -17,7 +17,7 @@ async def fix_code(ctx: Context, code: str) -> str:
         f"Does this code have any syntax errors, bugs, or style issues?\n\n{code}\n\n"
         "Respond with only 'yes' or 'no'."
     )
-    has_issues_response = await ctx.session.create_message(
+    has_issues_response = await ctx.session.create_message(  # ty: ignore[deprecated]  # sampling, SEP-2577
         [SamplingMessage(role="user", content=TextContent(type="text", text=question))],
         max_tokens=500,
         system_prompt="You are a code reviewer. Respond with only 'yes' or 'no'.",
@@ -37,7 +37,7 @@ async def fix_code(ctx: Context, code: str) -> str:
 
     # Step 3: Use sampling to generate fixed code
     fix_prompt = f"Fix all issues in this code:\n\n{code}"
-    fix_response = await ctx.session.create_message(
+    fix_response = await ctx.session.create_message(  # ty: ignore[deprecated]  # sampling, SEP-2577
         [SamplingMessage(role="user", content=TextContent(type="text", text=fix_prompt))],
         max_tokens=1000,
         system_prompt="You are a code fixer. Return only the corrected code.",
