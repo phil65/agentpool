@@ -11,31 +11,31 @@ name = "AgentPool"
 icon = "./icons/agentpool.svg"
 
 [agent_servers.agentpool.targets.darwin-aarch64]
-archive = "https://github.com/phil65/agentpool/releases/download/v2.9.18/agentpool-darwin-aarch64-1.15.12.zip"
+archive = "https://github.com/phil65/agentpool/releases/download/v2.9.19/agentpool-darwin-aarch64-1.15.12.zip"
 cmd = "./agentpool"
 args = ["serve-acp"]
 
 [agent_servers.agentpool.targets.darwin-x86_64]
-archive = "https://github.com/phil65/agentpool/releases/download/v2.9.18/agentpool-darwin-x86_64-1.15.12.zip"
+archive = "https://github.com/phil65/agentpool/releases/download/v2.9.19/agentpool-darwin-x86_64-1.15.12.zip"
 cmd = "./agentpool"
 args = ["serve-acp"]
 
 # [agent_servers.agentpool.targets.linux-aarch64]
-# archive = "https://github.com/phil65/agentpool/releases/download/v2.9.18/agentpool-linux-aarch64-1.15.12.zip"
+# archive = "https://github.com/phil65/agentpool/releases/download/v2.9.19/agentpool-linux-aarch64-1.15.12.zip"
 # cmd = "./agentpool"
 # args = ["serve-acp"]
 
 [agent_servers.agentpool.targets.linux-x86_64]
-archive = "https://github.com/phil65/agentpool/releases/download/v2.9.18/agentpool-linux-x86_64-1.15.12.zip"
+archive = "https://github.com/phil65/agentpool/releases/download/v2.9.19/agentpool-linux-x86_64-1.15.12.zip"
 cmd = "./agentpool"
 args = ["serve-acp"]
 
 # [agent_servers.agentpool.targets.windows-aarch64]
-# archive = "https://github.com/phil65/agentpool/releases/download/v2.9.18/agentpool-windows-aarch64-1.15.12.zip"
+# archive = "https://github.com/phil65/agentpool/releases/download/v2.9.19/agentpool-windows-aarch64-1.15.12.zip"
 # cmd = "./agentpool.exe"
 # args = ["serve-acp"]
 
 [agent_servers.agentpool.targets.windows-x86_64]
-archive = "https://github.com/phil65/agentpool/releases/download/v2.9.18/agentpool-windows-x86_64-1.15.12.zip"
+archive = "https://github.com/phil65/agentpool/releases/download/v2.9.19/agentpool-windows-x86_64-1.15.12.zip"
 cmd = "./agentpool.exe"
 args = ["serve-acp"]

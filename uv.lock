@@ -24,7 +24,7 @@ wheels = [
 
 [[package]]
 name = "agentpool"
-version = "2.9.18"
+version = "2.9.19"
 source = { editable = "." }
 default-groups = ["dev", "docs", "lint"]
 dependencies = [
