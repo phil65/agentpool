@@ -28,7 +28,7 @@ from agentpool_config.nodes import BaseAgentConfig
 from agentpool_config.session import MemoryConfig, SessionQuery
 from agentpool_config.tools import BaseToolConfig, ImportToolConfig
 from agentpool_config.toolsets import BaseToolsetConfig, ToolsetConfig
-from agentpool_config.workers import (  # noqa: TC001
+from agentpool_config.workers import (
     AgentWorkerConfig,
     TeamWorkerConfig,
     WorkerConfig,
@@ -120,7 +120,7 @@ class NativeAgentConfig(BaseAgentConfig):
         examples=[
             ["webbrowser:open", "builtins:print"],
             [
-                ImportToolConfig(import_path="webbrowser:open", name="web_browser"),  # ty: ignore[invalid-argument-type]
+                ImportToolConfig(import_path="webbrowser:open", name="web_browser"),
                 BashToolConfig(timeout=30.0),
             ],
         ],
@@ -350,7 +350,7 @@ class NativeAgentConfig(BaseAgentConfig):
         """Get pydantic-ai builtin tools from config.
 
         Returns:
-            List of AbstractBuiltinTool instances (WebSearchTool, etc.)
+            List of AbstractNativeTool instances (WebSearchTool, etc.)
         """
         return [i.get_builtin_tool() for i in self.tools if isinstance(i, BaseBuiltinToolConfig)]
 

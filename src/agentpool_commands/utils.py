@@ -6,7 +6,7 @@ import importlib.util
 from typing import TYPE_CHECKING, Literal
 import webbrowser
 
-from slashed import CommandContext, CommandError  # noqa: TC002
+from slashed import CommandContext, CommandError
 
 from agentpool.messaging.context import NodeContext  # noqa: TC001
 from agentpool_commands.base import NodeCommand

@@ -5,7 +5,7 @@ from __future__ import annotations
 from collections.abc import Callable
 from dataclasses import dataclass, field
 import inspect
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Protocol, cast, overload
 
 from agentpool.log import get_logger
 from agentpool.utils.inspection import get_fn_name
@@ -52,12 +52,41 @@ class NodeFunction:
         logger.debug("Registered node function", name=self.name, deps=self.depends_on)
 
 
+class MarkedNodeFunction(Protocol):
+    """A callable that has been marked with ``@node_function``."""
+
+    _node_function: NodeFunction
+
+    def __call__(self, *args: Any, **kwargs: Any) -> Any: ...
+
+
+type DependsOn = str | Sequence[str | Callable[..., Any]] | Callable[..., Any] | None
+
+
+@overload
+def node_function(
+    func: Callable[..., Any],
+    *,
+    deps: Any | None = None,
+    depends_on: DependsOn = None,
+) -> MarkedNodeFunction: ...
+
+
+@overload
+def node_function(
+    func: None = None,
+    *,
+    deps: Any | None = None,
+    depends_on: DependsOn = None,
+) -> Callable[[Callable[..., Any]], MarkedNodeFunction]: ...
+
+
 def node_function(
     func: Callable[..., Any] | None = None,
     *,
     deps: Any | None = None,
-    depends_on: str | Sequence[str | Callable[..., Any]] | Callable[..., Any] | None = None,
-) -> Callable[..., Any]:
+    depends_on: DependsOn = None,
+) -> MarkedNodeFunction | Callable[[Callable[..., Any]], MarkedNodeFunction]:
     """Mark a function for automatic node execution.
 
     Can be used as simple decorator or with arguments:
@@ -77,24 +106,23 @@ def node_function(
         Decorated function
     """
 
-    def decorator(func: Callable[..., Any]) -> Callable[..., Any]:
+    def decorator(func: Callable[..., Any]) -> MarkedNodeFunction:
         match depends_on:
             case None:
                 depends_on_ = []
             case str():
                 depends_on_ = [depends_on]
-            case Callable():  # ty: ignore[invalid-match-pattern]
+            case Callable():
                 depends_on_ = [get_fn_name(depends_on)]
             case [*items]:
-                depends_on_ = [
-                    i.__name__ if isinstance(i, Callable) else str(i)  # type: ignore[union-attr, arg-type]
-                    for i in items
-                ]
+                depends_on_ = [get_fn_name(i) if callable(i) else str(i) for i in items]
             case _:
                 raise ValueError(f"Invalid depends_on: {depends_on}")
         # TODO: we still need to inject the deps in execution part.
         metadata = NodeFunction(func=func, depends_on=depends_on_ or [], deps=deps)
-        func._node_function = metadata  # type: ignore[attr-defined]  # ty:ignore[unresolved-attribute]
-        return func
+        # Functions accept arbitrary attributes; the Protocol describes the marked result.
+        marked = cast(MarkedNodeFunction, func)
+        marked._node_function = metadata
+        return marked
 
     return decorator(func) if func is not None else decorator

@@ -30,19 +30,19 @@ from openai.types.responses import (
     ResponseTextDeltaEvent,
     ResponseTextDoneEvent,
 )
+from openai.types.responses.mcp_tool_call_error import McpToolExecutionError
 from openai.types.responses.response_output_item import McpCall
 from pydantic_ai import (
     FunctionToolCallEvent,
     FunctionToolResultEvent,
     PartDeltaEvent,
     PartStartEvent,
-    RetryPromptPart,
     TextPart,
     TextPartDelta,
     ToolCallPart,
     ToolReturnPart,
 )
-from pydantic_ai.messages import BuiltinToolCallPart, BuiltinToolReturnPart
+from pydantic_ai.messages import NativeToolCallPart, NativeToolReturnPart
 
 from agentpool.agents.events import CompactionEvent
 from agentpool.log import get_logger
@@ -261,23 +261,24 @@ class ResponsesStreamAdapter:
             case FunctionToolCallEvent(part=ToolCallPart() as part):
                 lines.extend(self._start_tool_call(part.tool_call_id, part.tool_name, part))
 
-            case PartStartEvent(part=BuiltinToolCallPart() as part):
+            case PartStartEvent(part=NativeToolCallPart() as part):
                 lines.extend(self._start_tool_call(part.tool_call_id, part.tool_name, part))
 
             case FunctionToolResultEvent(
-                result=ToolReturnPart(content=out, tool_name=name),
-                tool_call_id=tc_id,
+                part=ToolReturnPart(outcome="failed" | "retried", tool_call_id=tc_id) as result,
+            ):
+                error_msg = result.model_response_str(wrap_if_error=False)
+                lines.extend(self._fail_tool_call(tc_id, error_msg))
+
+            case FunctionToolResultEvent(
+                part=ToolReturnPart(content=out, tool_name=name, tool_call_id=tc_id),
             ):
                 lines.extend(self._complete_tool_call(tc_id, name, str(out)))
 
             case PartStartEvent(
-                part=BuiltinToolReturnPart(content=out, tool_name=name, tool_call_id=tc_id),
+                part=NativeToolReturnPart(content=out, tool_name=name, tool_call_id=tc_id),
             ):
                 lines.extend(self._complete_tool_call(tc_id, name, str(out)))
-
-            case FunctionToolResultEvent(result=RetryPromptPart() as result, tool_call_id=tc_id):
-                error_msg = result.model_response()
-                lines.extend(self._fail_tool_call(tc_id, str(error_msg)))
 
             case CompactionEvent(phase="starting"):
                 lines.extend(self._ensure_msg_started())
@@ -399,7 +400,7 @@ class ResponsesStreamAdapter:
                 server_label=item.server_label,
                 type="mcp_call",
                 status="failed",
-                error=error,
+                error=McpToolExecutionError(content=error, type="mcp_tool_execution_error"),
             )
 
         lines.append(

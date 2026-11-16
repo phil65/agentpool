@@ -412,11 +412,15 @@ async def init_session(  # noqa: D417
         "1. Build/lint/test commands - especially for running a single test",
         "2. Code style guidelines (imports, formatting, types, naming conventions, error handling)",
         "",
-        "The file will be given to AI coding agents working in this repository. "
-        "Keep it around 150 lines.",
+        (
+            "The file will be given to AI coding agents working in this repository. "
+            "Keep it around 150 lines."
+        ),
         "",
-        "If there are existing rules (.cursor/rules/, .cursorrules, "
-        ".github/copilot-instructions.md), incorporate them.",
+        (
+            "If there are existing rules (.cursor/rules/, .cursorrules, "
+            ".github/copilot-instructions.md), incorporate them."
+        ),
     ])
 
     init_prompt = "\n".join(prompt_parts)

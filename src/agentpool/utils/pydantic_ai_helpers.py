@@ -8,10 +8,10 @@ from urllib.parse import unquote, urlparse
 from pydantic_ai import (
     AudioUrl,
     BinaryContent,
-    BuiltinToolCallPart,
-    BuiltinToolReturnPart,
     DocumentUrl,
     ImageUrl,
+    NativeToolCallPart,
+    NativeToolReturnPart,
     RequestUsage,
     RunUsage,
     VideoUrl,
@@ -48,45 +48,45 @@ def get_builtin_tool_annotations(kind: str) -> ToolAnnotations:
     annotations: dict[str, ToolAnnotations] = {
         "web_search": ToolAnnotations(
             title=title,
-            readOnlyHint=True,
-            destructiveHint=False,
-            idempotentHint=True,
-            openWorldHint=True,
+            read_only_hint=True,
+            destructive_hint=False,
+            idempotent_hint=True,
+            open_world_hint=True,
         ),
         "web_fetch": ToolAnnotations(
             title=title,
-            readOnlyHint=True,
-            destructiveHint=False,
-            idempotentHint=True,
-            openWorldHint=True,
+            read_only_hint=True,
+            destructive_hint=False,
+            idempotent_hint=True,
+            open_world_hint=True,
         ),
         "code_execution": ToolAnnotations(
             title=title,
-            readOnlyHint=False,
-            destructiveHint=True,
-            idempotentHint=False,
-            openWorldHint=False,
+            read_only_hint=False,
+            destructive_hint=True,
+            idempotent_hint=False,
+            open_world_hint=False,
         ),
         "image_generation": ToolAnnotations(
             title=title,
-            readOnlyHint=False,
-            destructiveHint=False,
-            idempotentHint=False,
-            openWorldHint=True,
+            read_only_hint=False,
+            destructive_hint=False,
+            idempotent_hint=False,
+            open_world_hint=True,
         ),
         "memory": ToolAnnotations(
             title=title,
-            readOnlyHint=False,
-            destructiveHint=False,
-            idempotentHint=True,
-            openWorldHint=False,
+            read_only_hint=False,
+            destructive_hint=False,
+            idempotent_hint=True,
+            open_world_hint=False,
         ),
         "file_search": ToolAnnotations(
             title=title,
-            readOnlyHint=True,
-            destructiveHint=False,
-            idempotentHint=True,
-            openWorldHint=False,
+            read_only_hint=True,
+            destructive_hint=False,
+            idempotent_hint=True,
+            open_world_hint=False,
         ),
     }
     return annotations.get(kind, ToolAnnotations(title=title))
@@ -301,7 +301,7 @@ def to_run_usage(usage: RequestUsage) -> RunUsage:
 
 def get_builtin_tool_parts(
     tool_name: str, tc_id: str, args: dict[str, Any], content: str
-) -> tuple[BuiltinToolCallPart, BuiltinToolReturnPart]:
-    call = BuiltinToolCallPart(tool_name=tool_name, args=args, tool_call_id=tc_id)
-    return_part = BuiltinToolReturnPart(tool_name=tool_name, content=content, tool_call_id=tc_id)
+) -> tuple[NativeToolCallPart, NativeToolReturnPart]:
+    call = NativeToolCallPart(tool_name=tool_name, args=args, tool_call_id=tc_id)
+    return_part = NativeToolReturnPart(tool_name=tool_name, content=content, tool_call_id=tc_id)
     return (call, return_part)

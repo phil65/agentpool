@@ -35,10 +35,10 @@ class ToolHints(Schema):
     def from_mcp(cls, annotations: ToolAnnotations) -> Self:
         """Create a ToolHints instance from MCP tool annotations."""
         return cls(
-            read_only=annotations.readOnlyHint,
-            destructive=annotations.destructiveHint,
-            idempotent=annotations.idempotentHint,
-            open_world=annotations.openWorldHint,
+            read_only=annotations.read_only_hint,
+            destructive=annotations.destructive_hint,
+            idempotent=annotations.idempotent_hint,
+            open_world=annotations.open_world_hint,
         )
 
     def to_mcp(self) -> ToolAnnotations:
@@ -46,10 +46,10 @@ class ToolHints(Schema):
         from mcp.types import ToolAnnotations
 
         return ToolAnnotations(
-            readOnlyHint=self.read_only,
-            destructiveHint=self.destructive,
-            idempotentHint=self.idempotent,
-            openWorldHint=self.open_world,
+            read_only_hint=self.read_only,
+            destructive_hint=self.destructive,
+            idempotent_hint=self.idempotent,
+            open_world_hint=self.open_world,
         )
 
 

@@ -55,7 +55,7 @@ async def simple_print_handler(ctx: AgentContext[Any], event: RichAgentStreamEve
             kwargs_str = ", ".join(f"{k}={v!r}" for k, v in safe_args_as_dict(part).items())
             print(f"\n🔧 {part.tool_name}({kwargs_str})", flush=True, file=sys.stderr)
 
-        case FunctionToolResultEvent(result=ToolReturnPart() as return_part):
+        case FunctionToolResultEvent(part=ToolReturnPart() as return_part):
             print(f"Result: {return_part.content}", file=sys.stderr)
 
         case RunErrorEvent(message=message):
@@ -100,7 +100,7 @@ async def detailed_print_handler(ctx: AgentContext[Any], event: RichAgentStreamE
                 args_str = args_str[:97] + "..."
             print(f"  📝 Input: {args_str}", flush=True, file=sys.stderr)
 
-        case FunctionToolResultEvent(result=ToolReturnPart(content=content, tool_name=tool_name)):
+        case FunctionToolResultEvent(part=ToolReturnPart(content=content, tool_name=tool_name)):
             result_str = str(content)
             if len(result_str) > 150:  # noqa: PLR2004
                 result_str = result_str[:147] + "..."
@@ -168,7 +168,7 @@ def create_file_stream_handler(
                     file_handle.write(f"\n[tool] {part.tool_name}({kwargs_str})\n")
                     file_handle.flush()
 
-            case FunctionToolResultEvent(result=ToolReturnPart() as return_part):
+            case FunctionToolResultEvent(part=ToolReturnPart() as return_part):
                 if include_tools:
                     file_handle.write(f"[result] {return_part.content}\n")
                     file_handle.flush()

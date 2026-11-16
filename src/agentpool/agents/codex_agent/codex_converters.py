@@ -25,12 +25,12 @@ from codexed.models import (
 )
 from pydantic_ai import (
     BinaryContent,
-    BuiltinToolCallPart,
     CachePoint,
     FileUrl,
     ImageUrl,
     ModelRequest,
     ModelResponse,
+    NativeToolCallPart,
     RequestUsage,
     RunUsage,
     TextContent,
@@ -236,7 +236,7 @@ async def _format_tool_result(item: ThreadItem) -> str | list[str | BinaryConten
 
     match item:
         case ThreadItemCommandExecution(aggregated_output=output):
-            return f"```\n{output}\n```" or ""
+            return f"```\n{output}\n```"
         case ThreadItemFileChange(changes=changes):
             # Format file changes with their diffs
             parts = []
@@ -255,18 +255,18 @@ async def _format_tool_result(item: ThreadItem) -> str | list[str | BinaryConten
             return ""
 
 
-def _thread_item_to_tool_call_part(item: ThreadItem) -> ToolCallPart | BuiltinToolCallPart | None:  # noqa: PLR0911
-    """Convert a ThreadItem to a ToolCallPart or BuiltinToolCallPart.
+def _thread_item_to_tool_call_part(item: ThreadItem) -> ToolCallPart | NativeToolCallPart | None:  # noqa: PLR0911
+    """Convert a ThreadItem to a ToolCallPart or NativeToolCallPart.
 
     Codex built-in tools (bash, file changes, web search, etc.) are converted to
-    BuiltinToolCallPart since they're provided by the remote Codex agent.
+    NativeToolCallPart since they're provided by the remote Codex agent.
     MCP tools are converted to ToolCallPart (they may be from local ToolBridge).
 
     Args:
         item: Thread item from Codex
 
     Returns:
-        ToolCallPart for MCP tools, BuiltinToolCallPart for Codex built-ins, or None
+        ToolCallPart for MCP tools, NativeToolCallPart for Codex built-ins, or None
     """
     from codexed.models import (
         ThreadItemCommandExecution,
@@ -278,31 +278,31 @@ def _thread_item_to_tool_call_part(item: ThreadItem) -> ToolCallPart | BuiltinTo
 
     match item:
         case ThreadItemCommandExecution(id=tc_id):
-            return BuiltinToolCallPart(
+            return NativeToolCallPart(
                 tool_name="bash",
                 args=item.inferred_arguments,
                 tool_call_id=tc_id,
             )
         case ThreadItemFileChange(id=tc_id):
-            return BuiltinToolCallPart(
+            return NativeToolCallPart(
                 tool_name="file_change",
                 args=item.inferred_arguments,
                 tool_call_id=tc_id,
             )
         case ThreadItemWebSearch(id=tc_id):
-            return BuiltinToolCallPart(
+            return NativeToolCallPart(
                 tool_name="web_search",
                 args=item.inferred_arguments,
                 tool_call_id=tc_id,
             )
         case ThreadItemImageView(id=tc_id):
-            return BuiltinToolCallPart(
+            return NativeToolCallPart(
                 tool_name="image_view",
                 args=item.inferred_arguments,
                 tool_call_id=tc_id,
             )
         case ThreadItemCollabAgentToolCall(id=tc_id):
-            return BuiltinToolCallPart(
+            return NativeToolCallPart(
                 tool_name="subagent",
                 args=item.inferred_arguments,
                 tool_call_id=tc_id,
@@ -314,7 +314,7 @@ def _thread_item_to_tool_call_part(item: ThreadItem) -> ToolCallPart | BuiltinTo
             # TODO: Distinguish between local (ToolBridge) and remote MCP tools
             # Currently all MCP tools use ToolCallPart, but ideally:
             # - Tools from AgentPool's ToolBridge → ToolCallPart (our tools)
-            # - Tools from Codex's own MCP servers → BuiltinToolCallPart (their tools)
+            # - Tools from Codex's own MCP servers → NativeToolCallPart (their tools)
             # This requires tracking which tools came from ToolBridge vs Codex config
             return ToolCallPart(tool_name=tool, args=arguments or {}, tool_call_id=id_)
         case (

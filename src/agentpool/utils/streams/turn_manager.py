@@ -29,16 +29,15 @@ Usage::
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from typing import TYPE_CHECKING, Any, Literal
 
 from pydantic_ai import (
-    BuiltinToolCallPart,
     FunctionToolResultEvent,
     ModelRequest,
     ModelResponse,
+    NativeToolCallPart,
     PartEndEvent,
-    RetryPromptPart,
     TextPart,
     ThinkingPart,
     ToolCallPart,
@@ -133,7 +132,7 @@ class TurnManager:
         yield from self._close_active()
         tc_id = tool_call_id or _generate_tool_call_id()
         if kind == "builtin":
-            part: BuiltinToolCallPart | ToolCallPart = BuiltinToolCallPart(
+            part: NativeToolCallPart | ToolCallPart = NativeToolCallPart(
                 tool_name=name,
                 args=args,
                 tool_call_id=tc_id,
@@ -176,7 +175,7 @@ class TurnManager:
             tool_call_id=tool_call_id,
         )
         self._messages.append(ModelRequest(parts=[return_part]))
-        yield FunctionToolResultEvent(result=return_part)
+        yield FunctionToolResultEvent(return_part)
 
     def tool_call_retry(
         self,
@@ -188,19 +187,21 @@ class TurnManager:
         """Signal that a tool call failed and should be retried.
 
         Closes any active part, flushes the in-progress ``ModelResponse``,
-        then appends a ``ModelRequest`` with a ``RetryPromptPart``.
-        Downstream consumers can distinguish retries from successes by
-        matching on ``FunctionToolResultEvent(result=RetryPromptPart())``.
+        then appends a ``ModelRequest`` with a ``ToolReturnPart`` whose
+        ``outcome`` is ``"retried"``. Downstream consumers can distinguish retries
+        from successes by matching on
+        ``FunctionToolResultEvent(part=ToolReturnPart(outcome="retried"))``.
         """
         yield from self._close_active()
         self._flush_response()
-        retry_part = RetryPromptPart(
+        retry_part = ToolReturnPart(
             tool_name=name,
             content=content,
             tool_call_id=tool_call_id,
+            outcome="retried",
         )
         self._messages.append(ModelRequest(parts=[retry_part]))
-        yield FunctionToolResultEvent(result=retry_part)
+        yield FunctionToolResultEvent(retry_part)
 
     # ------------------------------------------------------------------
     # Lifecycle
@@ -331,30 +332,16 @@ class TurnManager:
         for i in range(len(self._current_parts) - 1, -1, -1):
             part = self._current_parts[i]
             if (
-                isinstance(part, (ToolCallPart, BuiltinToolCallPart))
+                isinstance(part, (ToolCallPart, NativeToolCallPart))
                 and part.tool_call_id == tool_call_id
             ):
                 if isinstance(part.args, str):
-                    self._current_parts[i] = type(part)(
-                        tool_name=part.tool_name,
-                        args=part.args + args_delta,
-                        tool_call_id=part.tool_call_id,
-                        id=part.id,
-                        provider_name=part.provider_name,
-                        provider_details=part.provider_details,
-                    )
+                    self._current_parts[i] = replace(part, args=part.args + args_delta)
                 return
         # Fallback: update last tool call part regardless of ID
         for i in range(len(self._current_parts) - 1, -1, -1):
             part = self._current_parts[i]
-            if isinstance(part, (ToolCallPart, BuiltinToolCallPart)):
+            if isinstance(part, (ToolCallPart, NativeToolCallPart)):
                 if isinstance(part.args, str):
-                    self._current_parts[i] = type(part)(
-                        tool_name=part.tool_name,
-                        args=part.args + args_delta,
-                        tool_call_id=part.tool_call_id,
-                        id=part.id,
-                        provider_name=part.provider_name,
-                        provider_details=part.provider_details,
-                    )
+                    self._current_parts[i] = replace(part, args=part.args + args_delta)
                 return

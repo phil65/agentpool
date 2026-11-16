@@ -316,7 +316,7 @@ def _ensure_factory(
 
     # Wrap instance in factory
     def factory(connection: AgentSideConnection) -> Agent:
-        return agent  # type: ignore[return-value]  # ty:ignore[invalid-return-type]
+        return agent  # type: ignore[return-value]  # ty:ignore[invalid-explicit-return]
 
     return factory
 
@@ -382,7 +382,7 @@ async def _drain_stderr_to_log(
                 logger.log(log_level, "[%s stderr] %s", command, line)
     except anyio.EndOfStream:
         pass
-    except Exception:  # noqa: BLE001
+    except Exception:
         logger.debug("Error reading stderr from %s", command, exc_info=True)
 
 

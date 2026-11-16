@@ -23,7 +23,7 @@ EXAMPLES_DIR = Path("src/agentpool_docs/examples")
 def is_pyodide() -> bool:
     """Check if code is running in a Pyodide environment."""
     try:
-        from js import Object  # type: ignore[import-not-found] # noqa: F401  # ty:ignore[unresolved-import]
+        from js import Object  # type: ignore[import-not-found] # noqa: F401  # ty:ignore[import-not-found]
 
         return True  # noqa: TRY300
     except ImportError:

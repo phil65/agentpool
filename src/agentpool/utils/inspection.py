@@ -74,7 +74,7 @@ async def execute[T](
         result = func(*args, **kwargs)
 
     if inspect.iscoroutine(result) or inspect.isawaitable(result):
-        return await result  # ty: ignore
+        return await result
 
     return result
 

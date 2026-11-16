@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 from dataclasses import dataclass, field
 import heapq
+from types import CoroutineType
 from typing import TYPE_CHECKING, Any
 
 import anyio
@@ -135,7 +136,8 @@ class TaskManager:
                 import concurrent.futures
 
                 msg = "Running coroutine in Executor due to active event loop"
-                logger.debug(msg, name=coro.__name__)
+                name = coro.__name__ if isinstance(coro, CoroutineType) else repr(coro)
+                logger.debug(msg, name=name)
                 with concurrent.futures.ThreadPoolExecutor() as pool:
                     future = pool.submit(lambda: asyncio.run(coro))
                     return future.result()

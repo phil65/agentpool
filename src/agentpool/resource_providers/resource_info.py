@@ -79,7 +79,7 @@ class ResourceInfo:
             name=resource.name,
             uri=str(resource.uri),
             description=resource.description,
-            mime_type=resource.mimeType,
+            mime_type=resource.mime_type,
             client=client_name,
             annotations=annots,
             _reader=reader,

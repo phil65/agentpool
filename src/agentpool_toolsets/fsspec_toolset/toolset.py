@@ -19,7 +19,7 @@ from pydantic_ai import (
     ModelRetry,
     PartDeltaEvent,
     PartStartEvent,
-    RunContext,  # noqa: TC002
+    RunContext,
     TextPart,
     TextPartDelta,
     ToolCallPart,

@@ -166,8 +166,8 @@ def streaming_tool(
             return await fn(ctx, chunk_stream, **kwargs)  # type: ignore[no-any-return]
 
         # Mark as streaming tool for introspection
-        wrapper._streaming_tool = True  # type: ignore[attr-defined]  # ty:ignore[unresolved-attribute]
-        wrapper._prompt_template = prompt_template  # type: ignore[attr-defined]  # ty:ignore[unresolved-attribute]
+        wrapper._streaming_tool = True  # type: ignore[attr-defined]  # ty:ignore[missing-attribute]
+        wrapper._prompt_template = prompt_template  # type: ignore[attr-defined]  # ty:ignore[missing-attribute]
         return wrapper
 
     return decorator

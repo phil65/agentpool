@@ -64,7 +64,7 @@ class WhatsAppChannel(BaseChannel):
 
             except asyncio.CancelledError:
                 break
-            except Exception:  # noqa: BLE001
+            except Exception:
                 self._connected = False
                 self._ws = None
                 logger.warning("WhatsApp bridge connection error", exc_info=True)

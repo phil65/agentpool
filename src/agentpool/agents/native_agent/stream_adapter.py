@@ -13,7 +13,7 @@ from typing import TYPE_CHECKING, Any
 from pydantic_ai import CallToolsNode, ModelRequestNode
 from pydantic_graph import End
 
-from agentpool.agents.native_agent.helpers import process_tool_event
+from agentpool.agents.native_agent.helpers import forward_supported_events, process_tool_event
 from agentpool.utils.streams import merge_queue_into_iterator
 from agentpool.utils.streams.streamed_response import StreamedResponse
 from agentpool.utils.time_utils import get_now
@@ -50,13 +50,15 @@ class PydanticAiStreamedResponse(StreamedResponse):
                 case ModelRequestNode() | CallToolsNode():
                     async with (
                         node.stream(self.stream.ctx) as stream,
-                        merge_queue_into_iterator(stream, self._event_queue) as merged,  # ty:ignore[invalid-argument-type]
+                        merge_queue_into_iterator(
+                            forward_supported_events(stream), self._event_queue
+                        ) as merged,
                     ):
                         async for event in merged:
-                            yield event  # ty:ignore[invalid-yield]
+                            yield event
                             if combined := process_tool_event(
                                 self.agent_name,
-                                event,  # ty: ignore[invalid-argument-type]
+                                event,
                                 pending_tcs,
                                 self.message_id,
                             ):

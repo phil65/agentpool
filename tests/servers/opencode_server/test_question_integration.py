@@ -24,7 +24,7 @@ async def test_question_elicitation_single_select():
     provider = OpenCodeInputProvider(state=state, session_id="test_session")
     # Create elicitation params with enum
     schema = {"type": "string", "enum": ["PostgreSQL", "MySQL", "SQLite"]}
-    params = types.ElicitRequestFormParams(message="Which database?", requestedSchema=schema)
+    params = types.ElicitRequestFormParams(message="Which database?", requested_schema=schema)
 
     # Start elicitation in background
     async def get_answer():
@@ -65,7 +65,7 @@ async def test_question_elicitation_multi_select():
     provider = OpenCodeInputProvider(state=state, session_id="test_session")
     # Multi-select schema
     schema = {"type": "array", "items": {"type": "string", "enum": ["Auth", "API", "Admin"]}}
-    params = types.ElicitRequestFormParams(message="Which features?", requestedSchema=schema)
+    params = types.ElicitRequestFormParams(message="Which features?", requested_schema=schema)
     task = asyncio.create_task(provider.get_elicitation(params))
     await asyncio.sleep(0.1)
     # Get question
@@ -90,7 +90,7 @@ async def test_question_cancellation():
     state = ServerState(working_dir="/tmp", agent=mock_agent)
     provider = OpenCodeInputProvider(state=state, session_id="test_session")
     schema = {"type": "string", "enum": ["PostgreSQL", "MySQL"]}
-    params = types.ElicitRequestFormParams(message="Which database?", requestedSchema=schema)
+    params = types.ElicitRequestFormParams(message="Which database?", requested_schema=schema)
     task = asyncio.create_task(provider.get_elicitation(params))
     await asyncio.sleep(0.1)
     # Get question and cancel it
@@ -119,7 +119,7 @@ async def test_question_with_descriptions():
             "SQLite": "Lightweight, file-based",
         },
     }
-    params = types.ElicitRequestFormParams(message="Which database?", requestedSchema=schema)
+    params = types.ElicitRequestFormParams(message="Which database?", requested_schema=schema)
     task = asyncio.create_task(provider.get_elicitation(params))
     await asyncio.sleep(0.1)
     # Verify descriptions were included

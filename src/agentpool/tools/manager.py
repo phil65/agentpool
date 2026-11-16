@@ -252,12 +252,12 @@ class ToolManager:
         from agentpool.tools.base import Tool
 
         match tools:
-            case str() | Callable() | Tool():  # ty: ignore[invalid-match-pattern]
+            case str() | Callable() | Tool():
                 tools_list = [tools]
             case Sequence():
                 tools_list = list(tools)
             case _ as unreachable:
-                assert_never(unreachable)  # ty: ignore[type-assertion-failure]
+                assert_never(unreachable)
         # Store original tool states if exclusive
         tools = await self.get_tools()
         original_states: dict[str, bool] = {}

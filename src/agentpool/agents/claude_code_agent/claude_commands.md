@@ -20,12 +20,15 @@ Compacts conversation history into a summary to free up context window.
 
 **`compact_boundary`** - Signals compaction occurred:
 ```python
-InitSystemMessage(subtype='compact_boundary', data={
-    'compact_metadata': {
-        'trigger': 'manual',  # 'manual' for /compact, 'auto' for automatic
-        'pre_tokens': 15398   # token count before compaction
-    }
-})
+InitSystemMessage(
+    subtype="compact_boundary",
+    data={
+        "compact_metadata": {
+            "trigger": "manual",  # 'manual' for /compact, 'auto' for automatic
+            "pre_tokens": 15398,  # token count before compaction
+        }
+    },
+)
 ```
 
 **Summary `UserMessage`** - Contains the compacted conversation:
@@ -39,7 +42,7 @@ The summary below covers the earlier portion of the conversation.
 
 When there's nothing to compact:
 ```python
-UserMessage(content='<local-command-stderr>Error: No messages to compact</local-command-stderr>')
+UserMessage(content="<local-command-stderr>Error: No messages to compact</local-command-stderr>")
 ```
 
 ---

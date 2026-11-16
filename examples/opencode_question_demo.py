@@ -23,7 +23,7 @@ async def demo_single_select():
     # Create question
     params = types.ElicitRequestFormParams(
         message="Which database would you like to use?",
-        requestedSchema={
+        requested_schema={
             "type": "string",
             "enum": ["PostgreSQL", "MySQL", "SQLite"],
             "x-option-descriptions": {
@@ -64,7 +64,7 @@ async def demo_multi_select():
     provider = OpenCodeInputProvider(state=state, session_id="demo_session")
     params = types.ElicitRequestFormParams(
         message="Which features would you like to enable?",
-        requestedSchema={
+        requested_schema={
             "type": "array",
             "items": {
                 "type": "string",
@@ -106,7 +106,7 @@ async def demo_cancellation():
     provider = OpenCodeInputProvider(state=state, session_id="demo_session")
     params = types.ElicitRequestFormParams(
         message="Choose a deployment target",
-        requestedSchema={"type": "string", "enum": ["AWS", "Azure", "GCP"]},
+        requested_schema={"type": "string", "enum": ["AWS", "Azure", "GCP"]},
     )
     task = asyncio.create_task(provider.get_elicitation(params))
     await asyncio.sleep(0.1)

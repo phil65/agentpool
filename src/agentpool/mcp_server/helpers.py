@@ -23,7 +23,7 @@ def mcp_tool_to_input_schema(tool: MCPTool) -> dict[str, Any]:
     return {
         "name": tool.name,
         "description": tool.description or "",
-        "parameters": tool.inputSchema or {"type": "object", "properties": {}},
+        "parameters": tool.input_schema or {"type": "object", "properties": {}},
     }
 
 

@@ -5,7 +5,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Any, Literal
 
 from pydantic import HttpUrl
-from slashed import CommandContext, CommandError  # noqa: TC002
+from slashed import CommandContext, CommandError
 
 from agentpool_commands.base import NodeCommand
 

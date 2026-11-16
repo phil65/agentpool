@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Annotated, cast
 
-from fastapi import Depends, Request  # noqa: TC002
+from fastapi import Depends, Request
 
 
 if TYPE_CHECKING:

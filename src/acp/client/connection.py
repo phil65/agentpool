@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING, Any, Self
 import logfire
 
 from acp.agent.protocol import Agent
+from acp.client.protocol import Client
 from acp.connection import Connection
 from acp.exceptions import RequestError
 from acp.schema import (
@@ -45,7 +46,6 @@ if TYPE_CHECKING:
 
     from anyio.abc import ByteReceiveStream, ByteSendStream
 
-    from acp.client.protocol import Client
     from acp.connection import StreamObserver
     from acp.schema import (
         AuthenticateRequest,
@@ -86,7 +86,7 @@ class ClientSideConnection(Agent):
         observers: list[StreamObserver] | None = None,
     ) -> None:
         # Build client first so handler can delegate
-        client = to_client(self) if callable(to_client) else to_client  # ty: ignore[call-top-callable]
+        client = to_client if isinstance(to_client, Client) else to_client(self)
         handler = partial(_handle_client_method, client)
         self._conn = Connection(handler, input_stream, output_stream, observers=observers)
 

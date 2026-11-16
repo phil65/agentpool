@@ -20,6 +20,8 @@ from agentpool_config.toolsets import SkillsToolsetConfig, SubagentToolsetConfig
 
 
 if TYPE_CHECKING:
+    from mcp.types import RequestParamsMeta
+
     from agentpool.agents.context import AgentContext
 
 
@@ -141,7 +143,7 @@ async def test_tool_call_via_mcp_client():
 
         async with (
             ToolManagerBridge(node=agent) as bridge,
-            streamable_http_client(bridge.url) as (read_stream, write_stream, _),
+            streamable_http_client(bridge.url) as (read_stream, write_stream),
             ClientSession(read_stream, write_stream) as session,
         ):
             await session.initialize()
@@ -177,18 +179,15 @@ async def test_tool_call_with_meta_tool_use_id():
 
         async with (
             ToolManagerBridge(node=agent) as bridge,
-            streamable_http_client(bridge.url) as (read_stream, write_stream, _),
+            streamable_http_client(bridge.url) as (read_stream, write_stream),
             ClientSession(read_stream, write_stream) as session,
         ):
             await session.initialize()
             # Call tool WITH meta containing claudecode/toolUseId
             # This simulates what Claude Code should send
             expected_id = "toolu_01ABC123XYZ"
-            await session.call_tool(
-                "capture_id_tool",
-                {"value": 42},
-                meta={"claudecode/toolUseId": expected_id},
-            )
+            meta: RequestParamsMeta = {"claudecode/toolUseId": expected_id}
+            await session.call_tool("capture_id_tool", {"value": 42}, meta=meta)
 
             assert len(captured_tool_call_ids) == 1
             captured_id = captured_tool_call_ids[0]

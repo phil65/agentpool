@@ -7,7 +7,7 @@ from typing import TYPE_CHECKING, Any
 
 from anyenv import method_spawner
 from pydantic_ai import UserPromptPart
-from slashed import Command, CommandContext  # noqa: TC002
+from slashed import Command, CommandContext
 
 from agentpool.log import get_logger
 from agentpool.prompts.builtin_provider import BuiltinPromptProvider

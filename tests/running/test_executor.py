@@ -29,7 +29,7 @@ async def test_function_sorting():
     async def third(): ...
 
     funcs = [second, third, first]
-    sorted_funcs = _sort_functions([f._node_function for f in funcs])  # ty: ignore[unresolved-attribute]
+    sorted_funcs = _sort_functions([f._node_function for f in funcs])
     assert [f.name for f in sorted_funcs] == ["first", "second", "third"]
 
 
@@ -61,7 +61,7 @@ async def test_parallel_grouping():
     @node_function(depends_on=["second_a", "second_b"])
     async def third(): ...
 
-    sorted_funcs = _sort_functions([f._node_function for f in [first, second_a, second_b, third]])  # ty: ignore[unresolved-attribute]
+    sorted_funcs = _sort_functions([f._node_function for f in [first, second_a, second_b, third]])
     groups = _group_parallel(sorted_funcs)
 
     assert len(groups) == 3
@@ -119,7 +119,7 @@ async def test_parallel_execution(pool):
         end_times["second_b"] = time.perf_counter()
         return "second_b"
 
-    funcs = [f._node_function for f in [first, second_a, second_b]]  # ty: ignore[unresolved-attribute]
+    funcs = [f._node_function for f in [first, second_a, second_b]]
 
     await execute_functions(funcs, pool, parallel=True)
 

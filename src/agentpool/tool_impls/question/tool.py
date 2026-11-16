@@ -78,7 +78,7 @@ class QuestionTool(Tool[ToolResult]):
         from mcp.types import ElicitRequestFormParams, ElicitResult, ErrorData
 
         schema = response_schema or {"type": "string"}
-        params = ElicitRequestFormParams(message=prompt, requestedSchema=schema)
+        params = ElicitRequestFormParams(message=prompt, requested_schema=schema)
         match await ctx.handle_elicitation(params):
             case ElicitResult(action="accept", content={"value": list() as value}):
                 # Content is a dict with "value" key per MCP spec

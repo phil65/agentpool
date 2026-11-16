@@ -411,6 +411,7 @@ class ACPFileSystem(BaseAsyncFileSystem[ACPPath, AcpInfo]):
         path: str,
         recursive: bool = False,
         batch_size: int | None = None,
+        maxdepth: int | None = None,
         **kwargs: Any,
     ) -> None:
         """Remove file or directory via rm command.
@@ -419,8 +420,11 @@ class ACPFileSystem(BaseAsyncFileSystem[ACPPath, AcpInfo]):
             path: Path to remove
             recursive: Remove directories recursively
             batch_size: Batch size when removing directories (recursively)
+            maxdepth: Maximum recursion depth (not supported by the remote rm command)
             **kwargs: Additional options
         """
+        if recursive and maxdepth is not None:
+            raise NotImplementedError("Depth-limited recursive removal is not supported")
         remove_cmd = self.command_provider.get_command("remove_path")
         rm_cmd = remove_cmd.create_command(path, recursive=recursive)
 

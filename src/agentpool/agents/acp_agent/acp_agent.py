@@ -143,13 +143,14 @@ class ACPAgent[TDeps = None](BaseAgent[TDeps, str]):
     ) -> None:
         from agentpool.mcp_server.tool_bridge import ToolManagerBridge
 
-        if not command and not registry_id:
+        source = command or registry_id
+        if not source:
             raise ValueError("Exactly one of 'command' or 'registry_id' must be provided")
         if command and registry_id:
             raise ValueError("Exactly one of 'command' or 'registry_id' must be provided, not both")
 
         super().__init__(
-            name=name or command or registry_id,  # type: ignore[arg-type]
+            name=name or source,
             description=description,
             deps_type=deps_type,
             display_name=display_name,
@@ -479,14 +480,14 @@ class ACPAgent[TDeps = None](BaseAgent[TDeps, str]):
         try:
             async with (
                 self._tool_bridge.set_run_context(run_context, prompt=prompts),
-                merge_queue_into_iterator(streamed_response, self._event_queue) as merged_events,  # ty: ignore[invalid-argument-type]
+                merge_queue_into_iterator(streamed_response, self._event_queue) as merged_events,
             ):
                 async for event in merged_events:
                     if self._cancelled:
                         self.log.info("Stream cancelled by user")
                         break
-                    reconstructor.observe(event)  # ty: ignore[invalid-argument-type]
-                    yield event  # ty:ignore[invalid-yield]
+                    reconstructor.observe(event)
+                    yield event
         except asyncio.CancelledError:
             self.log.info("Stream cancelled via task cancellation")
             self._cancelled = True

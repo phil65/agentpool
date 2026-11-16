@@ -47,7 +47,7 @@ class SystemPrompts:
         """Initialize prompt manager."""
         match prompts:
             case list():
-                self.prompts: list[AnyPromptType] = prompts  # ty:ignore[invalid-assignment]
+                self.prompts: list[AnyPromptType] = prompts
             case None:
                 self.prompts = []
             case _:

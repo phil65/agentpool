@@ -214,7 +214,7 @@ class ACPInputProvider(InputProvider):
             # Handle URL mode elicitation (OAuth, credentials, payments)
             match params:
                 case types.ElicitRequestURLParams(
-                    elicitationId=elicit_id,
+                    elicitation_id=elicit_id,
                     message=message,
                     url=url,
                 ):
@@ -241,7 +241,7 @@ class ACPInputProvider(InputProvider):
                             return types.ElicitResult(action="cancel")
                         case _ as unreachable:
                             assert_never(unreachable)
-                case types.ElicitRequestFormParams(requestedSchema=schema, message=message):
+                case types.ElicitRequestFormParams(requested_schema=schema, message=message):
                     logger.info("Elicitation request", message=message, schema=schema)
                     tool_call_id = f"elicit_{hash(message)}"
                     title = f"Elicitation: {message}"

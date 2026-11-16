@@ -14,7 +14,6 @@ from typing import (
 )
 
 from pydantic import BaseModel, ConfigDict, field_validator
-from pydantic_ai import AgentStreamEvent
 from pydantic_ai.models import Model
 from tokonomics.model_names import ModelId
 from toprompt.to_prompt import AnyPromptType
@@ -37,7 +36,7 @@ if TYPE_CHECKING:
     type ImportPathString = str
     type ToolType = ImportPathString | AnyCallable | Tool
     # Define what we consider JSON-serializable
-    type JsonPrimitive = None | bool | int | float | str
+    type JsonPrimitive = bool | int | float | str | None
     type SessionIdType = str | UUID | None
     type ProcessorCallback[TResult] = Callable[..., TResult | Awaitable[TResult]]
 
@@ -86,7 +85,9 @@ SyncFilterFn = Callable[..., bool]
 AnyFilterFn = Callable[..., bool | Awaitable[bool]]
 # Event handler types for composable event processing
 # Individual event handler for composability - takes single events
-type IndividualEventHandler = Callable[[AgentContext[Any], AgentStreamEvent], Awaitable[None]]
+type IndividualEventHandler = Callable[
+    [AgentContext[Any], RichAgentStreamEvent[Any]], Awaitable[None]
+]
 BuiltinEventHandlerType = Literal["simple", "detailed"]
 AnyEventHandlerType = IndividualEventHandler | BuiltinEventHandlerType
 

@@ -89,7 +89,7 @@ def wrap_tool[TReturn](  # noqa: PLR0915
         tool_input: dict[str, Any],
         *args: Any,
         **kwargs: Any,
-    ) -> TReturn | None | ToolReturn:
+    ) -> TReturn | ToolReturn | None:
         """Execute tool with pre/post hooks."""
         # Pre-tool hooks
         if hooks:
@@ -136,7 +136,7 @@ def wrap_tool[TReturn](  # noqa: PLR0915
         # Tool has RunContext and/or AgentContext
         async def wrapped(
             ctx: RunContext, *args: Any, **kwargs: Any
-        ) -> TReturn | None | ToolReturn:
+        ) -> TReturn | ToolReturn | None:
             confirm_ctx = replace(
                 agent_ctx,
                 tool_name=ctx.tool_name,
@@ -166,14 +166,14 @@ def wrap_tool[TReturn](  # noqa: PLR0915
                 if run_ctx_key:
                     # Pass RunContext to original function
                     return await _execute_with_hooks(
-                        lambda *a, **kw: execute(fn, ctx, *a, **kw),  # ty:ignore[invalid-argument-type]
+                        lambda *a, **kw: execute(fn, ctx, *a, **kw),
                         tool_input,
                         *args,
                         **kwargs,
                     )
                 # Don't pass RunContext to original function since it didn't expect it
                 return await _execute_with_hooks(
-                    lambda *a, **kw: execute(fn, *a, **kw),  # ty:ignore[invalid-argument-type]
+                    lambda *a, **kw: execute(fn, *a, **kw),
                     tool_input,
                     *args,
                     **kwargs,
@@ -183,7 +183,7 @@ def wrap_tool[TReturn](  # noqa: PLR0915
 
     else:
         # Tool has no context - normal function call
-        async def wrapped(*args: Any, **kwargs: Any) -> TReturn | None | ToolReturn:  # type: ignore[misc]
+        async def wrapped(*args: Any, **kwargs: Any) -> TReturn | ToolReturn | None:  # type: ignore[misc]
             confirm_ctx = replace(
                 agent_ctx,
                 tool_name=tool.name,
@@ -193,7 +193,7 @@ def wrap_tool[TReturn](  # noqa: PLR0915
             if result == "allow":
                 tool_input = kwargs.copy()
                 return await _execute_with_hooks(
-                    lambda *a, **kw: execute(fn, *a, **kw),  # ty:ignore[invalid-argument-type]
+                    lambda *a, **kw: execute(fn, *a, **kw),
                     tool_input,
                     *args,
                     **kwargs,

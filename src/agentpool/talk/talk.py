@@ -157,14 +157,14 @@ class Talk[TTransmittedData = Any]:
         from agentpool.talk import TeamTalk
 
         match other:
-            case Callable():  # ty: ignore[invalid-match-pattern]
-                other = Agent.from_callback(other)  # ty: ignore[no-matching-overload]
+            case Callable():
+                other = Agent.from_callback(other)
                 if pool := self.source.agent_pool:
                     other.agent_pool = pool
                     pool.register(other.name, other)
                 return self.__rshift__(other)
             case Sequence():
-                team_talks = [self.__rshift__(o) for o in other]  # ty: ignore[no-matching-overload]
+                team_talks = [self.__rshift__(o) for o in other]
                 return TeamTalk([self, *team_talks])
             case MessageNode():
                 talks = [t.__rshift__(other) for t in self.targets]
@@ -193,12 +193,12 @@ class Talk[TTransmittedData = Any]:
             registry=registry,
             talk=self,
         )
-        return await execute(condition, ctx)  # ty: ignore[invalid-return-type]
+        return await execute(condition, ctx)
 
     def on_event(
         self,
         event_type: ConnectionEventType,
-        callback: Callable[[ConnectionEventData[TTransmittedData]], None | Awaitable[None]],
+        callback: Callable[[ConnectionEventData[TTransmittedData]], Awaitable[None] | None],
     ) -> Self:
         """Register callback for connection events."""
         from agentpool.messaging.events import ConnectionEventData
@@ -263,7 +263,7 @@ class Talk[TTransmittedData = Any]:
             for target in self.targets
             if await self._evaluate_condition(
                 self.filter_condition,
-                processed_message,  # ty:ignore[invalid-argument-type]
+                processed_message,
                 target,
                 default_return=True,
             )
@@ -271,7 +271,7 @@ class Talk[TTransmittedData = Any]:
         # 7. emit connection processed event
         await self.connection_processed.emit(
             self.ConnectionProcessed(
-                message=processed_message,  # ty:ignore[invalid-argument-type]
+                message=processed_message,
                 source=self.source,
                 targets=target_list,
                 queued=self.queued,
@@ -288,9 +288,9 @@ class Talk[TTransmittedData = Any]:
         responses: list[ChatMessage[Any]] = []
         for target in target_list:
             if self.queued:
-                self._pending_messages[target.name].append(processed_message)  # ty:ignore[invalid-argument-type]
+                self._pending_messages[target.name].append(processed_message)
                 continue
-            if response := await self._process_for_target(processed_message, target, prompt):  # ty:ignore[invalid-argument-type]
+            if response := await self._process_for_target(processed_message, target, prompt):
                 responses.append(response)
 
         return responses
@@ -445,7 +445,7 @@ class Talk[TTransmittedData = Any]:
                 data: ChatMessage[TTransmittedData],
             ) -> ChatMessage[TNewData]:
                 intermediate = await execute(oldtransform_fn, data)
-                return await execute(transformer, intermediate)  # ty: ignore[invalid-return-type]
+                return await execute(transformer, intermediate)
 
             new_talk.transform_fn = chainedtransform_fn  # type: ignore[assignment]  # ty:ignore[invalid-assignment]
         else:
@@ -502,8 +502,8 @@ class TeamTalk[TTransmittedData = Any](list["Talk | TeamTalk"]):
         from agentpool.talk import TeamTalk
 
         match other:
-            case Callable():  # ty: ignore[invalid-match-pattern]
-                other = Agent.from_callback(other)  # ty: ignore[no-matching-overload]
+            case Callable():
+                other = Agent.from_callback(other)
                 for talk_ in self.iter_talks():
                     if pool := talk_.source.agent_pool:
                         other.agent_pool = pool
@@ -511,7 +511,7 @@ class TeamTalk[TTransmittedData = Any](list["Talk | TeamTalk"]):
                         break
                 return self.__rshift__(other)
             case Sequence():
-                team_talks = [self.__rshift__(o) for o in other]  # ty: ignore[invalid-argument-type]
+                team_talks = [self.__rshift__(o) for o in other]
                 return TeamTalk([self, *team_talks])
             case MessageNode():
                 talks = [t.connect_to(other) for t in self.targets]

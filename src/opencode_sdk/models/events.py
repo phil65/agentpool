@@ -17,7 +17,7 @@ from opencode_sdk.models.question import (  # noqa: TC001
     QuestionInfo,
     QuestionToolInfo,
 )
-from opencode_sdk.models.session import (  # noqa: TC001
+from opencode_sdk.models.session import (
     Session,
     SessionStatus,
     SessionStatusType,

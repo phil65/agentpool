@@ -213,7 +213,7 @@ class FileConnectionConfig(ConnectionConfig):
         """Format a message using the template."""
         from jinja2 import Template
 
-        template = Template(self.template)
+        template: Template = Template(self.template)
         return template.render(message=message)
 
     def resolve_path(self, context: dict[str, str]) -> UPath:

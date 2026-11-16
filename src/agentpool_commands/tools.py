@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 
-from slashed import CommandContext, CommandError, CompletionContext  # noqa: TC002
+from slashed import CommandContext, CommandError, CompletionContext
 from slashed.completers import CallbackCompleter
 
 from agentpool.agents.context import AgentContext  # noqa: TC001

@@ -11,13 +11,12 @@ from pydantic_ai import (
     FunctionToolResultEvent,
     PartDeltaEvent,
     PartStartEvent,
-    RetryPromptPart,
     TextPart,
     TextPartDelta,
     ToolCallPart,
     ToolReturnPart,
 )
-from pydantic_ai.messages import BuiltinToolCallPart, BuiltinToolReturnPart
+from pydantic_ai.messages import NativeToolCallPart, NativeToolReturnPart
 
 from agentpool.agents.events import CompactionEvent, ToolCallStartEvent
 from agentpool.log import get_logger
@@ -92,7 +91,7 @@ async def stream_response(
                     yield _make_chunk(_format_tool_call(part.tool_name, args))
 
                 # Tool call started (builtin tools)
-                case PartStartEvent(part=BuiltinToolCallPart() as part):
+                case PartStartEvent(part=NativeToolCallPart() as part):
                     args = safe_args_as_dict(part, default={})
                     yield _make_chunk(_format_tool_call(part.tool_name, args))
 
@@ -101,24 +100,22 @@ async def stream_response(
                     label = title or name
                     yield _make_chunk(f"\n🔧 **{label}**\n")
 
-                # Tool completed successfully
+                # Tool failed with retry
                 case FunctionToolResultEvent(
-                    result=ToolReturnPart(content=out, tool_name=name),
+                    part=ToolReturnPart(outcome="failed" | "retried", tool_name=name) as result
                 ):
+                    error_msg = result.model_response_str(wrap_if_error=False)
+                    yield _make_chunk(_format_tool_result(name, error_msg, is_error=True))
+
+                # Tool completed successfully
+                case FunctionToolResultEvent(part=ToolReturnPart(content=out, tool_name=name)):
                     yield _make_chunk(_format_tool_result(name, out))
 
                 # Builtin tool completed
                 case PartStartEvent(
-                    part=BuiltinToolReturnPart(content=out, tool_name=name),
+                    part=NativeToolReturnPart(content=out, tool_name=name),
                 ):
                     yield _make_chunk(_format_tool_result(name, out))
-
-                # Tool failed with retry
-                case FunctionToolResultEvent(result=RetryPromptPart() as result):
-                    error_msg = result.model_response()
-                    yield _make_chunk(
-                        _format_tool_result(result.tool_name or "unknown", error_msg, is_error=True)
-                    )
 
                 # Compaction
                 case CompactionEvent(phase="starting"):

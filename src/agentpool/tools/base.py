@@ -246,7 +246,7 @@ class Tool[TOutputType = Any]:
         return MCPTool(
             name=self.schema["function"]["name"],
             description=self.schema["function"]["description"],
-            inputSchema=cast(dict[str, Any], self.schema["function"]["parameters"]),
+            input_schema=cast(dict[str, Any], self.schema["function"]["parameters"]),
             annotations=self.hints.to_mcp(),
         )
 

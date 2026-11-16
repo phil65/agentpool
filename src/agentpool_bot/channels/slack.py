@@ -58,7 +58,7 @@ class SlackChannel(BaseChannel):
             auth = await self._web_client.auth_test()
             self._bot_user_id = auth.get("user_id")
             logger.info("Slack bot connected", bot_user_id=self._bot_user_id)
-        except Exception:  # noqa: BLE001
+        except Exception:
             logger.warning("Slack auth_test failed", exc_info=True)
 
         logger.info("Starting Slack Socket Mode client...")
@@ -73,7 +73,7 @@ class SlackChannel(BaseChannel):
         if self._socket_client:
             try:
                 await self._socket_client.close()  # type: ignore[no-untyped-call]
-            except Exception:  # noqa: BLE001
+            except Exception:
                 logger.warning("Slack socket close failed", exc_info=True)
             self._socket_client = None
 
@@ -155,7 +155,7 @@ class SlackChannel(BaseChannel):
                     name=self.config.react_emoji,
                     timestamp=event.get("ts") or get_now().isoformat(),
                 )
-        except Exception:  # noqa: BLE001
+        except Exception:
             logger.debug("Slack reactions_add failed", exc_info=True)
         meta = {"slack": {"event": event, "thread_ts": thread_ts, "channel_type": channel_type}}
         await self._handle_message(

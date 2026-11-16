@@ -154,9 +154,7 @@ def _extract_tool_call_id(context: Context | None) -> str:
     Falls back to generating a UUID if not available.
     """
     if context and (request_ctx := context.request_context) and request_ctx.meta:
-        # Access extra fields on the Meta object (extra="allow" in pydantic)
-        meta_dict = request_ctx.meta.model_dump()
-        claude_tool_id = meta_dict.get("claudecode/toolUseId")
+        claude_tool_id = request_ctx.meta.get("claudecode/toolUseId")
         if isinstance(claude_tool_id, str):
             logger.debug("Extracted Claude tool_call_id", tool_call_id=claude_tool_id)
             return claude_tool_id
@@ -287,7 +285,7 @@ class ToolManagerBridge:
     async def _refresh_tools(self) -> None:
         """Refresh tools registered with the MCP server.
 
-        Uses FastMCP's add_tool/remove_tool API which automatically sends
+        Uses FastMCP's add_tool/local_provider.remove_tool API which automatically sends
         ToolListChanged notifications when called within a request context.
 
         Note: FastMCP only sends notifications when inside a request context
@@ -315,14 +313,14 @@ class ToolManagerBridge:
         # Remove tools that are no longer present
         for name in current_names - new_names:
             with suppress(Exception):
-                self._mcp.remove_tool(name)
+                self._mcp.local_provider.remove_tool(name)
 
         # Add/update tools
         for tool in new_tools:
             if tool.name in current_names:
                 # Remove and re-add to update
                 with suppress(Exception):
-                    self._mcp.remove_tool(tool.name)
+                    self._mcp.local_provider.remove_tool(tool.name)
             self._register_single_tool(tool)
 
     @property

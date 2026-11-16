@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import base64
+from collections.abc import Sequence
 from typing import TYPE_CHECKING, Any
 
 from pydantic_ai import (
@@ -27,7 +28,7 @@ from acp.schema import (
 
 
 if TYPE_CHECKING:
-    from collections.abc import Mapping, Sequence
+    from collections.abc import Mapping
 
     from pydantic_ai import UserContent
     from pydantic_ai.messages import ToolReturnContent
@@ -69,10 +70,10 @@ def to_acp_content_blocks(  # noqa: PLR0911
         case None:
             return []
 
-        case ToolReturn(return_value=return_value, content=content):
+        case ToolReturn(return_value=return_value, content=content, metadata=meta):
             result_blocks: list[ContentBlock] = []
             if return_value is not None:
-                result_blocks.append(TextContentBlock(text=str(return_value)))
+                result_blocks.append(TextContentBlock(text=str(return_value), field_meta=meta))
             if content:
                 content_list = content if isinstance(content, list) else [content]
                 for content_item in content_list:
@@ -84,14 +85,19 @@ def to_acp_content_blocks(  # noqa: PLR0911
             for item in items:
                 list_blocks.extend(to_acp_content_blocks(item))
             return list_blocks
-        case BinaryContent(data=data, media_type=media_type):
+        case BinaryContent(data=data, media_type=media_type, vendor_metadata=meta):
             blob_data = base64.b64encode(data).decode()
             if tool_output.is_image:
-                return [ImageContentBlock(data=blob_data, mime_type=media_type)]
+                return [ImageContentBlock(data=blob_data, mime_type=media_type, field_meta=meta)]
             if tool_output.is_audio:
-                return [AudioContentBlock(data=blob_data, mime_type=media_type)]
+                return [AudioContentBlock(data=blob_data, mime_type=media_type, field_meta=meta)]
             uri = f"data:{media_type};base64,{blob_data[:50]}..."
-            blob_resource = BlobResourceContents(blob=blob_data, mime_type=media_type, uri=uri)
+            blob_resource = BlobResourceContents(
+                blob=blob_data,
+                mime_type=media_type,
+                uri=uri,
+                field_meta=meta,
+            )
             return [EmbeddedResourceContentBlock(resource=blob_resource)]
 
         case (
@@ -119,6 +125,8 @@ def to_acp_content_blocks(  # noqa: PLR0911
         case str(content) | TextContent(content=content):
             return [TextContentBlock(text=content)]
         # case UploadedFile() | CachePoint():
+        case Sequence():
+            return [TextContentBlock(text=str(i)) for i in tool_output]
         case _:
             return [TextContentBlock(text=str(tool_output))]
 

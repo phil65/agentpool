@@ -66,10 +66,10 @@ def serialize_parts(parts: Sequence[ModelResponsePart | ModelRequestPart]) -> st
         # Convert parts to serializable format
         serializable_parts = []
         for part in parts:
-            # Handle RetryPromptPart context serialization issues
-            from pydantic_ai import RetryPromptPart
+            # Handle retry feedback context serialization issues
+            from pydantic_ai import RetryFeedbackPart
 
-            if isinstance(part, RetryPromptPart) and isinstance(part.content, list):
+            if isinstance(part, RetryFeedbackPart) and isinstance(part.content, list):
                 for content in part.content:
                     if isinstance(content, dict) and "ctx" in content:
                         content["ctx"] = {k: str(v) for k, v in content["ctx"].items()}
@@ -118,12 +118,12 @@ def serialize_messages(messages: Sequence[ModelMessage]) -> str | None:
         # Convert messages to serializable format
         serializable_messages = []
         for message in messages:
-            # Handle RetryPromptPart context serialization issues
-            from pydantic_ai import ModelRequest, RetryPromptPart
+            # Handle retry feedback context serialization issues
+            from pydantic_ai import ModelRequest, RetryFeedbackPart
 
             if isinstance(message, ModelRequest):
                 for part in message.parts:
-                    if isinstance(part, RetryPromptPart) and isinstance(part.content, list):
+                    if isinstance(part, RetryFeedbackPart) and isinstance(part.content, list):
                         for content in part.content:
                             if isinstance(content, dict) and "ctx" in content:
                                 content["ctx"] = {k: str(v) for k, v in content["ctx"].items()}

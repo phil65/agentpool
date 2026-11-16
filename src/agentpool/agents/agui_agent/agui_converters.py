@@ -51,6 +51,7 @@ if TYPE_CHECKING:
     from collections.abc import Iterator, Sequence
 
     from ag_ui.core import (
+        ContentPart,
         Event,
         InputContent,
         Message,
@@ -91,15 +92,13 @@ def agui_to_native_event(event: Event) -> Iterator[RichAgentStreamEvent[Any]]:
         StateSnapshotEvent,
         StepFinishedEvent,
         StepStartedEvent,
+        SubagentErrorEvent,
+        SubagentFinishedEvent,
+        SubagentStartedEvent,
         TextMessageChunkEvent,
         TextMessageContentEvent,
         TextMessageEndEvent,
         TextMessageStartEvent,
-        ThinkingEndEvent,
-        ThinkingStartEvent,
-        ThinkingTextMessageContentEvent,
-        ThinkingTextMessageEndEvent,
-        ThinkingTextMessageStartEvent,
         ToolCallArgsEvent,
         ToolCallChunkEvent,
         ToolCallEndEvent,
@@ -126,20 +125,10 @@ def agui_to_native_event(event: Event) -> Iterator[RichAgentStreamEvent[Any]]:
         # === Thinking/Reasoning Events ===
 
         case (
-            ThinkingTextMessageContentEvent(delta=delta)
-            | ReasoningMessageContentEvent(delta=delta)
+            ReasoningMessageContentEvent(delta=delta)
             | ReasoningMessageChunkEvent(delta=str() as delta)
         ):
             yield PartDeltaEvent.thinking(index=0, content=delta)
-
-        case (
-            ThinkingStartEvent()
-            | ThinkingEndEvent()
-            | ThinkingTextMessageStartEvent()
-            | ThinkingTextMessageEndEvent()
-        ):
-            # These mark thinking blocks but don't carry content
-            pass
 
         case (
             ReasoningStartEvent()
@@ -162,8 +151,10 @@ def agui_to_native_event(event: Event) -> Iterator[RichAgentStreamEvent[Any]]:
         case ToolCallArgsEvent(tool_call_id=tc_id, delta=_):
             yield ToolCallProgressEvent(tool_call_id=tc_id, status="in_progress")
 
-        case ToolCallResultEvent(tool_call_id=tc_id, content=content, message_id=_):
-            yield ToolCallProgressEvent(tool_call_id=tc_id, status="completed", message=content)
+        case ToolCallResultEvent(tool_call_id=tc_id, content=content):
+            yield ToolCallProgressEvent(
+                tool_call_id=tc_id, status="completed", message=_tool_result_text(content)
+            )
 
         case ToolCallEndEvent(tool_call_id=tc_id):
             yield ToolCallProgressEvent(tool_call_id=tc_id, status="completed")
@@ -212,6 +203,15 @@ def agui_to_native_event(event: Event) -> Iterator[RichAgentStreamEvent[Any]]:
         case AGUICustomEvent(name=name, value=value):
             yield CustomEvent(event_data=value, event_type=name, source="ag-ui")
 
+        # === Subagent Lifecycle Events ===
+
+        case SubagentStartedEvent() | SubagentFinishedEvent() | SubagentErrorEvent():
+            yield CustomEvent(
+                event_data=event.model_dump(exclude_none=True),
+                event_type=event.type.value.lower(),  # e.g. "subagent_started"
+                source="ag-ui",
+            )
+
         case (
             TextMessageChunkEvent()
             | ToolCallChunkEvent()
@@ -223,7 +223,16 @@ def agui_to_native_event(event: Event) -> Iterator[RichAgentStreamEvent[Any]]:
             pass
 
         case _ as unreachable:
-            assert_never(unreachable)  # ty:ignore[type-assertion-failure]
+            assert_never(unreachable)
+
+
+def _tool_result_text(content: str | Sequence[ContentPart]) -> str:
+    """Extract the text from AG-UI tool result content."""
+    from ag_ui.core import TextPart
+
+    if isinstance(content, str):
+        return content
+    return "\n".join(part.text for part in content if isinstance(part, TextPart))
 
 
 def _content_to_plan_entries(content: list[Any]) -> list[PlanEntry]:
@@ -406,7 +415,7 @@ def model_messages_to_agui(messages: Sequence[ModelMessage]) -> Iterator[Message
                                 case None:
                                     args_str = ""
                                 case _ as unreachable:
-                                    assert_never(unreachable)  # ty:ignore[type-assertion-failure]
+                                    assert_never(unreachable)
                             call = FunctionCall(name=tool_name, arguments=args_str)
                             tc = ToolCall(id=tc_id, type="function", function=call)
                             tool_calls.append(tc)

@@ -69,7 +69,7 @@ class DiscordChannel(BaseChannel):
                     await self._gateway_loop()
             except asyncio.CancelledError:
                 break
-            except Exception:  # noqa: BLE001
+            except Exception:
                 logger.warning("Discord gateway error", exc_info=True)
                 if self._running:
                     logger.info("Reconnecting to Discord gateway in 5 seconds...")
@@ -191,7 +191,7 @@ class DiscordChannel(BaseChannel):
                 payload = {"op": _OP_HEARTBEAT, "d": self._seq}
                 try:
                     await self._ws.send(anyenv.dump_json(payload))
-                except Exception:  # noqa: BLE001
+                except Exception:
                     logger.warning("Discord heartbeat failed", exc_info=True)
                     break
                 await asyncio.sleep(interval_s)
@@ -236,7 +236,7 @@ class DiscordChannel(BaseChannel):
                 file_path.write_bytes(resp.content)
                 media_paths.append(str(file_path))
                 content_parts.append(f"[attachment: {file_path}]")
-            except Exception:  # noqa: BLE001
+            except Exception:
                 logger.warning("Failed to download Discord attachment", exc_info=True)
                 content_parts.append(f"[attachment: {filename} - download failed]")
 

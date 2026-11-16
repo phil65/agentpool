@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import inspect
 
+from pydantic_ai.capabilities import ProcessHistory
 from pydantic_ai.models.test import TestModel
 import pytest
 
@@ -204,7 +205,8 @@ async def test_compatibility_no_processors(mock_model):
     """Verify agent works fine without processors."""
     async with Agent(name="test", model=mock_model) as agent:
         agentlet = await agent.get_agentlet(None, str)
-        assert agentlet.history_processors == []
+        capabilities = agentlet.root_capability.capabilities
+        assert not any(isinstance(c, ProcessHistory) for c in capabilities)
         result = await agent.run("Hello")
         assert result.data == "Response"
 

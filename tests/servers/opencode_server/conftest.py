@@ -261,7 +261,7 @@ def event_capture(server_state: ServerState) -> EventCapture:
         await capture.capture(event)
         await original_broadcast(event)
 
-    server_state.broadcast_event = capturing_broadcast  # type: ignore[method-assign]  # ty:ignore[invalid-assignment]
+    server_state.broadcast_event = capturing_broadcast  # type: ignore[method-assign]
     return capture
 
 

@@ -15,15 +15,14 @@ from typing import TYPE_CHECKING, Any, Literal, assert_never
 import uuid
 
 from pydantic_ai import (
-    BuiltinToolCallPart,
-    BuiltinToolReturnPart,
     FinalResultEvent,
     FunctionToolCallEvent,
     FunctionToolResultEvent,
+    NativeToolCallPart,
+    NativeToolReturnPart,
     PartDeltaEvent,
     PartEndEvent,
     PartStartEvent,
-    RetryPromptPart,
     TextPart,
     TextPartDelta,
     ThinkingPart,
@@ -31,10 +30,6 @@ from pydantic_ai import (
     ToolCallPart,
     ToolCallPartDelta,
     ToolReturnPart,
-)
-from pydantic_ai.messages import (
-    BuiltinToolCallEvent,  # ty: ignore[deprecated]
-    BuiltinToolResultEvent,  # ty: ignore[deprecated]
 )
 
 from acp.schema import (
@@ -216,7 +211,7 @@ class ACPEventConverter:
                 yield AgentThoughtChunk.text(delta or "\n", message_id=self._current_message_id)
 
             # Builtin tool call started (e.g., WebSearchTool, CodeExecutionTool)
-            case PartStartEvent(part=BuiltinToolCallPart() as part):
+            case PartStartEvent(part=NativeToolCallPart() as part):
                 tool_call_id = part.tool_call_id
                 tool_input = safe_args_as_dict(part, default={})
                 self._current_tool_inputs[tool_call_id] = tool_input
@@ -232,7 +227,7 @@ class ACPEventConverter:
                     )
 
             # Builtin tool completed
-            case PartStartEvent(part=BuiltinToolReturnPart(content=out, tool_call_id=tc_id)):
+            case PartStartEvent(part=NativeToolReturnPart(content=out, tool_call_id=tc_id)):
                 tool_state = self._tool_states.get(tc_id)
                 if tool_state and tool_state.has_content:
                     yield ToolCallProgress(tool_call_id=tc_id, status="completed", raw_output=out)
@@ -275,7 +270,7 @@ class ACPEventConverter:
             # Function tool call started
             case (
                 FunctionToolCallEvent(part=ToolCallPart() as call_part)  # type: ignore[misc]
-                | PartStartEvent(part=BuiltinToolCallPart() as call_part)
+                | PartStartEvent(part=NativeToolCallPart() as call_part)
             ):
                 tool_call_id = call_part.tool_call_id
                 tool_input = safe_args_as_dict(call_part, default={})
@@ -295,10 +290,19 @@ class ACPEventConverter:
                         status="pending",
                     )
 
+            # Tool failed with retry
+            case FunctionToolResultEvent(
+                part=ToolReturnPart(outcome="failed" | "retried", tool_call_id=tc_id) as result
+            ):
+                error_message = result.model_response_str(wrap_if_error=False)
+                content = ContentToolCallContent.text(f"Error: {error_message}")
+                yield ToolCallProgress(tool_call_id=tc_id, status="failed", content=[content])
+                self._cleanup_tool_state(tc_id)
+
             # Tool completed successfully
             case (
-                FunctionToolResultEvent(result=ToolReturnPart(content=out), tool_call_id=tc_id)  # type: ignore[misc]
-                | PartStartEvent(part=BuiltinToolReturnPart(content=out, tool_call_id=tc_id))
+                FunctionToolResultEvent(part=ToolReturnPart(content=out, tool_call_id=tc_id))  # type: ignore[misc]
+                | PartStartEvent(part=NativeToolReturnPart(content=out, tool_call_id=tc_id))
             ):
                 # Handle async generator content
                 if (tool_state := self._tool_states.get(tc_id)) and tool_state.has_content:
@@ -311,13 +315,6 @@ class ACPEventConverter:
                         raw_output=out,
                         content=[ContentToolCallContent(content=block) for block in converted],
                     )
-                self._cleanup_tool_state(tc_id)
-
-            # Tool failed with retry
-            case FunctionToolResultEvent(result=RetryPromptPart() as result, tool_call_id=tc_id):
-                error_message = result.model_response()
-                content = ContentToolCallContent.text(f"Error: {error_message}")
-                yield ToolCallProgress(tool_call_id=tc_id, status="failed", content=[content])
                 self._cleanup_tool_state(tc_id)
 
             # Tool emits its own start event
@@ -517,27 +514,26 @@ class ACPEventConverter:
                 )
 
             case (
-                FunctionToolCallEvent(part=part)
-                | PartStartEvent(part=BuiltinToolCallPart() as part)
+                FunctionToolCallEvent(part=part) | PartStartEvent(part=NativeToolCallPart() as part)
             ):
                 text = f"\n{indent}🔧 [{source_name}] Using tool: {part.tool_name}\n"
                 yield AgentMessageChunk.text(text, message_id=self._current_message_id)
 
+            case FunctionToolResultEvent(
+                part=ToolReturnPart(outcome="failed" | "retried", tool_name=tool_name) as result
+            ):
+                error_msg = result.model_response_str(wrap_if_error=False)
+                text = f"{indent}❌ [{source_name}] {tool_name}: {error_msg}\n"
+                yield AgentMessageChunk.text(text, message_id=self._current_message_id)
+
             case (
-                FunctionToolResultEvent(
-                    result=ToolReturnPart(content=content, tool_name=tool_name),
-                )
-                | PartStartEvent(part=BuiltinToolReturnPart(content=content, tool_name=tool_name))
+                FunctionToolResultEvent(part=ToolReturnPart(content=content, tool_name=tool_name))
+                | PartStartEvent(part=NativeToolReturnPart(content=content, tool_name=tool_name))
             ):
                 result_str = str(content)
                 if len(result_str) > 200:  # noqa: PLR2004
                     result_str = result_str[:200] + "..."
                 text = f"{indent}✅ [{source_name}] {tool_name}: {result_str}\n"
-                yield AgentMessageChunk.text(text, message_id=self._current_message_id)
-
-            case FunctionToolResultEvent(result=RetryPromptPart(tool_name=tool_name) as result):
-                error_msg = result.model_response()
-                text = f"{indent}❌ [{source_name}] {tool_name}: {error_msg}\n"
                 yield AgentMessageChunk.text(text, message_id=self._current_message_id)
 
             case StreamCompleteEvent():
@@ -548,9 +544,7 @@ class ACPEventConverter:
                 )
 
             case (
-                BuiltinToolCallEvent()  # ty: ignore[deprecated]
-                | BuiltinToolResultEvent()  # ty: ignore[deprecated]
-                | CompactionEvent()
+                CompactionEvent()
                 | FinalResultEvent()
                 | FunctionToolResultEvent()
                 | PartDeltaEvent()
@@ -605,29 +599,28 @@ class ACPEventConverter:
                         yield n
 
             case (
-                FunctionToolCallEvent(part=part)
-                | PartStartEvent(part=BuiltinToolCallPart() as part)
+                FunctionToolCallEvent(part=part) | PartStartEvent(part=NativeToolCallPart() as part)
             ):
                 accumulated.append(f"\n🔧 Using tool: {part.tool_name}\n")
                 async for n in self._emit_subagent_progress(state_key, f"{icon} {source_name}"):
                     yield n
 
+            case FunctionToolResultEvent(
+                part=ToolReturnPart(outcome="failed" | "retried", tool_name=tool_name) as result
+            ):
+                error_msg = result.model_response_str(wrap_if_error=False)
+                accumulated.append(f"❌ {tool_name}: {error_msg}\n")
+                async for n in self._emit_subagent_progress(state_key, f"{icon} {source_name}"):
+                    yield n
+
             case (
-                FunctionToolResultEvent(
-                    result=ToolReturnPart(content=content, tool_name=tool_name),
-                )
-                | PartStartEvent(part=BuiltinToolReturnPart(content=content, tool_name=tool_name))
+                FunctionToolResultEvent(part=ToolReturnPart(content=content, tool_name=tool_name))
+                | PartStartEvent(part=NativeToolReturnPart(content=content, tool_name=tool_name))
             ):
                 result_str = str(content)
                 if len(result_str) > 200:  # noqa: PLR2004
                     result_str = result_str[:200] + "..."
                 accumulated.append(f"✅ {tool_name}: {result_str}\n")
-                async for n in self._emit_subagent_progress(state_key, f"{icon} {source_name}"):
-                    yield n
-
-            case FunctionToolResultEvent(result=RetryPromptPart(tool_name=tool_name) as result):
-                error_msg = result.model_response()
-                accumulated.append(f"❌ {tool_name}: {error_msg}\n")
                 async for n in self._emit_subagent_progress(state_key, f"{icon} {source_name}"):
                     yield n
 
@@ -639,9 +632,7 @@ class ACPEventConverter:
                 self._subagent_content.pop(state_key, None)
 
             case (
-                BuiltinToolCallEvent()  # ty: ignore[deprecated]
-                | BuiltinToolResultEvent()  # ty: ignore[deprecated]
-                | CompactionEvent()
+                CompactionEvent()
                 | FinalResultEvent()
                 | FunctionToolResultEvent()
                 | PartDeltaEvent()

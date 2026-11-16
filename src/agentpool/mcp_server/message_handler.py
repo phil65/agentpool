@@ -11,7 +11,6 @@ from agentpool.log import get_logger
 
 if TYPE_CHECKING:
     from mcp import types
-    from mcp.shared.session import RequestResponder
 
     from agentpool.mcp_server import MCPClient
 
@@ -24,7 +23,12 @@ ProgressCallback = Callable[[float, float | None, str | None, MetaDict], Awaitab
 
 @dataclass
 class MCPMessageHandler:
-    """Custom message handler that bridges FastMCP to agentpool notifications."""
+    """Custom message handler that bridges FastMCP to agentpool notifications.
+
+    Only server notifications and transport-level exceptions reach this handler.
+    Server-initiated requests (ping, sampling, roots, elicitation) are answered
+    through the client's dedicated callbacks instead.
+    """
 
     client: MCPClient
     """The MCP client instance."""
@@ -37,81 +41,40 @@ class MCPMessageHandler:
     progress_callback: ProgressCallback | None = None
     """Progress callback: (progress, total, message, meta)."""
 
-    async def __call__(
-        self,
-        message: RequestResponder[types.ServerRequest, types.ClientResult]
-        | types.ServerNotification
-        | Exception,
-    ) -> None:
+    async def __call__(self, message: types.ServerNotification | Exception) -> None:
         """Handle FastMCP messages by dispatching to appropriate handlers."""
         from mcp import types
-        from mcp.shared.session import RequestResponder
 
         await self.on_message(message)
         match message:
-            # requests
-            case RequestResponder() as responder:
-                await self.on_request(responder)
-                # Handle specific requests
-                root = responder.request.root
-                match root:
-                    case types.PingRequest():
-                        await self.on_ping(root)
-                    case types.ListRootsRequest():
-                        await self.on_list_roots(root)
-                    case types.CreateMessageRequest():
-                        await self.on_create_message(root)
-                    case (
-                        types.GetTaskRequest()
-                        | types.ListTasksRequest()
-                        | types.ElicitRequest()
-                        | types.GetTaskPayloadRequest()
-                        | types.CancelTaskRequest()
-                    ):
-                        pass
-                    case _ as unreachable:
-                        assert_never(unreachable)  # ty:ignore[type-assertion-failure]
-
-            case types.ServerNotification() as notification:
-                await self.on_notification(notification)
-                root = notification.root
-                match root:
-                    case types.CancelledNotification():
-                        await self.on_cancelled(root)
-                    case types.ProgressNotification():
-                        await self.on_progress(root)
-                    case types.LoggingMessageNotification():
-                        await self.on_logging_message(root)
-                    case types.ToolListChangedNotification():
-                        await self.on_tool_list_changed(root)
-                    case types.ResourceListChangedNotification():
-                        await self.on_resource_list_changed(root)
-                    case types.PromptListChangedNotification():
-                        await self.on_prompt_list_changed(root)
-                    case types.ResourceUpdatedNotification():
-                        await self.on_resource_updated(root)
-                    case types.ElicitCompleteNotification():
-                        await self.on_elicit_complete(root)
-                    case types.TaskStatusNotification():
-                        await self.on_task_status(root)
-                    case _ as unreachable:
-                        assert_never(unreachable)  # ty:ignore[type-assertion-failure]
-
             case Exception():
                 await self.on_exception(message)
+            case _:
+                await self.on_notification(message)
+                match message:
+                    case types.CancelledNotification():
+                        await self.on_cancelled(message)
+                    case types.ProgressNotification():
+                        await self.on_progress(message)
+                    case types.LoggingMessageNotification():
+                        await self.on_logging_message(message)
+                    case types.ToolListChangedNotification():
+                        await self.on_tool_list_changed(message)
+                    case types.ResourceListChangedNotification():
+                        await self.on_resource_list_changed(message)
+                    case types.PromptListChangedNotification():
+                        await self.on_prompt_list_changed(message)
+                    case types.ResourceUpdatedNotification():
+                        await self.on_resource_updated(message)
+                    case types.ElicitCompleteNotification():
+                        await self.on_elicit_complete(message)
+                    case types.SubscriptionsAcknowledgedNotification():
+                        await self.on_subscriptions_acknowledged(message)
+                    case _ as unreachable:
+                        assert_never(unreachable)
 
-    async def on_message(
-        self,
-        message: RequestResponder[types.ServerRequest, types.ClientResult]
-        | types.ServerNotification
-        | Exception,
-    ) -> None:
+    async def on_message(self, message: types.ServerNotification | Exception) -> None:
         """Handle generic messages."""
-
-    async def on_request(
-        self, message: RequestResponder[types.ServerRequest, types.ClientResult]
-    ) -> None:
-        """Handle requests."""
 
     async def on_notification(self, message: types.ServerNotification) -> None:
         """Handle server notifications."""
@@ -121,8 +84,7 @@ class MCPMessageHandler:
         logger.info("MCP tool list changed", message=message)
         # Call the tool change callback if provided
         if self.tool_change_callback:
-            meta = message.params.meta if message.params else None
-            dct = meta.model_dump() if meta else {}
+            dct = (message.params.meta if message.params else None) or {}
             await self.tool_change_callback(dct)
 
     async def on_resource_list_changed(
@@ -132,38 +94,38 @@ class MCPMessageHandler:
         logger.info("MCP resource list changed", message=message)
         # Call the resource change callback if provided
         if self.resource_change_callback:
-            meta = message.params.meta if message.params else None
-            dct = meta.model_dump() if meta else {}
+            dct = (message.params.meta if message.params else None) or {}
             await self.resource_change_callback(dct)
 
     async def on_resource_updated(self, message: types.ResourceUpdatedNotification) -> None:
         """Handle resource updates."""
-        # ResourceUpdatedNotification has uri directly, not in params
-        logger.info("MCP resource updated", uri=getattr(message, "uri", "unknown"))
+        logger.info("MCP resource updated", uri=message.params.uri)
 
     async def on_progress(self, message: types.ProgressNotification) -> None:
         """Handle progress notifications with metadata."""
         if self.progress_callback:
             params = message.params
-            meta = params.meta.model_dump() if params.meta else {}
-            await self.progress_callback(params.progress, params.total, params.message, meta)
+            await self.progress_callback(
+                params.progress, params.total, params.message, params.meta or {}
+            )
 
     async def on_prompt_list_changed(self, message: types.PromptListChangedNotification) -> None:
         """Handle prompt list changes."""
         logger.info("MCP prompt list changed", message=message)
         # Call the prompt change callback if provided
         if self.prompt_change_callback:
-            meta = message.params.meta if message.params else None
-            dct = meta.model_dump() if meta else {}
+            dct = (message.params.meta if message.params else None) or {}
             await self.prompt_change_callback(dct)
 
     async def on_cancelled(self, message: types.CancelledNotification) -> None:
         """Handle cancelled operations."""
         logger.info("MCP operation cancelled", message=message)
 
-    async def on_task_status(self, message: types.TaskStatusNotification) -> None:
-        """Handle task status notifications."""
-        logger.info("MCP task status", message=message)
+    async def on_subscriptions_acknowledged(
+        self, message: types.SubscriptionsAcknowledgedNotification
+    ) -> None:
+        """Handle subscription acknowledgement notifications."""
+        logger.debug("MCP subscriptions acknowledged", message=message)
 
     async def on_logging_message(self, message: types.LoggingMessageNotification) -> None:
         """Handle server log messages."""
@@ -173,18 +135,9 @@ class MCPMessageHandler:
         """Handle exceptions."""
         logger.error("MCP client exception", error=message)
 
-    async def on_ping(self, message: types.PingRequest) -> None:
-        """Handle ping requests."""
-
-    async def on_list_roots(self, message: types.ListRootsRequest) -> None:
-        """Handle list roots requests."""
-
-    async def on_create_message(self, message: types.CreateMessageRequest) -> None:
-        """Handle create message requests."""
-
     async def on_elicit_complete(self, message: types.ElicitCompleteNotification) -> None:
         """Handle elicitation completion notifications.
 
         Sent by servers when a URL mode elicitation completes out-of-band.
         """
-        logger.info("MCP elicitation completed", elicitation_id=message.params.elicitationId)
+        logger.info("MCP elicitation completed", elicitation_id=message.params.elicitation_id)

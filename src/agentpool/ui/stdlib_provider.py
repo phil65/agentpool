@@ -105,7 +105,7 @@ class StdlibInputProvider(InputProvider):
                         else ("decline" if response in ("n", "no") else "cancel")
                     )
                     return types.ElicitResult(action=action)
-                case types.ElicitRequestFormParams(requestedSchema=schema):
+                case types.ElicitRequestFormParams(requested_schema=schema):
                     # Form mode: collect structured JSON input
                     print("Please provide response as JSON:", file=sys.stderr)
                     if schema:

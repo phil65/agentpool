@@ -60,13 +60,14 @@ from pydantic_ai import (
     FilePart,
     ModelRequest,
     ModelResponse,
-    RetryPromptPart,
+    RetryFeedbackPart,
     TextPart,
     ThinkingPart,
     ToolCallPart,
     ToolReturnPart,
     UserPromptPart,
 )
+from pydantic_ai.messages import LoadCapabilityReturnPart, ToolSearchReturnPart
 from tokonomics.model_names import ModelId  # noqa: TC002
 
 
@@ -164,10 +165,25 @@ class FilterThinking(CompactionStep):
         return result
 
 
+def _with_content(part: ToolReturnPart[Any], content: str) -> ToolReturnPart[Any]:
+    """Return a copy of a tool return part with replaced content."""
+    return replace(part, content=content)
+
+
+def _is_retry_part(part: ModelRequestPart) -> bool:
+    """Whether a request part is a retry (retry feedback or a retried tool return)."""
+    match part:
+        case RetryFeedbackPart() | ToolReturnPart(outcome="retried"):
+            return True
+        case _:
+            return False
+
+
 @dataclass
 class FilterRetryPrompts(CompactionStep):
-    """Remove retry prompt parts from requests.
+    """Remove retry parts from requests.
 
+    Covers both retry feedback parts and tool returns with a ``"retried"`` outcome.
     Retry prompts are typically not needed after the conversation has moved on.
     """
 
@@ -175,10 +191,8 @@ class FilterRetryPrompts(CompactionStep):
         result: list[ModelMessage] = []
         for msg in messages:
             match msg:
-                case ModelRequest(parts=parts) if any(
-                    isinstance(p, RetryPromptPart) for p in parts
-                ):
-                    filtered_parts = [p for p in parts if not isinstance(p, RetryPromptPart)]
+                case ModelRequest(parts=parts) if any(_is_retry_part(p) for p in parts):
+                    filtered_parts = [p for p in parts if not _is_retry_part(p)]
                     if filtered_parts:
                         result.append(replace(msg, parts=filtered_parts))
                 case _:
@@ -338,11 +352,13 @@ class TruncateToolOutputs(CompactionStep):
                 case ModelRequest(parts=parts):
                     new_parts: list[ModelRequestPart | ModelResponsePart] = []
                     for part in parts:
-                        if isinstance(part, ToolReturnPart):
+                        if isinstance(part, ToolReturnPart) and not isinstance(
+                            part, ToolSearchReturnPart | LoadCapabilityReturnPart
+                        ):
                             content = part.content
                             if isinstance(content, str) and len(content) > self.max_length:
                                 truncated = content[: self.max_length - len(self.suffix)]
-                                new_parts.append(replace(part, content=truncated + self.suffix))
+                                new_parts.append(_with_content(part, truncated + self.suffix))
                             else:
                                 new_parts.append(part)
                         else:

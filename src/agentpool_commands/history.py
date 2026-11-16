@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from slashed import CommandContext, CommandError  # noqa: TC002
+from slashed import CommandContext, CommandError
 
 from agentpool.messaging.context import NodeContext  # noqa: TC001
 from agentpool_commands.base import NodeCommand

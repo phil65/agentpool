@@ -66,10 +66,10 @@ class StaticResourceProvider(ResourceProvider):
         match tool:
             case Tool():
                 instance = tool
-            case Callable() | str():  # ty: ignore[invalid-match-pattern]
+            case Callable() | str():
                 instance = FunctionTool.from_callable(tool)
             case _ as unreachable:
-                assert_never(unreachable)  # ty:ignore[type-assertion-failure]
+                assert_never(unreachable)
         self._tools.append(instance)
 
     def remove_tool(self, name: str) -> bool:
@@ -144,7 +144,7 @@ class StaticResourceProvider(ResourceProvider):
                 tool.meta = meta | (metadata or {})
                 tool.enabled = enabled
 
-            case str() | Callable():  # ty:ignore[invalid-match-pattern]
+            case str() | Callable():
                 tool = FunctionTool.from_callable(
                     tool,
                     enabled=enabled,
@@ -155,7 +155,7 @@ class StaticResourceProvider(ResourceProvider):
                     meta=metadata or {},
                 )
             case _ as unreachable:
-                assert_never(unreachable)  # ty:ignore[type-assertion-failure]
+                assert_never(unreachable)
 
         self.add_tool(tool)
         return tool

@@ -6,10 +6,10 @@ allowing tools and agents to browse messages as files.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any, ClassVar, Literal, Required, overload
+from typing import TYPE_CHECKING, Any, Literal, Required, overload
 
 import anyenv
-from upathtools.filesystems.base import BaseAsyncFileFileSystem, BaseUPath, FileInfo
+from upathtools.filesystems.base import BaseAsyncFileSystem, BaseUPath, FileInfo
 
 
 if TYPE_CHECKING:
@@ -68,7 +68,7 @@ def _get_file_entries(messages: ChatMessageList) -> dict[str, bytes]:
     return entries
 
 
-class ChatMessageFileSystem(BaseAsyncFileFileSystem[ChatMessagePath, ChatMessageInfo]):
+class ChatMessageFileSystem(BaseAsyncFileSystem[ChatMessagePath, ChatMessageInfo]):
     """Read-only filesystem exposing ChatMessages as files.
 
     Structure:
@@ -82,7 +82,7 @@ class ChatMessageFileSystem(BaseAsyncFileFileSystem[ChatMessagePath, ChatMessage
     so it always reflects the current state without needing refresh.
     """
 
-    protocol: ClassVar[str | tuple[str, ...]] = "chatmsg"
+    protocol = "chatmsg"
     root_marker = "/"
     async_impl = True
 

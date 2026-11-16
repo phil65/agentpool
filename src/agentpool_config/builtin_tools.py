@@ -14,13 +14,13 @@ from pydantic_ai import (
     WebFetchTool,
     WebSearchTool,
 )
-from pydantic_ai.builtin_tools import ImageAspectRatio, WebSearchUserLocation  # noqa: TC002
+from pydantic_ai.native_tools import ImageAspectRatio, WebSearchUserLocation  # noqa: TC002
 
 from agentpool_config.tools import BaseToolConfig
 
 
 if TYPE_CHECKING:
-    from pydantic_ai.builtin_tools import AbstractBuiltinTool
+    from pydantic_ai.native_tools import AbstractNativeTool
 
 
 class BaseBuiltinToolConfig(BaseToolConfig):
@@ -32,7 +32,7 @@ class BaseBuiltinToolConfig(BaseToolConfig):
     builtin_type: str = Field(init=False)
     """Sub-discriminator for specific builtin tool type."""
 
-    def get_builtin_tool(self) -> AbstractBuiltinTool:
+    def get_builtin_tool(self) -> AbstractNativeTool:
         """Convert config to PydanticAI builtin tool instance."""
         raise NotImplementedError
 

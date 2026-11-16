@@ -21,20 +21,27 @@ from pydantic_ai import (
     AudioUrl,
     BinaryContent,
     BinaryImage,
-    BuiltinToolCallPart,
-    BuiltinToolReturnPart,
     CachePoint,
+    CapabilityLoadDeltaPart,
     CompactionPart,
     DocumentUrl,
     FilePart,
     ImageUrl,
+    InstructionBaselinePart,
+    InstructionDeltaPart,
     ModelRequest,
     ModelResponse,
+    ModelSettingsDeltaPart,
+    NativeToolCallPart,
+    NativeToolReturnPart,
+    RetryFeedbackPart,
     RetryPromptPart,
+    SpeechPart,
     SystemPromptPart,
     TextContent,
     TextPart,
     ThinkingPart,
+    ToolAvailabilityDeltaPart,
     ToolCallPart,
     ToolReturnPart,
     UploadedFile,
@@ -140,7 +147,7 @@ def model_messages_to_session_updates(
 
                 case (
                     ToolCallPart(tool_call_id=tool_call_id, tool_name=tool_name)
-                    | BuiltinToolCallPart(tool_call_id=tool_call_id, tool_name=tool_name)
+                    | NativeToolCallPart(tool_call_id=tool_call_id, tool_name=tool_name)
                 ):
                     tool_input = safe_args_as_dict(part)
                     tool_call_inputs[tool_call_id] = tool_input
@@ -174,7 +181,7 @@ def model_messages_to_session_updates(
 
                 case (
                     ToolReturnPart(content=content, tool_name=tool_name, tool_call_id=tool_call_id)
-                    | BuiltinToolReturnPart(
+                    | NativeToolReturnPart(
                         content=content, tool_name=tool_name, tool_call_id=tool_call_id
                     )
                 ):
@@ -197,7 +204,18 @@ def model_messages_to_session_updates(
                     )
                     tool_call_inputs.pop(tool_call_id, None)
 
-                case SystemPromptPart() | RetryPromptPart() | CompactionPart():
+                case (
+                    SystemPromptPart()
+                    | RetryFeedbackPart()
+                    | CompactionPart()
+                    | SpeechPart()
+                    | ToolAvailabilityDeltaPart()
+                    | CapabilityLoadDeltaPart()
+                    | ModelSettingsDeltaPart()
+                    | InstructionDeltaPart()
+                    | InstructionBaselinePart()
+                    | RetryPromptPart()  # deprecated; only kept in the union for typing
+                ):
                     pass
                 case _ as unreachable:
                     assert_never(unreachable)
@@ -250,7 +268,7 @@ def _user_content_to_updates(content: Sequence[UserContent]) -> Iterator[Session
                             data=blob, uri=uri or "", mime_type=mime_type
                         )
                     case _ as unreachable:
-                        assert_never(unreachable)  # ty: ignore[type-assertion-failure]
+                        assert_never(unreachable)
             case _ as unreachable:
                 assert_never(unreachable)
 

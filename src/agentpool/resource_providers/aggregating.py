@@ -113,7 +113,7 @@ class AggregatingResourceProvider(ResourceProvider):
                 # Type narrowing: we know it's CodeModeResourceProvider at this point
                 codemode = self._codemode_provider
                 assert isinstance(codemode, CodeModeResourceProvider)
-                codemode.providers = [static]  # ty: ignore[invalid-assignment]
+                codemode.providers = [static]
 
             return list(await self._codemode_provider.get_tools())
 

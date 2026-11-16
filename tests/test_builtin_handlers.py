@@ -101,7 +101,7 @@ async def test_detailed_print_handler_tool_result(mock_run_context):
     result_part = ToolReturnPart(
         tool_name="test_tool", content="Op successful", tool_call_id="call_123"
     )
-    event = FunctionToolResultEvent(result=result_part)
+    event = FunctionToolResultEvent(result_part)
     try:
         await detailed_print_handler(mock_run_context, event)
         result = output.getvalue()
@@ -120,7 +120,7 @@ async def test_detailed_print_handler_truncates_long_output(mock_run_context):
     result_part = ToolReturnPart(
         tool_name="test_tool", content=long_content, tool_call_id="call_123"
     )
-    event = FunctionToolResultEvent(result=result_part)
+    event = FunctionToolResultEvent(result_part)
     try:
         await detailed_print_handler(mock_run_context, event)
         result = output.getvalue()

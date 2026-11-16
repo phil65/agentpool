@@ -10,7 +10,7 @@ import contextlib
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
-from fastapi import APIRouter, HTTPException, WebSocket, WebSocketDisconnect  # noqa: TC002
+from fastapi import APIRouter, HTTPException, WebSocket, WebSocketDisconnect
 
 from agentpool import log
 from agentpool_server.opencode_server.dependencies import StateDep

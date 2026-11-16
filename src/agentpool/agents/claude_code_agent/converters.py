@@ -39,7 +39,6 @@ from pydantic_ai import (
     UploadedFile,
     VideoUrl,
 )
-from pydantic_ai.models.anthropic import _FINISH_REASON_MAP as FINISH_REASON_MAP
 
 from agentpool.common_types import MCPServerStatus
 from agentpool.utils.diffs import compute_unified_diff
@@ -55,7 +54,7 @@ from opencode_sdk.models.tool_metadata import (
 
 
 if TYPE_CHECKING:
-    from collections.abc import Iterator, Sequence
+    from collections.abc import Iterator, Mapping, Sequence
 
     from clawd_code_sdk.models import (
         HookContext,
@@ -114,10 +113,15 @@ def to_mcp_server_status(server: McpServerStatusEntry) -> MCPServerStatus:
 def to_prompt_input(content: Sequence[UserContent]) -> Iterator[UserPrompt]:
     for item in content:
         match item:
-            case BinaryContent(media_type=mime, base64=b64) if item.is_image:
-                yield UserImagePrompt(image_data=b64, media_type=mime)  # type: ignore[arg-type]
-            case BinaryContent(media_type=mime, base64=b64) if item.is_document:
-                yield UserDocumentPrompt(document_data=b64, media_type=mime)  # type: ignore[arg-type]
+            case BinaryContent(
+                media_type=("image/png" | "image/jpeg" | "image/gif" | "image/webp") as mime,
+                base64=b64,
+            ):
+                yield UserImagePrompt(image_data=b64, media_type=mime)
+            case BinaryContent(media_type="application/pdf", base64=b64):
+                yield UserDocumentPrompt(document_data=b64, media_type="application/pdf")
+            case BinaryContent(media_type=mime) if item.is_image or item.is_document:
+                raise ValueError(f"Unsupported media type for Claude Code prompt: {mime}")
             case ImageUrl(url=url):
                 yield UserImageURLPrompt(url=url)
             case (
@@ -172,6 +176,17 @@ def confirmation_result_to_native(result: ConfirmationResult) -> PermissionResul
             return PermissionResultDeny(message="User aborted execution", interrupt=True)
         case _ as unreachable:
             raise assert_never(unreachable)
+
+
+FINISH_REASON_MAP: dict[StopReason, FinishReason] = {
+    "end_turn": "stop",
+    "max_tokens": "length",
+    "stop_sequence": "stop",
+    "tool_use": "tool_call",
+    "pause_turn": "stop",
+    "refusal": "content_filter",
+    "model_context_window_exceeded": "length",
+}
 
 
 def to_finish_reason(reason: StopReason) -> FinishReason:
@@ -235,7 +250,7 @@ def convert_mcp_servers_to_sdk_format(
 
 def convert_to_opencode_metadata(  # noqa: PLR0911
     tool_name: str,
-    tool_use_result: dict[str, Any] | ToolUseResult | str | None,
+    tool_use_result: Mapping[str, Any] | ToolUseResult | str | None,
     tool_input: ToolInput | dict[str, Any] | None = None,
 ) -> ToolMetadata | None:
     """Convert Claude Code SDK tool_use_result to OpenCode metadata format."""
@@ -483,7 +498,7 @@ def build_sdk_hooks_from_agent_hooks(
 
             return output
 
-        result["PreToolUse"] = [HookMatcher(matcher="*", hooks=[on_pre_tool_use])]  # ty:ignore[invalid-argument-type]  # pyright: ignore[reportArgumentType]
+        result["PreToolUse"] = [HookMatcher(matcher="*", hooks=[on_pre_tool_use])]  # pyright: ignore[reportArgumentType]
 
     if hooks.post_tool_use:
 
@@ -506,6 +521,6 @@ def build_sdk_hooks_from_agent_hooks(
             # Post hooks are observation-only in SDK, can add context
             return {}
 
-        result["PostToolUse"] = [HookMatcher(matcher="*", hooks=[on_post_tool_use])]  # ty:ignore[invalid-argument-type]  # pyright: ignore[reportArgumentType]
+        result["PostToolUse"] = [HookMatcher(matcher="*", hooks=[on_post_tool_use])]  # pyright: ignore[reportArgumentType]
 
     return result

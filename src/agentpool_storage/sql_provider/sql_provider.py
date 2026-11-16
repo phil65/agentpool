@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Any, Self
 
 from pydantic_ai import RunUsage
+from sqlalchemy.engine import CursorResult
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlmodel import SQLModel, desc, select
 
@@ -640,7 +641,7 @@ class SQLModelProvider(StorageProvider):
             stmt = delete(Project).where(Project.project_id == project_id)  # type: ignore[arg-type]  # ty:ignore[invalid-argument-type]
             result = await session.execute(stmt)
             await session.commit()
-            deleted: bool = result.rowcount > 0  # type: ignore[attr-defined]  # ty:ignore[unresolved-attribute]
+            deleted = isinstance(result, CursorResult) and result.rowcount > 0
             if deleted:
                 logger.debug("Deleted project", project_id=project_id)
             return deleted
@@ -725,7 +726,7 @@ class SQLModelProvider(StorageProvider):
             stmt = delete(Conversation).where(Conversation.id == session_id)  # type: ignore[arg-type]  # ty:ignore[invalid-argument-type]
             result = await session.execute(stmt)
             await session.commit()
-            deleted: bool = result.rowcount > 0  # type: ignore[attr-defined]  # ty:ignore[unresolved-attribute]
+            deleted = isinstance(result, CursorResult) and result.rowcount > 0
             if deleted:
                 logger.debug("Deleted session", session_id=session_id)
             return deleted
@@ -742,7 +743,7 @@ class SQLModelProvider(StorageProvider):
                 stmt = stmt.where(Conversation.pool_id == pool_id)
             if agent_name is not None:
                 stmt = stmt.where(Conversation.agent_name == agent_name)
-            stmt = stmt.order_by(Conversation.last_active.desc())  # type: ignore[attr-defined]  # ty:ignore[unresolved-attribute]
+            stmt = stmt.order_by(Conversation.last_active.desc())  # type: ignore[attr-defined]  # ty:ignore[missing-attribute]
             result = await session.execute(stmt)
             return list(result.scalars().all())
 

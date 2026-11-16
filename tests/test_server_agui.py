@@ -51,9 +51,9 @@ async def main(port: int = 8765, with_tools: bool = False) -> None:
 
     async def handle_agent_request(request: Request) -> Response:
         """Handle AG-UI protocol requests."""
-        from pydantic_ai.ag_ui import handle_ag_ui_request
+        from pydantic_ai.ui.ag_ui import AGUIAdapter
 
-        return await handle_ag_ui_request(agent, request)
+        return await AGUIAdapter.dispatch_request(request, agent=agent)
 
     app = Starlette(
         routes=[

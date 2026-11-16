@@ -225,7 +225,7 @@ class CodexAgent[TDeps = None, OutputDataT = str](BaseAgent[TDeps, OutputDataT])
             event_handlers=merged_handlers or None,
             input_provider=input_provider,
             agent_pool=agent_pool,
-            output_type=resolved_output_type,  # type: ignore[arg-type]
+            output_type=resolved_output_type,  # type: ignore[arg-type]  # ty: ignore[invalid-argument-type]
             hooks=config.hooks.get_agent_hooks(),
         )
 
@@ -388,7 +388,7 @@ class CodexAgent[TDeps = None, OutputDataT = str](BaseAgent[TDeps, OutputDataT])
             message = (
                 f"{question.header}: {question.question}" if question.header else question.question
             )
-            mcp_params = ElicitRequestFormParams(message=message, requestedSchema=schema)
+            mcp_params = ElicitRequestFormParams(message=message, requested_schema=schema)
             result = await input_provider.get_elicitation(params=mcp_params)
 
             match result:
@@ -405,7 +405,7 @@ class CodexAgent[TDeps = None, OutputDataT = str](BaseAgent[TDeps, OutputDataT])
                         case str() | int() | float() | bool():
                             answers[question.id] = _Answer(answers=[str(raw_value)])
                         case _ as unknown_type:
-                            assert_never(unknown_type)  # ty:ignore[type-assertion-failure]
+                            assert_never(unknown_type)
                 case ElicitResult():
                     # User declined or cancelled
                     answers[question.id] = _Answer(answers=[])
@@ -506,11 +506,12 @@ class CodexAgent[TDeps = None, OutputDataT = str](BaseAgent[TDeps, OutputDataT])
             output_schema=None if self._output_type in (str, None) else self._output_type,
             personality=self._current_personality,
         )
-        self._adapter = CodexStreamedResponse(provider_name="codex", stream=raw_stream)
+        adapter = CodexStreamedResponse(provider_name="codex", stream=raw_stream)
+        self._adapter = adapter
         try:
             async with self._tool_bridge.set_run_context(run_context, prompt=prompts):
                 # Wrap to capture metadata (turn_id, token usage), then convert
-                async for native_event in self._adapter:
+                async for native_event in adapter:
                     reconstructor.observe(native_event)
                     yield native_event
                     if isinstance(native_event, PlanUpdateEvent) and self.agent_pool:
@@ -556,9 +557,7 @@ class CodexAgent[TDeps = None, OutputDataT = str](BaseAgent[TDeps, OutputDataT])
             usage=run_usage,
             model_name=self.model_name,
             messages=reconstructor.model_messages,
-            finish_reason=to_finish_reason(s)
-            if self._adapter and (s := self._adapter._turn_status)
-            else None,
+            finish_reason=to_finish_reason(s) if (s := adapter._turn_status) else None,
         )
 
         yield StreamCompleteEvent[OutputDataT](message=complete_msg)
@@ -588,7 +587,7 @@ class CodexAgent[TDeps = None, OutputDataT = str](BaseAgent[TDeps, OutputDataT])
 
         self.log.debug("Setting result type", output_type=output_type)
         self._output_type = to_type(output_type)  # type: ignore[assignment]  # ty:ignore[invalid-assignment]
-        return self  # type: ignore[return-value]  # ty:ignore[invalid-return-type]
+        return self  # type: ignore[return-value]  # ty:ignore[invalid-explicit-return]
 
     async def set_model(self, model: str) -> None:
         """Set the model for this agent."""

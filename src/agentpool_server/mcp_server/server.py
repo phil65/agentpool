@@ -22,8 +22,8 @@ if TYPE_CHECKING:
     from contextlib import AbstractAsyncContextManager
 
     from fastmcp import FastMCP
+    from mcp.server.context import ServerRequestContext
     from mcp.server.lowlevel.server import LifespanResultT
-    from pydantic import AnyUrl
 
     from agentpool import AgentPool
     from agentpool.prompts.prompts import BasePrompt
@@ -164,56 +164,75 @@ class MCPServer(BaseServer):
     def _register_resource_handlers(self) -> None:
         """Register resource subscription handlers."""
 
-        @self.server.subscribe_resource()  # type: ignore[no-untyped-call, untyped-decorator]
-        async def handle_subscribe(uri: AnyUrl) -> None:
+        async def handle_subscribe(
+            ctx: ServerRequestContext[Any], params: types.SubscribeRequestParams
+        ) -> types.EmptyResult:
             """Subscribe to resource updates."""
-            uri_str = str(uri)
-            self._subscriptions[uri_str].add(self.current_session)
-            logger.debug("Added subscription", uri=uri)
+            self._subscriptions[params.uri].add(ctx.session)
+            logger.debug("Added subscription", uri=params.uri)
+            return types.EmptyResult()
 
-        @self.server.unsubscribe_resource()  # type: ignore[no-untyped-call, untyped-decorator]
-        async def handle_unsubscribe(uri: AnyUrl) -> None:
+        async def handle_unsubscribe(
+            ctx: ServerRequestContext[Any], params: types.UnsubscribeRequestParams
+        ) -> types.EmptyResult:
             """Unsubscribe from resource updates."""
-            if (uri_str := str(uri)) in self._subscriptions:
-                self._subscriptions[uri_str].discard(self.current_session)
-                if not self._subscriptions[uri_str]:
-                    del self._subscriptions[uri_str]
+            if (uri := params.uri) in self._subscriptions:
+                self._subscriptions[uri].discard(ctx.session)
+                if not self._subscriptions[uri]:
+                    del self._subscriptions[uri]
                 logger.debug("Removed subscription", uri=uri)
+            return types.EmptyResult()
+
+        self.server.add_request_handler(
+            "resources/subscribe", types.SubscribeRequestParams, handle_subscribe
+        )
+        self.server.add_request_handler(
+            "resources/unsubscribe", types.UnsubscribeRequestParams, handle_unsubscribe
+        )
 
     def _register_logging_handlers(self) -> None:
-        """Register logging-related handlers."""
+        """Register logging-related handlers.
 
-        @self.server.set_logging_level()  # type: ignore[no-untyped-call, untyped-decorator]
-        async def handle_set_level(level: mcp.LoggingLevel) -> None:
+        The set-level handler wraps FastMCP's own handler (which stores the
+        client's requested level on its connection) and additionally adjusts
+        the local logger level.
+        """
+        fastmcp_set_level = self.server.get_request_handler("logging/setLevel")
+
+        async def handle_set_level(
+            ctx: ServerRequestContext[Any], params: types.SetLevelRequestParams
+        ) -> types.EmptyResult:
             """Handle logging level changes."""
+            level = params.level
             try:
-                python_level = constants.MCP_TO_LOGGING[level]
-                logger.setLevel(python_level)
+                if fastmcp_set_level is not None:
+                    await fastmcp_set_level.handler(ctx, params)
+                logger.setLevel(constants.MCP_TO_LOGGING[level])
                 data = f"Log level set to {level}"
-                await self.current_session.send_log_message(level, data, logger=self.name)
+                await ctx.session.send_log_message(level, data, logger=self.name)
             except Exception as exc:
-                error_data = mcp.ErrorData(
-                    message="Error setting log level",
-                    code=types.INTERNAL_ERROR,
-                    data=str(exc),
-                )
-                raise mcp.McpError(error_data) from exc
+                msg = "Error setting log level"
+                raise mcp.MCPError(types.INTERNAL_ERROR, msg, str(exc)) from exc
+            return types.EmptyResult()
 
-        @self.server.progress_notification()  # type: ignore[no-untyped-call, untyped-decorator]
         async def handle_progress(
-            token: str | int,
-            progress: float,
-            total: float | None,
-            message: str | None = None,
+            ctx: ServerRequestContext[Any], params: types.ProgressNotificationParams
         ) -> None:
             """Handle progress notifications from client."""
             logger.debug(
                 "Progress notification",
-                token=token,
-                progress=progress,
-                total=total,
-                message=message,
+                token=params.progress_token,
+                progress=params.progress,
+                total=params.total,
+                message=params.message,
             )
+
+        self.server.add_request_handler(
+            "logging/setLevel", types.SetLevelRequestParams, handle_set_level
+        )
+        self.server.add_notification_handler(
+            "notifications/progress", types.ProgressNotificationParams, handle_progress
+        )
 
     async def _start_async(self) -> None:
         """Start the server (blocking async - runs until stopped)."""
@@ -233,36 +252,21 @@ class MCPServer(BaseServer):
 
     @property
     def current_session(self) -> mcp.ServerSession:
-        """Get current session from request context."""
-        try:
-            return self.server.request_context.session
-        except LookupError as exc:
-            raise RuntimeError("No active request context") from exc
+        """Get current session from the active FastMCP request context."""
+        from fastmcp.server.dependencies import get_context
+
+        return get_context().session
 
     async def report_progress(
         self,
         progress: float,
         total: float | None = None,
         message: str | None = None,
-        related_request_id: str | None = None,
     ) -> None:
         """Report progress for the current operation."""
-        progress_token = (
-            self.server.request_context.meta.progressToken
-            if self.server.request_context.meta
-            else None
-        )
+        from fastmcp.server.dependencies import get_context
 
-        if progress_token is None:
-            return
-
-        await self.server.request_context.session.send_progress_notification(
-            progress_token=progress_token,
-            progress=progress,
-            total=total,
-            message=message,
-            related_request_id=related_request_id,
-        )
+        await get_context().report_progress(progress, total=total, message=message)
 
     @property
     def client_info(self) -> mcp.Implementation | None:
@@ -270,7 +274,7 @@ class MCPServer(BaseServer):
         session = self.current_session
         if not session.client_params:
             return None
-        return session.client_params.clientInfo
+        return session.client_params.client_info
 
     async def notify_tool_list_changed(self) -> None:
         """Notify clients about tool list changes."""

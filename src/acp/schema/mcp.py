@@ -5,7 +5,7 @@ from __future__ import annotations
 from collections.abc import Sequence  # noqa: TC003
 from typing import Literal
 
-from pydantic import Field, HttpUrl  # noqa: TC002
+from pydantic import Field, HttpUrl
 
 from acp.schema.base import AnnotatedObject, Schema
 from acp.schema.common import EnvVariable  # noqa: TC001

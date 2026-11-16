@@ -8,7 +8,7 @@ from pydantic import Field
 
 from agentpool.utils import identifiers as identifier
 from opencode_sdk.models.base import OpenCodeBaseModel
-from opencode_sdk.models.common import (  # noqa: TC001
+from opencode_sdk.models.common import (
     APIError,
     APIErrorData,
     FileDiff,
@@ -18,7 +18,7 @@ from opencode_sdk.models.common import (  # noqa: TC001
     Tokens,
 )
 from opencode_sdk.models.inputs import PartInput  # noqa: TC001
-from opencode_sdk.models.parts import (  # noqa: TC001
+from opencode_sdk.models.parts import (
     AgentPart,
     FilePart,
     FilePartSource,

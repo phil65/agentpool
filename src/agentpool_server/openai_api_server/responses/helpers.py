@@ -57,7 +57,10 @@ async def handle_request(request: ResponseRequest, agent: BaseAgent[Any, Any]) -
 
     usage_info = ResponseUsage(
         input_tokens=message.usage.input_tokens,
-        input_tokens_details=InputTokensDetails(cached_tokens=0),
+        input_tokens_details=InputTokensDetails(
+            cached_tokens=message.usage.cache_read_tokens,
+            cache_write_tokens=message.usage.cache_write_tokens,
+        ),
         output_tokens=message.usage.output_tokens,
         output_tokens_details=OutputTokensDetails(reasoning_tokens=0),
         total_tokens=message.usage.total_tokens,

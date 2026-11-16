@@ -353,9 +353,9 @@ class MCPDiscoveryToolset(ResourceProvider):
                         "description": tool.description or "No description",
                     }
                     # Include parameter info
-                    if tool.inputSchema:
-                        props = tool.inputSchema.get("properties", {})
-                        required = set(tool.inputSchema.get("required", []))
+                    if tool.input_schema:
+                        props = tool.input_schema.get("properties", {})
+                        required = set(tool.input_schema.get("required", []))
                         params = []
                         for pname, pschema in props.items():
                             param_str = pname

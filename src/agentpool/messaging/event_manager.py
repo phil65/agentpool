@@ -34,7 +34,7 @@ if TYPE_CHECKING:
 logger = get_logger(__name__)
 
 
-type EventCallback = Callable[[EventData], None | Awaitable[None]]
+type EventCallback = Callable[[EventData], Awaitable[None] | None]
 
 
 class EventManager:

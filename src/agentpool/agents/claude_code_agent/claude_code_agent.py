@@ -723,11 +723,11 @@ class ClaudeCodeAgent[TDeps = None, TResult = str](BaseAgent[TDeps, TResult]):
             )
             async with (
                 self._tool_bridge.set_run_context(run_context, prompt=prompts),
-                merge_queue_into_iterator(adapter, self._event_queue) as merged_events,  # ty: ignore[invalid-argument-type]
+                merge_queue_into_iterator(adapter, self._event_queue) as merged_events,
             ):
                 async for event in merged_events:
-                    reconstructor.observe(event)  # ty:ignore[invalid-argument-type]
-                    yield event  # ty:ignore[invalid-yield]
+                    reconstructor.observe(event)
+                    yield event
 
         except asyncio.CancelledError:
             self.log.info("Stream cancelled via CancelledError")
@@ -792,9 +792,9 @@ class ClaudeCodeAgent[TDeps = None, TResult = str](BaseAgent[TDeps, TResult]):
             cost_info = TokenCost(total_cost=total_cost)
             stop_reason = result_message.stop_reason
         # Build metadata with SDK session ID
-        msg_metadata = {}
+        final_metadata: SimpleJsonType = {}
         if self._sdk_session_id:
-            msg_metadata["sdk_session_id"] = self._sdk_session_id
+            final_metadata["sdk_session_id"] = self._sdk_session_id
         finish_reason = (
             "stop" if self._cancelled or not stop_reason else to_finish_reason(stop_reason)
         )
@@ -811,7 +811,7 @@ class ClaudeCodeAgent[TDeps = None, TResult = str](BaseAgent[TDeps, TResult]):
             usage=run_usage,
             response_time=result_message.duration_ms / 1000 if result_message else None,
             finish_reason=finish_reason,
-            metadata=msg_metadata,
+            metadata=final_metadata,
         )
 
         # Emit stream complete - post-processing handled by base class
@@ -913,7 +913,7 @@ class ClaudeCodeAgent[TDeps = None, TResult = str](BaseAgent[TDeps, TResult]):
                 # Map mode_id to PermissionMode
                 if mode_id not in VALID_MODES:
                     raise UnknownModeError(mode_id, list(VALID_MODES))
-                self._permission_mode = mode_id  # ty:ignore[invalid-assignment]
+                self._permission_mode = mode_id
                 if self._client:  # Update SDK client if initialized
                     await self.ensure_initialized()
                     await self._client.set_permission_mode(self._permission_mode)
@@ -934,7 +934,7 @@ class ClaudeCodeAgent[TDeps = None, TResult = str](BaseAgent[TDeps, TResult]):
                 # Validate thinking mode
                 if mode_id not in THINKING_MODE_TOKENS:
                     raise UnknownModeError(mode_id, list(THINKING_MODE_TOKENS.keys()))
-                self._thinking_mode = mode_id  # ty:ignore[invalid-assignment]
+                self._thinking_mode = mode_id
                 # Set thinking tokens via SDK
                 if self._client:
                     await self.ensure_initialized()

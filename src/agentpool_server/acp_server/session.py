@@ -22,7 +22,7 @@ from acp.agent.acp_requests import ACPRequests
 from acp.agent.notifications import ACPNotifications
 from acp.filesystem import ACPFileSystem
 from acp.schema import AvailableCommand, ClientCapabilities
-from agentpool import Agent, AgentPool  # noqa: TC001
+from agentpool import Agent, AgentPool
 from agentpool.agents.acp_agent import ACPAgent
 from agentpool.agents.modes import ConfigOptionChanged, ModeInfo
 from agentpool.log import get_logger
@@ -246,7 +246,13 @@ class ACPSession:
         self, state: ModeInfo | ModelInfo | AvailableCommandsUpdate | ConfigOptionChanged
     ) -> None:
         """Handle state update signal from agent - forward to ACP client."""
-        from acp.schema import AvailableCommandsUpdate, ConfigOptionUpdate, CurrentModeUpdate
+        from acp.schema import (
+            AvailableCommandsUpdate,
+            BooleanSessionConfigOption,
+            ConfigOptionUpdate,
+            CurrentModeUpdate,
+            SelectSessionConfigOption,
+        )
         from agentpool_server.acp_server.acp_agent import get_session_config_options
 
         update: CurrentModeUpdate | ConfigOptionUpdate
@@ -258,8 +264,11 @@ class ACPSession:
             case ModelInfo(id=model_id):
                 # Model changes go through ConfigOptionUpdate (model category)
                 config_options = await get_session_config_options(self.agent)
-                if opt := next((i for i in config_options if i.id == "model"), None):
-                    opt.current_value = model_id
+                match next((i for i in config_options if i.id == "model"), None):
+                    case SelectSessionConfigOption() as model_opt:
+                        model_opt.current_value = model_id
+                    case _:
+                        pass
                 update = ConfigOptionUpdate(config_options=config_options)
                 self.log.debug("Forwarding model change as config update", model_id=model_id)
             case AvailableCommandsUpdate(available_commands=cmds):
@@ -272,9 +281,13 @@ class ACPSession:
                 # Get full config_options from agent (required by ACP protocol)
                 config_options = await get_session_config_options(self.agent)
                 # Update the changed option's current_value
-                if opt := next((i for i in config_options if i.id == config_id), None):
-                    assert isinstance(value_id, str)
-                    opt.current_value = value_id
+                match next((i for i in config_options if i.id == config_id), None), value_id:
+                    case SelectSessionConfigOption() as select_opt, str() as value:
+                        select_opt.current_value = value
+                    case BooleanSessionConfigOption() as bool_opt, bool() as flag:
+                        bool_opt.current_value = flag
+                    case _:
+                        pass
                 # Convert our core type to ACP type with full config_options
                 update = ConfigOptionUpdate(config_options=config_options)
                 self.log.debug("Config option change", config_id=config_id, value_id=value_id)

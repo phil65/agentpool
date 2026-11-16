@@ -97,6 +97,7 @@ class AgentPool[TPoolDeps = None](BaseRegistry[NodeName, MessageNode[Any, Any]])
         from agentpool_toolsets.builtin.debug import install_memory_handler
 
         super().__init__()
+        self.manifest: AgentsManifest
         match manifest:
             case None:
                 self.manifest = AgentsManifest()
@@ -354,7 +355,7 @@ class AgentPool[TPoolDeps = None](BaseRegistry[NodeName, MessageNode[Any, Any]])
         from agentpool.agents.base_agent import BaseAgent
 
         filter_type = agent_type or BaseAgent
-        return {i.name: i for i in self._items.values() if isinstance(i, filter_type)}  # ty: ignore[invalid-return-type]
+        return {i.name: i for i in self._items.values() if isinstance(i, filter_type)}
 
     @property
     def all_agents(self) -> dict[str, BaseAgent[Any, Any]]:
@@ -495,7 +496,7 @@ class AgentPool[TPoolDeps = None](BaseRegistry[NodeName, MessageNode[Any, Any]])
             case str():
                 base = self.get_agents()[agent]
             case _ as unreachable:
-                assert_never(unreachable)  # ty: ignore[type-assertion-failure]
+                assert_never(unreachable)
         # Use custom deps if provided, otherwise use shared deps
         # base.context.data = deps if deps is not None else self.shared_deps
         base.deps_type = deps_type

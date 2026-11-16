@@ -9,10 +9,10 @@ from pydantic import Field
 from agentpool.utils.time_utils import now_ms
 from opencode_sdk.models.base import OpenCodeBaseModel
 from opencode_sdk.models.common import (
-    APIError,  # noqa: TC001
-    ModelRef,  # noqa: TC001
+    APIError,
+    ModelRef,
     TextSpan,
-    TimeCreated,  # noqa: TC001
+    TimeCreated,
     Tokens,
 )
 

@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import asyncio
-import datetime
+import datetime as dt
 import re
 from typing import TYPE_CHECKING, Any, Literal
 
@@ -42,7 +42,7 @@ def _generate_task_id(description: str) -> str:
     Returns:
         Task ID in format: YYYYMMDD-HHMMSS-description
     """
-    timestamp = datetime.datetime.now(tz=datetime.UTC).strftime("%Y%m%d-%H%M%S")
+    timestamp = dt.datetime.now(tz=dt.UTC).strftime("%Y%m%d-%H%M%S")
     # Sanitize description: lowercase, replace spaces/special chars with dashes
     slug = re.sub(r"[^a-z0-9]+", "-", description.lower()).strip("-")[:30]
     return f"{timestamp}-{slug}"

@@ -42,29 +42,40 @@ from typing import TYPE_CHECKING, Any, assert_never, cast
 
 from clawd_code_sdk.models import (
     AuthStatusMessage,
+    BackgroundTasksChangedMessage,
+    CommandsChangedMessage,
+    ControlRequestProgressMessage,
+    ConversationResetMessage,
     ElicitationCompleteMessage,
     FilesPersistedSystemMessage,
     HookProgressSystemMessage,
     HookResponseSystemMessage,
     HookStartedSystemMessage,
+    InformationalSystemMessage,
     InitSystemMessage,
     LocalCommandOutputMessage,
     MemoryRecallSystemMessage,
     MirrorErrorSystemMessage,
+    ModelRefusalFallbackMessage,
+    ModelRefusalNoFallbackMessage,
     NotificationSystemMessage,
+    PermissionDeniedSystemMessage,
     PluginInstallSystemMessage,
     PromptSuggestionMessage,
     RateLimitMessage,
     ResultErrorMessage,
     ResultSuccessMessage,
     SessionStateChangedMessage,
+    SessionWritesLostMessage,
     StatusSystemMessage,
     TaskNotificationSystemMessage,
     TaskProgressSystemMessage,
     TaskStartedSystemMessage,
     TaskUpdatedSystemMessage,
+    ThinkingTokensMessage,
     ToolProgressMessage,
     ToolUseSummaryMessage,
+    WorkerShuttingDownMessage,
 )
 from pydantic_ai import FunctionToolResultEvent, PartEndEvent, TextPart, ToolReturnPart
 
@@ -173,7 +184,7 @@ class ClaudeCodeStreamedResponse(StreamedResponse):
                             case ThinkingBlock() | TextBlock():
                                 pass  # Already handled via streaming deltas
                             case _ as unknown_block:
-                                assert_never(unknown_block)  # ty:ignore[type-assertion-failure]
+                                assert_never(unknown_block)
 
                 case UserMessage(content=list() as user_blocks):
                     for user_block in user_blocks:
@@ -216,17 +227,22 @@ class ClaudeCodeStreamedResponse(StreamedResponse):
                                     content=result_content,
                                     tool_call_id=tc_id,
                                 )
-                                yield FunctionToolResultEvent(result=return_part)
+                                yield FunctionToolResultEvent(return_part)
                                 tool_input = (
                                     cast(dict[str, Any], tool_use.input) if tool_use else {}
                                 )
                                 metadata: dict[str, Any] | None = self.tool_metadata.get(tc_id)
-                                if not metadata and isinstance(message.tool_use_result, list):
+                                if (
+                                    not metadata
+                                    and isinstance(message.tool_use_result, list)
+                                    and message.tool_use_result
+                                    and not isinstance(
+                                        first_result := message.tool_use_result[0], list
+                                    )
+                                ):
                                     oc_metadata = convert_to_opencode_metadata(
                                         tool_name=tool_use.name,
-                                        tool_use_result=i[0]
-                                        if (i := message.tool_use_result)
-                                        else {},
+                                        tool_use_result=first_result,
                                         tool_input=tool_input,
                                     )
                                     metadata = cast(dict[str, Any] | None, oc_metadata)
@@ -243,7 +259,7 @@ class ClaudeCodeStreamedResponse(StreamedResponse):
                             case ImageBlock() | TextBlock():
                                 pass
                             case _ as unknown_user_block:
-                                assert_never(unknown_user_block)  # ty:ignore[type-assertion-failure]
+                                assert_never(unknown_user_block)
 
                 # Real-time streaming: content_block_start
                 case StreamEvent(
@@ -336,6 +352,17 @@ class ClaudeCodeStreamedResponse(StreamedResponse):
                     | NotificationSystemMessage()
                     | MemoryRecallSystemMessage()
                     | TaskUpdatedSystemMessage()
+                    | BackgroundTasksChangedMessage()
+                    | CommandsChangedMessage()
+                    | ControlRequestProgressMessage()
+                    | ConversationResetMessage()
+                    | InformationalSystemMessage()
+                    | ModelRefusalFallbackMessage()
+                    | ModelRefusalNoFallbackMessage()
+                    | PermissionDeniedSystemMessage()
+                    | SessionWritesLostMessage()
+                    | ThinkingTokensMessage()
+                    | WorkerShuttingDownMessage()
                 ):
                     pass
                 case _ as unreachable:

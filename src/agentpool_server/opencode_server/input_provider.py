@@ -280,12 +280,12 @@ class OpenCodeInputProvider(InputProvider):
                 logger.info("URL elicitation request", message=message, url=url)
                 return types.ElicitResult(action="decline")
             case types.ElicitRequestFormParams(
-                requestedSchema=({"enum": _} | {"type": "array", "items": {"enum": _}}) as schema
+                requested_schema=({"enum": _} | {"type": "array", "items": {"enum": _}}) as schema
             ):
                 return await self._handle_question_elicitation(params, schema)
-            case types.ElicitRequestFormParams(requestedSchema={"type": "string"}):
+            case types.ElicitRequestFormParams(requested_schema={"type": "string"}):
                 return await self._handle_text_elicitation(params)
-            case types.ElicitRequestFormParams(requestedSchema=schema, message=msg):
+            case types.ElicitRequestFormParams(requested_schema=schema, message=msg):
                 # For other form elicitation, we don't have UI support yet
                 logger.info("Form elicitation request (not supported)", message=msg, schema=schema)
                 return types.ElicitResult(action="decline")

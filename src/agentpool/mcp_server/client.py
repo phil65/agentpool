@@ -37,11 +37,11 @@ if TYPE_CHECKING:
 
     import fastmcp
     from fastmcp.client import ClientTransport
+    from fastmcp.client._sdk_context_shim import RequestContext
     from fastmcp.client.elicitation import ElicitationHandler
     from fastmcp.client.logging import LogMessage
     from fastmcp.client.messages import MessageHandler, MessageHandlerT
     from fastmcp.client.sampling import SamplingHandler
-    from mcp.shared.context import RequestContext
     from mcp.types import (
         BlobResourceContents,
         ElicitRequestParams,
@@ -218,7 +218,7 @@ class MCPClient:
                 name=self._client_name,
                 version=version("agentpool"),
                 title=self._client_title,
-                websiteUrl=self._client_website_url,
+                website_url=self._client_website_url,
                 icons=icons,
             )
 
@@ -325,8 +325,8 @@ class MCPClient:
         ) -> str | Any | ToolReturn:
             """Dynamically generated MCP tool wrapper."""
             # Filter out None values for optional params
-            schema_props = tool.inputSchema.get("properties", {})
-            required_props = set(tool.inputSchema.get("required", []))
+            schema_props = tool.input_schema.get("properties", {})
+            required_props = set(tool.input_schema.get("required", []))
             filtered_kwargs = {
                 k: v
                 for k, v in kwargs.items()
@@ -336,16 +336,16 @@ class MCPClient:
 
         # Set proper signature and annotations with both RunContext and AgentContext
         schema = mcp_tool_to_input_schema(tool)
-        fn_schema = FunctionSchema.from_dict(schema, output_schema=tool.outputSchema)
+        fn_schema = FunctionSchema.from_dict(schema, output_schema=tool.output_schema)
         sig = fn_schema.to_python_signature()
-        tool_callable.__signature__ = create_modified_signature(  # type: ignore[attr-defined]  # ty:ignore[unresolved-attribute]
+        tool_callable.__signature__ = create_modified_signature(  # type: ignore[attr-defined]  # ty:ignore[missing-attribute]
             sig, inject={"ctx": RunContext, "agent_ctx": AgentContext}
         )
         annotations = fn_schema.get_annotations()
         annotations["ctx"] = RunContext
         annotations["agent_ctx"] = AgentContext
         # Update return annotation to support multiple types
-        if not tool.outputSchema:
+        if not tool.output_schema:
             annotations["return"] = str | Any | ToolReturn  # type: ignore[assignment]  # ty:ignore[invalid-assignment]
         tool_callable.__annotations__ = annotations
         tool_callable.__name__ = tool.name
@@ -384,7 +384,7 @@ class MCPClient:
                 message: str,
                 response_type: type[T] | None,
                 params: ElicitRequestParams,
-                context: RequestContext[Any, Any, Any],
+                context: RequestContext[Any, Any],
             ) -> T | dict[str, Any] | Any:
                 from fastmcp.client.elicitation import ElicitResult
                 from mcp.types import ElicitResult as MCPElicitResult, ErrorData

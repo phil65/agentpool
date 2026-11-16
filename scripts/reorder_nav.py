@@ -173,7 +173,7 @@ def sort_nav_items_with_context(
         # Handle both md-tabs__item and md-nav__item
         link = nav_item.find(
             "a",
-            class_=lambda c: c and ("md-tabs__link" in c or "md-nav__link" in c),  # pyright: ignore[reportArgumentType]
+            class_=lambda c: c is not None and ("md-tabs__link" in c or "md-nav__link" in c),
         )
         if not link:
             return (999999, "")

@@ -5,6 +5,7 @@ from __future__ import annotations
 import os
 from typing import TYPE_CHECKING, Any, Literal, Self, cast
 
+from mcp.types import ToolListChangedNotification
 from schemez import OpenAIFunctionDefinition
 
 from agentpool.log import get_logger
@@ -17,7 +18,7 @@ if TYPE_CHECKING:
     from types import TracebackType
 
     from mcp import ClientSession
-    from mcp.types import CallToolResult
+    from mcp.types import CallToolResult, ServerNotification
 
     from agentpool.tools.base import Tool
 
@@ -54,20 +55,18 @@ class McpRunTools(ResourceProvider):
         mcp_client = self.client.mcp_sse()
         self._mcp_client_ctx = mcp_client.connect()
         self._session = await self._mcp_client_ctx.__aenter__()
-        # Set up notification handler for tool changes
-        # The MCP ClientSession dispatches notifications via _received_notification
-        # We monkey-patch it to intercept ToolListChangedNotification
-        original_handler = self._session._received_notification
+        # Set up notification handler for tool changes.
+        # mcp_run constructs the ClientSession without a message_handler, so we wrap
+        # the session's handler to intercept ToolListChangedNotification.
+        original_handler = self._session._message_handler
 
-        async def notification_handler(notification: Any) -> None:
-            from mcp.types import ToolListChangedNotification
-
-            if isinstance(notification.root, ToolListChangedNotification):
+        async def notification_handler(message: ServerNotification | Exception) -> None:
+            if isinstance(message, ToolListChangedNotification):
                 logger.info("MCP.run tool list changed notification received")
                 await self._on_tools_changed()
-            await original_handler(notification)
+            await original_handler(message)
 
-        self._session._received_notification = notification_handler  # type: ignore[method-assign]
+        self._session._message_handler = notification_handler
 
         return self
 

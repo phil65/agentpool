@@ -135,7 +135,7 @@ class ConnectionManager:
             talks = [
                 self.create_connection(
                     source,
-                    t,  # ty: ignore[invalid-argument-type]
+                    t,
                     connection_type=connection_type,
                     priority=priority,
                     delay=delay,
@@ -192,7 +192,7 @@ class ConnectionManager:
         target_name = target if isinstance(target, str) else target.name
         results = []
         for talk in self._connections:
-            if talk.queued and (t.name == target_name for t in talk.targets):
+            if talk.queued and any(t.name == target_name for t in talk.targets):
                 results.extend(await talk.trigger())
         return results
 

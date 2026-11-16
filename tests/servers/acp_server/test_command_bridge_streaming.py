@@ -55,7 +55,7 @@ async def test_session_command_immediate_execution():
     ):
         sent_messages.append(message)
 
-    session.notifications.send_agent_text = capture_message  # type: ignore[method-assign]  # ty:ignore[invalid-assignment]
+    session.notifications.send_agent_text = capture_message  # type: ignore[method-assign]
     await session.execute_slash_command("/help")
     assert len(sent_messages) > 0
 
@@ -173,7 +173,7 @@ async def test_immediate_send_error_handling(caplog: pytest.LogCaptureFixture):
     ):
         sent_messages.append(message)
 
-    session.notifications.send_agent_text = capture_message  # type: ignore[method-assign]  # ty:ignore[invalid-assignment]
+    session.notifications.send_agent_text = capture_message  # type: ignore[method-assign]
     # Execute failing command
     await session.execute_slash_command("/fail")
 

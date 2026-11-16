@@ -41,7 +41,7 @@ class NodeContext[TDeps = object]:
         from agentpool.agents.base_agent import BaseAgent
 
         assert isinstance(self.node, BaseAgent)
-        return self.node  # ty: ignore[invalid-return-type]
+        return self.node
 
     def get_input_provider(self) -> InputProvider:
         from agentpool.ui.stdlib_provider import StdlibInputProvider

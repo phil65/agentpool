@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 from contextlib import asynccontextmanager
+import io
 import sys
 from typing import TYPE_CHECKING, Any
 
@@ -37,7 +38,10 @@ class StdinStream(ByteReceiveStream):
         loop = asyncio.get_running_loop()
         # read1() returns immediately when any data is available (up to max_bytes)
         # unlike read() which blocks until exactly max_bytes are read or EOF
-        data: bytes = await loop.run_in_executor(None, sys.stdin.buffer.read1, max_bytes)  # type: ignore[union-attr]  # ty:ignore[unresolved-attribute]
+        stdin_buffer = sys.stdin.buffer
+        if not isinstance(stdin_buffer, io.BufferedIOBase):
+            raise TypeError(f"Unsupported stdin buffer type: {type(stdin_buffer)}")
+        data = await loop.run_in_executor(None, lambda: stdin_buffer.read1(max_bytes))
         if not data:
             raise anyio.EndOfStream
         return data

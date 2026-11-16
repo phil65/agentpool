@@ -15,7 +15,7 @@ parent_session_id = "abc-123"
 # Create fork with same context
 options = ClaudeAgentOptions(
     resume=parent_session_id,  # Which session to fork from
-    fork_session=True           # Create new ID instead of resuming same
+    fork_session=True,  # Create new ID instead of resuming same
 )
 fork_client = ClaudeSDKClient(options=options)
 await fork_client.connect()
@@ -49,10 +49,7 @@ async def run(self, prompt, store_history=True):
         await self.main_client.query(prompt)
     else:
         # Ephemeral - fork, query, discard
-        options = ClaudeAgentOptions(
-            resume=self.session_id,
-            fork_session=True
-        )
+        options = ClaudeAgentOptions(resume=self.session_id, fork_session=True)
         fork = ClaudeSDKClient(options=options)
         await fork.connect()
         result = await fork.query(prompt)
@@ -66,10 +63,7 @@ Spawn a subagent that has access to current context:
 
 ```python
 # Main agent has context: "The secret is XYZ"
-options = ClaudeAgentOptions(
-    resume=main_session_id,
-    fork_session=True
-)
+options = ClaudeAgentOptions(resume=main_session_id, fork_session=True)
 subagent = ClaudeSDKClient(options=options)
 await subagent.connect()
 
@@ -86,7 +80,7 @@ Try different approaches with same context:
 fork_a = create_fork(session_id)
 await fork_a.query("Solve using recursion")
 
-# Fork for approach B  
+# Fork for approach B
 fork_b = create_fork(session_id)
 await fork_b.query("Solve using iteration")
 
@@ -144,11 +138,12 @@ See test files in project root:
 from clawd_code_sdk import ClaudeSDKClient
 from clawd_code_sdk.models import ClaudeAgentOptions, ResultMessage, AssistantMessage
 
+
 class ClaudeCodeAgent:
     def __init__(self):
         self.main_client = None
         self.session_id = None
-    
+
     async def connect(self):
         self.main_client = ClaudeSDKClient()
         await self.main_client.connect()
@@ -158,28 +153,25 @@ class ClaudeCodeAgent:
             if isinstance(msg, ResultMessage):
                 self.session_id = msg.session_id
                 break
-    
+
     async def ephemeral_query(self, prompt: str) -> str:
         """Execute query without affecting main conversation."""
-        options = ClaudeAgentOptions(
-            resume=self.session_id,
-            fork_session=True
-        )
+        options = ClaudeAgentOptions(resume=self.session_id, fork_session=True)
         fork = ClaudeSDKClient(options=options)
-        
+
         try:
             await fork.connect()
             await fork.query(prompt)
-            
+
             result = ""
             async for msg in fork.receive_messages():
                 if isinstance(msg, AssistantMessage):
                     for block in msg.content:
-                        if hasattr(block, 'text'):
+                        if hasattr(block, "text"):
                             result += block.text
                 if isinstance(msg, ResultMessage):
                     break
-            
+
             return result
         finally:
             await fork.disconnect()

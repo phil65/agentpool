@@ -7,7 +7,6 @@ from typing import TYPE_CHECKING
 from pydantic_ai import (
     ModelRequest,
     ModelResponse,
-    RetryPromptPart,
     TextPart,
     ThinkingPart,
     ToolCallPart,
@@ -108,7 +107,12 @@ async def test_filter_retry_prompts():
         ModelRequest(
             parts=[
                 UserPromptPart(content="Do something"),
-                RetryPromptPart(content="Please try again"),
+                ToolReturnPart(
+                    tool_name="some_tool",
+                    content="Please try again",
+                    tool_call_id="call_1",
+                    outcome="retried",
+                ),
             ]
         ),
         ModelResponse(parts=[TextPart(content="Done")]),
@@ -119,7 +123,9 @@ async def test_filter_retry_prompts():
     # Check no retry prompts remain
     for msg in result:
         if isinstance(msg, ModelRequest):
-            assert not any(isinstance(p, RetryPromptPart) for p in msg.parts)
+            assert not any(
+                isinstance(p, ToolReturnPart) and p.outcome == "retried" for p in msg.parts
+            )
 
     # User prompt should still be there
     assert any(

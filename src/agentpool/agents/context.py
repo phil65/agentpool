@@ -48,7 +48,7 @@ class AgentContext[TDeps = Any](NodeContext[TDeps]):
         from agentpool import Agent
 
         assert isinstance(self.node, Agent)
-        return self.node  # ty: ignore[invalid-return-type]
+        return self.node
 
     async def handle_elicitation(self, params: ElicitRequestParams) -> ElicitResult | ErrorData:
         """Handle elicitation request for additional information."""

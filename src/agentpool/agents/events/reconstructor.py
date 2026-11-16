@@ -160,7 +160,7 @@ class MessageReconstructor:
                 self.model_messages.append(ModelRequest(parts=[return_part]))
 
             # --- pydantic-ai native tool result events ---
-            case FunctionToolResultEvent(result=ToolReturnPart() as return_part):
+            case FunctionToolResultEvent(part=ToolReturnPart() as return_part):
                 self._flush_response()
                 self.model_messages.append(ModelRequest(parts=[return_part]))
 

@@ -3,14 +3,14 @@
 from __future__ import annotations
 
 import os
-from typing import TYPE_CHECKING, Annotated, Literal, Self
+from typing import TYPE_CHECKING, Annotated, Any, Literal, Self
 
 from pydantic import ConfigDict, Field, HttpUrl, model_validator
 from schemez import Schema
 
 
 if TYPE_CHECKING:
-    from pydantic_ai.mcp import MCPServer, MCPServerSSE, MCPServerStdio, MCPServerStreamableHTTP
+    from pydantic_ai.mcp import MCPToolset
 
 
 class MCPServerAuthSettings(Schema):
@@ -136,8 +136,8 @@ class BaseMCPServerConfig(Schema):
         env["PYTHONIOENCODING"] = "utf-8"
         return env
 
-    def to_pydantic_ai(self) -> MCPServer:
-        """Convert to pydantic-ai MCP server instance."""
+    def to_pydantic_ai(self) -> MCPToolset[Any]:
+        """Convert to a pydantic-ai MCPToolset."""
         raise NotImplementedError
 
     @property
@@ -221,17 +221,17 @@ class StdioMCPServerConfig(BaseMCPServerConfig):
             timeout=self.timeout,
         )
 
-    def to_pydantic_ai(self) -> MCPServerStdio:
-        """Convert to pydantic-ai MCPServerStdio instance."""
-        from pydantic_ai.mcp import MCPServerStdio
+    def to_pydantic_ai(self) -> MCPToolset[Any]:
+        """Convert to pydantic-ai MCPToolset using a stdio transport."""
+        from fastmcp.client.transports import StdioTransport
+        from pydantic_ai.mcp import MCPToolset
 
-        return MCPServerStdio(
+        transport = StdioTransport(
             command=self.command,
             args=self.args,
             env=self.get_env_vars() if self.env else None,
-            id=self.name,
-            timeout=self.timeout,
         )
+        return MCPToolset(transport, id=self.name, init_timeout=self.timeout)
 
 
 class SSEMCPServerConfig(BaseMCPServerConfig):
@@ -288,12 +288,13 @@ class SSEMCPServerConfig(BaseMCPServerConfig):
             timeout=self.timeout,
         )
 
-    def to_pydantic_ai(self) -> MCPServerSSE:
-        """Convert to pydantic-ai MCPServerSSE instance."""
-        from pydantic_ai.mcp import MCPServerSSE
+    def to_pydantic_ai(self) -> MCPToolset[Any]:
+        """Convert to pydantic-ai MCPToolset using an SSE transport."""
+        from fastmcp.client.transports import SSETransport
+        from pydantic_ai.mcp import MCPToolset
 
-        url = str(self.url)
-        return MCPServerSSE(url=url, headers=self.headers, id=self.name, timeout=self.timeout)
+        transport = SSETransport(url=str(self.url), headers=self.headers)
+        return MCPToolset(transport, id=self.name, init_timeout=self.timeout)
 
 
 class StreamableHTTPMCPServerConfig(BaseMCPServerConfig):
@@ -350,16 +351,13 @@ class StreamableHTTPMCPServerConfig(BaseMCPServerConfig):
             timeout=self.timeout,
         )
 
-    def to_pydantic_ai(self) -> MCPServerStreamableHTTP:
-        """Convert to pydantic-ai MCPServerStreamableHTTP instance."""
-        from pydantic_ai.mcp import MCPServerStreamableHTTP
+    def to_pydantic_ai(self) -> MCPToolset[Any]:
+        """Convert to pydantic-ai MCPToolset using a streamable HTTP transport."""
+        from fastmcp.client.transports import StreamableHttpTransport
+        from pydantic_ai.mcp import MCPToolset
 
-        return MCPServerStreamableHTTP(
-            url=str(self.url),
-            headers=self.headers,
-            id=self.name,
-            timeout=self.timeout,
-        )
+        transport = StreamableHttpTransport(url=str(self.url), headers=self.headers)
+        return MCPToolset(transport, id=self.name, init_timeout=self.timeout)
 
 
 MCPServerConfig = Annotated[

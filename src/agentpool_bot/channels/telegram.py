@@ -182,7 +182,7 @@ class TelegramChannel(BaseChannel):
         logger.info("Telegram bot connected", username=bot_info.username)
         try:
             await self._app.bot.set_my_commands(self.BOT_COMMANDS)
-        except Exception:  # noqa: BLE001
+        except Exception:
             logger.warning("Failed to register bot commands", exc_info=True)
         assert self._app.updater
         await self._app.updater.start_polling(
@@ -269,7 +269,7 @@ class TelegramChannel(BaseChannel):
                     await self._app.bot.send_message(
                         chat_id=chat_id, text=html_text, parse_mode="HTML"
                     )
-                except Exception:  # noqa: BLE001
+                except Exception:
                     logger.warning("HTML parse failed, falling back to plain text", exc_info=True)
                     try:
                         await self._app.bot.send_message(chat_id=chat_id, text=chunk)
@@ -417,7 +417,7 @@ class TelegramChannel(BaseChannel):
                 await asyncio.sleep(4)
         except asyncio.CancelledError:
             pass
-        except Exception:  # noqa: BLE001
+        except Exception:
             logger.debug("Typing indicator stopped", chat_id=chat_id, exc_info=True)
 
     async def _on_error(self, update: object, context: ContextTypes.DEFAULT_TYPE) -> None:

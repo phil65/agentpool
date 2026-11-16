@@ -17,7 +17,7 @@ from acp.schema import (
     SessionNotification,
     SessionUpdate,
     TextContentBlock,
-    ToolCallKind,  # noqa: TC001
+    ToolCallKind,
     ToolCallProgress,
     ToolCallStart,
     UserMessageChunk,

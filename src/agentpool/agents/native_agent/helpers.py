@@ -7,11 +7,15 @@ from typing import TYPE_CHECKING, Any
 from pydantic_ai import (
     BaseToolCallPart,
     BaseToolReturnPart,
+    FinalResultEvent,
     FunctionToolCallEvent,
     FunctionToolResultEvent,
     ModelResponse,
+    PartDeltaEvent,
+    PartEndEvent,
     PartStartEvent,
     TextPart,
+    ToolReturnPart,
 )
 
 from agentpool import log
@@ -21,21 +25,24 @@ from agentpool.utils.pydantic_ai_helpers import safe_args_as_dict
 
 
 if TYPE_CHECKING:
-    from pydantic_ai import ModelMessage
-    from pydantic_ai.builtin_tools import AbstractBuiltinTool
+    from collections.abc import AsyncIterable, AsyncIterator
+
+    from pydantic_ai import AgentStreamEvent as PydanticAIStreamEvent, ModelMessage
     from pydantic_ai.models import Model
+    from pydantic_ai.native_tools import AbstractNativeTool
     from tokonomics.model_discovery import ModelInfo
 
     from agentpool.agents.events import RichAgentStreamEvent
+    from agentpool.agents.events.events import AgentStreamEvent
     from agentpool_config.nodes import ToolConfirmationMode
 
 logger = log.get_logger(__name__)
 
 
 def filter_builtin_tools(
-    tools: list[AbstractBuiltinTool],
+    tools: list[AbstractNativeTool],
     model: Model,
-) -> list[AbstractBuiltinTool]:
+) -> list[AbstractNativeTool]:
     """Filter builtin tools to those supported by the model.
 
     Args:
@@ -45,8 +52,10 @@ def filter_builtin_tools(
     Returns:
         Filtered list containing only tools the model supports
     """
+    from pydantic_ai.native_tools import SUPPORTED_NATIVE_TOOLS
+
     try:
-        supported = model.profile.supported_builtin_tools
+        supported = model.profile.get("supported_native_tools", SUPPORTED_NATIVE_TOOLS)
     except NotImplementedError:  # some models (->FallbackModel) raise this when accessing profile
         return tools
     filtered = [t for t in tools if isinstance(t, tuple(supported))]
@@ -54,6 +63,29 @@ def filter_builtin_tools(
         dropped = [type(t).__name__ for t in tools if not isinstance(t, tuple(supported))]
         logger.info("Dropping unsupported builtin tools for %s: %s", model.model_name, dropped)
     return filtered
+
+
+async def forward_supported_events(
+    stream: AsyncIterable[PydanticAIStreamEvent],
+) -> AsyncIterator[AgentStreamEvent]:
+    """Forward the pydantic-ai stream events agentpool handles, dropping the rest.
+
+    pydantic-ai also emits realtime, capability, deferred-tool and enqueued-message
+    events, which have no agentpool counterpart and are not forwarded.
+    """
+    async for event in stream:
+        match event:
+            case (
+                PartStartEvent()
+                | PartDeltaEvent()
+                | PartEndEvent()
+                | FinalResultEvent()
+                | FunctionToolCallEvent()
+                | FunctionToolResultEvent()
+            ):
+                yield event
+            case _:
+                pass
 
 
 def process_tool_event(
@@ -73,8 +105,7 @@ def process_tool_event(
     Returns:
         ToolCallCompleteEvent if a tool call completed, None otherwise
     """
-    # Note: BuiltinToolCallEvent/BuiltinToolResultEvent are deprecated.
-    # Both function and builtin tools use PartStartEvent with BaseToolCallPart/BaseToolReturnPart.
+    # Both function and native tools use PartStartEvent with BaseToolCallPart/BaseToolReturnPart.
     match event:
         case (
             PartStartEvent(part=BaseToolCallPart() as tool_part)
@@ -83,9 +114,7 @@ def process_tool_event(
             pending_tool_calls[tool_part.tool_call_id] = tool_part
         case (
             PartStartEvent(part=BaseToolReturnPart(tool_call_id=call_id, content=content))
-            | FunctionToolResultEvent(
-                result=BaseToolReturnPart(tool_call_id=call_id, content=content)
-            )
+            | FunctionToolResultEvent(part=ToolReturnPart(tool_call_id=call_id, content=content))
         ):
             if call_info := pending_tool_calls.pop(call_id, None):
                 return ToolCallCompleteEvent(

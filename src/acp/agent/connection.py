@@ -54,7 +54,6 @@ if TYPE_CHECKING:
 
     from anyio.abc import ByteReceiveStream, ByteSendStream
 
-    from acp.agent.protocol import Agent
     from acp.connection import StreamObserver
     from acp.schema import (
         AgentMethod,
@@ -103,7 +102,7 @@ class AgentSideConnection(Client):
             observers: list of StreamObserver instances to observe the connection
             debug_file: path to a file to write debug information to
         """
-        agent = to_agent(self) if callable(to_agent) else to_agent  # ty: ignore[call-top-callable]
+        agent = to_agent if isinstance(to_agent, Agent) else to_agent(self)
         handler = partial(_agent_handler, agent)
         store = DebuggingMessageStateStore(debug_file=debug_file) if debug_file else None
         self._conn = Connection(

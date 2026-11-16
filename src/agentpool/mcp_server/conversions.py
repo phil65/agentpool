@@ -48,11 +48,11 @@ def to_mcp_messages(
                 match item:
                     case BinaryContent(data=data, media_type=media_type) if item.is_audio:
                         encoded = base64.b64encode(data).decode()
-                        audio = AudioContent(type="audio", data=encoded, mimeType=media_type)
+                        audio = AudioContent(type="audio", data=encoded, mime_type=media_type)
                         yield PromptMessage(role="user", content=audio)
                     case BinaryContent(data=data, media_type=media_type) if item.is_image:
                         encoded = base64.b64encode(data).decode()
-                        image = ImageContent(type="image", data=encoded, mimeType=media_type)
+                        image = ImageContent(type="image", data=encoded, mime_type=media_type)
                         yield PromptMessage(role="user", content=image)
                     case FileUrl(url=url):
                         content = TextContent(type="text", text=url)
@@ -86,8 +86,8 @@ def content_block_to_user_content(content: SamplingMessageContentBlock) -> UserC
         case types.TextContent(text=text):
             return text
         case (
-            types.ImageContent(data=data, mimeType=mime)
-            | types.AudioContent(data=data, mimeType=mime)
+            types.ImageContent(data=data, mime_type=mime)
+            | types.AudioContent(data=data, mime_type=mime)
         ):
             bin_content = BinaryContent(data=base64.b64decode(data), media_type=mime)
             return BinaryContent.narrow_type(bin_content)
@@ -124,11 +124,11 @@ async def from_mcp_content(
                 contents.append(text)
             case TextResourceContents(text=text):
                 contents.append(text)
-            case ImageContent(data=data, mimeType=mime_type):
+            case ImageContent(data=data, mime_type=mime_type):
                 decoded_data = base64.b64decode(data)
                 img = BinaryImage(data=decoded_data, media_type=mime_type)
                 contents.append(img)
-            case AudioContent(data=data, mimeType=mime_type):
+            case AudioContent(data=data, mime_type=mime_type):
                 decoded_data = base64.b64decode(data)
                 content = BinaryContent(data=decoded_data, media_type=mime_type)
                 contents.append(content)
@@ -137,7 +137,7 @@ async def from_mcp_content(
                 mime = "application/octet-stream"
                 content = BinaryContent(data=decoded_data, media_type=mime)
                 contents.append(content)
-            case ResourceLink(uri=uri, mimeType=mime_type) if client:
+            case ResourceLink(uri=uri, mime_type=mime_type) if client:
                 try:
                     res = await client.read_resource(uri)
                     emb_resources = [EmbeddedResource(type="resource", resource=r) for r in res]
@@ -146,7 +146,7 @@ async def from_mcp_content(
                 except Exception:  # noqa: BLE001
                     # Fallback to URL if reading fails
                     logger.warning("Failed to read resource", uri=uri)
-            case ResourceLink(uri=uri, mimeType=mime_type):
+            case ResourceLink(uri=uri, mime_type=mime_type):
                 # Convert to appropriate URL type based on MIME type
                 contents.append(url_from_mime_type(str(uri), mime_type))
             # mypy doesnt understand exhaustivness check for "nested typing", so we nest match-case
@@ -154,10 +154,10 @@ async def from_mcp_content(
                 match resource:
                     case TextResourceContents(text=text):
                         contents.append(text)
-                    case BlobResourceContents(mimeType=mime_type):
+                    case BlobResourceContents(mime_type=mime_type):
                         contents.append(f"[Binary data: {mime_type}]")
                     case _ as unreachable:
-                        assert_never(unreachable)  # ty: ignore
+                        assert_never(unreachable)
             case _ as unreachable:
                 assert_never(unreachable)
     return contents
@@ -184,12 +184,12 @@ def content_block_as_text(content: ContentBlock) -> str:
                 case BlobResourceContents() as blob_contents:
                     return f"[Resource: {blob_contents.uri}]"
                 case _ as unreachable:
-                    assert_never(unreachable)  # ty: ignore
+                    assert_never(unreachable)
         case ResourceLink(uri=uri, description=desc):
             return f"[Resource Link: {uri}] - {desc}" if desc else f"[Resource Link: {uri}]"
-        case ImageContent(mimeType=mime_type):
+        case ImageContent(mime_type=mime_type):
             return f"[Image: {mime_type}]"
-        case AudioContent(mimeType=mime_type):
+        case AudioContent(mime_type=mime_type):
             return f"[Audio: {mime_type}]"
         case _ as unreachable:
             assert_never(unreachable)

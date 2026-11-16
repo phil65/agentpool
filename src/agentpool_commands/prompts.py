@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from slashed import CommandContext, CommandError  # noqa: TC002
+from slashed import CommandContext, CommandError
 
 from agentpool.messaging.context import NodeContext  # noqa: TC001
 from agentpool_commands.base import NodeCommand
@@ -71,7 +71,7 @@ class ListPromptsCommand(NodeCommand):
                 builtin_configs = prompt_manager.get_builtin_prompts()
                 for prompt_name in sorted_prompts:
                     prompt = builtin_configs.get(prompt_name)
-                    desc = f" - *{prompt.category}*" if prompt and prompt.category else ""
+                    desc = f" - *{prompt.category}*" if prompt else ""
                     output_lines.append(f"- **{prompt_name}**{desc}")
             else:
                 # For other providers, just show names

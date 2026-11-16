@@ -18,8 +18,8 @@ if TYPE_CHECKING:
     from collections.abc import Sequence
     from types import TracebackType
 
+    from fastmcp.client._sdk_context_shim import RequestContext
     from mcp import types
-    from mcp.shared.context import RequestContext
     from mcp.types import SamplingMessage
 
     from agentpool_config.mcp_server import MCPServerConfig
@@ -83,7 +83,7 @@ class MCPManager:
         self,
         messages: list[SamplingMessage],
         params: types.CreateMessageRequestParams,
-        context: RequestContext[Any, Any, Any],
+        context: RequestContext[Any, Any],
     ) -> str:
         """Handle MCP sampling by creating a new agent with specified preferences."""
         from agentpool.agents import Agent
@@ -91,13 +91,13 @@ class MCPManager:
 
         prompts = sampling_messages_to_user_content(messages)
         model = self.sampling_model
-        if (prefs := params.modelPreferences) and prefs.hints and prefs.hints[0].name:
+        if (prefs := params.model_preferences) and prefs.hints and prefs.hints[0].name:
             model = prefs.hints[0].name  # Extract model from preferences
         # Create usage limits from sampling parameters
-        # limits = UsageLimits(output_tokens_limit=params.maxTokens, request_limit=1)
+        # limits = UsageLimits(output_tokens_limit=params.max_tokens, request_limit=1)
         # TODO: Re-add per-turn usage_limits once implemented for all agents
         # TODO: Apply temperature from params.temperature
-        sys_prompt = params.systemPrompt or ""
+        sys_prompt = params.system_prompt or ""
         agent = Agent(name="sampling-agent", model=model, system_prompt=sys_prompt, session=False)
         try:
             async with agent:

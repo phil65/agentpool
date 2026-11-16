@@ -13,12 +13,13 @@ from uuid import uuid4
 
 import logfire
 from pydantic_ai import Agent as PydanticAgent, CallToolsNode, ModelRequestNode, RunContext
+from pydantic_ai.capabilities import NativeTool, ProcessHistory
 from pydantic_ai.tools import ToolDefinition
 
 from agentpool.agents.base_agent import BaseAgent
 from agentpool.agents.events import RunStartedEvent, StreamCompleteEvent
 from agentpool.agents.exceptions import UnknownCategoryError, UnknownModeError
-from agentpool.agents.native_agent.helpers import process_tool_event
+from agentpool.agents.native_agent.helpers import forward_supported_events, process_tool_event
 from agentpool.log import get_logger
 from agentpool.messaging import ChatMessage, MessageHistory
 from agentpool.storage import StorageManager
@@ -35,9 +36,17 @@ if TYPE_CHECKING:
     from types import TracebackType
 
     from exxec import ExecutionEnvironment
-    from pydantic_ai import BaseToolCallPart, EndStrategy, ModelSettings, UsageLimits, UserContent
-    from pydantic_ai.builtin_tools import AbstractBuiltinTool
+    from pydantic_ai import (
+        AgentRetries,
+        BaseToolCallPart,
+        EndStrategy,
+        ModelSettings,
+        UsageLimits,
+        UserContent,
+    )
+    from pydantic_ai.capabilities import AbstractCapability
     from pydantic_ai.models import Model
+    from pydantic_ai.native_tools import AbstractNativeTool
     from pydantic_ai.output import OutputSpec
     from slashed import BaseCommand
     from tokonomics.model_discovery import ProviderType
@@ -120,7 +129,7 @@ class Agent[TDeps = None, OutputDataT = str](BaseAgent[TDeps, OutputDataT]):
         *,
         deps_type: type[TDeps] | None = None,
         model: ModelType,
-        output_type: OutputSpec[OutputDataT] = str,  # type: ignore[assignment]
+        output_type: OutputSpec[OutputDataT] = str,  # type: ignore[assignment]  # ty: ignore[invalid-parameter-default]
         # context: AgentContext[TDeps] | None = None,
         session: SessionIdType | SessionQuery | MemoryConfig | bool = None,
         system_prompt: AnyPromptType | Sequence[AnyPromptType] = (),
@@ -145,7 +154,7 @@ class Agent[TDeps = None, OutputDataT = str](BaseAgent[TDeps, OutputDataT]):
         env: ExecutionEnvironment | StrPath | None = None,
         hooks: AgentHooks | None = None,
         tool_confirmation_mode: ToolConfirmationMode = "per_tool",
-        builtin_tools: Sequence[AbstractBuiltinTool] | None = None,
+        builtin_tools: Sequence[AbstractNativeTool] | None = None,
         usage_limits: UsageLimits | None = None,
         providers: Sequence[ProviderType] | None = None,
         commands: Sequence[BaseCommand] | None = None,
@@ -393,7 +402,7 @@ class Agent[TDeps = None, OutputDataT = str](BaseAgent[TDeps, OutputDataT]):
             end_strategy=config.end_strategy,
             agent_config=config,
             input_provider=input_provider,
-            output_type=resolved_output_type,  # type: ignore[arg-type]
+            output_type=resolved_output_type,  # type: ignore[arg-type]  # ty: ignore[invalid-argument-type]
             event_handlers=merged_handlers or None,
             agent_pool=agent_pool,
             tool_mode=config.tool_mode,
@@ -604,19 +613,24 @@ class Agent[TDeps = None, OutputDataT = str](BaseAgent[TDeps, OutputDataT]):
             model_ = actual_model
         # Filter builtin tools to those supported by the resolved model
         builtin_tools = filter_builtin_tools(self._builtin_tools, model_)
+        capabilities: list[AbstractCapability[Any]] = [
+            *(NativeTool(tool) for tool in builtin_tools),
+            *(ProcessHistory(processor) for processor in self._history_processors),
+        ]
+        output_retries = self._retries if self._output_retries is None else self._output_retries
+        retries: AgentRetries = {"tools": self._retries, "output": output_retries}
+        deps_type: type[Any] = self.deps_type or NoneType
         agent = PydanticAgent(
             name=self.name,
             description=self.description,
             model=model_,
             model_settings=self.model_settings,
             instructions=self._formatted_system_prompt,
-            retries=self._retries,
+            retries=retries,
             end_strategy=self._end_strategy,
-            output_retries=self._output_retries,
-            deps_type=self.deps_type or NoneType,
+            deps_type=deps_type,
             output_type=final_type,
-            builtin_tools=builtin_tools,
-            history_processors=self._history_processors or None,
+            capabilities=capabilities or None,
         )
         context_for_tools = self.get_context(input_provider=input_provider)
         for tool in tools:
@@ -648,7 +662,7 @@ class Agent[TDeps = None, OutputDataT = str](BaseAgent[TDeps, OutputDataT]):
                 agent.tool(prepare=prepare_fn)(wrapped)
             else:
                 agent.tool_plain(prepare=prepare_fn)(wrapped)
-        return agent  # type: ignore[return-value]  # ty:ignore[invalid-return-type]
+        return agent  # type: ignore[return-value]  # ty:ignore[invalid-explicit-return]
 
     async def _stream_events(
         self,
@@ -680,7 +694,7 @@ class Agent[TDeps = None, OutputDataT = str](BaseAgent[TDeps, OutputDataT]):
         # Prepend pending context parts (prompts are already pydantic-ai UserContent format)
         async with agentlet.iter(
             prompts,
-            deps=deps,  # type: ignore[arg-type]
+            deps=deps,  # type: ignore[arg-type]  # ty: ignore[invalid-argument-type]
             message_history=[m for run in history_list for m in run.to_pydantic_ai()],
             usage_limits=self._default_usage_limits,
         ) as agent_run:
@@ -697,15 +711,17 @@ class Agent[TDeps = None, OutputDataT = str](BaseAgent[TDeps, OutputDataT]):
                         case ModelRequestNode() | CallToolsNode():
                             async with (
                                 node.stream(agent_run.ctx) as stream,
-                                merge_queue_into_iterator(stream, self._event_queue) as merged,  # ty:ignore[invalid-argument-type]
+                                merge_queue_into_iterator(
+                                    forward_supported_events(stream), self._event_queue
+                                ) as merged,
                             ):
                                 async for event in merged:
                                     if self._cancelled:
                                         break
-                                    yield event  # ty:ignore[invalid-yield]
+                                    yield event
                                     if combined := process_tool_event(
                                         self.name,
-                                        event,  # ty: ignore[invalid-argument-type]
+                                        event,
                                         pending_tcs,
                                         message_id,
                                     ):

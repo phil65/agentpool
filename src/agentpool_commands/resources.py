@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from slashed import CommandContext, CommandError  # noqa: TC002
+from slashed import CommandContext, CommandError
 
 from agentpool.agents.context import AgentContext  # noqa: TC001
 from agentpool.log import get_logger

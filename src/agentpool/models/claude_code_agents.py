@@ -12,7 +12,7 @@ from agentpool import log
 from agentpool.models.fields import OutputTypeField, SystemPromptField  # noqa: TC001
 from agentpool.resource_providers import StaticResourceProvider
 from agentpool_config import (
-    AnyToolConfig,  # noqa: TC001
+    AnyToolConfig,
     BaseToolConfig,
     MCPServerConfig,
     SSEMCPServerConfig,

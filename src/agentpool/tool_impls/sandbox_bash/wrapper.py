@@ -10,7 +10,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Protocol, Self
 
-from bashkit import Bash, ScriptedTool
+from bashkit import Bash
+from bashkit.scripted import ScriptedTool
 
 
 if TYPE_CHECKING:

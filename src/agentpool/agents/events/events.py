@@ -35,10 +35,6 @@ from pydantic_ai import (
     ToolCallPart,
     ToolCallPartDelta,
 )
-from pydantic_ai.messages import (
-    BuiltinToolCallEvent,  # ty:ignore[deprecated]
-    BuiltinToolResultEvent,  # ty:ignore[deprecated]
-)
 
 
 if TYPE_CHECKING:
@@ -672,10 +668,7 @@ class CompactionEvent:
 
 
 HandleResponseEvent = Annotated[
-    FunctionToolCallEvent
-    | FunctionToolResultEvent
-    | BuiltinToolCallEvent  # pyright: ignore[reportDeprecated]  # ty:ignore[deprecated]
-    | BuiltinToolResultEvent,  # pyright: ignore[reportDeprecated]  # ty:ignore[deprecated]
+    FunctionToolCallEvent | FunctionToolResultEvent,
     pydantic.Discriminator("event_kind"),
 ]
 """An event yielded when handling a model response, indicating tool calls and results."""

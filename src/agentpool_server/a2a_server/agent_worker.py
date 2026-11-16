@@ -1,19 +1,15 @@
 from __future__ import annotations, annotations as _annotations
 
+import base64
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
 from functools import partial
-from typing import TYPE_CHECKING, Any, assert_never
+from typing import TYPE_CHECKING, Any
 import uuid
 
 from fasta2a.applications import FastA2A  # type: ignore[import-untyped]
 from fasta2a.broker import InMemoryBroker  # type: ignore[import-untyped]
-from fasta2a.schema import (  # type: ignore[import-untyped]
-    Artifact,
-    DataPart,
-    Message,
-    TextPart as A2ATextPart,
-)
+from fasta2a.schema import Artifact, Message, Part  # type: ignore[import-untyped]
 from fasta2a.storage import InMemoryStorage  # type: ignore[import-untyped]
 from fasta2a.worker import Worker  # type: ignore[import-untyped]
 from pydantic import TypeAdapter
@@ -37,7 +33,7 @@ if TYPE_CHECKING:
     from collections.abc import AsyncIterator, Sequence
 
     from fasta2a.broker import Broker
-    from fasta2a.schema import AgentProvider, Part, Skill, TaskIdParams, TaskSendParams
+    from fasta2a.schema import AgentProvider, Skill, TaskIdParams, TaskSendParams
     from fasta2a.storage import Storage
     from pydantic_ai import ModelRequestPart, ModelResponsePart, UserContent
     from starlette.middleware import Middleware
@@ -121,7 +117,7 @@ class AgentWorker[WorkerOutputT, AgentDepsT](Worker[list[ModelMessage]]):  # typ
         message_history = await self.storage.load_context(task["context_id"]) or []
         message_history.extend(self.build_message_history(task.get("history", [])))
         try:
-            result = await self.agent.run(message_history=message_history)  # type: ignore[arg-type]
+            result = await self.agent.run(message_history=message_history)  # type: ignore[arg-type]  # ty: ignore[invalid-argument-type]
             chat_msgs = self.agent.conversation.chat_messages
             messages = [msg for chat_msg in chat_msgs for msg in chat_msg.messages]
             await self.storage.update_context(task["context_id"], messages)
@@ -135,7 +131,7 @@ class AgentWorker[WorkerOutputT, AgentDepsT](Worker[list[ModelMessage]]):  # typ
                 a2a_parts = _response_parts_to_a2a(message.parts)
                 if a2a_parts:  # Add if there are visible parts (text/thinking)
                     id_ = str(uuid.uuid4())
-                    msg = Message(role="agent", parts=a2a_parts, kind="message", message_id=id_)
+                    msg = Message(role="agent", parts=a2a_parts, message_id=id_)
                     a2a_messages.append(msg)
 
             artifacts = self.build_artifacts(result.data)
@@ -154,7 +150,7 @@ class AgentWorker[WorkerOutputT, AgentDepsT](Worker[list[ModelMessage]]):  # typ
         """Build artifacts from agent result.
 
         All agent outputs become artifacts to mark them as durable task outputs.
-        For string results, we use TextPart. For structured data, we use DataPart.
+        For string results, we use a text part. For structured data, we use a data part.
         Metadata is included to preserve type information.
         """
         artifact_id = str(uuid.uuid4())
@@ -162,18 +158,18 @@ class AgentWorker[WorkerOutputT, AgentDepsT](Worker[list[ModelMessage]]):  # typ
         return [Artifact(artifact_id=artifact_id, name="result", parts=[part])]
 
     def _convert_result_to_part(self, result: WorkerOutputT) -> Part:
-        """Convert agent result to a Part (TextPart or DataPart).
+        """Convert agent result to a text or data Part.
 
-        For string results, returns a TextPart.
-        For structured data, returns a DataPart with properly serialized data.
+        For string results, returns a text part.
+        For structured data, returns a data part with properly serialized data.
         """
         if isinstance(result, str):
-            return A2ATextPart(kind="text", text=result)
+            return Part(text=result)
         output_type = type(result)
         type_adapter = TypeAdapter(output_type)
         data = type_adapter.dump_python(result, mode="json")
         json_schema = type_adapter.json_schema(mode="serialization")
-        return DataPart(kind="data", data={"result": data}, metadata={"json_schema": json_schema})
+        return Part(data={"result": data}, metadata={"json_schema": json_schema})
 
     def build_message_history(self, history: list[Message]) -> list[ModelMessage]:
         model_messages: list[ModelMessage] = []
@@ -201,29 +197,30 @@ def _request_parts_from_a2a(parts: list[Part]) -> list[ModelRequestPart]:
     """
     model_parts: list[ModelRequestPart] = []
     for part in parts:
-        match part:
-            case {"kind": "text", "text": text}:
-                model_parts.append(UserPromptPart(content=text))
-            case {"kind": "file", "file": {"bytes": raw_bytes, **rest}}:
-                data = raw_bytes.encode("utf-8")
-                mime_type = rest.get("mime_type", "application/octet-stream")
-                assert isinstance(mime_type, str)
-                content: UserContent = BinaryContent(data=data, media_type=mime_type)
-                model_parts.append(UserPromptPart(content=[content]))
-            case {"kind": "file", "file": {"uri": url}}:
-                for url_cls in (DocumentUrl, AudioUrl, ImageUrl, VideoUrl):
-                    content = url_cls(url=url)
-                    try:
-                        content.media_type  # noqa: B018
-                    except ValueError:  # pragma: no cover
-                        continue
-                    else:
-                        break
+        if "text" in part:
+            model_parts.append(UserPromptPart(content=part["text"]))
+        elif "raw" in part:
+            data = base64.b64decode(part["raw"])
+            mime_type = part.get("media_type", "application/octet-stream")
+            content: UserContent = BinaryContent(data=data, media_type=mime_type)
+            model_parts.append(UserPromptPart(content=[content]))
+        elif "url" in part:
+            url = part["url"]
+            for url_cls in (DocumentUrl, AudioUrl, ImageUrl, VideoUrl):
+                content = url_cls(url=url)
+                try:
+                    content.media_type  # noqa: B018
+                except ValueError:  # pragma: no cover
+                    continue
                 else:
-                    raise ValueError(f"Unsupported file type: {url}")  # pragma: no cover
-                model_parts.append(UserPromptPart(content=[content]))
-            case {"kind": "data"}:
-                raise NotImplementedError("Data parts are not supported yet.")
+                    break
+            else:
+                raise ValueError(f"Unsupported file type: {url}")  # pragma: no cover
+            model_parts.append(UserPromptPart(content=[content]))
+        elif "data" in part:
+            raise NotImplementedError("Data parts are not supported yet.")
+        else:  # pragma: no cover
+            raise ValueError(f"Unsupported part: {part}")
     return model_parts
 
 
@@ -242,14 +239,14 @@ def _response_parts_from_a2a(parts: list[Part]) -> list[ModelResponsePart]:
     """
     model_parts: list[ModelResponsePart] = []
     for part in parts:
-        if part["kind"] == "text":
+        if "text" in part:
             model_parts.append(TextPart(content=part["text"]))
-        elif part["kind"] == "file":  # pragma: no cover
+        elif "raw" in part or "url" in part:  # pragma: no cover
             raise NotImplementedError("File parts are not supported yet.")
-        elif part["kind"] == "data":  # pragma: no cover
+        elif "data" in part:  # pragma: no cover
             raise NotImplementedError("Data parts are not supported yet.")
         else:  # pragma: no cover
-            assert_never(part)
+            raise ValueError(f"Unsupported part: {part}")
     return model_parts
 
 
@@ -258,8 +255,8 @@ def _response_parts_to_a2a(parts: Sequence[ModelResponsePart]) -> list[Part]:
 
     This handles the conversion from pydantic-ai's internal response parts to
     A2A protocol parts. Different part types are handled as follows:
-    - TextPart: Converted directly to A2A TextPart
-    - ThinkingPart: Converted to TextPart with metadata indicating it's thinking
+    - TextPart: Converted directly to an A2A text part
+    - ThinkingPart: Converted to a text part with metadata indicating it's thinking
     - ToolCallPart: Skipped (internal to agent execution)
 
     Args:
@@ -272,10 +269,10 @@ def _response_parts_to_a2a(parts: Sequence[ModelResponsePart]) -> list[Part]:
     for part in parts:
         match part:
             case TextPart(content=content):
-                a2a_parts.append(A2ATextPart(kind="text", text=content))
+                a2a_parts.append(Part(text=content))
             case ThinkingPart(content=content, id=thinking_id, signature=signature):
                 meta = {"type": "thinking", "thinking_id": thinking_id, "signature": signature}
-                a2a_parts.append(A2ATextPart(kind="text", text=content, metadata=meta))
+                a2a_parts.append(Part(text=content, metadata=meta))
             case ToolCallPart():
                 pass
     return a2a_parts

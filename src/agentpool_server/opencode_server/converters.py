@@ -10,7 +10,7 @@ from pydantic_ai import (
     ModelRequest,
     ModelResponse,
     RequestUsage,
-    RetryPromptPart,
+    RetryFeedbackPart,
     RunUsage,
     TextPart as PydanticTextPart,
     ToolCallPart as PydanticToolCallPart,
@@ -193,6 +193,24 @@ async def extract_user_prompt_from_parts(
 # =============================================================================
 
 
+def _is_retry_part(part: object) -> bool:
+    """Whether a message part represents a retry (tool retry or retry feedback)."""
+    match part:
+        case RetryFeedbackPart() | PydanticToolReturnPart(outcome="retried"):
+            return True
+        case _:
+            return False
+
+
+def _retry_message(part: RetryFeedbackPart | PydanticToolReturnPart[Any]) -> str:
+    """Get the retry message shown to the model for a retry part."""
+    match part:
+        case RetryFeedbackPart():
+            return part.model_response()
+        case PydanticToolReturnPart():
+            return part.model_response_str(wrap_if_error=False)
+
+
 def chat_message_to_opencode(  # noqa: PLR0915
     msg: ChatMessage[Any],
     session_id: str,
@@ -280,27 +298,26 @@ def chat_message_to_opencode(  # noqa: PLR0915
                     running_state = ToolStateRunning(time=ts, input=tool_input, title=title)
                     tool_part = message.add_tool_part(tool_name, call_id, state=running_state)
                     tool_calls[call_id] = tool_part
-                case RetryPromptPart(content=retry_content, tool_name=tool_name, timestamp=ts):
+                case (
+                    RetryFeedbackPart(content=retry_content, timestamp=ts)
+                    | PydanticToolReturnPart(outcome="retried", content=retry_content, timestamp=ts)
+                ):
                     retry_count = sum(
-                        1
-                        for m in msg.messages
-                        if isinstance(m, ModelRequest)
-                        for p in m.parts
-                        if isinstance(p, RetryPromptPart)
+                        1 for m in msg.messages for rp in m.parts if _is_retry_part(rp)
                     )
                     if isinstance(retry_content, list):
                         error_type = "validation_error"
-                    elif tool_name:
+                    elif isinstance(p, PydanticToolReturnPart):
                         error_type = "tool_error"
                     else:
                         error_type = "retry"
 
                     message.add_retry_part(
                         attempt=retry_count,
-                        message=p.model_response(),
+                        message=_retry_message(p),
                         created=int(ts.timestamp() * 1000),
                         is_retryable=True,
-                        metadata={"error_type": error_type} if error_type else None,
+                        metadata={"error_type": error_type},
                     )
                 case PydanticToolReturnPart(
                     tool_call_id=call_id,

@@ -7,7 +7,7 @@ import anyio
 from fastmcp import Context, FastMCP
 from fastmcp.tools import ToolResult
 from fastmcp.utilities.types import Audio, File, Image
-from mcp.types import ModelHint, ModelPreferences, TextContent
+from mcp.types import ModelHint, ModelPreferences, SamplingMessage, TextContent
 from pydantic import BaseModel
 
 
@@ -19,13 +19,13 @@ async def sample_test(ctx: Context, message: str) -> str:
     """Analyze code, ask user which issues to fix, then return improved code."""
     # Step 1: Use sampling to check if there are issues (yes/no)
     prefs = ModelPreferences(hints=[ModelHint(name="gpt-5-nano")])
-    has_issues_result = await ctx.sample(
-        message,
+    has_issues_result = await ctx.session.create_message(
+        [SamplingMessage(role="user", content=TextContent(type="text", text=message))],
         max_tokens=500,
         system_prompt="only 'yes' or 'no'.",
         model_preferences=prefs,
     )
-    return str(has_issues_result)
+    return str(has_issues_result.content)
 
 
 @mcp.tool

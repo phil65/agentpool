@@ -12,7 +12,7 @@ from fastapi.sse import EventSourceResponse, ServerSentEvent
 
 from agentpool import log
 from agentpool_server.opencode_server.dependencies import StateDep
-from opencode_sdk.models import (  # noqa: TC001
+from opencode_sdk.models import (
     Config,
     Event,
     HealthResponse,

@@ -9,7 +9,7 @@ from typing import TYPE_CHECKING, Any, Literal, Self
 from pydantic import Field
 
 from acp.schema.base import AnnotatedObject, Schema
-from acp.schema.content_blocks import (  # noqa: TC001
+from acp.schema.content_blocks import (
     Annotations,
     Audience,
     AudioContentBlock,
