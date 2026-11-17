@@ -78,6 +78,7 @@ if TYPE_CHECKING:
     from acp.schema.capabilities import AgentCapabilities
     from acp.schema.mcp import McpServer
     from agentpool.agents.acp_agent.client_handler import ACPClientHandler
+    from agentpool.agents.auth import AuthStatus
     from agentpool.agents.events import RichAgentStreamEvent
     from agentpool.agents.modes import ModeCategory
     from agentpool.common_types import AnyEventHandlerType
@@ -608,6 +609,22 @@ class ACPAgent[TDeps = None](BaseAgent[TDeps, str]):
             for choice in ([item] if isinstance(item, SessionConfigSelectOption) else item.options)
         ]
         return [ModelInfo(id=c.value, name=c.name, description=c.description) for c in choices]
+
+    async def get_auth_status(self) -> AuthStatus:
+        """Forward ``auth/status`` to the remote agent if it supports it."""
+        from acp.schema import AuthStatusRequest
+        from agentpool.agents.acp_agent.acp_converters import acp_to_native_auth_status
+        from agentpool.agents.auth import AuthStatus
+
+        auth_caps = self._caps.auth if self._caps else None
+        if not (self._connection and auth_caps and auth_caps.status):
+            return AuthStatus(state="unknown")
+        try:
+            response = await self._connection.auth_status(AuthStatusRequest())
+        except Exception:
+            self.log.exception("Failed to get auth status from ACP agent")
+            return AuthStatus(state="unknown")
+        return acp_to_native_auth_status(response)
 
     async def get_modes(self) -> list[ModeCategory]:
         """Get available modes from the ACP session state."""

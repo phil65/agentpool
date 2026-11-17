@@ -96,6 +96,7 @@ if TYPE_CHECKING:
     from pydantic_ai import FinishReason, ModelMessage, ModelResponsePart, UserContent
 
     from acp.schema import (
+        AuthStatusResponse,
         ContentBlock,
         HttpMcpServer,
         McpServer,
@@ -107,6 +108,7 @@ if TYPE_CHECKING:
         StopReason,
         ToolCallContent,
     )
+    from agentpool.agents.auth import AuthStatus
     from agentpool.agents.events import RichAgentStreamEvent, ToolCallContentItem
     from agentpool.agents.modes import ModeCategory, ModeInfo
     from agentpool.messaging.messages import ChatMessage
@@ -437,6 +439,27 @@ def convert_to_acp_content(prompts: Sequence[UserContent]) -> list[ContentBlock]
                 assert_never(unreachable)
 
     return content_blocks
+
+
+def acp_to_native_auth_status(response: AuthStatusResponse) -> AuthStatus:
+    from agentpool.agents.auth import AuthAccount, AuthStatus
+
+    accounts = [
+        AuthAccount(
+            label=a.label,
+            description=a.description,
+            active=a.active,
+            name=a.name,
+            email=a.email,
+            organization=a.organization,
+        )
+        for a in response.accounts
+    ]
+    match response.state:
+        case "authenticated" | "unauthenticated" | "not_required" | "unknown" as state:
+            return AuthStatus(state=state, accounts=accounts)
+        case _:
+            return AuthStatus(state="unknown", accounts=accounts)
 
 
 def _suggestion_to_text(blocks: Sequence[ContentBlock]) -> str:

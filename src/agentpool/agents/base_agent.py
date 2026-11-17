@@ -42,6 +42,7 @@ if TYPE_CHECKING:
     from upathtools.filesystems import OverlayFileSystem
 
     from acp.schema import AvailableCommandsUpdate
+    from agentpool.agents.auth import AuthStatus
     from agentpool.agents.context import AgentContext
     from agentpool.agents.events import (
         CommandCompleteEvent,
@@ -1102,6 +1103,15 @@ class BaseAgent[TDeps = None, TResult = str](MessageNode[TDeps, TResult]):
             List of ModeCategory, empty list if no modes supported
         """
         ...
+
+    async def get_auth_status(self) -> AuthStatus:
+        """Get the authentication status of the agent backend.
+
+        Defaults to ``not_required``: credentials come from config/env, there is no sign-in.
+        """
+        from agentpool.agents.auth import AuthStatus
+
+        return AuthStatus(state="not_required")
 
     @overload
     async def set_mode(self, mode: ModeInfo) -> None: ...

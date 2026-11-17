@@ -75,9 +75,11 @@ if TYPE_CHECKING:
         Usage,
         UserPrompt,
     )
+    from clawd_code_sdk.models.server_info import ClaudeCodeAccountInfo
     from exxec import ExecutionEnvironment
     from pydantic_ai import FinishReason, UserContent
 
+    from agentpool.agents.auth import AuthStatus
     from agentpool.agents.context import ConfirmationResult
     from agentpool.hooks import AgentHooks
     from agentpool_config.mcp_server import MCPServerConfig as NativeMCPServerConfig
@@ -98,6 +100,31 @@ def to_thinking_config(
             return ThinkingConfigEnabled(budget_tokens=tokens)
         case None:
             return None
+
+
+def to_auth_status(account: ClaudeCodeAccountInfo | None) -> AuthStatus:
+    from agentpool.agents.auth import AuthAccount, AuthStatus
+
+    if account is None:
+        return AuthStatus(state="unknown")
+    if account.api_provider not in (None, "firstParty"):
+        # Third-party backends (Bedrock, Vertex, ...) use external credentials, no sign-in
+        external = AuthAccount(label=account.api_provider, description="External credentials")
+        return AuthStatus(state="not_required", accounts=[external])
+    source = account.token_source or account.api_key_source
+    if not (source or account.email):
+        return AuthStatus(state="unauthenticated")
+    label = account.subscription_type or (
+        "Anthropic API key" if account.api_key_source else "Claude account"
+    )
+    auth_account = AuthAccount(
+        label=label,
+        description=source,
+        active=True,
+        email=account.email,
+        organization=account.organization,
+    )
+    return AuthStatus(state="authenticated", accounts=[auth_account])
 
 
 def to_mcp_server_status(server: McpServerStatusEntry) -> MCPServerStatus:

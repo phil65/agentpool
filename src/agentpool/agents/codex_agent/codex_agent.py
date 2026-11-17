@@ -21,6 +21,7 @@ from pydantic_ai import RunUsage
 from agentpool.agents.base_agent import BaseAgent
 from agentpool.agents.codex_agent.codex_converters import (
     mcp_config_to_codex,
+    to_auth_status,
     to_finish_reason,
     to_model_info,
     to_run_usage,
@@ -57,6 +58,7 @@ if TYPE_CHECKING:
     from pydantic_ai import UserContent
     from tokonomics.model_discovery.model_info import ModelInfo
 
+    from agentpool.agents.auth import AuthStatus
     from agentpool.agents.context import ConfirmationResult
     from agentpool.agents.events import RichAgentStreamEvent
     from agentpool.agents.modes import ModeCategory
@@ -638,6 +640,19 @@ class CodexAgent[TDeps = None, OutputDataT = str](BaseAgent[TDeps, OutputDataT])
             return None
         else:
             return models
+
+    async def get_auth_status(self) -> AuthStatus:
+        """Get the account the Codex app-server is using."""
+        from agentpool.agents.auth import AuthStatus
+
+        if not self._client:
+            return AuthStatus(state="unknown")
+        try:
+            response = await self._client.account.read()
+        except Exception:
+            self.log.exception("Failed to read Codex account")
+            return AuthStatus(state="unknown")
+        return to_auth_status(response)
 
     async def get_modes(self) -> list[ModeCategory]:
         """Get available mode categories for Codex agent (approval poliy, effort, model)."""

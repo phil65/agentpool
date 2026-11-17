@@ -52,6 +52,7 @@ if TYPE_CHECKING:
     from collections.abc import Iterator, Sequence
 
     from codexed.models import (
+        GetAccountResponse,
         HttpMcpServer,
         InputModality,
         McpServerConfig,
@@ -67,6 +68,7 @@ if TYPE_CHECKING:
     from pydantic_ai import FinishReason
     from tokonomics.model_discovery.model_info import Modality, ModelInfo as TokoModelInfo
 
+    from agentpool.agents.auth import AuthStatus
     from agentpool_config.mcp_server import (
         MCPServerConfig,
         SSEMCPServerConfig,
@@ -76,6 +78,36 @@ if TYPE_CHECKING:
 
 
 _MODALITY_MAP: dict[InputModality, Modality] = {"text": "text", "image": "image"}
+
+
+def to_auth_status(response: GetAccountResponse) -> AuthStatus:
+    from codexed.models.v2_protocol import (
+        AmazonBedrockAccount,
+        ApiKeyAccount,
+        ChatgptAccount,
+        GcpAccount,
+    )
+
+    from agentpool.agents.auth import AuthAccount, AuthStatus
+
+    match response.account:
+        case None if response.requires_openai_auth:
+            return AuthStatus(state="unauthenticated")
+        case None:
+            return AuthStatus(state="not_required")
+        case ApiKeyAccount():
+            account = AuthAccount(label="OpenAI API key", active=True)
+        case ChatgptAccount(email=email, plan_type=plan_type, workspace_name=workspace):
+            account = AuthAccount(
+                label=f"ChatGPT {plan_type}", active=True, email=email, organization=workspace
+            )
+        case AmazonBedrockAccount():
+            account = AuthAccount(label="Amazon Bedrock", active=True)
+        case GcpAccount():
+            account = AuthAccount(label="Google Cloud Vertex AI", active=True)
+        case _ as unreachable:
+            assert_never(unreachable)
+    return AuthStatus(state="authenticated", accounts=[account])
 
 
 def to_finish_reason(status: TurnStatus) -> FinishReason:

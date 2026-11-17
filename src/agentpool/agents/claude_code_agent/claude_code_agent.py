@@ -19,6 +19,7 @@ from agentpool.agents.base_agent import BaseAgent
 from agentpool.agents.claude_code_agent.converters import (
     confirmation_result_to_native,
     convert_mcp_servers_to_sdk_format,
+    to_auth_status,
     to_finish_reason,
     to_mcp_server_status,
     to_prompt_input,
@@ -71,6 +72,7 @@ if TYPE_CHECKING:
     from tokonomics.model_names import AnthropicMaxModelName
     from toprompt import AnyPromptType
 
+    from agentpool.agents.auth import AuthStatus
     from agentpool.agents.events import RichAgentStreamEvent
     from agentpool.agents.modes import ModeCategory
     from agentpool.common_types import AnyEventHandlerType, SimpleJsonType, StrPath
@@ -855,6 +857,12 @@ class ClaudeCodeAgent[TDeps = None, TResult = str](BaseAgent[TDeps, TResult]):
         from agentpool.agents.claude_code_agent.static_info import MODELS
 
         return MODELS
+
+    async def get_auth_status(self) -> AuthStatus:
+        """Get the Claude account the CLI is using."""
+        await self.ensure_initialized()
+        server_info = await self._client.get_server_info() if self._client else None
+        return to_auth_status(server_info.account if server_info else None)
 
     async def get_modes(self) -> list[ModeCategory]:
         """Get available mode categories for Claude Code agent.
