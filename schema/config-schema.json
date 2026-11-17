@@ -306,15 +306,7 @@
           "type": "string"
         },
         "hooks": {
-          "anyOf": [
-            {
-              "$ref": "#/$defs/HooksConfig"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
+          "$ref": "#/$defs/HooksConfig",
           "description": "Hooks for intercepting and customizing agent behavior at key lifecycle points.\n\nAllows adding context, blocking operations, modifying inputs, or triggering\nside effects during run execution and tool usage.",
           "title": "Lifecycle hooks"
         },
@@ -1243,15 +1235,7 @@
           "type": "string"
         },
         "hooks": {
-          "anyOf": [
-            {
-              "$ref": "#/$defs/HooksConfig"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
+          "$ref": "#/$defs/HooksConfig",
           "description": "Hooks for intercepting and customizing agent behavior at key lifecycle points.\n\nAllows adding context, blocking operations, modifying inputs, or triggering\nside effects during run execution and tool usage.",
           "title": "Lifecycle hooks"
         },
@@ -1560,15 +1544,6 @@
           "description": "Additional tool metadata.",
           "title": "Tool metadata",
           "type": "object"
-        },
-        "instructions": {
-          "default": null,
-          "description": "Instructions for how to use this tool effectively.",
-          "title": "Tool instructions",
-          "type": [
-            "string",
-            "null"
-          ]
         }
       },
       "title": "Agent CLI Tool",
@@ -1731,6 +1706,7 @@
                 "low",
                 "medium",
                 "high",
+                "xhigh",
                 "max"
               ],
               "type": "string"
@@ -4256,15 +4232,6 @@
           "title": "Tool metadata",
           "type": "object"
         },
-        "instructions": {
-          "default": null,
-          "description": "Instructions for how to use this tool effectively.",
-          "title": "Tool instructions",
-          "type": [
-            "string",
-            "null"
-          ]
-        },
         "timeout": {
           "default": null,
           "description": "Command timeout in seconds. None means no timeout.",
@@ -5567,15 +5534,7 @@
           "type": "string"
         },
         "hooks": {
-          "anyOf": [
-            {
-              "$ref": "#/$defs/HooksConfig"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
+          "$ref": "#/$defs/HooksConfig",
           "description": "Hooks for intercepting and customizing agent behavior at key lifecycle points.\n\nAllows adding context, blocking operations, modifying inputs, or triggering\nside effects during run execution and tool usage.",
           "title": "Lifecycle hooks"
         },
@@ -6895,15 +6854,6 @@
           "title": "Tool metadata",
           "type": "object"
         },
-        "instructions": {
-          "default": null,
-          "description": "Instructions for how to use this tool effectively.",
-          "title": "Tool instructions",
-          "type": [
-            "string",
-            "null"
-          ]
-        },
         "builtin_type": {
           "const": "code_execution",
           "default": "code_execution",
@@ -7487,15 +7437,7 @@
           "type": "string"
         },
         "hooks": {
-          "anyOf": [
-            {
-              "$ref": "#/$defs/HooksConfig"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
+          "$ref": "#/$defs/HooksConfig",
           "description": "Hooks for intercepting and customizing agent behavior at key lifecycle points.\n\nAllows adding context, blocking operations, modifying inputs, or triggering\nside effects during run execution and tool usage.",
           "title": "Lifecycle hooks"
         },
@@ -7620,15 +7562,7 @@
         "reasoning_effort": {
           "anyOf": [
             {
-              "enum": [
-                "none",
-                "minimal",
-                "low",
-                "medium",
-                "high",
-                "xhigh"
-              ],
-              "type": "string"
+              "$ref": "#/$defs/ReasoningEffort"
             },
             {
               "type": "null"
@@ -7645,47 +7579,35 @@
         },
         "approval_policy": {
           "default": "never",
-          "description": "Tool call approval policy.\n\n- \"never\": Execute tools without requesting approval (default for programmatic use)\n- \"on-request\": Request approval when tools request it\n- \"on-failure\": Request approval when tool execution fails\n- \"untrusted\": Always request approval (most restrictive)",
+          "description": "Tool call approval policy.\n\n- \"never\": Execute tools without requesting approval (default for programmatic use)\n- \"on-request\": Request approval when tools request it\n\n- \"untrusted\": Always request approval (most restrictive)",
           "enum": [
             "untrusted",
-            "on-failure",
             "on-request",
             "never"
           ],
           "examples": [
             "never",
             "on-request",
-            "on-failure",
             "untrusted"
           ],
           "title": "Approval Policy",
           "type": "string"
         },
         "sandbox": {
+          "$ref": "#/$defs/SandboxMode",
           "default": "workspace-write",
           "description": "Sandbox mode for file operations.\n- \"read-only\": Can only read files, no modifications\n- \"workspace-write\": Can write within workspace directory (default if not specified)\n- \"danger-full-access\": Full filesystem access (use with caution)\n- \"externalSandbox\": Use external sandbox environment\n\nIf not specified, Codex uses its default sandbox policy.",
-          "enum": [
-            "read-only",
-            "workspace-write",
-            "danger-full-access"
-          ],
           "examples": [
             "workspace-write",
             "read-only",
             "danger-full-access"
           ],
-          "title": "Sandbox Mode",
-          "type": "string"
+          "title": "Sandbox Mode"
         },
         "personality": {
           "anyOf": [
             {
-              "enum": [
-                "none",
-                "friendly",
-                "pragmatic"
-              ],
-              "type": "string"
+              "$ref": "#/$defs/Personality"
             },
             {
               "type": "null"
@@ -10954,15 +10876,6 @@
           "title": "Tool metadata",
           "type": "object"
         },
-        "instructions": {
-          "default": null,
-          "description": "Instructions for how to use this tool effectively.",
-          "title": "Tool instructions",
-          "type": [
-            "string",
-            "null"
-          ]
-        },
         "environment": {
           "anyOf": [
             {
@@ -11471,15 +11384,6 @@
           "description": "Additional tool metadata.",
           "title": "Tool metadata",
           "type": "object"
-        },
-        "instructions": {
-          "default": null,
-          "description": "Instructions for how to use this tool effectively.",
-          "title": "Tool instructions",
-          "type": [
-            "string",
-            "null"
-          ]
         },
         "environment": {
           "anyOf": [
@@ -12609,15 +12513,6 @@
           "description": "Additional tool metadata.",
           "title": "Tool metadata",
           "type": "object"
-        },
-        "instructions": {
-          "default": null,
-          "description": "Instructions for how to use this tool effectively.",
-          "title": "Tool instructions",
-          "type": [
-            "string",
-            "null"
-          ]
         },
         "environment": {
           "anyOf": [
@@ -15530,15 +15425,6 @@
           "title": "Tool metadata",
           "type": "object"
         },
-        "instructions": {
-          "default": null,
-          "description": "Instructions for how to use this tool effectively.",
-          "title": "Tool instructions",
-          "type": [
-            "string",
-            "null"
-          ]
-        },
         "builtin_type": {
           "const": "file_search",
           "default": "file_search",
@@ -17100,15 +16986,6 @@
           "title": "Tool metadata",
           "type": "object"
         },
-        "instructions": {
-          "default": null,
-          "description": "Instructions for how to use this tool effectively.",
-          "title": "Tool instructions",
-          "type": [
-            "string",
-            "null"
-          ]
-        },
         "environment": {
           "anyOf": [
             {
@@ -17986,15 +17863,6 @@
           "title": "Tool metadata",
           "type": "object"
         },
-        "instructions": {
-          "default": null,
-          "description": "Instructions for how to use this tool effectively.",
-          "title": "Tool instructions",
-          "type": [
-            "string",
-            "null"
-          ]
-        },
         "builtin_type": {
           "const": "image_generation",
           "default": "image_generation",
@@ -18283,15 +18151,6 @@
           "description": "Additional tool metadata.",
           "title": "Tool metadata",
           "type": "object"
-        },
-        "instructions": {
-          "default": null,
-          "description": "Instructions for how to use this tool effectively.",
-          "title": "Tool instructions",
-          "type": [
-            "string",
-            "null"
-          ]
         },
         "import_path": {
           "description": "Import path to the tool function.",
@@ -18702,7 +18561,6 @@
                 "enabled": true,
                 "hints": null,
                 "import_path": "webbrowser.open",
-                "instructions": null,
                 "metadata": {},
                 "name": "web_browser",
                 "requires_confirmation": false,
@@ -19687,15 +19545,6 @@
           "title": "Tool metadata",
           "type": "object"
         },
-        "instructions": {
-          "default": null,
-          "description": "Instructions for how to use this tool effectively.",
-          "title": "Tool instructions",
-          "type": [
-            "string",
-            "null"
-          ]
-        },
         "environment": {
           "anyOf": [
             {
@@ -20520,15 +20369,6 @@
           "title": "Tool metadata",
           "type": "object"
         },
-        "instructions": {
-          "default": null,
-          "description": "Instructions for how to use this tool effectively.",
-          "title": "Tool instructions",
-          "type": [
-            "string",
-            "null"
-          ]
-        },
         "builtin_type": {
           "const": "mcp_server",
           "default": "mcp_server",
@@ -21166,15 +21006,6 @@
           "title": "Tool metadata",
           "type": "object"
         },
-        "instructions": {
-          "default": null,
-          "description": "Instructions for how to use this tool effectively.",
-          "title": "Tool instructions",
-          "type": [
-            "string",
-            "null"
-          ]
-        },
         "builtin_type": {
           "const": "memory",
           "default": "memory",
@@ -21581,16 +21412,16 @@
           "type": "integer"
         },
         "cpus": {
-          "default": 1.0,
-          "description": "CPU limit",
+          "default": 1,
+          "description": "Number of virtual CPUs",
           "examples": [
-            0.5,
-            1.0,
-            2.0
+            1,
+            2,
+            4
           ],
           "exclusiveMinimum": 0,
-          "title": "CPU Limit",
-          "type": "number"
+          "title": "CPU Count",
+          "type": "integer"
         }
       },
       "title": "Microsandbox Configuration",
@@ -22482,15 +22313,7 @@
           "type": "string"
         },
         "hooks": {
-          "anyOf": [
-            {
-              "$ref": "#/$defs/HooksConfig"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
+          "$ref": "#/$defs/HooksConfig",
           "description": "Hooks for intercepting and customizing agent behavior at key lifecycle points.\n\nAllows adding context, blocking operations, modifying inputs, or triggering\nside effects during run execution and tool usage.",
           "title": "Lifecycle hooks"
         },
@@ -23453,7 +23276,6 @@
                 "enabled": true,
                 "hints": null,
                 "import_path": "webbrowser.open",
-                "instructions": null,
                 "metadata": {},
                 "name": "web_browser",
                 "requires_confirmation": false,
@@ -23463,7 +23285,6 @@
                 "description": null,
                 "enabled": true,
                 "environment": null,
-                "instructions": null,
                 "metadata": {},
                 "name": null,
                 "output_limit": null,
@@ -23767,6 +23588,7 @@
           "description": "The strategy for handling multiple tool calls when a final result is found",
           "enum": [
             "early",
+            "graceful",
             "exhaustive"
           ],
           "examples": [
@@ -24463,13 +24285,17 @@
                   "axiom": "#/$defs/AxiomObservabilityConfig",
                   "custom": "#/$defs/CustomObservabilityConfig",
                   "langsmith": "#/$defs/LangsmithObservabilityConfig",
-                  "logfire": "#/$defs/LogfireObservabilityConfig"
+                  "logfire": "#/$defs/LogfireObservabilityConfig",
+                  "otel-desktop-viewer": "#/$defs/OtelDesktopViewerConfig"
                 },
                 "propertyName": "type"
               },
               "oneOf": [
                 {
                   "$ref": "#/$defs/LogfireObservabilityConfig"
+                },
+                {
+                  "$ref": "#/$defs/OtelDesktopViewerConfig"
                 },
                 {
                   "$ref": "#/$defs/LangsmithObservabilityConfig"
@@ -25803,6 +25629,69 @@
       "title": "OR Condition",
       "type": "object"
     },
+    "OtelDesktopViewerConfig": {
+      "additionalProperties": false,
+      "description": "Configuration for OTEL desktop viewer endpoint.",
+      "properties": {
+        "type": {
+          "const": "otel-desktop-viewer",
+          "default": "otel-desktop-viewer",
+          "description": "OTEL desktop viewer endpoint type.",
+          "title": "Type",
+          "type": "string"
+        },
+        "enabled": {
+          "default": true,
+          "description": "Provider enabled state.",
+          "title": "Provider enabled",
+          "type": "boolean"
+        },
+        "service_name": {
+          "default": null,
+          "examples": [
+            "agentpool",
+            "my-ai-service",
+            "production-bot"
+          ],
+          "title": "Service name",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "environment": {
+          "default": null,
+          "examples": [
+            "production",
+            "staging",
+            "development"
+          ],
+          "title": "Environment",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "protocol": {
+          "default": "http/protobuf",
+          "enum": [
+            "http/protobuf",
+            "grpc",
+            "http/json"
+          ],
+          "examples": [
+            "http/protobuf",
+            "grpc",
+            "http/json"
+          ],
+          "title": "Protocol",
+          "type": "string"
+        }
+      },
+      "title": "OtelDesktopViewerConfig",
+      "type": "object",
+      "x-doc-title": "OTEL Desktop Viewer"
+    },
     "OverlayFilesystemConfig": {
       "additionalProperties": true,
       "description": "Configuration for overlay filesystem with copy-on-write semantics.",
@@ -25903,6 +25792,14 @@
       ],
       "title": "Package Configuration",
       "type": "object"
+    },
+    "Personality": {
+      "enum": [
+        "none",
+        "friendly",
+        "pragmatic"
+      ],
+      "type": "string"
     },
     "PlanToolsetConfig": {
       "additionalProperties": false,
@@ -27432,15 +27329,6 @@
           "description": "Additional tool metadata.",
           "title": "Tool metadata",
           "type": "object"
-        },
-        "instructions": {
-          "default": null,
-          "description": "Instructions for how to use this tool effectively.",
-          "title": "Tool instructions",
-          "type": [
-            "string",
-            "null"
-          ]
         }
       },
       "title": "Ask User Tool",
@@ -27503,15 +27391,6 @@
           "description": "Additional tool metadata.",
           "title": "Tool metadata",
           "type": "object"
-        },
-        "instructions": {
-          "default": null,
-          "description": "Instructions for how to use this tool effectively.",
-          "title": "Tool instructions",
-          "type": [
-            "string",
-            "null"
-          ]
         },
         "environment": {
           "anyOf": [
@@ -27673,6 +27552,10 @@
       },
       "title": "Read Tool",
       "type": "object"
+    },
+    "ReasoningEffort": {
+      "minLength": 1,
+      "type": "string"
     },
     "RegistryACPAgentConfig": {
       "additionalProperties": false,
@@ -27980,15 +27863,7 @@
           "type": "string"
         },
         "hooks": {
-          "anyOf": [
-            {
-              "$ref": "#/$defs/HooksConfig"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
+          "$ref": "#/$defs/HooksConfig",
           "description": "Hooks for intercepting and customizing agent behavior at key lifecycle points.\n\nAllows adding context, blocking operations, modifying inputs, or triggering\nside effects during run execution and tool usage.",
           "title": "Lifecycle hooks"
         },
@@ -29811,6 +29686,14 @@
       },
       "title": "SandboxConfig",
       "type": "object"
+    },
+    "SandboxMode": {
+      "enum": [
+        "read-only",
+        "workspace-write",
+        "danger-full-access"
+      ],
+      "type": "string"
     },
     "SchemaField": {
       "additionalProperties": false,
@@ -35196,10 +35079,28 @@
       "type": "object"
     },
     "UsageLimits": {
+      "additionalProperties": false,
+      "description": "Limits on model usage.\n\nThe request count is tracked by Pydantic AI, and the request limit is checked at the start of each step of the\nagent loop. Token counts are provided in responses from the model, and the token limits are checked after each response.\n\nEach of the limits can be set to `None` to disable that limit.",
       "properties": {
+        "cost_limit": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The maximum cost allowed in USD.",
+          "title": "Cost Limit"
+        },
         "request_limit": {
           "default": 50,
-          "description": "The maximum number of requests allowed to the model.",
+          "description": "The maximum number of model responses committed to the run's history, as counted by [`RunUsage.requests`][pydantic_ai.usage.RunUsage.requests].\n\nThis bounds the number of turns of the agent loop, not the number of requests sent to the provider: attempts a\n[`FallbackModel`][pydantic_ai.models.fallback.FallbackModel] moved on from, continuation requests, and\nprovider SDK or HTTP transport retries aren't counted. The tokens and cost of a response a `FallbackModel`\nrejected, and of continuation requests, do count towards the token and cost limits. It's checked at the start\nof each step, including a step answered without a request to the model.",
           "title": "Request Limit",
           "type": [
             "integer",
@@ -35242,9 +35143,18 @@
             "null"
           ]
         },
+        "per_request_input_tokens_limit": {
+          "default": null,
+          "description": "The maximum number of input/prompt tokens allowed per individual request.\n\nUnlike `input_tokens_limit` which is cumulative across the entire run, this\nlimit is checked against each request's input token count independently \u2014\nahead of the request when `count_tokens_before_request=True`, otherwise against\nthe provider-reported `input_tokens` of the response. For a response whose usage sums several\nmodel requests, it is checked against the input tokens of the one that measures the context:\nthe first request of a [Google long decode](../models/google.md#long-decode), and the last\nsampling pass of an [Anthropic response that reported its passes](../models/anthropic.md#server-side-tool-loops),\nsuch as a server-side tool loop or a compaction.\n\nThis provides a guard against oversized contexts (which hurt model performance\nand incur high costs on cache misses), complementing the runaway-loop\nprotection that cumulative limits provide.\n\nNote that `input_tokens` (and therefore this limit) includes cached-prefix tokens,\nnormalized consistently across providers: a request served largely from cache still\ncounts its full context size toward this limit. This caps context size, not cache-miss cost.\n\nSet `count_tokens_before_request=True` to enforce this preemptively; otherwise the\nrequest is sent before the limit is checked, so the oversized request is still\nbilled (matching `input_tokens_limit`).",
+          "title": "Per Request Input Tokens Limit",
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
         "count_tokens_before_request": {
           "default": false,
-          "description": "If True, perform a token counting pass before sending the request to the model,\nto enforce `request_tokens_limit` ahead of time.\n\nThis may incur additional overhead (from calling the model's `count_tokens` API before making the actual request) and is disabled by default.\n\nSupported by:\n\n- Anthropic\n- Google\n- Bedrock Converse\n\nSupport for OpenAI is in development: https://github.com/pydantic/pydantic-ai/issues/3430",
+          "description": "If True, perform a token counting pass before sending the request to the model,\nto enforce `input_tokens_limit` and `per_request_input_tokens_limit` ahead of time.\n\nThis may incur additional overhead (from calling the model's `count_tokens` API before making the actual request)\nand is disabled by default.\n\nSupported by:\n\n- Anthropic\n- Google\n- Bedrock Converse\n- OpenAI Responses",
           "title": "Count Tokens Before Request",
           "type": "boolean"
         }
@@ -36312,7 +36222,7 @@
     },
     "VercelFilesystemConfig": {
       "additionalProperties": true,
-      "description": "Configuration for Vercel sandbox filesystem.",
+      "description": "Configuration for Vercel sandbox filesystem.\n\nAuthentication uses `token`, `project_id` and `team_id` when all three are set.\nOtherwise credentials are resolved by the Vercel SDK (OIDC token, or the\n`VERCEL_TOKEN`, `VERCEL_PROJECT_ID` and `VERCEL_TEAM_ID` environment variables).",
       "properties": {
         "type": {
           "const": "vercel",
@@ -36341,19 +36251,7 @@
           "title": "Enable Caching",
           "type": "boolean"
         },
-        "template": {
-          "default": "code-interpreter-v1",
-          "description": "Vercel template to use for sandboxes",
-          "examples": [
-            "code-interpreter-v1",
-            "node",
-            "python"
-          ],
-          "minLength": 1,
-          "title": "Template",
-          "type": "string"
-        },
-        "sandbox_id": {
+        "sandbox_name": {
           "anyOf": [
             {
               "minLength": 1,
@@ -36364,13 +36262,129 @@
             }
           ],
           "default": null,
-          "description": "Existing sandbox ID to connect to",
+          "description": "Name of the sandbox to connect to (created if it doesn't exist)",
           "examples": [
-            "vercel-sb-123"
+            "my-sandbox",
+            "data-processor"
           ],
-          "title": "Sandbox ID"
+          "title": "Sandbox Name"
         },
-        "api_key": {
+        "image": {
+          "anyOf": [
+            {
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Base image for new sandboxes",
+          "examples": [
+            "node22",
+            "python3.13"
+          ],
+          "title": "Image"
+        },
+        "ports": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "integer"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Ports to expose on new sandboxes",
+          "examples": [
+            [
+              3000
+            ],
+            [
+              8000,
+              8080
+            ]
+          ],
+          "title": "Ports"
+        },
+        "timeout": {
+          "anyOf": [
+            {
+              "exclusiveMinimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Maximum sandbox lifetime in seconds",
+          "examples": [
+            300,
+            600,
+            1800
+          ],
+          "title": "Timeout"
+        },
+        "vcpus": {
+          "anyOf": [
+            {
+              "exclusiveMinimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Number of virtual CPUs for new sandboxes",
+          "examples": [
+            1,
+            2,
+            4
+          ],
+          "title": "vCPUs"
+        },
+        "memory": {
+          "anyOf": [
+            {
+              "exclusiveMinimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Memory in MB for new sandboxes",
+          "examples": [
+            1024,
+            2048
+          ],
+          "title": "Memory (MB)"
+        },
+        "env": {
+          "anyOf": [
+            {
+              "additionalProperties": {
+                "type": "string"
+              },
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Environment variables for new sandboxes",
+          "title": "Environment Variables"
+        },
+        "token": {
           "anyOf": [
             {
               "format": "password",
@@ -36382,20 +36396,36 @@
             }
           ],
           "default": null,
-          "description": "Vercel API key for authentication",
-          "title": "API Key"
+          "description": "Vercel API token",
+          "title": "Vercel Token"
         },
-        "timeout": {
-          "default": 60,
-          "description": "Default timeout for operations in seconds",
-          "examples": [
-            30,
-            60,
-            120
+        "project_id": {
+          "anyOf": [
+            {
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
           ],
-          "exclusiveMinimum": 0,
-          "title": "Timeout",
-          "type": "number"
+          "default": null,
+          "description": "Vercel project ID",
+          "title": "Project ID"
+        },
+        "team_id": {
+          "anyOf": [
+            {
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Vercel team ID",
+          "title": "Team ID"
         }
       },
       "title": "Vercel Configuration",
@@ -36458,15 +36488,6 @@
           "description": "Additional tool metadata.",
           "title": "Tool metadata",
           "type": "object"
-        },
-        "instructions": {
-          "default": null,
-          "description": "Instructions for how to use this tool effectively.",
-          "title": "Tool instructions",
-          "type": [
-            "string",
-            "null"
-          ]
         },
         "builtin_type": {
           "const": "web_fetch",
@@ -36736,15 +36757,6 @@
           "title": "Tool metadata",
           "type": "object"
         },
-        "instructions": {
-          "default": null,
-          "description": "Instructions for how to use this tool effectively.",
-          "title": "Tool instructions",
-          "type": [
-            "string",
-            "null"
-          ]
-        },
         "builtin_type": {
           "const": "web_search",
           "default": "web_search",
@@ -36851,7 +36863,7 @@
     },
     "WebSearchUserLocation": {
       "additionalProperties": false,
-      "description": "Allows you to localize search results based on a user's location.\n\nSupported by:\n\n* Anthropic\n* OpenAI Responses",
+      "description": "Allows you to localize search results based on a user's location.\n\nSupported by:\n\n* Anthropic\n* OpenAI Responses\n* xAI\n* OpenRouter",
       "properties": {
         "city": {
           "description": "The city where the user is located.",
@@ -36859,7 +36871,7 @@
           "type": "string"
         },
         "country": {
-          "description": "The country where the user is located. For OpenAI, this must be a 2-letter country code (e.g., 'US', 'GB').",
+          "description": "The country where the user is located.\n\nFor OpenAI and xAI, this must be a 2-letter ISO 3166-1 alpha-2 country code (e.g., 'US', 'GB').",
           "title": "Country",
           "type": "string"
         },
