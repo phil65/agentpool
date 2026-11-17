@@ -8,7 +8,14 @@ from typing import Any, Literal, Self
 from pydantic import Field
 
 from acp.schema.base import AnnotatedObject, Request
-from acp.schema.capabilities import AuthCapabilities, ClientCapabilities, FileSystemCapabilities
+from acp.schema.capabilities import (
+    AuthCapabilities,
+    ClientCapabilities,
+    ClientSessionCapabilities,
+    CompactionCapabilities,
+    FileSystemCapabilities,
+    PromptSuggestionsCapabilities,
+)
 from acp.schema.common import Implementation
 from acp.schema.config_options import InitialSessionConfigOption  # noqa: TC001
 from acp.schema.content_blocks import ContentBlock  # noqa: TC001
@@ -300,12 +307,18 @@ class InitializeRequest(Request):
         write_text_file: bool = True,
         protocol_version: int = 1,
         terminal_auth: bool = False,
+        prompt_suggestions: bool = False,
+        compaction: bool = False,
         metadata: dict[str, Any] | None = None,
     ) -> Self:
         """Create a new InitializeRequest instance."""
         fs = FileSystemCapabilities(read_text_file=read_text_file, write_text_file=write_text_file)
         auth = AuthCapabilities(terminal=terminal_auth) if terminal_auth else None
-        caps = ClientCapabilities(terminal=terminal, fs=fs, auth=auth)
+        session = ClientSessionCapabilities(
+            prompt_suggestions=PromptSuggestionsCapabilities() if prompt_suggestions else None,
+            compaction=CompactionCapabilities() if compaction else None,
+        )
+        caps = ClientCapabilities(terminal=terminal, fs=fs, auth=auth, session=session)
         impl = Implementation(title=title, name=name, version=version)
         return cls(
             client_capabilities=caps,
@@ -321,6 +334,8 @@ class InitializeRequest(Request):
         allow_terminal: bool = True,
         allow_file_operations: bool = True,
         terminal_auth: bool = False,
+        prompt_suggestions: bool = False,
+        compaction: bool = False,
         metadata: dict[str, Any] | None = None,
     ) -> InitializeRequest:
         """Create ACP initialize request for app with given name (based on pkg metadata)."""
@@ -336,6 +351,8 @@ class InitializeRequest(Request):
             read_text_file=allow_file_operations,
             write_text_file=allow_file_operations,
             terminal_auth=terminal_auth,
+            prompt_suggestions=prompt_suggestions,
+            compaction=compaction,
             metadata=metadata,
         )
 

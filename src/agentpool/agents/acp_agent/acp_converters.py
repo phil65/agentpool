@@ -55,10 +55,12 @@ from acp.schema import (
     AgentThoughtChunk,
     AudioContentBlock,
     BlobResourceContents,
+    CompactionUpdate,
     ContentToolCallContent,
     EmbeddedResourceContentBlock,
     FileEditToolCallContent,
     ImageContentBlock,
+    PromptSuggestionsUpdate,
     ResourceContentBlock,
     SelectSessionConfigOption,
     SessionConfigSelectOption,
@@ -72,10 +74,12 @@ from acp.schema import (
 )
 from acp.utils import generate_tool_title, infer_tool_kind, to_acp_content_blocks
 from agentpool.agents.events import (
+    CompactionEvent,
     DiffContentItem,
     LocationContentItem,
     PartDeltaEvent,
     PlanUpdateEvent,
+    PromptSuggestionEvent,
     TerminalContentItem,
     ToolCallCompleteEvent,
     ToolCallProgressEvent,
@@ -433,11 +437,14 @@ def convert_to_acp_content(prompts: Sequence[UserContent]) -> list[ContentBlock]
     return content_blocks
 
 
-def acp_to_native_event(update: SessionUpdate) -> RichAgentStreamEvent[Any] | None:  # noqa: PLR0911
+def acp_to_native_event(  # noqa: PLR0911
+    update: SessionUpdate, session_id: str
+) -> RichAgentStreamEvent[Any] | None:
     """Convert ACP session update to native streaming event.
 
     Args:
         update: ACP SessionUpdate from session/update notification
+        session_id: Session ID to attach to session-scoped events
 
     Returns:
         Corresponding native event, or None if no mapping exists
@@ -510,6 +517,20 @@ def acp_to_native_event(update: SessionUpdate) -> RichAgentStreamEvent[Any] | No
                 PlanEntry(content=e.content, priority=e.priority, status=e.status) for e in entries
             ]
             return PlanUpdateEvent(entries=native_entries)
+
+        case PromptSuggestionsUpdate(suggestions=suggestions):
+            texts = [
+                text
+                for s in suggestions
+                if (text := "".join(b.text for b in s.prompt if isinstance(b, TextContentBlock)))
+            ]
+            return PromptSuggestionEvent(suggestions=texts)
+
+        case CompactionUpdate(status="in_progress"):
+            return CompactionEvent(session_id=session_id, phase="starting")
+
+        case CompactionUpdate(status="completed"):
+            return CompactionEvent(session_id=session_id, phase="completed")
 
         case _:
             return None

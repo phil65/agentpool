@@ -19,6 +19,7 @@ if TYPE_CHECKING:
     from collections.abc import AsyncIterator
     from datetime import datetime
 
+    from acp.schema import SessionUpdate
     from agentpool.agents.acp_agent.client_handler import TimeoutableEvent
     from agentpool.agents.acp_agent.session_state import ACPSessionState
     from agentpool.agents.events import RichAgentStreamEvent
@@ -32,14 +33,14 @@ class AcpAgentStreamedResponse(StreamedResponse):
     update_event: TimeoutableEvent
     prompt_task: asyncio.Task[Any]
     agent_name: str
+    session_id: str
     tool_metadata: dict[str, dict[str, Any]]
     _timestamp: datetime = field(default_factory=get_now)
     _model_name: str | None = None
+    _compaction_ids: set[str] = field(default_factory=set)
 
     async def _get_event_iterator(self) -> AsyncIterator[RichAgentStreamEvent[str]]:
         """Poll raw updates from ACP state, convert to events, until prompt completes."""
-        from agentpool.agents.acp_agent.acp_converters import acp_to_native_event
-
         while not self.prompt_task.done():
             try:
                 await self.update_event.wait_with_timeout(0.05)
@@ -47,12 +48,25 @@ class AcpAgentStreamedResponse(StreamedResponse):
             except TimeoutError:
                 pass
             while (update := self.state.pop_update()) is not None:
-                if native_event := acp_to_native_event(update):
-                    yield self._enrich(native_event)
+                if native_event := self._convert(update):
+                    yield native_event
         # Drain any remaining updates after prompt completes
         while (update := self.state.pop_update()) is not None:
-            if native_event := acp_to_native_event(update):
-                yield self._enrich(native_event)
+            if native_event := self._convert(update):
+                yield native_event
+
+    def _convert(self, update: SessionUpdate) -> RichAgentStreamEvent[str] | None:
+        from acp.schema import CompactionUpdate
+        from agentpool.agents.acp_agent.acp_converters import acp_to_native_event
+
+        # Later in_progress updates only patch an already started compaction
+        if isinstance(update, CompactionUpdate) and update.status == "in_progress":
+            if update.compaction_id in self._compaction_ids:
+                return None
+            self._compaction_ids.add(update.compaction_id)
+        if native_event := acp_to_native_event(update, session_id=self.session_id):
+            return self._enrich(native_event)
+        return None
 
     def _enrich(self, event: RichAgentStreamEvent[str]) -> RichAgentStreamEvent[str]:
         """Enrich ToolCallCompleteEvents with agent name and tool metadata."""

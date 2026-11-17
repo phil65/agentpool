@@ -180,7 +180,9 @@ class ACPAgent[TDeps = None](BaseAgent[TDeps, str]):
         self._env_vars = env_vars or {}
         self._client_env = client_execution_env
         # ACP initialization
-        self._init_request = init_request or InitializeRequest.create_for_package("agentpool")
+        self._init_request = init_request or InitializeRequest.create_for_package(
+            "agentpool", prompt_suggestions=True, compaction=True
+        )
         # Tools
         self._tool_providers = tool_providers or []
         # Provider type for model messages
@@ -237,6 +239,8 @@ class ACPAgent[TDeps = None](BaseAgent[TDeps, str]):
                 "agentpool",
                 allow_terminal=config.allow_terminal,
                 allow_file_operations=config.allow_file_operations,
+                prompt_suggestions=True,
+                compaction=True,
             ),
             # Tools
             tool_providers=config.get_tool_providers(),
@@ -475,6 +479,7 @@ class ACPAgent[TDeps = None](BaseAgent[TDeps, str]):
             update_event=self._client_handler._update_event,
             prompt_task=prompt_task,
             agent_name=self.name,
+            session_id=self.session_id,
             tool_metadata=self._tool_bridge.tool_metadata,
         )
 
