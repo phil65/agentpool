@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING
 
 from acp.schema import (
     CompactionUpdate,
+    ImageContentBlock,
     InitializeRequest,
     Notice,
     PromptSuggestion,
@@ -43,17 +44,18 @@ async def _stream(*updates: SessionUpdate) -> list[RichAgentStreamEvent[str]]:
     return [event async for event in response._get_event_iterator()]
 
 
-async def test_prompt_suggestions_keep_text_only() -> None:
+async def test_prompt_suggestions_inline_resource_links() -> None:
     link = ResourceContentBlock(uri="file:///a.py", name="a.py")
+    image = ImageContentBlock(data="", mime_type="image/png")
     update = PromptSuggestionsUpdate(
         suggestions=[
-            PromptSuggestion(
-                prompt=[TextContentBlock(text="fix "), link, TextContentBlock(text="a")]
-            ),
-            PromptSuggestion(prompt=[link]),
+            PromptSuggestion(prompt=[TextContentBlock(text="fix "), link]),
+            PromptSuggestion(prompt=[image]),
         ]
     )
-    assert await _stream(update) == [PromptSuggestionEvent(suggestions=["fix a"])]
+    assert await _stream(update) == [
+        PromptSuggestionEvent(suggestions=["fix [a.py](file:///a.py)"])
+    ]
 
 
 async def test_compaction_updates_start_once_per_id() -> None:

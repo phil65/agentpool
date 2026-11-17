@@ -439,6 +439,17 @@ def convert_to_acp_content(prompts: Sequence[UserContent]) -> list[ContentBlock]
     return content_blocks
 
 
+def _suggestion_to_text(blocks: Sequence[ContentBlock]) -> str:
+    parts: list[str] = []
+    for block in blocks:
+        match block:
+            case TextContentBlock(text=text):
+                parts.append(text)
+            case ResourceContentBlock(uri=uri, name=name, title=title):
+                parts.append(f"[{title or name}]({uri})")
+    return "".join(parts)
+
+
 def acp_to_native_event(  # noqa: PLR0911
     update: SessionUpdate, session_id: str
 ) -> RichAgentStreamEvent[Any] | None:
@@ -521,11 +532,11 @@ def acp_to_native_event(  # noqa: PLR0911
             return PlanUpdateEvent(entries=native_entries)
 
         case PromptSuggestionsUpdate(suggestions=suggestions):
-            texts = [
-                text
-                for s in suggestions
-                if (text := "".join(b.text for b in s.prompt if isinstance(b, TextContentBlock)))
-            ]
+            # Resource links are inlined as markdown so the suggestion keeps its referent.
+            # Lossless proxying would need PromptSuggestionEvent to carry rich content
+            # (e.g. list[list[UserContent]]) and the ACP server to filter image/audio/resource
+            # blocks by the client's PromptSuggestionsCapabilities.
+            texts = [text for s in suggestions if (text := _suggestion_to_text(s.prompt))]
             return PromptSuggestionEvent(suggestions=texts)
 
         case CompactionUpdate(status="in_progress"):
