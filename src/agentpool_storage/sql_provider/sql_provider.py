@@ -665,30 +665,31 @@ class SQLModelProvider(StorageProvider):
         """Save or update session data.
 
         Uses the Conversation table to store session lifecycle data alongside
-        conversation tracking data.
+        conversation tracking data. Updating an existing session only touches the
+        columns owned by ``SessionData``: the creation time, token/cost totals and
+        model are kept, and a missing title never clears a stored one.
         """
-        from sqlalchemy import delete
-
         async with AsyncSession(self.engine) as session:
-            # Delete existing if present (upsert via delete+insert)
-            stmt = delete(Conversation).where(Conversation.id == data.session_id)  # type: ignore[arg-type]  # ty:ignore[invalid-argument-type]
-            await session.execute(stmt)
-            # Insert new/updated
-            convo = Conversation(
-                id=data.session_id,
-                agent_name=data.agent_name,
-                pool_id=data.pool_id,
-                project_id=data.project_id,
-                parent_id=data.parent_id,
-                version=data.version,
-                cwd=data.cwd,
-                agent_type=data.agent_type,
-                sdk_session_id=data.sdk_session_id,
-                start_time=data.created_at,
-                last_active=data.last_active,
-                metadata_json=data.metadata,
-                title=data.title,
-            )
+            convo = await session.get(Conversation, data.session_id)
+            if convo is None:
+                convo = Conversation(
+                    id=data.session_id,
+                    agent_name=data.agent_name,
+                    start_time=data.created_at,
+                )
+            convo.agent_name = data.agent_name
+            convo.pool_id = data.pool_id
+            convo.project_id = data.project_id
+            convo.parent_id = data.parent_id
+            convo.version = data.version
+            convo.cwd = data.cwd
+            convo.agent_type = data.agent_type
+            convo.sdk_session_id = data.sdk_session_id
+            convo.last_active = data.last_active
+            # The title column is canonical; `load_session` re-adds it to the metadata.
+            convo.metadata_json = {k: v for k, v in data.metadata.items() if k != "title"}
+            if data.title is not None:
+                convo.title = data.title
             session.add(convo)
             await session.commit()
             logger.debug("Saved session", session_id=data.session_id)
@@ -698,11 +699,12 @@ class SQLModelProvider(StorageProvider):
         from agentpool.sessions.models import SessionData
 
         async with AsyncSession(self.engine) as session:
-            stmt = select(Conversation).where(Conversation.id == session_id)
-            result = await session.execute(stmt)
-            row = result.scalars().first()
+            row = await session.get(Conversation, session_id)
             if row is None:
                 return None
+            metadata = dict(row.metadata_json or {})
+            if row.title is not None:
+                metadata["title"] = row.title
             return SessionData(
                 session_id=row.id,
                 agent_name=row.agent_name,
@@ -715,7 +717,7 @@ class SQLModelProvider(StorageProvider):
                 sdk_session_id=row.sdk_session_id,
                 created_at=row.start_time,
                 last_active=row.last_active,
-                metadata=row.metadata_json or {},
+                metadata=metadata,
             )
 
     async def delete_session(self, session_id: str) -> bool:

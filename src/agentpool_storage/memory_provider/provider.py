@@ -418,15 +418,18 @@ class MemoryStorageProvider(StorageProvider):
     # Session data methods
 
     async def save_session(self, data: SessionData) -> None:
-        """Save or update session data in memory."""
-        # Also store/update the conversation entry
-        # Remove existing conversation if present
-        self.conversations = [c for c in self.conversations if c["id"] != data.session_id]
-        self.conversations.append({
-            "id": data.session_id,
+        """Save or update session data in memory.
+
+        Updating an existing session only touches the fields owned by ``SessionData``:
+        the creation time and other conversation data are kept, and a missing title
+        never clears a stored one.
+        """
+        conv = next((c for c in self.conversations if c["id"] == data.session_id), None)
+        if conv is None:
+            conv = {"id": data.session_id, "start_time": data.created_at, "title": None}
+            self.conversations.append(conv)
+        conv.update({
             "agent_name": data.agent_name,
-            "title": data.title,
-            "start_time": data.created_at,
             "pool_id": data.pool_id,
             "project_id": data.project_id,
             "parent_id": data.parent_id,
@@ -435,8 +438,11 @@ class MemoryStorageProvider(StorageProvider):
             "agent_type": data.agent_type,
             "sdk_session_id": data.sdk_session_id,
             "last_active": data.last_active,
-            "metadata": data.metadata,
+            # The title field is canonical; `load_session` re-adds it to the metadata.
+            "metadata": {k: v for k, v in data.metadata.items() if k != "title"},
         })
+        if data.title is not None:
+            conv["title"] = data.title
 
     async def load_session(self, session_id: str) -> SessionData | None:
         """Load session data by ID from memory."""
@@ -444,6 +450,9 @@ class MemoryStorageProvider(StorageProvider):
 
         for conv in self.conversations:
             if conv["id"] == session_id:
+                metadata = dict(conv.get("metadata", {}))
+                if (title := conv.get("title")) is not None:
+                    metadata["title"] = title
                 return session_models.SessionData(
                     session_id=conv["id"],
                     agent_name=conv["agent_name"],
@@ -456,7 +465,7 @@ class MemoryStorageProvider(StorageProvider):
                     sdk_session_id=conv.get("sdk_session_id"),
                     created_at=conv["start_time"],
                     last_active=conv.get("last_active", conv["start_time"]),
-                    metadata=conv.get("metadata", {}),
+                    metadata=metadata,
                 )
         return None
 
