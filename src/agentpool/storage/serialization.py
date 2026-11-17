@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from pydantic import ConfigDict, TypeAdapter
+from pydantic_ai import ModelMessagesTypeAdapter, ModelRequestPart, ModelResponsePart
 
 from agentpool.log import get_logger
 
@@ -12,32 +13,30 @@ from agentpool.log import get_logger
 if TYPE_CHECKING:
     from collections.abc import Sequence
 
-    from pydantic_ai import ModelMessage, ModelRequestPart, ModelResponsePart
+    from pydantic_ai import ModelMessage
 
 
 logger = get_logger(__name__)
 
-# Type adapter for serializing ModelResponsePart sequences
+# Type adapter for (de)serializing request/response part sequences. The element type
+# matters: an untyped adapter would deserialize to plain dicts.
 parts_adapter = TypeAdapter(
-    list,
+    list[ModelRequestPart | ModelResponsePart],
     config=ConfigDict(ser_json_bytes="base64", val_json_bytes="base64"),
 )
 
-# Type adapter for serializing ModelMessage sequences
-messages_adapter = TypeAdapter(
-    list,
-    config=ConfigDict(ser_json_bytes="base64", val_json_bytes="base64"),
-)
+# Type adapter for (de)serializing ModelMessage sequences (bytes as base64)
+messages_adapter = ModelMessagesTypeAdapter
 
 
-def deserialize_parts(parts_json: str | None) -> Sequence[ModelResponsePart]:
+def deserialize_parts(parts_json: str | None) -> Sequence[ModelRequestPart | ModelResponsePart]:
     """Deserialize pydantic-ai message parts from JSON string.
 
     Args:
         parts_json: JSON string representation of parts or None if empty
 
     Returns:
-        Sequence of ModelResponsePart objects, empty if deserialization fails
+        Sequence of message parts, empty if deserialization fails
     """
     if not parts_json:
         return []
