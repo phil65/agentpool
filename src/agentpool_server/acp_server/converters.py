@@ -48,7 +48,7 @@ if TYPE_CHECKING:
     from pydantic_ai import UserContent
     from pydantic_ai.usage import UsageBase
 
-    from acp.schema import ContentBlock, McpServer, SelectSessionConfigOption
+    from acp.schema import ContentBlock, McpServer, SelectSessionConfigOption, SystemPrompt
     from acp.schema.content_blocks import ResourceContents
     from agentpool.agents.modes import ModeCategory, ModeInfo
     from agentpool.common_types import PathReference
@@ -192,6 +192,14 @@ def to_session_config_option(category: ModeCategory) -> SelectSessionConfigOptio
         current_value=category.current_mode_id,
         options=[to_session_select_option(mode) for mode in category.available_modes],
     )
+
+
+def system_prompt_text(system_prompt: SystemPrompt | None) -> str | None:
+    """Flatten a client-provided system prompt into text instructions."""
+    if system_prompt is None:
+        return None
+    texts = [block.text for block in system_prompt.content if isinstance(block, TextContentBlock)]
+    return "\n\n".join(texts) or None
 
 
 def to_session_info(session_data: SessionData) -> SessionInfo:

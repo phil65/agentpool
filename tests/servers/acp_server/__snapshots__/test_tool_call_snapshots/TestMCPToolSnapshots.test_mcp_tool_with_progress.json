@@ -2,6 +2,7 @@
   {
     "payload": {
       "kind": "other",
+      "name": "test_progress",
       "rawInput": {
         "message": "hello"
       },

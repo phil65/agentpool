@@ -2,6 +2,7 @@
   {
     "payload": {
       "kind": "edit",
+      "name": "write",
       "rawInput": {
         "content": "New content here",
         "path": "/test/new_file.txt"

@@ -2,6 +2,7 @@
   {
     "payload": {
       "kind": "edit",
+      "name": "edit",
       "rawInput": {
         "description": "Rename function from old to new",
         "new_string": "def new_function():",

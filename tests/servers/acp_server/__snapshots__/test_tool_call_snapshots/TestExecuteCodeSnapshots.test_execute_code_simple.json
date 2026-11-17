@@ -2,6 +2,7 @@
   {
     "payload": {
       "kind": "execute",
+      "name": "execute_code",
       "rawInput": {
         "code": "print('hello')",
         "title": "test hello"

@@ -2,6 +2,7 @@
   {
     "payload": {
       "kind": "execute",
+      "name": "bash",
       "rawInput": {
         "command": "cat bigfile",
         "output_limit": 50

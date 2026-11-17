@@ -2,6 +2,7 @@
   {
     "payload": {
       "kind": "read",
+      "name": "read",
       "rawInput": {
         "limit": 2,
         "line": 3,

@@ -61,6 +61,8 @@ class ACPSessionManager:
         session_id: str | None = None,
         client_capabilities: ClientCapabilities | None = None,
         client_info: Implementation | None = None,
+        additional_directories: Sequence[str] = (),
+        system_prompt: str | None = None,
     ) -> str:
         """Create a new ACP session.
 
@@ -73,6 +75,8 @@ class ACPSessionManager:
             session_id: Optional specific session ID (generated if None)
             client_capabilities: Client capabilities for tool registration
             client_info: Client implementation info (name, version)
+            additional_directories: Additional workspace roots
+            system_prompt: Client-provided system instructions
 
         Returns:
             Session ID for the created session
@@ -104,6 +108,8 @@ class ACPSessionManager:
                 cwd=cwd,
                 client=client,
                 mcp_servers=mcp_servers,
+                additional_directories=additional_directories,
+                system_prompt=system_prompt,
                 acp_agent=acp_agent,
                 client_capabilities=client_capabilities or ClientCapabilities(),
                 client_info=client_info,

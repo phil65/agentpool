@@ -21,7 +21,7 @@ from tokonomics.model_discovery.model_info import ModelInfo
 from acp.agent.acp_requests import ACPRequests
 from acp.agent.notifications import ACPNotifications
 from acp.filesystem import ACPFileSystem
-from acp.schema import AvailableCommand, ClientCapabilities
+from acp.schema import AvailableCommand, ClientCapabilities, Notice
 from agentpool import Agent, AgentPool
 from agentpool.agents.acp_agent import ACPAgent
 from agentpool.agents.modes import ConfigOptionChanged, ModeInfo
@@ -46,6 +46,7 @@ if TYPE_CHECKING:
         AvailableCommandsUpdate,
         ContentBlock,
         Implementation,
+        InitialSessionConfigOption,
         McpServer,
         StopReason,
         Usage,
@@ -180,6 +181,12 @@ class ACPSession:
     mcp_servers: Sequence[McpServer] | None = None
     """Optional MCP server configurations"""
 
+    additional_directories: Sequence[str] = ()
+    """Additional workspace roots provided by the client."""
+
+    system_prompt: str | None = None
+    """Client-provided system instructions (``append`` mode)."""
+
     client_capabilities: ClientCapabilities = field(default_factory=ClientCapabilities)
     """Client capabilities for tool registration"""
 
@@ -210,6 +217,9 @@ class ACPSession:
         # Inject Zed-specific instructions if client is Zed
         if self.client_info and self.client_info.name and "zed" in self.client_info.name.lower():
             self.agent.staged_content.add_text(ZED_CLIENT_PROMPT)
+        if self.system_prompt and not isinstance(self.agent, Agent):
+            # Native agents get it via sys_prompts (see get_cwd_context)
+            self.agent.staged_content.add_text(self.system_prompt)
         self.notifications = ACPNotifications(client=self.client, session_id=self.session_id)
         self.requests = ACPRequests(client=self.client, session_id=self.session_id)
         self.input_provider = ACPInputProvider(self)
@@ -345,8 +355,36 @@ class ACPSession:
         return pool
 
     def get_cwd_context(self) -> str:
-        """Get current working directory context for prompts."""
-        return f"Working directory: {self.cwd}" if self.cwd else ""
+        """Get workspace and client instructions context for prompts."""
+        parts = [f"Working directory: {self.cwd}"] if self.cwd else []
+        if self.additional_directories:
+            parts.append("Additional workspace roots: " + ", ".join(self.additional_directories))
+        if self.system_prompt:
+            parts.append(self.system_prompt)
+        return "\n\n".join(parts)
+
+    @property
+    def supports_notices(self) -> bool:
+        """Whether the client renders ``notice`` session updates."""
+        session_caps = self.client_capabilities.session
+        return bool(session_caps and session_caps.notices is not None)
+
+    @property
+    def supports_compaction(self) -> bool:
+        """Whether the client renders ``compaction_update`` session updates."""
+        session_caps = self.client_capabilities.session
+        return bool(session_caps and session_caps.compaction is not None)
+
+    async def apply_initial_config_options(
+        self, options: Sequence[InitialSessionConfigOption]
+    ) -> None:
+        """Apply config option values the client sent on session setup."""
+        for option in options:
+            value = str(option.value).lower() if isinstance(option.value, bool) else option.value
+            try:
+                await self.agent.set_mode(value, category_id=option.config_id)
+            except Exception:
+                self.log.exception("Failed to apply initial config option", option=option)
 
     async def switch_active_agent(self, agent_name: str) -> None:
         """Switch to a different agent in the pool.
@@ -422,7 +460,11 @@ class ACPSession:
             self.log.debug("Processing prompt", content_items=len(non_command_content))
             event_count = 0
             # Create a new event converter for this prompt
-            converter = ACPEventConverter(subagent_display_mode=self.subagent_display_mode)
+            converter = ACPEventConverter(
+                subagent_display_mode=self.subagent_display_mode,
+                use_notices=self.supports_notices,
+                use_compaction_updates=self.supports_compaction,
+            )
 
             try:  # Use the session's persistent input provider
                 # Staged content is automatically injected by run_stream
@@ -485,7 +527,10 @@ class ACPSession:
         if self._cancelled:
             return
         try:
-            await self.notifications.send_agent_text(message)
+            if self.supports_notices:
+                await self.notifications.send_update(Notice(severity="error", title=message))
+            else:
+                await self.notifications.send_agent_text(message)
         except Exception:
             self.log.exception("Failed to send error notification")
 

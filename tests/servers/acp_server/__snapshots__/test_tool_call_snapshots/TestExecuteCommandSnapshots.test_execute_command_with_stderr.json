@@ -2,6 +2,7 @@
   {
     "payload": {
       "kind": "execute",
+      "name": "bash",
       "rawInput": {
         "command": "ls /nonexistent"
       },

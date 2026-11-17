@@ -2,6 +2,7 @@
   {
     "payload": {
       "kind": "edit",
+      "name": "write",
       "rawInput": {
         "content": "Updated content",
         "overwrite": true,

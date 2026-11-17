@@ -36,8 +36,10 @@ from acp.schema import (
     AgentMessageChunk,
     AgentPlanUpdate,
     AgentThoughtChunk,
+    CompactionUpdate,
     ContentToolCallContent,
     Cost,
+    Notice,
     ToolCallLocation,
     ToolCallProgress,
     ToolCallStart,
@@ -113,6 +115,12 @@ class ACPEventConverter:
 
     subagent_display_mode: Literal["inline", "tool_box"] = "tool_box"
     """How to display subagent output."""
+
+    use_notices: bool = False
+    """Send errors as ``notice`` updates (client advertised ``session.notices``)."""
+
+    use_compaction_updates: bool = False
+    """Send ``compaction_update`` updates (client advertised ``session.compaction``)."""
 
     # Internal state
     _tool_states: dict[str, _ToolState] = field(default_factory=dict)
@@ -221,6 +229,7 @@ class ACPEventConverter:
                     yield ToolCallStart(
                         tool_call_id=tool_call_id,
                         title=state.title,
+                        name=state.tool_name,
                         kind=state.kind,
                         raw_input=state.raw_input,
                         status="pending",
@@ -262,6 +271,7 @@ class ACPEventConverter:
                             yield ToolCallStart(
                                 tool_call_id=tool_call_id,
                                 title=state.title,
+                                name=state.tool_name,
                                 kind=state.kind,
                                 raw_input=state.raw_input,
                                 status="pending",
@@ -285,6 +295,7 @@ class ACPEventConverter:
                     yield ToolCallStart(
                         tool_call_id=tool_call_id,
                         title=state.title,
+                        name=state.tool_name,
                         kind=state.kind,
                         raw_input=state.raw_input,
                         status="pending",
@@ -335,6 +346,7 @@ class ACPEventConverter:
                     yield ToolCallStart(
                         tool_call_id=tc_id,
                         title=title,
+                        name=state.tool_name,
                         kind=kind,
                         raw_input=raw_input,
                         locations=acp_locations or None,
@@ -370,6 +382,7 @@ class ACPEventConverter:
                     yield ToolCallStart(
                         tool_call_id=tool_call_id,
                         title=title or state.title,
+                        name=None if state.tool_name == "unknown" else state.tool_name,
                         kind=state.kind,
                         raw_input=state.raw_input,
                         status="pending",
@@ -451,6 +464,12 @@ class ACPEventConverter:
                 ]
                 yield AgentPlanUpdate(entries=acp_entries)
 
+            case CompactionEvent(phase=phase) if self.use_compaction_updates:
+                # One compaction per run; a later "completed" event patches the same entity
+                compaction_id = f"compaction-{self._current_message_id}"
+                status = "in_progress" if phase == "starting" else "completed"
+                yield CompactionUpdate(compaction_id=compaction_id, status=status)
+
             case CompactionEvent(phase="starting"):
                 text = event.format()
                 yield AgentMessageChunk.text(text, message_id=self._current_message_id)
@@ -471,6 +490,9 @@ class ACPEventConverter:
                         source_name, source_type, inner_event, depth
                     ):
                         yield update
+
+            case RunErrorEvent(message=message, agent_name=agent_name) if self.use_notices:
+                yield Notice(severity="error", title=agent_name or "Error", description=message)
 
             case RunErrorEvent(message=message, agent_name=agent_name):
                 # Display error as agent text with formatting
@@ -672,6 +694,7 @@ class ACPEventConverter:
             yield ToolCallStart(
                 tool_call_id=state_key,
                 title=title,
+                name="delegate",
                 kind="other",
                 raw_input={},
                 status="pending",

@@ -7,8 +7,10 @@ from importlib.metadata import version as _version
 from typing import TYPE_CHECKING, Any, ClassVar, assert_never
 
 from acp import Agent as ACPAgent
+from acp.exceptions import RequestError
 from acp.schema import (
     CloseSessionResponse,
+    DeleteSessionResponse,
     ForkSessionResponse,
     InitializeResponse,
     ListSessionsResponse,
@@ -16,17 +18,31 @@ from acp.schema import (
     NewSessionResponse,
     PromptResponse,
     ResumeSessionResponse,
+    SessionAdditionalDirectoriesCapabilities,
+    SessionDeleteCapabilities,
+    SessionForkCapabilities,
     SessionInfoUpdate,
     SessionMode,
     SessionModeState,
     SessionNotification,
+    SessionOptionsCapabilities,
+    SessionOptionsResponse,
+    SessionStatusCapabilities,
+    SessionStatusResponse,
+    SessionSystemPromptCapabilities,
+    SessionTitleCapabilities,
     SetSessionConfigOptionResponse,
     SetSessionModeRequest,
     SetSessionModeResponse,
+    SetSessionTitleResponse,
 )
 from agentpool.log import get_logger
 from agentpool.utils.tasks import TaskManager
-from agentpool_server.acp_server.converters import to_session_config_option, to_session_info
+from agentpool_server.acp_server.converters import (
+    system_prompt_text,
+    to_session_config_option,
+    to_session_info,
+)
 from agentpool_server.acp_server.session_manager import ACPSessionManager
 
 
@@ -39,6 +55,7 @@ if TYPE_CHECKING:
         CancelNotification,
         ClientCapabilities,
         CloseSessionRequest,
+        DeleteSessionRequest,
         ForkSessionRequest,
         Implementation,
         InitializeRequest,
@@ -49,8 +66,11 @@ if TYPE_CHECKING:
         PromptRequest,
         ResumeSessionRequest,
         SessionConfigOption,
+        SessionOptionsRequest,
+        SessionStatusRequest,
         SetSessionConfigOptionRequest,
         SetSessionModeRequest,
+        SetSessionTitleRequest,
     )
     from agentpool import AgentPool
     from agentpool.agents.base_agent import BaseAgent
@@ -181,7 +201,7 @@ class AgentPoolACPAgent(ACPAgent):
         self.client_info = params.client_info
         logger.info("Client info", request=params.model_dump_json())
         self._initialized = True
-        return InitializeResponse.create(
+        response = InitializeResponse.create(
             protocol_version=version,
             name="agentpool",
             title="AgentPool",
@@ -196,6 +216,40 @@ class AgentPoolACPAgent(ACPAgent):
             embedded_context_prompts=True,
             image_prompts=True,
         )
+        assert response.agent_capabilities
+        session_caps = response.agent_capabilities.session_capabilities
+        assert session_caps
+        session_caps.delete = SessionDeleteCapabilities()
+        session_caps.additional_directories = SessionAdditionalDirectoriesCapabilities()
+        # Only `append` mode: agentpool always keeps its own agent instructions
+        session_caps.system_prompt = SessionSystemPromptCapabilities()
+        session_caps.fork = SessionForkCapabilities()
+        session_caps.status = SessionStatusCapabilities()
+        session_caps.options = SessionOptionsCapabilities()
+        session_caps.title = SessionTitleCapabilities()
+        return response
+
+    async def _create_session(
+        self,
+        params: NewSessionRequest | LoadSessionRequest | ResumeSessionRequest | ForkSessionRequest,
+        session_id: str | None = None,
+    ) -> str:
+        """Create an ACP session from a session setup request."""
+        new_id = await self.session_manager.create_session(
+            agent=self.default_agent,
+            cwd=params.cwd or "",
+            client=self.client,
+            acp_agent=self,
+            mcp_servers=params.mcp_servers,
+            client_capabilities=self.client_capabilities,
+            client_info=self.client_info,
+            session_id=session_id,
+            additional_directories=params.additional_directories,
+            system_prompt=system_prompt_text(params.system_prompt),
+        )
+        if params.config_options and (session := self.session_manager.get_session(new_id)):
+            await session.apply_initial_config_options(params.config_options)
+        return new_id
 
     async def new_session(self, params: NewSessionRequest) -> NewSessionResponse:
         """Create a new session."""
@@ -206,15 +260,7 @@ class AgentPoolACPAgent(ACPAgent):
 
         logger.info("Creating new session", default_agent=self.default_agent.name)
         try:
-            session_id = await self.session_manager.create_session(
-                agent=self.default_agent,
-                cwd=params.cwd,
-                client=self.client,
-                acp_agent=self,
-                mcp_servers=params.mcp_servers,
-                client_capabilities=self.client_capabilities,
-                client_info=self.client_info,
-            )
+            session_id = await self._create_session(params)
             state: SessionModeState | None = None
             config_options: list[SessionConfigOption] = []
 
@@ -266,16 +312,7 @@ class AgentPoolACPAgent(ACPAgent):
             # Get or create an active session wrapper
             session = self.session_manager.get_session(params.session_id)
             if not session:
-                session_id = await self.session_manager.create_session(
-                    agent=self.default_agent,
-                    cwd=params.cwd or "",
-                    client=self.client,
-                    acp_agent=self,
-                    mcp_servers=params.mcp_servers,
-                    client_capabilities=self.client_capabilities,
-                    client_info=self.client_info,
-                    session_id=params.session_id,
-                )
+                session_id = await self._create_session(params, session_id=params.session_id)
                 session = self.session_manager.get_session(session_id)
 
             if not session:
@@ -362,16 +399,10 @@ class AgentPoolACPAgent(ACPAgent):
 
         logger.info("Forking session", session_id=params.session_id)
         # For now, just create a new session - full fork implementation would copy state
-        session_id = await self.session_manager.create_session(
-            agent=self.default_agent,
-            cwd=params.cwd,
-            client=self.client,
-            acp_agent=self,
-            mcp_servers=params.mcp_servers,
-            client_capabilities=self.client_capabilities,
-            client_info=self.client_info,
-        )
-        return ForkSessionResponse(session_id=session_id)
+        session_id = await self._create_session(params)
+        session = self.session_manager.get_session(session_id)
+        config_options = await get_session_config_options(session.agent) if session else []
+        return ForkSessionResponse(session_id=session_id, config_options=config_options)
 
     async def resume_session(self, params: ResumeSessionRequest) -> ResumeSessionResponse:
         """Resume an existing session without replaying history.
@@ -389,16 +420,7 @@ class AgentPoolACPAgent(ACPAgent):
             # Get or create session wrapper
             session = self.session_manager.get_session(params.session_id)
             if not session:
-                session_id = await self.session_manager.create_session(
-                    agent=self.default_agent,
-                    cwd=params.cwd or "",
-                    client=self.client,
-                    acp_agent=self,
-                    mcp_servers=params.mcp_servers,
-                    client_capabilities=self.client_capabilities,
-                    client_info=self.client_info,
-                    session_id=params.session_id,
-                )
+                session_id = await self._create_session(params, session_id=params.session_id)
                 session = self.session_manager.get_session(session_id)
 
             if not session:
@@ -506,6 +528,39 @@ class AgentPoolACPAgent(ACPAgent):
         except Exception:
             logger.exception("Failed to close session", session_id=params.session_id)
         return CloseSessionResponse()
+
+    async def delete_session(self, params: DeleteSessionRequest) -> DeleteSessionResponse:
+        """Delete a session, closing it first if it is active."""
+        logger.info("Deleting session", session_id=params.session_id)
+        if session := self.session_manager.get_session(params.session_id):
+            await session.cancel()
+        await self.session_manager.close_session(params.session_id, delete=True)
+        return DeleteSessionResponse()
+
+    async def session_status(self, params: SessionStatusRequest) -> SessionStatusResponse:
+        """Report whether a session is active in memory or only stored."""
+        if self.session_manager.get_session(params.session_id):
+            return SessionStatusResponse(status="open")
+        if await self.session_manager.storage.load_session(params.session_id):
+            return SessionStatusResponse(status="saved")
+        raise RequestError.resource_not_found(params.session_id)
+
+    async def session_options(self, params: SessionOptionsRequest) -> SessionOptionsResponse:
+        """Report the modes and config options a session would start with."""
+        session = self.session_manager.get_session(params.session_id or "")
+        agent = session.agent if session else self.default_agent
+        return SessionOptionsResponse(
+            modes=await get_session_mode_state(agent),
+            config_options=await get_session_config_options(agent) or None,
+        )
+
+    async def set_session_title(self, params: SetSessionTitleRequest) -> SetSessionTitleResponse:
+        """Rename a session and notify the client if it is active."""
+        title = params.title.strip()
+        await self.session_manager.storage.update_session_title(params.session_id, title)
+        if session := self.session_manager.get_session(params.session_id):
+            await session.notifications.send_update(SessionInfoUpdate(title=title))
+        return SetSessionTitleResponse(title=title)
 
     async def cancel(self, params: CancelNotification) -> None:
         """Cancel operations for a session."""

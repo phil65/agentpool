@@ -2,6 +2,7 @@
   {
     "payload": {
       "kind": "execute",
+      "name": "execute_code",
       "rawInput": {
         "code": "x = 1\ny = 2\nprint(x + y)",
         "title": "test multiline"

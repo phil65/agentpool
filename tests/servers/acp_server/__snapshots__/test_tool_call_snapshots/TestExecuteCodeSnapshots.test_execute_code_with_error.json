@@ -2,6 +2,7 @@
   {
     "payload": {
       "kind": "execute",
+      "name": "execute_code",
       "rawInput": {
         "code": "raise ValueError('test error')",
         "title": "test error"

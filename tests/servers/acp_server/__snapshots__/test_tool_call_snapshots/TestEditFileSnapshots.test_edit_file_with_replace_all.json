@@ -2,6 +2,7 @@
   {
     "payload": {
       "kind": "edit",
+      "name": "edit",
       "rawInput": {
         "description": "Replace all func1 occurrences",
         "new_string": "renamed",
