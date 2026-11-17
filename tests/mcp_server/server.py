@@ -7,7 +7,19 @@ import anyio
 from fastmcp import Context, FastMCP
 from fastmcp.tools import ToolResult
 from fastmcp.utilities.types import Audio, File, Image
-from mcp.types import ModelHint, ModelPreferences, SamplingMessage, TextContent
+from mcp.types import (
+    CreateMessageRequest,
+    CreateMessageRequestParams,
+    CreateMessageResult,
+    ElicitRequest,
+    ElicitRequestFormParams,
+    ElicitResult,
+    InputRequiredResult,
+    ModelHint,
+    ModelPreferences,
+    SamplingMessage,
+    TextContent,
+)
 from pydantic import BaseModel
 
 
@@ -15,23 +27,47 @@ mcp = FastMCP("Test Server")
 
 
 @mcp.tool
-async def sample_test(ctx: Context, message: str) -> str:
-    """Analyze code, ask user which issues to fix, then return improved code."""
-    # Step 1: Use sampling to check if there are issues (yes/no)
-    prefs = ModelPreferences(hints=[ModelHint(name="gpt-5-nano")])
-    has_issues_result = await ctx.session.create_message(  # ty: ignore[deprecated]  # sampling, SEP-2577
-        [SamplingMessage(role="user", content=TextContent(type="text", text=message))],
-        max_tokens=500,
-        system_prompt="only 'yes' or 'no'.",
-        model_preferences=prefs,
-    )
-    return str(has_issues_result.content)
+async def sample_test(ctx: Context, message: str) -> str | InputRequiredResult:
+    """Ask the client's LLM a yes/no question via sampling (multi round-trip)."""
+    match (ctx.input_responses or {}).get("answer"):
+        case CreateMessageResult(content=TextContent(text=text)):
+            return text
+        case None:
+            params = CreateMessageRequestParams(
+                messages=[
+                    SamplingMessage(role="user", content=TextContent(type="text", text=message))
+                ],
+                max_tokens=500,
+                system_prompt="only 'yes' or 'no'.",
+                model_preferences=ModelPreferences(hints=[ModelHint(name="gpt-5-nano")]),
+            )
+            return InputRequiredResult(
+                input_requests={"answer": CreateMessageRequest(params=params)}
+            )
+        case other:
+            return f"Unexpected sampling response: {other!r}"
 
 
 @mcp.tool
-async def test_elicitation(ctx: Context, message: str):
-    """Use this to test the elicitation feature!."""
-    return await ctx.elicit(message, response_type=bool)
+async def test_elicitation(ctx: Context, message: str) -> str | InputRequiredResult:
+    """Ask the user a yes/no question via elicitation (multi round-trip)."""
+    match (ctx.input_responses or {}).get("confirm"):
+        case ElicitResult(action="accept", content=content):
+            return f"accepted: {(content or {}).get('value')}"
+        case ElicitResult(action=action):
+            return action
+        case None:
+            params = ElicitRequestFormParams(
+                message=message,
+                requested_schema={
+                    "type": "object",
+                    "properties": {"value": {"type": "boolean"}},
+                    "required": ["value"],
+                },
+            )
+            return InputRequiredResult(input_requests={"confirm": ElicitRequest(params=params)})
+        case other:
+            return f"Unexpected elicitation response: {other!r}"
 
 
 @mcp.tool
