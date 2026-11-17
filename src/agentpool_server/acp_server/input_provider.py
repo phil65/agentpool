@@ -3,11 +3,14 @@
 from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any, Literal, assert_never
+import uuid
 import webbrowser
 
 from mcp import types
+from pydantic import ValidationError
 
 from acp import AllowedOutcome, DeniedOutcome, PermissionOption
+from acp.schema import ElicitationRequest, ElicitationSchema
 from acp.utils import DEFAULT_PERMISSION_OPTIONS
 from agentpool.log import get_logger
 from agentpool.ui.base import InputProvider
@@ -195,14 +198,38 @@ class ACPInputProvider(InputProvider):
                 logger.warning("Unknown permission option", option_id=option_id)
                 return "abort_run"
 
+    def _to_acp_elicitation(self, params: types.ElicitRequestParams) -> ElicitationRequest | None:
+        """Translate an MCP elicitation into an ACP one, if the client supports that mode."""
+        caps = self.session.client_capabilities.elicitation
+        if caps is None:
+            return None
+        match params:
+            case types.ElicitRequestURLParams(elicitation_id=elicit_id, message=msg, url=url):
+                if caps.url is None:
+                    return None
+                return ElicitationRequest.url_based(msg, elicit_id or str(uuid.uuid4()), url)
+            case types.ElicitRequestFormParams(requested_schema=schema, message=msg):
+                if caps.form is None:
+                    return None
+                try:
+                    acp_schema = ElicitationSchema.model_validate(schema)
+                except ValidationError:
+                    # ACP only allows flat objects of primitive properties
+                    logger.debug("Schema not expressible as ACP elicitation", schema=schema)
+                    return None
+                return ElicitationRequest.form(msg, acp_schema)
+            case _ as unreachable:
+                assert_never(unreachable)
+
     async def get_elicitation(  # noqa: PLR0911
         self,
         params: types.ElicitRequestParams,
     ) -> types.ElicitResult | types.ErrorData:
-        """Get user response to elicitation request with basic schema support.
+        """Get user response to elicitation request.
 
-        Currently supports boolean schemas via ACP permission options.
-        Other schemas fall back to accept/decline options.
+        Forwarded as ACP ``elicitation/create`` if the client supports the mode.
+        Otherwise boolean and enum schemas are approximated via permission options,
+        and other schemas fall back to accept/decline.
 
         Args:
             params: MCP elicit request parameters
@@ -211,6 +238,16 @@ class ACPInputProvider(InputProvider):
             Elicit result with user's response or error data
         """
         try:
+            if request := self._to_acp_elicitation(params):
+                acp_response = await self.session.requests.elicit(request)
+                match acp_response.action:
+                    case "accept":
+                        content = acp_response.content
+                        return types.ElicitResult(action="accept", content=content)
+                    case "decline":
+                        return types.ElicitResult(action="decline")
+                    case _:
+                        return types.ElicitResult(action="cancel")
             # Handle URL mode elicitation (OAuth, credentials, payments)
             match params:
                 case types.ElicitRequestURLParams(
@@ -299,14 +336,14 @@ class ACPInputProvider(InputProvider):
         """Handle ACP response for boolean elicitation."""
         match response.outcome:
             case AllowedOutcome(option_id="false" | "true" as option_id):
+                val = option_id == "true"
                 # Check if we need to wrap in object structure
                 if schema.get("type") == "object":
                     properties = schema.get("properties", {})
                     if len(properties) == 1:
                         prop_name = next(iter(properties.keys()))
-                        val = option_id == "true"
                         return types.ElicitResult(action="accept", content={prop_name: val})
-                return types.ElicitResult(action="accept", content={"value": True})
+                return types.ElicitResult(action="accept", content={"value": val})
             case AllowedOutcome(option_id="cancel"):
                 return types.ElicitResult(action="cancel")
             case DeniedOutcome():

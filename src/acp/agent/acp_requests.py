@@ -28,6 +28,8 @@ if TYPE_CHECKING:
 
     from acp import (
         Client,
+        ElicitationRequest,
+        ElicitationResponse,
         RequestPermissionResponse,
         TerminalOutputResponse,
         WaitForTerminalExitResponse,
@@ -231,6 +233,14 @@ class ACPRequests:
 
         finally:  # Always release terminal
             await self.release_terminal(terminal_id, metadata=metadata)
+
+    async def elicit(self, request: ElicitationRequest) -> ElicitationResponse:
+        """Ask the user for structured input (``elicitation/create``), scoped to this session.
+
+        Only allowed if the client advertised the matching ``elicitation`` mode.
+        """
+        scoped = request.model_copy(update={"session_id": self.id, "request_id": None})
+        return await self.client.elicitation(scoped)
 
     async def request_permission(
         self,
