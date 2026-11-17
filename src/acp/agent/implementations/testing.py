@@ -18,7 +18,6 @@ from acp.schema import (
     PromptResponse,
     ResumeSessionResponse,
     SetSessionConfigOptionResponse,
-    SetSessionModelResponse,
     SetSessionModeResponse,
 )
 
@@ -38,7 +37,6 @@ if TYPE_CHECKING:
         PromptRequest,
         ResumeSessionRequest,
         SetSessionConfigOptionRequest,
-        SetSessionModelRequest,
     )
 
 
@@ -79,9 +77,6 @@ class TestAgent(Agent):
 
     async def set_session_mode(self, params: SetSessionModeRequest) -> SetSessionModeResponse:
         return SetSessionModeResponse()
-
-    async def set_session_model(self, params: SetSessionModelRequest) -> SetSessionModelResponse:
-        return SetSessionModelResponse()
 
     async def set_session_config_option(
         self, params: SetSessionConfigOptionRequest

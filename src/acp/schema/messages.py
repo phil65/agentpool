@@ -19,26 +19,40 @@ from acp.schema.notifications import (  # noqa: TC001
 
 
 AgentMethod = Literal[
+    "auth/status",
     "authenticate",
     "initialize",
     "logout",
+    "mcp/message",
+    "providers/disable",
+    "providers/list",
+    "providers/set",
+    "session/archive",
     "session/cancel",
+    "session/close",
+    "session/delete",
+    "session/fork",
+    "session/list",
     "session/load",
     "session/new",
+    "session/options",
     "session/prompt",
-    "session/set_mode",
-    "session/set_model",
-    "session/list",
-    "session/fork",
     "session/resume",
-    "session/close",
+    "session/set_config_option",
+    "session/set_mode",
+    "session/set_title",
+    "session/status",
+    "session/unarchive",
 ]
+"""Methods handled by the agent."""
 
 ClientMethod = Literal[
+    "auth/status_update",
+    "elicitation/complete",
+    "elicitation/create",
     "fs/read_text_file",
     "fs/write_text_file",
-    "session/elicitation",
-    "session/elicitation/complete",
+    "mcp/message",
     "session/request_permission",
     "session/update",
     "terminal/create",
@@ -47,6 +61,13 @@ ClientMethod = Literal[
     "terminal/release",
     "terminal/wait_for_exit",
 ]
+"""Methods handled by the client."""
+
+ProtocolMethod = Literal["$/cancel_request"]
+"""Methods either side may send."""
+
+ProxyMethod = Literal["proxy/initialize", "proxy/successor"]
+"""**UNSTABLE**: Methods handled by proxies in a proxy chain."""
 
 
 class JsonRPCMessage(Schema):

@@ -1,7 +1,5 @@
 """Elicitation schema definitions.
 
-**UNSTABLE**: This module is not part of the spec yet, and may be removed or changed at any point.
-
 Defines types for agent-initiated elicitation, where the agent requests
 structured input from the user via forms or URLs.
 """
@@ -35,13 +33,16 @@ StringFormatLiteral = Literal["email", "uri", "date", "date-time"]
 
 
 class EnumOption(AnnotatedObject):
-    """A titled enum option with a const value and human-readable title."""
+    """A titled enum option with a const value, human-readable title and optional description."""
 
     const: str
     """The constant value for this option."""
 
     title: str
     """Human-readable title for this option."""
+
+    description: str | None = None
+    """Human-readable description."""
 
 
 # --- Property schemas ---
@@ -262,61 +263,19 @@ ElicitationContentValue = str | int | float | bool | Sequence[str]
 """Possible value types in elicitation content."""
 
 
-# --- Elicitation actions ---
-
-
-class ElicitationAcceptAction(AnnotatedObject):
-    """**UNSTABLE**: The user accepted the elicitation and provided content."""
-
-    action: Literal["accept"] = "accept"
-    """Discriminator value."""
-
-    content: dict[str, ElicitationContentValue] | None = None
-    """The user-provided content, if any, as an object matching the requested schema."""
-
-
-class ElicitationDeclineAction(AnnotatedObject):
-    """**UNSTABLE**: The user declined the elicitation."""
-
-    action: Literal["decline"] = "decline"
-    """Discriminator value."""
-
-
-class ElicitationCancelAction(AnnotatedObject):
-    """**UNSTABLE**: The elicitation was cancelled."""
-
-    action: Literal["cancel"] = "cancel"
-    """Discriminator value."""
-
-
-def _elicitation_action_discriminator(v: Any) -> str:
-    if isinstance(v, dict):
-        return v.get("action", "accept")  # type: ignore[no-any-return]
-    return v.action  # type: ignore[no-any-return]
-
-
-ElicitationAction = Annotated[
-    Annotated[ElicitationAcceptAction, Tag("accept")]
-    | Annotated[ElicitationDeclineAction, Tag("decline")]
-    | Annotated[ElicitationCancelAction, Tag("cancel")],
-    Discriminator(_elicitation_action_discriminator),
-]
-"""The user's action in response to an elicitation."""
-
-
 # --- Elicitation capabilities ---
 
 
 class ElicitationFormCapabilities(AnnotatedObject):
-    """**UNSTABLE**: Form-based elicitation capabilities."""
+    """Form-based elicitation capabilities."""
 
 
 class ElicitationUrlCapabilities(AnnotatedObject):
-    """**UNSTABLE**: URL-based elicitation capabilities."""
+    """URL-based elicitation capabilities."""
 
 
 class ElicitationCapabilities(AnnotatedObject):
-    """**UNSTABLE**: Elicitation capabilities supported by the client."""
+    """Elicitation capabilities supported by the client."""
 
     form: ElicitationFormCapabilities | None = None
     """Whether the client supports form-based elicitation."""
@@ -325,112 +284,123 @@ class ElicitationCapabilities(AnnotatedObject):
     """Whether the client supports URL-based elicitation."""
 
 
-# --- Elicitation modes ---
-
-
-class ElicitationFormMode(AnnotatedObject):
-    """**UNSTABLE**: Form-based elicitation mode.
-
-    The client renders a form from the provided schema.
-    """
-
-    mode: Literal["form"] = "form"
-    """Discriminator value."""
-
-    requested_schema: ElicitationSchema
-    """A JSON Schema describing the form fields to present to the user."""
-
-
-class ElicitationUrlMode(AnnotatedObject):
-    """**UNSTABLE**: URL-based elicitation mode.
-
-    The client directs the user to a URL.
-    """
-
-    mode: Literal["url"] = "url"
-    """Discriminator value."""
-
-    elicitation_id: str
-    """The unique identifier for this elicitation."""
-
-    url: str
-    """The URL to direct the user to."""
-
-
-def _elicitation_mode_discriminator(v: Any) -> str:
-    if isinstance(v, dict):
-        return v.get("mode", "form")  # type: ignore[no-any-return]
-    return v.mode  # type: ignore[no-any-return]
-
-
-ElicitationMode = Annotated[
-    Annotated[ElicitationFormMode, Tag("form")] | Annotated[ElicitationUrlMode, Tag("url")],
-    Discriminator(_elicitation_mode_discriminator),
-]
-"""The mode of elicitation."""
-
-
 # --- Elicitation request/response ---
+
+ElicitationModeType = Literal["form", "url"] | str
+"""Elicitation mode. Values beginning with ``_`` are implementation-specific."""
+
+ElicitationActionType = Literal["accept", "decline", "cancel"] | str
+"""User action in response to an elicitation."""
 
 
 class ElicitationRequest(Request):
-    """**UNSTABLE**: Request from the agent to elicit structured user input.
+    """Request from the agent to elicit structured user input (``elicitation/create``).
 
     The agent sends this to the client to request information from the user,
     either via a form or by directing them to a URL.
-    """
 
-    session_id: str
-    """The session ID for this request."""
+    Mode and scope fields are flattened into the request on the wire:
+
+    - ``mode: "form"`` carries ``requested_schema``.
+    - ``mode: "url"`` carries ``elicitation_id`` and ``url``.
+    - Session scope sets ``session_id`` (and optionally ``tool_call_id``),
+      request scope sets ``request_id`` (e.g. during auth before any session exists).
+    """
 
     message: str
     """A human-readable message describing what input is needed."""
 
-    mode: ElicitationMode
-    """The elicitation mode and its mode-specific fields."""
+    mode: ElicitationModeType
+    """The elicitation mode."""
+
+    requested_schema: ElicitationSchema | None = None
+    """Form mode: a JSON Schema describing the form fields to present to the user."""
+
+    elicitation_id: str | None = None
+    """URL mode: the unique identifier for this elicitation."""
+
+    url: str | None = None
+    """URL mode: the URL to direct the user to."""
+
+    session_id: str | None = None
+    """Session scope: the session this elicitation is tied to."""
+
+    tool_call_id: str | None = None
+    """Session scope: optional tool call within the session."""
+
+    request_id: int | str | None = None
+    """Request scope: the JSON-RPC request this elicitation is tied to."""
 
     @classmethod
     def form(
         cls,
-        session_id: str,
         message: str,
         schema: ElicitationSchema,
+        *,
+        session_id: str | None = None,
+        tool_call_id: str | None = None,
+        request_id: int | str | None = None,
     ) -> Self:
         """Create a form-based elicitation request."""
         return cls(
-            session_id=session_id,
             message=message,
-            mode=ElicitationFormMode(requested_schema=schema),
+            mode="form",
+            requested_schema=schema,
+            session_id=session_id,
+            tool_call_id=tool_call_id,
+            request_id=request_id,
         )
 
     @classmethod
     def url_based(
         cls,
-        session_id: str,
         message: str,
         elicitation_id: str,
         url: str,
+        *,
+        session_id: str | None = None,
+        tool_call_id: str | None = None,
+        request_id: int | str | None = None,
     ) -> Self:
         """Create a URL-based elicitation request."""
         return cls(
-            session_id=session_id,
             message=message,
-            mode=ElicitationUrlMode(elicitation_id=elicitation_id, url=url),
+            mode="url",
+            elicitation_id=elicitation_id,
+            url=url,
+            session_id=session_id,
+            tool_call_id=tool_call_id,
+            request_id=request_id,
         )
 
 
 class ElicitationResponse(Response):
-    """**UNSTABLE**: Response from the client to an elicitation request."""
+    """Response from the client to an elicitation request."""
 
-    action: ElicitationAction
-    """The user's action in response to the elicitation."""
+    action: ElicitationActionType
+    """The user's action."""
+
+    content: dict[str, ElicitationContentValue] | None = None
+    """For ``accept``: the user-provided content, as an object matching the requested schema."""
+
+    @classmethod
+    def accept(cls, content: dict[str, ElicitationContentValue] | None = None) -> Self:
+        return cls(action="accept", content=content)
+
+    @classmethod
+    def decline(cls) -> Self:
+        return cls(action="decline")
+
+    @classmethod
+    def cancel(cls) -> Self:
+        return cls(action="cancel")
 
 
 # --- Elicitation complete notification ---
 
 
 class ElicitationCompleteNotification(AnnotatedObject):
-    """**UNSTABLE**: Notification sent by the agent when a URL-based elicitation is complete."""
+    """Notification sent by the agent when a URL-based elicitation is complete."""
 
     elicitation_id: str
     """The ID of the elicitation that completed."""

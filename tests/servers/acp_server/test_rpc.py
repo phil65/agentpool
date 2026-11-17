@@ -23,8 +23,6 @@ from acp import (
     NewSessionRequest,
     ReadTextFileRequest,
     SessionNotification,
-    SetSessionModelRequest,
-    SetSessionModelResponse,
     SetSessionModeRequest,
     SetSessionModeResponse,
     UserMessageChunk,
@@ -148,11 +146,6 @@ async def test_initialize_and_new_session(
             SetSessionModeRequest(session_id=new_sess.session_id, mode_id="ask")
         )
         assert isinstance(mode_resp, SetSessionModeResponse)
-
-        model_resp = await agent_conn.set_session_model(
-            SetSessionModelRequest(session_id=new_sess.session_id, model_id="gpt-4o")
-        )
-        assert isinstance(model_resp, SetSessionModelResponse)
 
 
 async def test_bidirectional_file_ops(test_agent: TestAgent, test_client: DefaultACPClient) -> None:
@@ -333,6 +326,68 @@ async def test_method_not_found_results_in_error_response(
         line = await asyncio.wait_for(s.client_reader.readline(), timeout=1)
         resp = anyenv.load_json(line)
         assert resp["id"] == 2
+        method_not_found_code = -32601
+        assert resp["error"]["code"] == method_not_found_code
+
+
+async def test_cancel_request_cancels_inflight_handler(test_agent: TestAgent) -> None:
+    started = asyncio.Event()
+
+    async def slow_ext_method(method: str, params: dict) -> dict:
+        started.set()
+        await asyncio.sleep(10)
+        return {}
+
+    test_agent.ext_method = slow_ext_method  # type: ignore[method-assign]
+    async with _Server() as s:
+        assert s.client_writer is not None
+        assert s.client_reader is not None
+        assert s.server_writer is not None
+        assert s.server_reader is not None
+        _server_conn = AgentSideConnection(
+            lambda _conn: test_agent,
+            AsyncioWriterAdapter(s.server_writer),
+            AsyncioReaderAdapter(s.server_reader),
+        )
+        req = {"jsonrpc": "2.0", "id": 7, "method": "_slow", "params": {}}
+        s.client_writer.write((anyenv.dump_json(req) + "\n").encode())
+        await s.client_writer.drain()
+        await asyncio.wait_for(started.wait(), timeout=1)
+
+        # Unknown request IDs are ignored, then the real one gets cancelled
+        for request_id in (99, 7):
+            cancel = {
+                "jsonrpc": "2.0",
+                "method": "$/cancel_request",
+                "params": {"requestId": request_id},
+            }
+            s.client_writer.write((anyenv.dump_json(cancel) + "\n").encode())
+        await s.client_writer.drain()
+
+        line = await asyncio.wait_for(s.client_reader.readline(), timeout=1)
+        resp = anyenv.load_json(line)
+        assert resp["id"] == 7
+        request_cancelled_code = -32800
+        assert resp["error"]["code"] == request_cancelled_code
+
+
+async def test_unimplemented_optional_method_is_method_not_found(test_agent: TestAgent) -> None:
+    async with _Server() as s:
+        assert s.client_writer is not None
+        assert s.client_reader is not None
+        assert s.server_writer is not None
+        assert s.server_reader is not None
+        _server_conn = AgentSideConnection(
+            lambda _conn: test_agent,
+            AsyncioWriterAdapter(s.server_writer),
+            AsyncioReaderAdapter(s.server_reader),
+        )
+        req = {"jsonrpc": "2.0", "id": 3, "method": "session/delete", "params": {"sessionId": "x"}}
+        s.client_writer.write((anyenv.dump_json(req) + "\n").encode())
+        await s.client_writer.drain()
+
+        line = await asyncio.wait_for(s.client_reader.readline(), timeout=1)
+        resp = anyenv.load_json(line)
         method_not_found_code = -32601
         assert resp["error"]["code"] == method_not_found_code
 

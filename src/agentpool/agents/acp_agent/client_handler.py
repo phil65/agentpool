@@ -13,7 +13,7 @@ from pydantic_ai import PartDeltaEvent, TextPartDelta
 from acp.client.protocol import Client
 from acp.schema import (
     CreateTerminalResponse,
-    KillTerminalCommandResponse,
+    KillTerminalResponse,
     ReadTextFileResponse,
     ReleaseTerminalResponse,
     RequestPermissionResponse,
@@ -34,7 +34,7 @@ if TYPE_CHECKING:
     from acp.schema import (
         AvailableCommand,
         CreateTerminalRequest,
-        KillTerminalCommandRequest,
+        KillTerminalRequest,
         ReadTextFileRequest,
         ReleaseTerminalRequest,
         RequestPermissionRequest,
@@ -344,9 +344,7 @@ class ACPClientHandler(Client):
         logger.debug("Terminal exited", terminal_id=terminal_id, exit_code=exit_code)
         return WaitForTerminalExitResponse(exit_code=exit_code)
 
-    async def kill_terminal(
-        self, params: KillTerminalCommandRequest
-    ) -> KillTerminalCommandResponse:
+    async def kill_terminal(self, params: KillTerminalRequest) -> KillTerminalResponse:
         """Kill terminal process via ProcessManager."""
         if not self.allow_terminal:
             raise OperationNotAllowedError("Terminal operations")
@@ -357,7 +355,7 @@ class ACPClientHandler(Client):
 
         await self.env.process_manager.kill_process(terminal_id)
         logger.info("Killed terminal", terminal_id=terminal_id)
-        return KillTerminalCommandResponse()
+        return KillTerminalResponse()
 
     async def release_terminal(self, params: ReleaseTerminalRequest) -> ReleaseTerminalResponse:
         """Release terminal resources via ProcessManager."""
@@ -390,9 +388,9 @@ class ACPClientHandler(Client):
 
     async def elicitation(self, params: ElicitationRequest) -> ElicitationResponse:
         """Decline elicitation by default."""
-        from acp.schema.elicitation import ElicitationDeclineAction, ElicitationResponse
+        from acp.schema.elicitation import ElicitationResponse
 
-        return ElicitationResponse(action=ElicitationDeclineAction())
+        return ElicitationResponse.decline()
 
     async def elicitation_complete(self, params: ElicitationCompleteNotification) -> None:
         """Ignore elicitation complete notifications."""

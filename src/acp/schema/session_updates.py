@@ -6,10 +6,12 @@ import base64
 from collections.abc import Sequence  # noqa: TC003
 from typing import TYPE_CHECKING, Annotated, Any, Literal, Self
 
-from pydantic import Field
+from pydantic import Discriminator, Field, Tag
 
-from acp.schema.agent_plan import PlanEntry  # noqa: TC001
+from acp.schema.agent_plan import PlanEntry, PlanId, PlanUpdateContent  # noqa: TC001
 from acp.schema.base import AnnotatedObject
+from acp.schema.capabilities import SubagentSessionCapabilities  # noqa: TC001
+from acp.schema.common import Error  # noqa: TC001
 from acp.schema.config_options import SessionConfigOption  # noqa: TC001
 from acp.schema.content_blocks import (
     Annotations,
@@ -318,6 +320,9 @@ class ToolCallProgress(AnnotatedObject):
     title: str | None = None
     """Update the human-readable title."""
 
+    name: str | None = None
+    """Update the programmatic name of the tool being invoked."""
+
     tool_call_id: str
     """The ID of the tool call being updated."""
 
@@ -413,18 +418,21 @@ class ToolCallStart(AnnotatedObject):
     title: str
     """Human-readable title describing what the tool is doing."""
 
+    name: str | None = None
+    """Programmatic name of the tool being invoked."""
+
     tool_call_id: str
     """Unique identifier for this tool call within the session."""
 
 
 class Cost(AnnotatedObject):
-    """**UNSTABLE**: Cost information for a session."""
+    """Cost information for a session."""
 
     amount: float
     """Total cumulative cost for session."""
 
     currency: str
-    """ISO 4217 currency code (e.g., ``USD``, ``EUR``)."""
+    """Unit of ``amount``: an ISO 4217 currency code (e.g. ``USD``), or e.g. ``credits``."""
 
 
 class Usage(AnnotatedObject):
@@ -450,7 +458,7 @@ class Usage(AnnotatedObject):
 
 
 class UsageUpdate(AnnotatedObject):
-    """**UNSTABLE**: Context window and cost update for a session."""
+    """Context window and cost update for a session."""
 
     session_update: Literal["usage_update"] = Field(default="usage_update", init=False)
 
@@ -477,17 +485,248 @@ class SessionInfoUpdate(AnnotatedObject):
         default="session_info_update", init=False
     )
 
-    session_id: str
-    """The session being updated."""
-
     title: str | None = None
     """New title for the session, or None to leave unchanged."""
 
     updated_at: str | None = None
     """New ISO 8601 timestamp, or None to leave unchanged."""
 
-    meta: dict[str, Any] | None = None
-    """Additional metadata to merge, or None to leave unchanged."""
+
+NoticeSeverity = Literal["info", "warning", "error"] | str
+"""Severity hint for a session notice."""
+
+
+class Notice(AnnotatedObject):
+    """Fire-and-forget information for the user.
+
+    Only sent if the client advertised ``session.notices``.
+    """
+
+    session_update: Literal["notice"] = Field(default="notice", init=False)
+
+    severity: NoticeSeverity
+    """Presentation severity hint."""
+
+    title: str
+    """Required non-empty plain-text title that can stand alone."""
+
+    description: str | None = None
+    """Optional plain-text detail or guidance."""
+
+
+CompactionId = str
+"""Agent-owned ID of a context compaction, unique within the session."""
+
+CompactionStatus = Literal["in_progress", "completed", "failed", "cancelled"] | str
+"""Lifecycle state of a context compaction."""
+
+
+class CompactionUpdate(AnnotatedObject):
+    """A context compaction upsert.
+
+    The first notification fixes the compaction's timeline position.
+    Later updates with the same ID patch that entity in place.
+    Only sent if the client advertised ``session.compaction``.
+    """
+
+    session_update: Literal["compaction_update"] = Field(default="compaction_update", init=False)
+
+    compaction_id: CompactionId
+    """The Agent-owned ID of this compaction."""
+
+    status: CompactionStatus
+    """Current lifecycle status."""
+
+    summary: Sequence[ContentBlock] | None = None
+    """Complete replacement user-displayable summary content for the compaction."""
+
+    error: str | None = None
+    """Human-readable error details for the compaction."""
+
+
+class CompactionSummaryChunk(AnnotatedObject):
+    """A content block appended to a compaction's summary.
+
+    A first-seen ID creates an in-progress compaction. Chunks append in receive order.
+    """
+
+    session_update: Literal["compaction_summary_chunk"] = Field(
+        default="compaction_summary_chunk", init=False
+    )
+
+    compaction_id: CompactionId
+    """ID of the compaction whose summary receives this content."""
+
+    content: ContentBlock
+    """One content block to append."""
+
+
+class PlanUpdate(AnnotatedObject):
+    """**UNSTABLE**: Create or replace an ID-addressed plan.
+
+    Only sent if the client advertised the ``plan`` capability.
+    """
+
+    session_update: Literal["plan_update"] = Field(default="plan_update", init=False)
+
+    plan: PlanUpdateContent
+    """The updated plan content."""
+
+
+class PlanRemoved(AnnotatedObject):
+    """**UNSTABLE**: Remove an ID-addressed plan."""
+
+    session_update: Literal["plan_removed"] = Field(default="plan_removed", init=False)
+
+    plan_id: PlanId
+    """The plan ID to remove."""
+
+
+class PromptSuggestion(AnnotatedObject):
+    """**UNSTABLE**: A prompt the client can offer to the user."""
+
+    prompt: Sequence[ContentBlock]
+    """The content of the suggested prompt."""
+
+
+class PromptSuggestionsUpdate(AnnotatedObject):
+    """**UNSTABLE**: Suggested next prompts, replacing any previous suggestions.
+
+    Only sent if the client advertised ``session.prompt_suggestions``.
+    """
+
+    session_update: Literal["prompt_suggestions_update"] = Field(
+        default="prompt_suggestions_update", init=False
+    )
+
+    suggestions: Sequence[PromptSuggestion]
+    """The suggestions the Client can offer, ordered most likely first."""
+
+
+class RunningStateUpdate(AnnotatedObject):
+    """**UNSTABLE**: Foreground work is in progress."""
+
+    state: Literal["running"] = Field(default="running", init=False)
+
+
+class IdleStateUpdate(AnnotatedObject):
+    """**UNSTABLE**: The child is ready to process another prompt."""
+
+    state: Literal["idle"] = Field(default="idle", init=False)
+
+    stop_reason: (
+        Literal["end_turn", "max_tokens", "max_turn_requests", "refusal", "cancelled", "error"]
+        | str
+        | None
+    ) = None
+    """Why foreground work stopped. Omitted when there is no stop reason."""
+
+    error: Error | None = None
+    """For ``stop_reason: "error"``: the failure, as a JSON-RPC error object."""
+
+    usage: Usage | None = None
+    """Token usage for completed foreground work."""
+
+
+class RequiresActionStateUpdate(AnnotatedObject):
+    """**UNSTABLE**: Foreground work is blocked on user action."""
+
+    state: Literal["requires_action"] = Field(default="requires_action", init=False)
+
+
+class UnknownStateUpdate(AnnotatedObject):
+    """**UNSTABLE**: The Agent cannot currently determine foreground activity.
+
+    Also used for custom or future states, whose raw value is kept in ``state``.
+    """
+
+    state: str = "unknown"
+
+
+def _state_discriminator(v: Any) -> str:
+    state = v.get("state") if isinstance(v, dict) else getattr(v, "state", None)
+    return state if state in {"running", "idle", "requires_action"} else "unknown"
+
+
+StateUpdate = Annotated[
+    Annotated[RunningStateUpdate, Tag("running")]
+    | Annotated[IdleStateUpdate, Tag("idle")]
+    | Annotated[RequiresActionStateUpdate, Tag("requires_action")]
+    | Annotated[UnknownStateUpdate, Tag("unknown")],
+    Discriminator(_state_discriminator),
+]
+"""**UNSTABLE**: State snapshot of a subagent session."""
+
+
+class SubagentUpdate(AnnotatedObject):
+    """**UNSTABLE**: A subagent session started by the parent, or a change to it.
+
+    Only sent if the client advertised the ``subagents`` capability.
+    """
+
+    session_update: Literal["subagent_update"] = Field(default="subagent_update", init=False)
+
+    session_id: str
+    """The opaque session ID identifying the child in all ACP messages."""
+
+    title: str | None = None
+    """The parent's human-readable display title for this child."""
+
+    description: str | None = None
+    """The parent's description of the child's role or purpose."""
+
+    capabilities: SubagentSessionCapabilities | None = None
+    """Client-initiated session mutations permitted for this subagent session."""
+
+    state: StateUpdate | None = None
+    """Current state snapshot for the child session."""
+
+    cwd: str | None = None
+    """The child's working directory. Must be an absolute path."""
+
+    additional_directories: Sequence[str] | None = None
+    """Additional workspace roots for the child. Each path must be absolute."""
+
+
+class SessionMessage(AnnotatedObject):
+    """**UNSTABLE**: A message exchanged between sessions (e.g. parent and subagent).
+
+    Upserts by ``message_id``: omitted fields are left unchanged, ``None`` clears them.
+    """
+
+    session_update: Literal["session_message"] = Field(default="session_message", init=False)
+
+    message_id: str
+    """Identifier of this message within the enclosing session's transcript."""
+
+    sender_session_id: str | None = None
+    """The sending session."""
+
+    recipient_session_id: str | None = None
+    """The receiving session."""
+
+    sender_message_id: str | None = None
+    """On an incoming view, the ``message_id`` of the outgoing view in the sender's transcript."""
+
+    recipient_message_id: str | None = None
+    """On an outgoing view, the ``message_id`` of the incoming view in the recipient."""
+
+    content: Sequence[ContentBlock] | None = None
+    """Replaces all content when non-empty. ``None`` or ``[]`` clears it."""
+
+
+class SessionMessageChunk(AnnotatedObject):
+    """**UNSTABLE**: A content block appended to a ``session_message``."""
+
+    session_update: Literal["session_message_chunk"] = Field(
+        default="session_message_chunk", init=False
+    )
+
+    message_id: str
+    """Identifier of this message within the enclosing session's transcript."""
+
+    content: ContentBlock
+    """A single content block appended to the message."""
 
 
 SessionUpdate = Annotated[
@@ -499,10 +738,19 @@ SessionUpdate = Annotated[
         | ToolCallProgress
         | AvailableCommandsUpdate
         | AgentPlanUpdate
+        | PlanUpdate
+        | PlanRemoved
         | CurrentModeUpdate
         | ConfigOptionUpdate
         | SessionInfoUpdate
         | UsageUpdate
+        | Notice
+        | CompactionUpdate
+        | CompactionSummaryChunk
+        | PromptSuggestionsUpdate
+        | SubagentUpdate
+        | SessionMessage
+        | SessionMessageChunk
     ),
     Field(discriminator="session_update"),
 ]

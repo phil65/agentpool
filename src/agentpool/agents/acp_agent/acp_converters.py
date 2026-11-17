@@ -94,7 +94,6 @@ if TYPE_CHECKING:
         HttpMcpServer,
         McpServer,
         SessionConfigOption,
-        SessionModelState,
         SessionModeState,
         SessionUpdate,
         SseMcpServer,
@@ -274,10 +273,19 @@ def _user_content_to_updates(content: Sequence[UserContent]) -> Iterator[Session
                 assert_never(unreachable)
 
 
+def _to_native_category(
+    category: str | None,
+) -> Literal["mode", "model", "thought_level", "other"]:
+    match category:
+        case "mode" | "model" | "thought_level":
+            return category
+        case _:
+            return "other"
+
+
 def to_native_modes(
     config_options: list[SessionConfigOption],
     available_modes: SessionModeState | None,
-    available_models: SessionModelState | None,
 ) -> list[ModeCategory]:
     from agentpool.agents.modes import ModeCategory, ModeInfo
 
@@ -308,7 +316,7 @@ def to_native_modes(
                     name=config_opt.name,
                     available_modes=mode_infos,
                     current_mode_id=str(config_opt.current_value),
-                    category=config_opt.category or "other",
+                    category=_to_native_category(config_opt.category),
                 )
             )
         return categories
@@ -334,27 +342,6 @@ def to_native_modes(
             )
         )
 
-    # Legacy: Convert ACP SessionModelState to ModeCategory
-    if available_models:
-        models = [
-            ModeInfo(
-                value=m.model_id,
-                name=m.name,
-                description=m.description or "",
-                category_id="model",
-            )
-            for m in available_models.available_models
-        ]
-        categories.append(
-            ModeCategory(
-                id="model",
-                name="Model",
-                available_modes=models,
-                current_mode_id=available_models.current_model_id,
-                category="model",
-            )
-        )
-
     return categories
 
 
@@ -366,7 +353,7 @@ def convert_acp_locations(
     locations: Sequence[ToolCallLocation] | None,
 ) -> list[LocationContentItem]:
     """Convert ACP ToolCallLocation list to native LocationContentItem list."""
-    return [LocationContentItem(path=loc.path, line=loc.line) for loc in locations or []]
+    return [LocationContentItem(path=loc.path, line=loc.line or 0) for loc in locations or []]
 
 
 def convert_acp_content(content: Sequence[ToolCallContent] | None) -> list[ToolCallContentItem]:

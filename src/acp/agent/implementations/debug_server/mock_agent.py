@@ -25,14 +25,13 @@ from acp.schema import (
     ReadTextFileResponse,
     ResumeSessionResponse,
     SessionInfo,
-    SetSessionModelResponse,
     SetSessionModeResponse,
     WriteTextFileResponse,
 )
 
 
 if TYPE_CHECKING:
-    from acp import SetSessionModelRequest, SetSessionModeRequest
+    from acp import SetSessionModeRequest
     from acp.agent.implementations.debug_server.models import DebugState
     from acp.schema import (
         AuthenticateRequest,
@@ -134,11 +133,6 @@ class MockAgent(Agent):
         """Mock session mode change."""
         logger.info("Mock session mode change")
         return SetSessionModeResponse()
-
-    async def set_session_model(self, params: SetSessionModelRequest) -> SetSessionModelResponse:
-        """Mock session model change."""
-        logger.info("Mock session model change")
-        return SetSessionModelResponse()
 
     async def set_session_config_option(self, params: SetSessionConfigOptionRequest) -> None:
         """Mock session config option change."""

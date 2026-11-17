@@ -20,7 +20,7 @@ class EnvVariable(AnnotatedObject):
     """The value to set for the environment variable."""
 
 
-class Implementation(Schema):
+class Implementation(AnnotatedObject):
     """Describes the name and version of an ACP implementation.
 
     Includes an optional title for UI representation.
@@ -64,55 +64,11 @@ class AuthMethodAgent(AnnotatedObject):
     """Optional description providing more details about this authentication method."""
 
 
-class AuthEnvVar(AnnotatedObject):
-    """**UNSTABLE**: Describes a single environment variable for an env-var auth method."""
-
-    name: str
-    """The environment variable name (e.g. ``"OPENAI_API_KEY"``)."""
-
-    label: str | None = None
-    """Human-readable label for this variable, displayed in client UI."""
-
-    secret: bool = True
-    """Whether this value is a secret (e.g. API key, token).
-
-    Clients should use a password-style input for secret vars.
-    Defaults to ``True``."""
-
-    optional: bool = False
-    """Whether this variable is optional.  Defaults to ``False``."""
-
-
-class AuthMethodEnvVar(AnnotatedObject):
-    """**UNSTABLE**: Environment variable authentication method.
-
-    The user provides credentials that the client passes to the agent
-    as environment variables.
-    """
-
-    type: Literal["env_var"] = "env_var"
-    """Discriminator field."""
-
-    id: str
-    """Unique identifier for this authentication method."""
-
-    name: str
-    """Human-readable name of the authentication method."""
-
-    description: str | None = None
-    """Optional description providing more details about this authentication method."""
-
-    vars: Sequence[AuthEnvVar]
-    """The environment variables the client should set."""
-
-    link: str | None = None
-    """Optional link to a page where the user can obtain their credentials."""
-
-
 class AuthMethodTerminal(AnnotatedObject):
-    """**UNSTABLE**: Terminal authentication method.
+    """Terminal authentication method.
 
-    Client runs an interactive terminal for the user to authenticate via a TUI.
+    Client runs the configured agent program as a separate interactive process
+    for the user to authenticate.
     """
 
     type: Literal["terminal"] = "terminal"
@@ -141,9 +97,7 @@ def _auth_method_discriminator(v: Any) -> str:
 
 
 AuthMethod = Annotated[
-    Annotated[AuthMethodAgent, Tag("agent")]
-    | Annotated[AuthMethodEnvVar, Tag("env_var")]
-    | Annotated[AuthMethodTerminal, Tag("terminal")],
+    Annotated[AuthMethodAgent, Tag("agent")] | Annotated[AuthMethodTerminal, Tag("terminal")],
     Discriminator(_auth_method_discriminator),
 ]
 """Describes an available authentication method.
@@ -162,7 +116,7 @@ class Error(Schema):
     See protocol docs: [JSON-RPC Error Object](https://www.jsonrpc.org/specification#error_object)
     """
 
-    code: int
+    code: ErrorCode
     """A number indicating the error type that occurred.
 
     This must be an integer as defined in the JSON-RPC specification.
@@ -180,9 +134,44 @@ class Error(Schema):
     The message should be limited to a concise single sentence.
     """
 
-    auth_methods: Sequence[AuthMethod] = ()
-    """**UNSTABLE**: Authentication methods relevant to this error.
 
-    Typically included with ``AUTH_REQUIRED`` errors to narrow down which
-    authentication methods are applicable from those shared during initialization.
-    """
+PARSE_ERROR = -32700
+INVALID_REQUEST = -32600
+METHOD_NOT_FOUND = -32601
+INVALID_PARAMS = -32602
+INTERNAL_ERROR = -32603
+REQUEST_CANCELLED = -32800
+AUTH_REQUIRED = -32000
+RESOURCE_NOT_FOUND = -32002
+
+ErrorCode = int
+"""JSON-RPC error code. See the ``*_ERROR`` / ``*_REQUIRED`` constants for predefined codes."""
+
+
+AuthMethodId = str
+"""Unique identifier for an authentication method."""
+
+AuthState = Literal["authenticated", "unauthenticated", "not_required", "unknown"] | str
+"""**UNSTABLE**: Whether the agent can start sessions without the user signing in first."""
+
+
+class AuthAccount(AnnotatedObject):
+    """**UNSTABLE**: An account the agent has configured, for display."""
+
+    label: str
+    """Human-readable name for the account, e.g. ``Claude Max`` or ``OpenAI API key``."""
+
+    description: str | None = None
+    """Short text shown with the label, e.g. the credential source. MUST NOT contain secrets."""
+
+    active: bool | None = None
+    """Whether the agent currently uses this account by default."""
+
+    name: str | None = None
+    """Display name of the user."""
+
+    email: str | None = None
+    """Email address of the user."""
+
+    organization: str | None = None
+    """Display name of the organization, team, or workspace the account is using."""

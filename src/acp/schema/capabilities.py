@@ -24,7 +24,7 @@ class FileSystemCapabilities(AnnotatedObject):
 
 
 class AuthCapabilities(AnnotatedObject):
-    """**UNSTABLE**: Authentication capabilities supported by the client.
+    """Authentication capabilities supported by the client.
 
     Advertised during initialization to inform the agent which authentication
     method types the client can handle.
@@ -32,6 +32,80 @@ class AuthCapabilities(AnnotatedObject):
 
     terminal: bool = False
     """Whether the client supports ``terminal`` authentication methods."""
+
+
+class CompactionCapabilities(AnnotatedObject):
+    """Client support for ID-addressed context compaction updates.
+
+    ``{}`` advertises the complete compaction contract.
+    """
+
+
+class NoticeCapabilities(AnnotatedObject):
+    """Client support for presenting live ``notice`` session updates to the user."""
+
+
+class BooleanConfigOptionCapabilities(AnnotatedObject):
+    """Capabilities for boolean session configuration options."""
+
+
+class SessionConfigOptionsCapabilities(AnnotatedObject):
+    """Session configuration option capabilities supported by the client."""
+
+    boolean: BooleanConfigOptionCapabilities | None = None
+    """Whether the client supports boolean session configuration options."""
+
+
+class PromptSuggestionsImageCapabilities(AnnotatedObject):
+    """**UNSTABLE**: Prompt suggestions may include ``image`` content blocks."""
+
+
+class PromptSuggestionsAudioCapabilities(AnnotatedObject):
+    """**UNSTABLE**: Prompt suggestions may include ``audio`` content blocks."""
+
+
+class PromptSuggestionsEmbeddedContextCapabilities(AnnotatedObject):
+    """**UNSTABLE**: Prompt suggestions may include ``resource`` content blocks."""
+
+
+class PromptSuggestionsCapabilities(AnnotatedObject):
+    """**UNSTABLE**: Client support for ``prompt_suggestions_update`` session updates.
+
+    Text and resource link content are always allowed.
+    """
+
+    image: PromptSuggestionsImageCapabilities | None = None
+    """Whether prompt suggestions may include ``image`` content blocks."""
+
+    audio: PromptSuggestionsAudioCapabilities | None = None
+    """Whether prompt suggestions may include ``audio`` content blocks."""
+
+    embedded_context: PromptSuggestionsEmbeddedContextCapabilities | None = None
+    """Whether prompt suggestions may include ``resource`` content blocks."""
+
+
+class ClientSessionCapabilities(AnnotatedObject):
+    """Session-related capabilities supported by the client."""
+
+    compaction: CompactionCapabilities | None = None
+    """Support for ID-addressed context compaction updates."""
+
+    config_options: SessionConfigOptionsCapabilities | None = None
+    """Config option capabilities supported by the client."""
+
+    notices: NoticeCapabilities | None = None
+    """Support for live user-facing ``notice`` session updates."""
+
+    prompt_suggestions: PromptSuggestionsCapabilities | None = None
+    """**UNSTABLE**: Support for ``prompt_suggestions_update`` session updates."""
+
+
+class SubagentCapabilities(AnnotatedObject):
+    """**UNSTABLE**: Client support for ``subagent_update`` session updates."""
+
+
+class PlanCapabilities(AnnotatedObject):
+    """**UNSTABLE**: Client support for ID-addressed ``plan_update`` / ``plan_removed`` updates."""
 
 
 class ClientCapabilities(AnnotatedObject):
@@ -43,14 +117,23 @@ class ClientCapabilities(AnnotatedObject):
     See protocol docs: [Client Capabilities](https://agentclientprotocol.com/protocol/initialization#client-capabilities)
     """
 
-    auth: AuthCapabilities | None = None
-    """**UNSTABLE**: Authentication capabilities supported by the client."""
+    auth: AuthCapabilities | None = Field(default_factory=AuthCapabilities)
+    """Authentication capabilities supported by the client."""
 
     elicitation: ElicitationCapabilities | None = None
-    """**UNSTABLE**: Elicitation capabilities supported by the client.
+    """Elicitation capabilities supported by the client.
 
     Determines which elicitation modes the agent may use.
     """
+
+    session: ClientSessionCapabilities | None = None
+    """Session-related capabilities supported by the client."""
+
+    subagents: SubagentCapabilities | None = None
+    """**UNSTABLE**: Client support for ``subagent_update`` session updates."""
+
+    plan: PlanCapabilities | None = None
+    """**UNSTABLE**: Client support for ID-addressed plan updates."""
 
     fs: FileSystemCapabilities | None = Field(default_factory=FileSystemCapabilities)
     """File system capabilities supported by the client.
@@ -122,17 +205,68 @@ class McpCapabilities(AnnotatedObject):
     sse: bool | None = False
     """Agent supports [`McpServer::Sse`]."""
 
+    acp: bool | None = False
+    """**UNSTABLE**: Agent supports ``acp`` MCP servers (MCP over ACP via ``mcp/message``)."""
+
 
 class SessionListCapabilities(AnnotatedObject):
     """Capabilities for the `session/list` method.
 
-    **UNSTABLE**: This capability is not part of the spec yet,
-    and may be removed or changed at any point.
-
     By supplying `{}` it means that the agent supports listing of sessions.
-    Further capabilities can be added in the future for other means of
-    filtering or searching the list.
     """
+
+
+class SessionDeleteCapabilities(AnnotatedObject):
+    """Capabilities for the ``session/delete`` method."""
+
+
+class SessionAdditionalDirectoriesCapabilities(AnnotatedObject):
+    """Support for ``additionalDirectories`` on session lifecycle requests."""
+
+
+class SessionSystemPromptOverrideCapabilities(AnnotatedObject):
+    """Support for the ``override`` system prompt mode."""
+
+
+class SessionSystemPromptModeCapabilities(AnnotatedObject):
+    """System prompt delivery modes the agent supports in addition to ``append``."""
+
+    override: SessionSystemPromptOverrideCapabilities | None = None
+    """Whether the agent supports ``override`` mode."""
+
+
+class SessionSystemPromptCapabilities(AnnotatedObject):
+    """Capabilities for client-provided system prompts."""
+
+    mode: SessionSystemPromptModeCapabilities | None = None
+    """Delivery modes the agent supports in addition to ``append``."""
+
+
+class SessionArchiveCapabilities(AnnotatedObject):
+    """**UNSTABLE**: Support for ``session/archive`` and ``session/unarchive``."""
+
+
+class SessionStatusCapabilities(AnnotatedObject):
+    """**UNSTABLE**: Support for ``session/status``."""
+
+
+class SessionOptionsCapabilities(AnnotatedObject):
+    """**UNSTABLE**: Support for ``session/options``."""
+
+
+class SessionTitleCapabilities(AnnotatedObject):
+    """**UNSTABLE**: Support for ``session/set_title``."""
+
+
+class SessionCancelCapabilities(AnnotatedObject):
+    """**UNSTABLE**: Permits the client to cancel a subagent's current work."""
+
+
+class SubagentSessionCapabilities(AnnotatedObject):
+    """**UNSTABLE**: Capabilities of a subagent session."""
+
+    cancel: SessionCancelCapabilities | None = None
+    """Permits the client to cancel this child's current work without ending the session."""
 
 
 class SessionForkCapabilities(AnnotatedObject):
@@ -148,9 +282,6 @@ class SessionForkCapabilities(AnnotatedObject):
 class SessionResumeCapabilities(AnnotatedObject):
     """Capabilities for the `session/resume` method.
 
-    **UNSTABLE**: This capability is not part of the spec yet,
-    and may be removed or changed at any point.
-
     By supplying `{}` it means that the agent supports resuming of sessions.
     """
 
@@ -158,10 +289,7 @@ class SessionResumeCapabilities(AnnotatedObject):
 class SessionCloseCapabilities(AnnotatedObject):
     """Capabilities for the `session/close` method.
 
-    **UNSTABLE**: This capability is not part of the spec yet,
-    and may be removed or changed at any point.
-
-    By supplying ``{}`` it means that the agent supports stopping of sessions.
+    By supplying ``{}`` it means that the agent supports closing of sessions.
     """
 
 
@@ -180,54 +308,63 @@ class SessionCapabilities(AnnotatedObject):
     See protocol docs: [Session Capabilities](https://agentclientprotocol.com/protocol/initialization#session-capabilities)
     """
 
-    fork: SessionForkCapabilities | None = None
-    """**UNSTABLE**
-
-    This capability is not part of the spec yet, and may be removed or changed at any point.
-
-    Whether the agent supports `session/fork`.
-    """
-
     list: SessionListCapabilities | None = None
-    """**UNSTABLE**
+    """Whether the agent supports `session/list`."""
 
-    This capability is not part of the spec yet, and may be removed or changed at any point.
+    delete: SessionDeleteCapabilities | None = None
+    """Whether the agent supports ``session/delete``."""
 
-    Whether the agent supports `session/list`.
-    """
+    additional_directories: SessionAdditionalDirectoriesCapabilities | None = None
+    """Whether the agent supports ``additionalDirectories`` on session lifecycle requests."""
+
+    system_prompt: SessionSystemPromptCapabilities | None = None
+    """Whether the agent supports ``systemPrompt`` on session lifecycle requests."""
 
     resume: SessionResumeCapabilities | None = None
-    """**UNSTABLE**
-
-    This capability is not part of the spec yet, and may be removed or changed at any point.
-
-    Whether the agent supports `session/resume`.
-    """
+    """Whether the agent supports `session/resume`."""
 
     close: SessionCloseCapabilities | None = None
-    """**UNSTABLE**
+    """Whether the agent supports `session/close`."""
 
-    This capability is not part of the spec yet, and may be removed or changed at any point.
+    fork: SessionForkCapabilities | None = None
+    """**UNSTABLE**: Whether the agent supports `session/fork`."""
 
-    Whether the agent supports `session/close`.
-    """
+    archive: SessionArchiveCapabilities | None = None
+    """**UNSTABLE**: Whether the agent supports ``session/archive`` and ``session/unarchive``."""
+
+    status: SessionStatusCapabilities | None = None
+    """**UNSTABLE**: Whether the agent supports ``session/status``."""
+
+    options: SessionOptionsCapabilities | None = None
+    """**UNSTABLE**: Whether the agent supports ``session/options``."""
+
+    title: SessionTitleCapabilities | None = None
+    """**UNSTABLE**: Whether the agent supports ``session/set_title``."""
 
 
 class LogoutCapabilities(AnnotatedObject):
-    """**UNSTABLE**: Logout capabilities supported by the agent.
+    """Logout capabilities supported by the agent.
 
     By supplying ``{}`` it means that the agent supports the logout method.
     """
+
+
+class AuthStatusCapabilities(AnnotatedObject):
+    """**UNSTABLE**: Support for ``auth/status`` and ``auth/status_update``."""
 
 
 class AgentAuthCapabilities(AnnotatedObject):
-    """**UNSTABLE**: Authentication-related capabilities supported by the agent."""
+    """Authentication-related capabilities supported by the agent."""
 
     logout: LogoutCapabilities | None = None
-    """Whether the agent supports the logout method.
+    """Whether the agent supports the logout method."""
 
-    By supplying ``{}`` it means that the agent supports the logout method.
-    """
+    status: AuthStatusCapabilities | None = None
+    """**UNSTABLE**: Whether the agent supports ``auth/status``."""
+
+
+class ProvidersCapabilities(AnnotatedObject):
+    """**UNSTABLE**: Support for ``providers/list``, ``providers/set`` and ``providers/disable``."""
 
 
 class AgentCapabilities(AnnotatedObject):
@@ -240,7 +377,10 @@ class AgentCapabilities(AnnotatedObject):
     """
 
     auth: AgentAuthCapabilities | None = Field(default_factory=AgentAuthCapabilities)
-    """**UNSTABLE**: Authentication-related capabilities supported by the agent."""
+    """Authentication-related capabilities supported by the agent."""
+
+    providers: ProvidersCapabilities | None = None
+    """**UNSTABLE**: LLM provider configuration support."""
 
     load_session: bool | None = False
     """Whether the agent supports `session/load`."""
@@ -276,9 +416,9 @@ class AgentCapabilities(AnnotatedObject):
             audio_prompts: Whether the agent supports audio prompts.
             embedded_context_prompts: Whether the agent supports embedded context prompts.
             image_prompts: Whether the agent supports image prompts.
-            list_sessions: Whether the agent supports `session/list` (unstable).
-            resume_session: Whether the agent supports `session/resume` (unstable).
-            close_session: Whether the agent supports `session/close` (unstable).
+            list_sessions: Whether the agent supports `session/list`.
+            resume_session: Whether the agent supports `session/resume`.
+            close_session: Whether the agent supports `session/close`.
         """
         session_caps = SessionCapabilities(
             list=SessionListCapabilities() if list_sessions else None,

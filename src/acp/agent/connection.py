@@ -13,17 +13,26 @@ from acp.client.protocol import Client
 from acp.connection import Connection
 from acp.exceptions import RequestError
 from acp.schema import (
+    ArchiveSessionRequest,
     AuthenticateRequest,
+    AuthStatusRequest,
     CancelNotification,
     CloseSessionRequest,
     CreateTerminalRequest,
     CreateTerminalResponse,
+    DeleteSessionRequest,
+    DisableProviderRequest,
+    ForkSessionRequest,
     InitializeRequest,
-    KillTerminalCommandRequest,
-    KillTerminalCommandResponse,
+    KillTerminalRequest,
+    KillTerminalResponse,
+    ListProvidersRequest,
     ListSessionsRequest,
     LoadSessionRequest,
     LogoutRequest,
+    MessageMcpNotification,
+    MessageMcpRequest,
+    MessageMcpResponse,
     NewSessionRequest,
     PromptRequest,
     ReadTextFileRequest,
@@ -32,12 +41,17 @@ from acp.schema import (
     ReleaseTerminalResponse,
     RequestPermissionRequest,
     RequestPermissionResponse,
+    ResumeSessionRequest,
     SessionNotification,
+    SessionOptionsRequest,
+    SessionStatusRequest,
+    SetProviderRequest,
     SetSessionConfigOptionRequest,
-    SetSessionModelRequest,
     SetSessionModeRequest,
+    SetSessionTitleRequest,
     TerminalOutputRequest,
     TerminalOutputResponse,
+    UnarchiveSessionRequest,
     WaitForTerminalExitRequest,
     WaitForTerminalExitResponse,
     WriteTextFileRequest,
@@ -58,8 +72,9 @@ if TYPE_CHECKING:
     from acp.schema import (
         AgentMethod,
         AgentResponse,
+        AuthStatusUpdateNotification,
         CreateTerminalRequest,
-        KillTerminalCommandRequest,
+        KillTerminalRequest,
         ReadTextFileRequest,
         ReleaseTerminalRequest,
         RequestPermissionRequest,
@@ -187,24 +202,38 @@ class AgentSideConnection(Client):
         resp = await self._conn.send_request("terminal/wait_for_exit", dct)
         return WaitForTerminalExitResponse.model_validate(resp)
 
-    async def kill_terminal(
-        self, params: KillTerminalCommandRequest
-    ) -> KillTerminalCommandResponse:
+    async def kill_terminal(self, params: KillTerminalRequest) -> KillTerminalResponse:
         """Kill a terminal on the client."""
         dct = params.model_dump(by_alias=True, exclude_none=True, exclude_defaults=True)
         resp = await self._conn.send_request("terminal/kill", dct)
-        return KillTerminalCommandResponse.model_validate(resp)
+        return KillTerminalResponse.model_validate(resp)
 
     async def elicitation(self, params: ElicitationRequest) -> ElicitationResponse:
         """Request structured user input from the client."""
         dct = params.model_dump(by_alias=True, exclude_none=True, exclude_defaults=True)
-        resp = await self._conn.send_request("session/elicitation", dct)
+        resp = await self._conn.send_request("elicitation/create", dct)
         return ElicitationResponse.model_validate(resp)
 
     async def elicitation_complete(self, params: ElicitationCompleteNotification) -> None:
         """Notify the client that a URL-based elicitation has completed."""
         dct = params.model_dump(by_alias=True, exclude_none=True, exclude_defaults=True)
-        await self._conn.send_notification("session/elicitation/complete", dct)
+        await self._conn.send_notification("elicitation/complete", dct)
+
+    async def auth_status_update(self, params: AuthStatusUpdateNotification) -> None:
+        """**UNSTABLE**: Notify the client that the authentication state changed."""
+        dct = params.model_dump(by_alias=True, exclude_none=True)
+        await self._conn.send_notification("auth/status_update", dct)
+
+    async def mcp_message(self, params: MessageMcpRequest) -> MessageMcpResponse:
+        """**UNSTABLE**: Send an inner MCP request to an ``acp`` MCP server the client declared."""
+        dct = params.model_dump(by_alias=True, exclude_none=True)
+        resp = await self._conn.send_request("mcp/message", dct)
+        return MessageMcpResponse.model_validate(resp)
+
+    async def mcp_notification(self, params: MessageMcpNotification) -> None:
+        """**UNSTABLE**: Send an inner MCP notification over ``mcp/message``."""
+        dct = params.model_dump(by_alias=True, exclude_none=True)
+        await self._conn.send_notification("mcp/message", dct)
 
     async def close(self) -> None:
         """Close the connection."""
@@ -228,6 +257,35 @@ async def _agent_handler(  # noqa: PLR0911
 ) -> AgentResponse | dict[str, Any] | None:
     """Handle an agent request."""
     match method:
+        case "mcp/message" if is_notification:
+            await agent.mcp_notification(MessageMcpNotification.model_validate(params))
+            return None
+        case "mcp/message":
+            return await agent.mcp_message(MessageMcpRequest.model_validate(params))
+        case "session/fork":
+            return await agent.fork_session(ForkSessionRequest.model_validate(params))
+        case "session/resume":
+            return await agent.resume_session(ResumeSessionRequest.model_validate(params))
+        case "session/delete":
+            return await agent.delete_session(DeleteSessionRequest.model_validate(params))
+        case "session/archive":
+            return await agent.archive_session(ArchiveSessionRequest.model_validate(params))
+        case "session/unarchive":
+            return await agent.unarchive_session(UnarchiveSessionRequest.model_validate(params))
+        case "session/status":
+            return await agent.session_status(SessionStatusRequest.model_validate(params))
+        case "session/options":
+            return await agent.session_options(SessionOptionsRequest.model_validate(params))
+        case "session/set_title":
+            return await agent.set_session_title(SetSessionTitleRequest.model_validate(params))
+        case "auth/status":
+            return await agent.auth_status(AuthStatusRequest.model_validate(params or {}))
+        case "providers/list":
+            return await agent.list_providers(ListProvidersRequest.model_validate(params or {}))
+        case "providers/set":
+            return await agent.set_provider(SetProviderRequest.model_validate(params))
+        case "providers/disable":
+            return await agent.disable_provider(DisableProviderRequest.model_validate(params))
         case "initialize":
             initialize_request = InitializeRequest.model_validate(params)
             return await agent.initialize(initialize_request)
@@ -250,9 +308,7 @@ async def _agent_handler(  # noqa: PLR0911
             cancel_notification = CancelNotification.model_validate(params)
             await agent.cancel(cancel_notification)
             return None
-        case "session/set_model":
-            set_model_request = SetSessionModelRequest.model_validate(params)
-            return await agent.set_session_model(set_model_request)
+
         case "session/close":
             stop_request = CloseSessionRequest.model_validate(params)
             return await agent.close_session(stop_request)

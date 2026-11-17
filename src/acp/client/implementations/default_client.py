@@ -21,8 +21,8 @@ if TYPE_CHECKING:
         CreateTerminalRequest,
         CreateTerminalResponse,
         DeniedOutcome,
-        KillTerminalCommandRequest,
-        KillTerminalCommandResponse,
+        KillTerminalRequest,
+        KillTerminalResponse,
         ReadTextFileRequest,
         ReleaseTerminalRequest,
         ReleaseTerminalResponse,
@@ -169,9 +169,7 @@ class DefaultACPClient(Client):
         """Wait for terminal exit (not implemented)."""
         raise NotImplementedError("Terminal operations not implemented")
 
-    async def kill_terminal(
-        self, params: KillTerminalCommandRequest
-    ) -> KillTerminalCommandResponse | None:
+    async def kill_terminal(self, params: KillTerminalRequest) -> KillTerminalResponse | None:
         """Kill terminal (not implemented)."""
         raise NotImplementedError("Terminal operations not implemented")
 
@@ -189,9 +187,9 @@ class DefaultACPClient(Client):
 
     async def elicitation(self, params: ElicitationRequest) -> ElicitationResponse:
         """Decline elicitation by default."""
-        from acp.schema.elicitation import ElicitationDeclineAction, ElicitationResponse
+        from acp.schema.elicitation import ElicitationResponse
 
-        return ElicitationResponse(action=ElicitationDeclineAction())
+        return ElicitationResponse.decline()
 
     async def elicitation_complete(self, params: ElicitationCompleteNotification) -> None:
         """Ignore elicitation complete notifications."""

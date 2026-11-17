@@ -21,13 +21,17 @@ SessionConfigGroupId = str
 """Unique identifier for a group of values within a configuration option."""
 
 
-SessionConfigOptionCategory = Literal["mode", "model", "thought_level", "other"]
+SessionConfigOptionCategory = (
+    Literal["mode", "model", "model_config", "speed", "thought_level", "other"] | str
+)
 """Semantic category for a session configuration option.
 
 This is intended to help Clients distinguish broadly common selectors (e.g. model selector vs
 session mode selector vs thought/reasoning level) for UX purposes (keyboard shortcuts, icons,
 placement). It MUST NOT be required for correctness. Clients MUST handle missing or unknown
 categories gracefully (treat as `other`).
+
+``speed`` is **UNSTABLE**.
 """
 
 
@@ -161,3 +165,20 @@ SessionConfigOptionValue = SessionConfigOptionValueBoolean | SessionConfigOption
 When ``type`` is ``"boolean"``, carries a bool. Otherwise (or when ``type``
 is absent), carries a ``SessionConfigValueId`` string.
 """
+
+
+class InitialSessionConfigOption(AnnotatedObject):
+    """**UNSTABLE**: A config option value to apply when a session is set up.
+
+    Sent on ``session/new``, ``session/load``, ``session/resume`` and ``session/fork``.
+    When ``type`` is ``"boolean"``, ``value`` is a bool, otherwise a value ID string.
+    """
+
+    config_id: SessionConfigId
+    """The ID of the configuration option to set."""
+
+    type: Literal["boolean"] | None = None
+    """The value type discriminator. ``"boolean"`` for bool values, absent for value IDs."""
+
+    value: SessionConfigValueId | bool
+    """The value to set."""

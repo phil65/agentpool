@@ -6,10 +6,10 @@ from typing import Self
 
 from pydantic import RootModel
 
-from acp.schema.base import AnnotatedObject, Schema
+from acp.schema.base import AnnotatedObject
 
 
-class CommandInputHint(Schema):
+class CommandInputHint(AnnotatedObject):
     """All text that was typed after the command name is provided as input."""
 
     hint: str

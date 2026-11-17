@@ -12,15 +12,24 @@ from acp.client.protocol import Client
 from acp.connection import Connection
 from acp.exceptions import RequestError
 from acp.schema import (
+    ArchiveSessionResponse,
     AuthenticateResponse,
+    AuthStatusResponse,
+    AuthStatusUpdateNotification,
     CloseSessionResponse,
     CreateTerminalRequest,
+    DeleteSessionResponse,
+    DisableProviderResponse,
     ForkSessionResponse,
     InitializeResponse,
-    KillTerminalCommandRequest,
+    KillTerminalRequest,
+    ListProvidersResponse,
     ListSessionsResponse,
     LoadSessionResponse,
     LogoutResponse,
+    MessageMcpNotification,
+    MessageMcpRequest,
+    MessageMcpResponse,
     NewSessionResponse,
     PromptResponse,
     ReadTextFileRequest,
@@ -28,10 +37,14 @@ from acp.schema import (
     RequestPermissionRequest,
     ResumeSessionResponse,
     SessionNotification,
+    SessionOptionsResponse,
+    SessionStatusResponse,
+    SetProviderResponse,
     SetSessionConfigOptionResponse,
-    SetSessionModelResponse,
     SetSessionModeResponse,
+    SetSessionTitleResponse,
     TerminalOutputRequest,
+    UnarchiveSessionResponse,
     WaitForTerminalExitRequest,
     WriteTextFileRequest,
 )
@@ -45,25 +58,35 @@ if TYPE_CHECKING:
     from collections.abc import Callable
 
     from anyio.abc import ByteReceiveStream, ByteSendStream
+    from pydantic import BaseModel
 
     from acp.connection import StreamObserver
     from acp.schema import (
+        ArchiveSessionRequest,
         AuthenticateRequest,
+        AuthStatusRequest,
         CancelNotification,
         ClientMethod,
         ClientResponse,
         CloseSessionRequest,
+        DeleteSessionRequest,
+        DisableProviderRequest,
         ForkSessionRequest,
         InitializeRequest,
+        ListProvidersRequest,
         ListSessionsRequest,
         LoadSessionRequest,
         LogoutRequest,
         NewSessionRequest,
         PromptRequest,
         ResumeSessionRequest,
+        SessionOptionsRequest,
+        SessionStatusRequest,
+        SetProviderRequest,
         SetSessionConfigOptionRequest,
-        SetSessionModelRequest,
         SetSessionModeRequest,
+        SetSessionTitleRequest,
+        UnarchiveSessionRequest,
     )
 
 
@@ -89,6 +112,13 @@ class ClientSideConnection(Agent):
         client = to_client if isinstance(to_client, Client) else to_client(self)
         handler = partial(_handle_client_method, client)
         self._conn = Connection(handler, input_stream, output_stream, observers=observers)
+
+    async def _request[T: BaseModel](
+        self, method: str, params: BaseModel, response_type: type[T]
+    ) -> T:
+        dct = params.model_dump(mode="json", by_alias=True, exclude_none=True)
+        resp = await self._conn.send_request(method, dct)
+        return response_type.model_validate(resp if isinstance(resp, dict) else {})
 
     # agent-bound methods (client -> agent)
     async def initialize(self, params: InitializeRequest) -> InitializeResponse:
@@ -150,13 +180,42 @@ class ClientSideConnection(Agent):
         payload = resp if isinstance(resp, dict) else {}
         return SetSessionModeResponse.model_validate(payload)
 
-    async def set_session_model(self, params: SetSessionModelRequest) -> SetSessionModelResponse:
-        dct = params.model_dump(
-            mode="json", by_alias=True, exclude_none=True, exclude_defaults=True
-        )
-        resp = await self._conn.send_request("session/set_model", dct)
-        payload = resp if isinstance(resp, dict) else {}
-        return SetSessionModelResponse.model_validate(payload)
+    async def delete_session(self, params: DeleteSessionRequest) -> DeleteSessionResponse:
+        return await self._request("session/delete", params, DeleteSessionResponse)
+
+    async def archive_session(self, params: ArchiveSessionRequest) -> ArchiveSessionResponse:
+        return await self._request("session/archive", params, ArchiveSessionResponse)
+
+    async def unarchive_session(self, params: UnarchiveSessionRequest) -> UnarchiveSessionResponse:
+        return await self._request("session/unarchive", params, UnarchiveSessionResponse)
+
+    async def session_status(self, params: SessionStatusRequest) -> SessionStatusResponse:
+        return await self._request("session/status", params, SessionStatusResponse)
+
+    async def session_options(self, params: SessionOptionsRequest) -> SessionOptionsResponse:
+        return await self._request("session/options", params, SessionOptionsResponse)
+
+    async def set_session_title(self, params: SetSessionTitleRequest) -> SetSessionTitleResponse:
+        return await self._request("session/set_title", params, SetSessionTitleResponse)
+
+    async def auth_status(self, params: AuthStatusRequest) -> AuthStatusResponse:
+        return await self._request("auth/status", params, AuthStatusResponse)
+
+    async def list_providers(self, params: ListProvidersRequest) -> ListProvidersResponse:
+        return await self._request("providers/list", params, ListProvidersResponse)
+
+    async def set_provider(self, params: SetProviderRequest) -> SetProviderResponse:
+        return await self._request("providers/set", params, SetProviderResponse)
+
+    async def disable_provider(self, params: DisableProviderRequest) -> DisableProviderResponse:
+        return await self._request("providers/disable", params, DisableProviderResponse)
+
+    async def mcp_message(self, params: MessageMcpRequest) -> MessageMcpResponse:
+        return await self._request("mcp/message", params, MessageMcpResponse)
+
+    async def mcp_notification(self, params: MessageMcpNotification) -> None:
+        dct = params.model_dump(mode="json", by_alias=True, exclude_none=True)
+        await self._conn.send_notification("mcp/message", dct)
 
     async def set_session_config_option(
         self, params: SetSessionConfigOptionRequest
@@ -248,19 +307,27 @@ async def _handle_client_method(  # noqa: PLR0911
             wait_request = WaitForTerminalExitRequest.model_validate(params)
             return await client.wait_for_terminal_exit(wait_request)
         case "terminal/kill":
-            kill_request = KillTerminalCommandRequest.model_validate(params)
+            kill_request = KillTerminalRequest.model_validate(params)
             return await client.kill_terminal(kill_request)
-        case "session/elicitation":
+        case "elicitation/create":
             elicitation_request = ElicitationRequest.model_validate(params)
             return await client.elicitation(elicitation_request)
-        case "session/elicitation/complete":
+        case "elicitation/complete":
             complete_notification = ElicitationCompleteNotification.model_validate(params)
             await client.elicitation_complete(complete_notification)
             return None
+        case "auth/status_update":
+            await client.auth_status_update(AuthStatusUpdateNotification.model_validate(params))
+            return None
+        case "mcp/message" if is_notification:
+            await client.mcp_notification(MessageMcpNotification.model_validate(params))
+            return None
+        case "mcp/message":
+            return await client.mcp_message(MessageMcpRequest.model_validate(params))
         case str() if method.startswith("_") and is_notification:
             await client.ext_notification(method[1:], params or {})
             return None
-        case str() if method.startswith("_") and is_notification:
+        case str() if method.startswith("_"):
             return await client.ext_method(method[1:], params or {})
         case _:
             raise RequestError.method_not_found(method)

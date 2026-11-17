@@ -69,7 +69,12 @@ if TYPE_CHECKING:
     from tokonomics.model_discovery.model_info import ModelInfo
 
     from acp.client.connection import ClientSideConnection
-    from acp.schema import Implementation, RequestPermissionRequest, RequestPermissionResponse
+    from acp.schema import (
+        Implementation,
+        RequestPermissionRequest,
+        RequestPermissionResponse,
+        SelectSessionConfigOption,
+    )
     from acp.schema.capabilities import AgentCapabilities
     from acp.schema.mcp import McpServer
     from agentpool.agents.acp_agent.client_handler import ACPClientHandler
@@ -379,12 +384,8 @@ class ACPAgent[TDeps = None](BaseAgent[TDeps, str]):
             self._state.session_id = self._sdk_session_id
             if response.config_options:
                 self._state.config_options = list(response.config_options)
-            if response.models:
-                self._state.models = response.models
-                self._state.current_model_id = response.models.current_model_id
             self._state.modes = response.modes
-        model = self._state.current_model_id if self._state else None
-        self.log.info("ACP session created", session_id=self._sdk_session_id, model=model)
+        self.log.info("ACP session created", session_id=self._sdk_session_id, model=self.model_name)
 
     async def _cleanup(self) -> None:
         """Clean up resources."""
@@ -537,14 +538,30 @@ class ACPAgent[TDeps = None](BaseAgent[TDeps, str]):
         )
         yield StreamCompleteEvent(message=message)
 
+    def _model_option(self) -> SelectSessionConfigOption | None:
+        """Return the remote agent's model selector config option, if any."""
+        from acp.schema import SelectSessionConfigOption
+
+        if not self._state:
+            return None
+        return next(
+            (
+                opt
+                for opt in self._state.config_options
+                if isinstance(opt, SelectSessionConfigOption) and opt.category == "model"
+            ),
+            None,
+        )
+
     @property
     def model_name(self) -> str | None:
         """Get the model name in a consistent format."""
-        return model_id if self._state and (model_id := self._state.current_model_id) else None
+        return option.current_value if (option := self._model_option()) else None
 
     async def set_model(self, model: str) -> None:
         """Update the model for the current session via ACP protocol."""
-        await self._set_mode(model, "model")
+        option = self._model_option()
+        await self._set_mode(model, option.id if option else "model")
 
     async def set_auto_approve(self, auto_approve: bool) -> None:
         """Set auto-approve mode for permission requests.
@@ -575,12 +592,16 @@ class ACPAgent[TDeps = None](BaseAgent[TDeps, str]):
         """Get available models from the ACP session state."""
         from tokonomics.model_discovery.model_info import ModelInfo
 
-        if not self._state or not self._state.models:
+        from acp.schema import SessionConfigSelectOption
+
+        if not (option := self._model_option()):
             return None
-        return [
-            ModelInfo(id=m.model_id, name=m.name, description=m.description)
-            for m in self._state.models.available_models
+        choices = [
+            choice
+            for item in option.options
+            for choice in ([item] if isinstance(item, SessionConfigSelectOption) else item.options)
         ]
+        return [ModelInfo(id=c.value, name=c.name, description=c.description) for c in choices]
 
     async def get_modes(self) -> list[ModeCategory]:
         """Get available modes from the ACP session state."""
@@ -589,11 +610,7 @@ class ACPAgent[TDeps = None](BaseAgent[TDeps, str]):
         if not self._state:
             return []
 
-        return to_native_modes(
-            self._state.config_options,
-            available_modes=self._state.modes,
-            available_models=self._state.models,
-        )
+        return to_native_modes(self._state.config_options, available_modes=self._state.modes)
 
     async def _set_mode(self, mode_id: str | bool, category_id: str) -> None:
         """Forward mode change to remote ACP server."""
@@ -619,15 +636,8 @@ class ACPAgent[TDeps = None](BaseAgent[TDeps, str]):
             await self._api.set_session_mode(self._sdk_session_id, mode_id)
             if self._state.modes:
                 self._state.modes.current_mode_id = mode_id
-        elif category_id == "model":
-            assert isinstance(mode_id, str)
-            if await self._api.set_session_model(self._sdk_session_id, mode_id):
-                self._state.current_model_id = mode_id
-                self.log.info("Model changed via legacy set_session_model")
-            else:
-                raise RuntimeError("Remote ACP agent does not support model changes.")
         else:
-            raise UnknownCategoryError(category_id, ["mode", "model"])
+            raise UnknownCategoryError(category_id, ["mode"])
         await self.update_state(config_id=category_id, value_id=mode_id)
 
     async def list_sessions(
@@ -704,9 +714,6 @@ class ACPAgent[TDeps = None](BaseAgent[TDeps, str]):
 
             if response.config_options:
                 self._state.config_options = list(response.config_options)
-            if response.models:
-                self._state.models = response.models
-                self._state.current_model_id = response.models.current_model_id
             if response.modes:
                 self._state.modes = response.modes
 

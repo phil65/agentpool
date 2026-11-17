@@ -6,6 +6,7 @@ from typing import Any, Self
 
 from acp.schema.base import Response
 from acp.schema.elicitation import ElicitationResponse
+from acp.schema.mcp import MessageMcpResponse
 from acp.schema.terminal import TerminalExitStatus  # noqa: TC001
 from acp.schema.tool_call import AllowedOutcome, DeniedOutcome
 
@@ -20,8 +21,8 @@ class CreateTerminalResponse(Response):
     """The unique identifier for the created terminal."""
 
 
-class KillTerminalCommandResponse(Response):
-    """Response to terminal/kill command method."""
+class KillTerminalResponse(Response):
+    """Response to the ``terminal/kill`` method."""
 
 
 class ReleaseTerminalResponse(Response):
@@ -93,6 +94,7 @@ ClientResponse = (
     | TerminalOutputResponse
     | ReleaseTerminalResponse
     | WaitForTerminalExitResponse
-    | KillTerminalCommandResponse
+    | KillTerminalResponse
     | ElicitationResponse
+    | MessageMcpResponse
 )

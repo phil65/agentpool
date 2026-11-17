@@ -3,38 +3,11 @@
 from __future__ import annotations
 
 from collections.abc import Sequence  # noqa: TC003
-from typing import Any
+from typing import Literal
+
+from pydantic import Field
 
 from acp.schema.base import AnnotatedObject
-
-
-class ModelInfo(AnnotatedObject):
-    """**UNSTABLE**: This capability is not part of the spec yet.
-
-    Information about a selectable model.
-    """
-
-    description: str | None = None
-    """Optional description of the model."""
-
-    model_id: str
-    """Unique identifier for the model."""
-
-    name: str
-    """Human-readable name of the model."""
-
-
-class SessionModelState(AnnotatedObject):
-    """**UNSTABLE**: This capability is not part of the spec yet.
-
-    The set of models and the one currently active.
-    """
-
-    available_models: Sequence[ModelInfo]
-    """The set of models that the Agent can use."""
-
-    current_model_id: str
-    """The current model the Agent is using."""
 
 
 class SessionMode(AnnotatedObject):
@@ -64,13 +37,13 @@ class SessionModeState(AnnotatedObject):
 
 
 class SessionInfo(AnnotatedObject):
-    """**UNSTABLE**: This capability is not part of the spec yet.
-
-    Information about a session returned by session/list.
-    """
+    """Information about a session returned by session/list."""
 
     cwd: str
     """The working directory for this session. Must be an absolute path."""
+
+    additional_directories: Sequence[str] = Field(default_factory=list)
+    """Additional workspace roots reported for this session. Each path must be absolute."""
 
     session_id: str
     """Unique identifier for the session."""
@@ -81,5 +54,19 @@ class SessionInfo(AnnotatedObject):
     updated_at: str | None = None
     """ISO 8601 timestamp of last activity."""
 
-    meta: dict[str, Any] | None = None
-    """Arbitrary session metadata."""
+    archived: bool | None = None
+    """**UNSTABLE**: Whether the session is archived."""
+
+
+SessionStatus = Literal["open", "saved"] | str
+"""**UNSTABLE**: Whether the Agent has the session in memory.
+
+- ``open``: The Agent has the session in memory, for any connection.
+- ``saved``: The Agent knows the session and can resume it, but does not have it in memory.
+"""
+
+SessionArchiveFilter = Literal["exclude", "include", "only"] | str
+"""**UNSTABLE**: Which sessions ``session/list`` returns by archive state.
+
+``exclude`` (the default) returns only sessions that are not archived.
+"""

@@ -13,7 +13,6 @@ if TYPE_CHECKING:
     from acp.schema import (
         AvailableCommandsUpdate,
         SessionConfigOption,
-        SessionModelState,
         SessionModeState,
         SessionUpdate,
     )
@@ -37,12 +36,6 @@ class ACPSessionState:
     updates: deque[SessionUpdate] = dataclass_field(default_factory=deque)
     """Raw ACP session updates - single source of truth for stream data."""
 
-    current_model_id: str | None = None
-    """Current model ID from session state (legacy)."""
-
-    models: SessionModelState | None = None
-    """Full model state including available models (legacy)."""
-
     modes: SessionModeState | None = None
     """Full mode state including available modes (legacy)."""
 
@@ -64,7 +57,7 @@ class ACPSessionState:
     def clear(self) -> None:
         """Clear stream-related state for a new prompt turn."""
         self.updates.clear()
-        # Note: Don't clear current_model_id, models, config_options - those persist
+        # Note: Don't clear modes, config_options - those persist
 
     def add_update(self, update: SessionUpdate) -> None:
         """Add a raw ACP update to the queue."""

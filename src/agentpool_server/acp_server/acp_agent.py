@@ -13,18 +13,14 @@ from acp.schema import (
     InitializeResponse,
     ListSessionsResponse,
     LoadSessionResponse,
-    ModelInfo as ACPModelInfo,
     NewSessionResponse,
     PromptResponse,
     ResumeSessionResponse,
     SessionInfoUpdate,
     SessionMode,
-    SessionModelState,
     SessionModeState,
     SessionNotification,
     SetSessionConfigOptionResponse,
-    SetSessionModelRequest,
-    SetSessionModelResponse,
     SetSessionModeRequest,
     SetSessionModeResponse,
 )
@@ -54,7 +50,6 @@ if TYPE_CHECKING:
         ResumeSessionRequest,
         SessionConfigOption,
         SetSessionConfigOptionRequest,
-        SetSessionModelRequest,
         SetSessionModeRequest,
     )
     from agentpool import AgentPool
@@ -63,50 +58,6 @@ if TYPE_CHECKING:
     from agentpool_server.acp_server.server import ACPServer
 
 logger = get_logger(__name__)
-
-
-async def get_session_model_state(agent: BaseAgent) -> SessionModelState | None:
-    """Get SessionModelState from an agent using its get_available_models() method.
-
-    Converts tokonomics ModelInfo to ACP ModelInfo format.
-
-    Args:
-        agent: Any agent with get_available_models() method
-        current_model: Currently active model ID (defaults to first available)
-
-    Returns:
-        SessionModelState with all available models, None if no models available
-    """
-    try:
-        toko_models = await agent.get_available_models()
-    except Exception:
-        logger.exception("Failed to get available models from agent")
-        return None
-
-    # Convert tokonomics ModelInfo to ACP ModelInfo
-    acp_models = [
-        ACPModelInfo(
-            model_id=toko.id_override if toko.id_override else toko.id,
-            name=toko.name,
-            description=toko.description or "",
-        )
-        for toko in toko_models or []
-    ]
-    if not acp_models:
-        return None
-    # Ensure current model is in the list
-    all_ids = [model.model_id for model in acp_models]
-    current_model = agent.model_name
-    if current_model and current_model not in all_ids:
-        # Add current model to the list so the UI shows it
-        desc = "Currently configured model"
-        model_info = ACPModelInfo(model_id=current_model, name=current_model, description=desc)
-        acp_models.insert(0, model_info)
-        current_model_id = current_model
-    else:
-        current_model_id = current_model if current_model in all_ids else all_ids[0]
-
-    return SessionModelState(available_models=acp_models, current_model_id=current_model_id)
 
 
 async def get_session_mode_state(agent: BaseAgent) -> SessionModeState | None:
@@ -203,7 +154,7 @@ class AgentPoolACPAgent(ACPAgent):
             return
 
         # Send session info update to client
-        update = SessionInfoUpdate(session_id=event.session_id, title=event.metadata.title)
+        update = SessionInfoUpdate(title=event.metadata.title)
         notification = SessionNotification(session_id=event.session_id, update=update)
         try:
             await session.client.session_update(notification)
@@ -265,20 +216,17 @@ class AgentPoolACPAgent(ACPAgent):
                 client_info=self.client_info,
             )
             state: SessionModeState | None = None
-            models: SessionModelState | None = None
             config_options: list[SessionConfigOption] = []
 
             if session := self.session_manager.get_session(session_id):
                 if isinstance(session.agent, ACPAgentClient):
                     # Nested ACP agent - pass through its state directly
                     if session.agent._state:
-                        models = session.agent._state.models
                         state = session.agent._state.modes
                     # Also get config_options from nested agent
                     config_options = await get_session_config_options(session.agent)
                 else:
                     # Use unified helpers for all other agents
-                    models = await get_session_model_state(session.agent)
                     state = await get_session_mode_state(session.agent)
                     config_options = await get_session_config_options(session.agent)
         except Exception:
@@ -299,7 +247,6 @@ class AgentPoolACPAgent(ACPAgent):
             return NewSessionResponse(
                 session_id=session_id,
                 modes=state,
-                models=models,
                 config_options=config_options if config_options else None,
             )
 
@@ -365,16 +312,14 @@ class AgentPoolACPAgent(ACPAgent):
                     message_count=len(model_messages),
                 )
             mode_state: SessionModeState | None = None
-            models: SessionModelState | None = None
             if isinstance(self.default_agent, ACPAgentClient) and self.default_agent._state:
                 mode_state = self.default_agent._state.modes
-                models = self.default_agent._state.models
             config_opts = await get_session_config_options(self.default_agent)
             # Schedule post-load tasks
             self.tasks.create_task(session.send_available_commands_update())
             self.tasks.create_task(session.agent.load_rules(session.cwd))
             logger.info("Session loaded", session_id=params.session_id)
-            return LoadSessionResponse(models=models, modes=mode_state, config_options=config_opts)
+            return LoadSessionResponse(modes=mode_state, config_options=config_opts)
         except Exception:
             logger.exception("Failed to load session", session_id=params.session_id)
             return LoadSessionResponse()
@@ -520,7 +465,7 @@ class AgentPoolACPAgent(ACPAgent):
                     self.tasks.create_task(session.agent.load_rules(session.cwd))
             except Exception:
                 logger.exception("Failed to recreate session", session_id=params.session_id)
-                return PromptResponse(stop_reason="end_turn", user_message_id=params.message_id)
+                return PromptResponse(stop_reason="end_turn")
 
         try:
             if not session:
@@ -535,11 +480,10 @@ class AgentPoolACPAgent(ACPAgent):
                 name = f"error_notification_{params.session_id}"
                 self.tasks.create_task(session._send_error_notification(msg), name=name)
 
-            return PromptResponse(stop_reason="end_turn", user_message_id=params.message_id)
+            return PromptResponse(stop_reason="end_turn")
         else:
             response = PromptResponse(
                 stop_reason=stop_reason,
-                user_message_id=params.message_id,
                 usage=session.last_usage,
             )
             logger.info("Returning PromptResponse", stop_reason=stop_reason)
@@ -613,36 +557,6 @@ class AgentPoolACPAgent(ACPAgent):
 
         except Exception:
             logger.exception("Failed to set session mode", session_id=params.session_id)
-            return None
-
-    async def set_session_model(
-        self, params: SetSessionModelRequest
-    ) -> SetSessionModelResponse | None:
-        """Set the session model.
-
-        Changes the model for the active agent in the session.
-        Validates that the requested model is available via agent.get_available_models().
-        """
-        session = self.session_manager.get_session(params.session_id)
-        if not session:
-            msg = "Session not found for model switch"
-            logger.warning(msg, session_id=params.session_id)
-            return None
-        try:
-            # Get available models from agent and validate
-            if toko_models := await session.agent.get_available_models():
-                # Build list of valid model IDs (using id_override if set)
-                ids = [m.id_override if m.id_override else m.id for m in toko_models]
-                if (id_ := params.model_id) not in ids:
-                    logger.warning("Model not in available models", model_id=id_, available=ids)
-                    return None
-
-            # Set the model on the agent (all agents now have async set_model)
-            await session.agent.set_model(params.model_id)
-            logger.info("Set model", model_id=params.model_id, session_id=params.session_id)
-            return SetSessionModelResponse()
-        except Exception:
-            logger.exception("Failed to set session model", session_id=params.session_id)
             return None
 
     async def set_session_config_option(

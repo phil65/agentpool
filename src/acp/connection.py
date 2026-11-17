@@ -103,6 +103,9 @@ class Connection:
         )
         self._dispatcher.start()
         self._observers: list[StreamObserver] = list(observers or [])
+        # Incoming requests currently being handled, for `$/cancel_request`
+        self._inflight: dict[int | str, asyncio.Task[Any]] = {}
+        self._peer_cancelled: set[int | str] = set()
 
     async def close(self) -> None:
         """Stop the receive loop and cancel any in-flight handler tasks."""
@@ -135,6 +138,18 @@ class Connection:
         payload = {"jsonrpc": "2.0", "method": method, "params": params}
         await self._sender.send(payload)
         self._notify_observers("outgoing", payload)
+
+    async def cancel_request(self, request_id: int | str) -> None:
+        """Ask the peer to cancel a request this side issued (``$/cancel_request``)."""
+        await self.send_notification("$/cancel_request", {"requestId": request_id})
+
+    def _handle_cancel_request(self, params: Any) -> None:
+        request_id = params.get("requestId") if isinstance(params, dict) else None
+        # Unknown or already answered requests are ignored, as required by the spec.
+        if request_id is None or (task := self._inflight.get(request_id)) is None:
+            return
+        self._peer_cancelled.add(request_id)
+        task.cancel()
 
     async def _receive_loop(self) -> None:
         """Read newline-delimited JSON messages using anyio TextReceiveStream.
@@ -172,6 +187,8 @@ class Connection:
 
     async def _process_message(self, message: dict[str, Any]) -> None:
         match message:
+            case {"method": "$/cancel_request", **rest} if "id" not in rest:
+                self._handle_cancel_request(message.get("params"))
             case {"method": _method, "id": _id}:
                 task = RpcTask("request", message)
                 await self._queue.publish(task)
@@ -202,6 +219,24 @@ class Connection:
         logging.exception("Stream observer coroutine failed", exc_info=exc)
 
     async def _run_request(self, message: dict[str, Any]) -> Any:
+        request_id = message["id"]
+        if (task := asyncio.current_task()) is not None:
+            self._inflight[request_id] = task
+        try:
+            return await self._run_request_inner(message)
+        except asyncio.CancelledError:
+            if request_id not in self._peer_cancelled:
+                raise
+            err = RequestError.request_cancelled()
+            payload = {"jsonrpc": "2.0", "id": request_id, "error": err.to_error_obj()}
+            await self._sender.send(payload)
+            self._notify_observers("outgoing", payload)
+            return None
+        finally:
+            self._inflight.pop(request_id, None)
+            self._peer_cancelled.discard(request_id)
+
+    async def _run_request_inner(self, message: dict[str, Any]) -> Any:
         payload: dict[str, Any] = {"jsonrpc": "2.0", "id": message["id"]}
         try:
             result = await self._handler(message["method"], message.get("params"), False)

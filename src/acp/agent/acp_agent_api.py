@@ -17,7 +17,6 @@ from acp.schema import (
     PromptRequest,
     ResumeSessionRequest,
     SetSessionConfigOptionRequest,
-    SetSessionModelRequest,
     SetSessionModeRequest,
 )
 
@@ -38,7 +37,6 @@ if TYPE_CHECKING:
         PromptResponse,
         ResumeSessionResponse,
         SetSessionConfigOptionResponse,
-        SetSessionModelResponse,
         SetSessionModeResponse,
     )
     from acp.schema.mcp import McpServer
@@ -94,7 +92,7 @@ class ACPAgentAPI:
         """Create a new ACP session."""
         request = NewSessionRequest(
             cwd=cwd or str(Path.cwd()),
-            mcp_servers=list(mcp_servers) if mcp_servers else None,
+            mcp_servers=list(mcp_servers or []),
             field_meta=metadata,
         )
         return await self.connection.new_session(request)
@@ -110,7 +108,7 @@ class ACPAgentAPI:
         request = LoadSessionRequest(
             session_id=session_id,
             cwd=cwd,
-            mcp_servers=list(mcp_servers) if mcp_servers else None,
+            mcp_servers=list(mcp_servers or []),
             field_meta=metadata,
         )
         return await self.connection.load_session(request)
@@ -162,14 +160,12 @@ class ACPAgentAPI:
         self,
         session_id: str,
         prompt: Sequence[ContentBlock],
-        message_id: str | None = None,
         metadata: dict[str, Any] | None = None,
     ) -> PromptResponse:
         """Send a prompt to the agent."""
         request = PromptRequest(
             session_id=session_id,
             prompt=list(prompt),
-            message_id=message_id,
             field_meta=metadata,
         )
         return await self.connection.prompt(request)
@@ -187,15 +183,6 @@ class ACPAgentAPI:
         """Set the session mode."""
         request = SetSessionModeRequest(session_id=session_id, mode_id=mode_id)
         return await self.connection.set_session_mode(request)
-
-    async def set_session_model(
-        self,
-        session_id: str,
-        model_id: str,
-    ) -> SetSessionModelResponse | None:
-        """Set the session model."""
-        request = SetSessionModelRequest(session_id=session_id, model_id=model_id)
-        return await self.connection.set_session_model(request)
 
     async def set_session_config_option(
         self,

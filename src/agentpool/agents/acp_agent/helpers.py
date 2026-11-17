@@ -30,12 +30,13 @@ def filter_servers_by_capabilities(
     Returns:
         Servers compatible with the agent's capabilities
     """
-    from acp.schema.mcp import HttpMcpServer, SseMcpServer
+    from acp.schema.mcp import AcpMcpServer, HttpMcpServer, SseMcpServer
 
     mcp_caps = i.mcp_capabilities if (i := agent_capabilities) else None
     # Check what transports are supported
     supports_http = mcp_caps and mcp_caps.http
     supports_sse = mcp_caps and mcp_caps.sse
+    supports_acp = mcp_caps and mcp_caps.acp
     supported_servers: list[McpServer] = []
     unsupported_servers: list[tuple[McpServer, str]] = []
 
@@ -45,6 +46,8 @@ def filter_servers_by_capabilities(
                 unsupported_servers.append((server, "HTTP"))
             case SseMcpServer() if not supports_sse:
                 unsupported_servers.append((server, "SSE"))
+            case AcpMcpServer() if not supports_acp:
+                unsupported_servers.append((server, "ACP"))
             case _:
                 # Stdio servers or supported transport types
                 supported_servers.append(server)

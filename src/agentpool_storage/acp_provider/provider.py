@@ -93,7 +93,7 @@ class ACPStorageProvider(StorageProvider):
         result: list[ConversationData] = []
         for acp_session in response.sessions:
             updated_at = self._parse_updated_at(acp_session.updated_at)
-            meta = acp_session.meta or {}
+            meta = acp_session.field_meta or {}
             created_at = updated_at
             if (meta_created := meta.get("created_at")) and isinstance(meta_created, str):
                 created_at = self._parse_updated_at(meta_created)

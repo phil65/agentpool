@@ -10,7 +10,7 @@ import structlog
 from acp.schema import (
     CreateTerminalRequest,
     EnvVariable,
-    KillTerminalCommandRequest,
+    KillTerminalRequest,
     PermissionOption,
     ReadTextFileRequest,
     ReleaseTerminalRequest,
@@ -156,7 +156,7 @@ class ACPRequests:
         metadata: dict[str, str] | None = None,
     ) -> None:
         """Kill a terminal session."""
-        request = KillTerminalCommandRequest(
+        request = KillTerminalRequest(
             session_id=self.id,
             terminal_id=terminal_id,
             field_meta=metadata,

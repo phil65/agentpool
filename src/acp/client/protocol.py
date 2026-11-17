@@ -1,14 +1,22 @@
+"""Client protocol."""
+
 from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any, Protocol, runtime_checkable
 
+from acp.exceptions import RequestError
+
 
 if TYPE_CHECKING:
     from acp.schema import (
+        AuthStatusUpdateNotification,
         CreateTerminalRequest,
         CreateTerminalResponse,
-        KillTerminalCommandRequest,
-        KillTerminalCommandResponse,
+        KillTerminalRequest,
+        KillTerminalResponse,
+        MessageMcpNotification,
+        MessageMcpRequest,
+        MessageMcpResponse,
         ReadTextFileRequest,
         ReadTextFileResponse,
         ReleaseTerminalRequest,
@@ -32,7 +40,11 @@ if TYPE_CHECKING:
 
 @runtime_checkable
 class Client(Protocol):
-    """Base client interface for ACP."""
+    """Base client interface for ACP.
+
+    Methods with a default body are optional and gated by a capability the client
+    advertises (or by an ``acp`` MCP server the client declared).
+    """
 
     async def request_permission(
         self, params: RequestPermissionRequest
@@ -58,9 +70,7 @@ class Client(Protocol):
         self, params: WaitForTerminalExitRequest
     ) -> WaitForTerminalExitResponse: ...
 
-    async def kill_terminal(
-        self, params: KillTerminalCommandRequest
-    ) -> KillTerminalCommandResponse | None: ...
+    async def kill_terminal(self, params: KillTerminalRequest) -> KillTerminalResponse | None: ...
 
     async def elicitation(self, params: ElicitationRequest) -> ElicitationResponse: ...
 
@@ -69,3 +79,15 @@ class Client(Protocol):
     async def ext_method(self, method: str, params: dict[str, Any]) -> dict[str, Any]: ...
 
     async def ext_notification(self, method: str, params: dict[str, Any]) -> None: ...
+
+    async def auth_status_update(self, params: AuthStatusUpdateNotification) -> None:
+        """**UNSTABLE**: The agent's authentication state changed."""
+        return
+
+    async def mcp_message(self, params: MessageMcpRequest) -> MessageMcpResponse:
+        """**UNSTABLE**: Inner MCP request to an ``acp`` MCP server the client declared."""
+        raise RequestError.method_not_found("mcp/message")
+
+    async def mcp_notification(self, params: MessageMcpNotification) -> None:
+        """**UNSTABLE**: Inner MCP notification for an ``acp`` MCP server the client declared."""
+        return

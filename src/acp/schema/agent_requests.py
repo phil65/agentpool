@@ -7,6 +7,7 @@ from pydantic import Field
 from acp.schema.base import Request
 from acp.schema.common import EnvVariable  # noqa: TC001
 from acp.schema.elicitation import ElicitationRequest
+from acp.schema.mcp import MessageMcpRequest
 from acp.schema.tool_call import PermissionOption, ToolCall  # noqa: TC001
 
 
@@ -86,7 +87,7 @@ class CreateTerminalRequest(BaseAgentRequest):
     specified limit."""
 
 
-class KillTerminalCommandRequest(BaseAgentRequest):
+class KillTerminalRequest(BaseAgentRequest):
     """Request to kill a terminal command without releasing the terminal."""
 
     terminal_id: str
@@ -123,6 +124,7 @@ AgentRequest = (
     | TerminalOutputRequest
     | ReleaseTerminalRequest
     | WaitForTerminalExitRequest
-    | KillTerminalCommandRequest
+    | KillTerminalRequest
     | ElicitationRequest
+    | MessageMcpRequest
 )

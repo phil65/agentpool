@@ -17,7 +17,7 @@ import structlog
 from acp.client.protocol import Client
 from acp.schema import (
     CreateTerminalResponse,
-    KillTerminalCommandResponse,
+    KillTerminalResponse,
     ReadTextFileResponse,
     ReleaseTerminalResponse,
     RequestPermissionResponse,
@@ -30,7 +30,7 @@ from acp.schema import (
 if TYPE_CHECKING:
     from acp.schema import (
         CreateTerminalRequest,
-        KillTerminalCommandRequest,
+        KillTerminalRequest,
         ReadTextFileRequest,
         ReleaseTerminalRequest,
         RequestPermissionRequest,
@@ -189,9 +189,7 @@ class HeadlessACPClient(Client):
             logger.exception("Failed to wait", terminal_id=terminal_id)
             raise
 
-    async def kill_terminal(
-        self, params: KillTerminalCommandRequest
-    ) -> KillTerminalCommandResponse | None:
+    async def kill_terminal(self, params: KillTerminalRequest) -> KillTerminalResponse | None:
         """Kill terminal process."""
         terminal_id = params.terminal_id
         if terminal_id not in self.terminals:
@@ -200,7 +198,7 @@ class HeadlessACPClient(Client):
             process_id = self.terminals[terminal_id]
             await self.process_manager.kill_process(process_id)
             logger.info("Killed terminal", terminal_id=terminal_id)
-            return KillTerminalCommandResponse()
+            return KillTerminalResponse()
         except Exception:
             logger.exception("Failed to kill terminal", terminal_id=terminal_id)
             raise
@@ -264,9 +262,9 @@ class HeadlessACPClient(Client):
 
     async def elicitation(self, params: ElicitationRequest) -> ElicitationResponse:
         """Decline elicitation by default."""
-        from acp.schema.elicitation import ElicitationDeclineAction, ElicitationResponse
+        from acp.schema.elicitation import ElicitationResponse
 
-        return ElicitationResponse(action=ElicitationDeclineAction())
+        return ElicitationResponse.decline()
 
     async def elicitation_complete(self, params: ElicitationCompleteNotification) -> None:
         """Ignore elicitation complete notifications."""

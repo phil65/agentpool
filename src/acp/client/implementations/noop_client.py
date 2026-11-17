@@ -17,8 +17,8 @@ if TYPE_CHECKING:
     from acp.schema import (
         CreateTerminalRequest,
         CreateTerminalResponse,
-        KillTerminalCommandRequest,
-        KillTerminalCommandResponse,
+        KillTerminalRequest,
+        KillTerminalResponse,
         ReadTextFileRequest,
         ReadTextFileResponse,
         ReleaseTerminalRequest,
@@ -99,13 +99,11 @@ class NoOpClient(Client):
 
         return WaitForTerminalExitResponse(exit_code=0)
 
-    async def kill_terminal(
-        self, params: KillTerminalCommandRequest
-    ) -> KillTerminalCommandResponse | None:
+    async def kill_terminal(self, params: KillTerminalRequest) -> KillTerminalResponse | None:
         """Return empty kill response."""
-        from acp.schema import KillTerminalCommandResponse
+        from acp.schema import KillTerminalResponse
 
-        return KillTerminalCommandResponse()
+        return KillTerminalResponse()
 
     async def ext_method(self, method: str, params: dict[str, Any]) -> dict[str, Any]:
         """Return empty dict for extension methods."""
@@ -113,9 +111,9 @@ class NoOpClient(Client):
 
     async def elicitation(self, params: ElicitationRequest) -> ElicitationResponse:
         """Decline elicitation by default."""
-        from acp.schema.elicitation import ElicitationDeclineAction, ElicitationResponse
+        from acp.schema.elicitation import ElicitationResponse
 
-        return ElicitationResponse(action=ElicitationDeclineAction())
+        return ElicitationResponse.decline()
 
     async def elicitation_complete(self, params: ElicitationCompleteNotification) -> None:
         """Ignore elicitation complete notifications."""

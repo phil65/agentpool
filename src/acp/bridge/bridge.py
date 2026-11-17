@@ -11,6 +11,7 @@ from dataclasses import dataclass, field
 import logging
 from typing import TYPE_CHECKING, Any
 
+from pydantic import BaseModel
 from starlette.applications import Starlette
 from starlette.middleware import Middleware
 from starlette.middleware.cors import CORSMiddleware
@@ -18,23 +19,10 @@ from starlette.responses import JSONResponse, Response
 from starlette.routing import Route
 import uvicorn
 
+from acp.agent.connection import _agent_handler
 from acp.bridge.settings import BridgeSettings
 from acp.client.connection import ClientSideConnection
 from acp.client.implementations import NoOpClient
-from acp.schema import (
-    AuthenticateRequest,
-    CancelNotification,
-    CloseSessionRequest,
-    ForkSessionRequest,
-    InitializeRequest,
-    ListSessionsRequest,
-    LoadSessionRequest,
-    NewSessionRequest,
-    PromptRequest,
-    ResumeSessionRequest,
-    SetSessionModelRequest,
-    SetSessionModeRequest,
-)
 from acp.transports import spawn_stdio_transport
 
 
@@ -106,7 +94,7 @@ class ACPBridge:
             err = {"code": -32603, "message": str(exc)}
             return JSONResponse({"jsonrpc": "2.0", "id": request_id, "error": err}, status_code=500)
 
-    async def _dispatch_to_agent(  # noqa: PLR0911
+    async def _dispatch_to_agent(
         self,
         method: AgentMethod | str,
         params: dict[str, Any] | None,
@@ -115,70 +103,12 @@ class ACPBridge:
         """Dispatch a request to the connected agent."""
         if self._connection is None:
             raise RuntimeError("No agent connection")
-        match method:
-            case "initialize":
-                init_request = InitializeRequest.model_validate(params)
-                init_resp = await self._connection.initialize(init_request)
-                return init_resp.model_dump(by_alias=True, exclude_none=True)
-            case "session/new":
-                new_session_request = NewSessionRequest.model_validate(params)
-                new_session_resp = await self._connection.new_session(new_session_request)
-                return new_session_resp.model_dump(by_alias=True, exclude_none=True)
-            case "session/load":
-                load_session_request = LoadSessionRequest.model_validate(params)
-                load_sessoin_resp = await self._connection.load_session(load_session_request)
-                return load_sessoin_resp.model_dump(by_alias=True, exclude_none=True)
-            case "session/list":
-                list_sessions_request = ListSessionsRequest.model_validate(params)
-                list_session_resp = await self._connection.list_sessions(list_sessions_request)
-                return list_session_resp.model_dump(by_alias=True, exclude_none=True)
-            case "session/fork":
-                fork_session_request = ForkSessionRequest.model_validate(params)
-                fork_session_resp = await self._connection.fork_session(fork_session_request)
-                return fork_session_resp.model_dump(by_alias=True, exclude_none=True)
-            case "session/resume":
-                resume_session_request = ResumeSessionRequest.model_validate(params)
-                resume_session_resp = await self._connection.resume_session(resume_session_request)
-                return resume_session_resp.model_dump(by_alias=True, exclude_none=True)
-            case "session/close":
-                close_session_request = CloseSessionRequest.model_validate(params)
-                close_session_resp = await self._connection.close_session(close_session_request)
-                return close_session_resp.model_dump(by_alias=True, exclude_none=True)
-            case "session/prompt":
-                prompt_request = PromptRequest.model_validate(params)
-                prompt_resp = await self._connection.prompt(prompt_request)
-                return prompt_resp.model_dump(by_alias=True, exclude_none=True)
-            case "session/cancel":
-                cancel_request = CancelNotification.model_validate(params)
-                await self._connection.cancel(cancel_request)
-                return None
-            case "session/set_mode":
-                set_mode_request = SetSessionModeRequest.model_validate(params)
-                resp = await self._connection.set_session_mode(set_mode_request)
-                return resp.model_dump(by_alias=True, exclude_none=True) if resp else {}
-            case "session/set_model":
-                set_model_request = SetSessionModelRequest.model_validate(params)
-                set_model_resp = await self._connection.set_session_model(set_model_request)
-                return (
-                    set_model_resp.model_dump(by_alias=True, exclude_none=True)
-                    if set_model_resp
-                    else {}
-                )
-            case "authenticate":
-                authenticate_request = AuthenticateRequest.model_validate(params)
-                authenticate_resp = await self._connection.authenticate(authenticate_request)
-                return (
-                    authenticate_resp.model_dump(by_alias=True, exclude_none=True)
-                    if authenticate_resp
-                    else {}
-                )
-            case str() if method.startswith("_") and is_notification:
-                await self._connection.ext_notification(method[1:], params or {})
-                return None
-            case str() if method.startswith("_"):
-                return await self._connection.ext_method(method[1:], params or {})
-            case _:
-                raise ValueError(f"Method not found: {method}")
+        # The client-side connection implements the Agent protocol, so the regular
+        # agent dispatcher forwards every method to the subprocess.
+        result = await _agent_handler(self._connection, method, params, is_notification)
+        if isinstance(result, BaseModel):
+            return result.model_dump(by_alias=True, exclude_none=True)
+        return result
 
     async def _handle_status(self, request: Request) -> Response:
         """Health check endpoint."""

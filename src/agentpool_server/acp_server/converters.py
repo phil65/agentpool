@@ -14,6 +14,7 @@ from pydantic_ai import BinaryContent, BinaryImage
 from pydantic_ai.messages import _document_format_lookup
 
 from acp.schema import (
+    AcpMcpServer,
     AudioContentBlock,
     BlobResourceContents,
     EmbeddedResourceContentBlock,
@@ -99,6 +100,10 @@ def convert_acp_mcp_server_to_config(acp_server: McpServer) -> MCPServerConfig:
         case HttpMcpServer(name=name, url=url):
             h = acp_server.get_headers_dict()
             return StreamableHTTPMCPServerConfig(name=name, url=HttpUrl(url), headers=h)
+        case AcpMcpServer(name=name):
+            # Only sent to agents advertising `mcp_capabilities.acp`, which we don't.
+            msg = f"MCP-over-ACP server {name!r} is not supported"
+            raise ValueError(msg)
         case _ as unreachable:
             assert_never(unreachable)
 
