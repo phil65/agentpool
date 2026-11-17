@@ -371,6 +371,33 @@ async def test_cancel_request_cancels_inflight_handler(test_agent: TestAgent) ->
         assert resp["error"]["code"] == request_cancelled_code
 
 
+async def test_cancelling_outgoing_request_sends_cancel_request(
+    test_client: DefaultACPClient,
+) -> None:
+    async with _Server() as s:
+        assert s.client_writer is not None
+        assert s.client_reader is not None
+        assert s.server_reader is not None
+        conn = ClientSideConnection(
+            lambda _conn: test_client,
+            AsyncioWriterAdapter(s.client_writer),
+            AsyncioReaderAdapter(s.client_reader),
+        )
+        task = asyncio.create_task(conn.ext_method("_slow", {}))
+        request = anyenv.load_json(
+            await asyncio.wait_for(s.server_reader.readline(), timeout=1), return_type=dict
+        )
+        task.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await task
+
+        cancel = anyenv.load_json(
+            await asyncio.wait_for(s.server_reader.readline(), timeout=1), return_type=dict
+        )
+        assert cancel["method"] == "$/cancel_request"
+        assert cancel["params"] == {"requestId": request["id"]}
+
+
 async def test_unimplemented_optional_method_is_method_not_found(test_agent: TestAgent) -> None:
     async with _Server() as s:
         assert s.client_writer is not None

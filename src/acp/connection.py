@@ -130,7 +130,19 @@ class Connection:
         payload = {"jsonrpc": "2.0", "id": request_id, "method": method, "params": params}
         await self._sender.send(payload)
         self._notify_observers("outgoing", payload)
-        data = await future
+        try:
+            data = await future
+        except asyncio.CancelledError:
+            # Caller gave up before a response arrived: tell the peer to stop the work.
+            if future.cancelled():
+                self._state.reject_outgoing(request_id, RequestError.request_cancelled())
+                # Shielded: anyio cancellation is level-triggered and would abort the send.
+                with anyio.move_on_after(1, shield=True):
+                    try:
+                        await self.cancel_request(request_id)
+                    except Exception:  # noqa: BLE001
+                        logger.debug("Failed to send $/cancel_request", request_id=request_id)
+            raise
         assert isinstance(data, dict)
         return data
 
