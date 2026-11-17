@@ -65,8 +65,8 @@ class CodexStreamedResponse(StreamedResponse):
             ItemMcpToolCallProgressNotification,
             ItemReasoningTextDeltaNotification,
             ItemStartedEvent,
-            ThreadCompactedMessage,
             ThreadItemCommandExecution,
+            ThreadItemContextCompaction,
             ThreadItemFileChange,
             ThreadItemMcpToolCall,
             TurnPlanUpdatedMessage,
@@ -119,6 +119,17 @@ class CodexStreamedResponse(StreamedResponse):
                         yield PartStartEvent.thinking(index=part_index, content="")
                         active_part = "thinking"
                     yield PartDeltaEvent.thinking(index=part_index, content=data.delta)
+
+                # === Stateless: Context compaction item lifecycle ===
+                case ItemStartedEvent(params=data) if isinstance(
+                    data.item, ThreadItemContextCompaction
+                ):
+                    yield CompactionEvent(session_id=data.thread_id, phase="starting")
+
+                case ItemCompletedEvent(params=data) if isinstance(
+                    data.item, ThreadItemContextCompaction
+                ):
+                    yield CompactionEvent(session_id=data.thread_id, phase="completed")
 
                 case ItemStartedEvent(params=data):
                     # Close any open text/thinking part before a tool call
@@ -184,10 +195,6 @@ class CodexStreamedResponse(StreamedResponse):
                 # === Stateless: MCP tool call progress ===
                 case ItemMcpToolCallProgressNotification(params=data):
                     yield ToolCallProgressEvent(tool_call_id=data.item_id, message=data.message)
-
-                # === Stateless: Thread compacted ===
-                case ThreadCompactedMessage(params=data):
-                    yield CompactionEvent(session_id=data.thread_id, phase="completed")
 
                 # === Stateless: Turn plan updated ===
                 case TurnPlanUpdatedMessage(params=data):
