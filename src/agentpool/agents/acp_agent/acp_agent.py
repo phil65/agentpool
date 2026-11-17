@@ -93,6 +93,9 @@ if TYPE_CHECKING:
 
 logger = get_logger(__name__)
 
+CANCEL_GRACE_PERIOD = 5.0
+"""Seconds to wait for the remote agent to end a turn after ``session/cancel``."""
+
 
 def get_updated_at(date_str: str | None) -> datetime:
     from agentpool.utils.time_utils import get_now
@@ -490,17 +493,17 @@ class ACPAgent[TDeps = None](BaseAgent[TDeps, str]):
                 self._tool_bridge.set_run_context(run_context, prompt=prompts),
                 merge_queue_into_iterator(streamed_response, self._event_queue) as merged_events,
             ):
+                # On interrupt, keep draining: the remote agent flushes its last updates
+                # and ends the turn with stopReason "cancelled" (see _interrupt).
                 async for event in merged_events:
-                    if self._cancelled:
-                        self.log.info("Stream cancelled by user")
-                        break
                     reconstructor.observe(event)
                     yield event
         except asyncio.CancelledError:
             self.log.info("Stream cancelled via task cancellation")
             self._cancelled = True
+            prompt_task.cancel()
 
-        if self._cancelled:
+        if not prompt_task.done() or prompt_task.cancelled():
             reconstructor.flush()
             message = ChatMessage[str](
                 content=reconstructor.text_content,
@@ -581,7 +584,7 @@ class ACPAgent[TDeps = None](BaseAgent[TDeps, str]):
         self.log.info("Auto-approve mode changed", auto_approve=auto_approve)
 
     async def _interrupt(self) -> None:
-        """Send CancelNotification to remote ACP server and cancel local tasks."""
+        """Cancel the remote prompt turn, forcing it if the agent does not comply in time."""
         if self._api and self._sdk_session_id:
             try:
                 await self._api.cancel(self._sdk_session_id)
@@ -589,9 +592,13 @@ class ACPAgent[TDeps = None](BaseAgent[TDeps, str]):
             except Exception:
                 self.log.exception("Failed to send cancel notification to ACP server")
 
-        if self._prompt_task and not self._prompt_task.done():
-            self._prompt_task.cancel()
-            self.log.info("Cancelled prompt task")
+        if (prompt_task := self._prompt_task) and not prompt_task.done():
+            # Graceful: the agent should answer session/prompt with stopReason "cancelled"
+            done, _ = await asyncio.wait({prompt_task}, timeout=CANCEL_GRACE_PERIOD)
+            if done:
+                return
+            prompt_task.cancel()  # also sends $/cancel_request
+            self.log.warning("ACP agent ignored session/cancel, cancelled prompt task")
         if self._current_stream_task and not self._current_stream_task.done():
             self._current_stream_task.cancel()
 
