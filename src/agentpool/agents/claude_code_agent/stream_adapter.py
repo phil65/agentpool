@@ -312,6 +312,9 @@ class ClaudeCodeStreamedResponse(StreamedResponse):
                     streaming_tc_id = None
                     yield PartEndEvent(index=index, part=TextPart(content=""))
 
+                case StatusSystemMessage(compact_result="failed", compact_error=error):
+                    yield CompactionEvent(session_id=self.session_id, phase="failed", error=error)
+
                 case StatusSystemMessage(status="compacting"):
                     yield CompactionEvent(
                         session_id=self.session_id, trigger="auto", phase="starting"
