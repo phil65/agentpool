@@ -32,7 +32,7 @@ classifiers = [
 ]
 dependencies = [
   "alembic>=1.16.5",
-  "anyenv[httpx]>=0.3.0",
+  "anyenv[httpx]>=2.0.17",
   "bashkit>=0.1.11",
   "clawd-code-sdk>=1.1.9",
   # "clawd-code-sdk@git+https://github.com/phil65/claude-agent-sdk-python.git@efbaa798",
@@ -47,7 +47,7 @@ dependencies = [
   "fsspec",
   "httpx",
   "jinja2",
-  "jinjarope",
+  "jinjarope>=1.0.9",
   "keyring>=25.6.0",
   "llmling-models>=1.7.0",
   "logfire[fastapi]",

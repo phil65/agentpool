@@ -190,7 +190,7 @@ lint = [
 requires-dist = [
     { name = "ag-ui-protocol", marker = "extra == 'ag-ui'", specifier = ">=0.1.10" },
     { name = "alembic", specifier = ">=1.16.5" },
-    { name = "anyenv", extras = ["httpx"], specifier = ">=0.3.0" },
+    { name = "anyenv", extras = ["httpx"], specifier = ">=2.0.17" },
     { name = "anyvoice", extras = ["tts-edge", "openai"], marker = "extra == 'tts'", specifier = ">=0.0.2" },
     { name = "apprise", marker = "extra == 'notifications'", specifier = ">=1.9.5" },
     { name = "ast-grep-py", marker = "extra == 'coding'", specifier = ">=0.40.0" },
@@ -216,7 +216,7 @@ requires-dist = [
     { name = "grep-ast", marker = "extra == 'coding'" },
     { name = "httpx" },
     { name = "jinja2" },
-    { name = "jinjarope" },
+    { name = "jinjarope", specifier = ">=1.0.9" },
     { name = "keyring", specifier = ">=25.6.0" },
     { name = "lancedb", marker = "python_full_version < '3.14' and extra == 'mcp-discovery'", specifier = "==0.30.0" },
     { name = "langfuse", marker = "extra == 'langfuse'" },
