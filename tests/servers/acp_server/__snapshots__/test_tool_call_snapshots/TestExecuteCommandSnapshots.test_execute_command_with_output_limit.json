@@ -67,7 +67,7 @@
   },
   {
     "payload": {
-      "rawOutput": "...[truncated]\nline\nline\nline\nline\nline\nline\nline\nline\nline\nline\n\n\n[output truncated]",
+      "rawOutput": "...[truncated]\nline\nline\nline\nline\nline\nline\nline\nline\nline\nline\n\n\n[output truncated] | Execution time: 0.00s",
       "sessionUpdate": "tool_call_update",
       "status": "completed",
       "toolCallId": "pyd_ai_tool_call_id__bash"
