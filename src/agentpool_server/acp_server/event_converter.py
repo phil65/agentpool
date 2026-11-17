@@ -501,6 +501,7 @@ class ACPEventConverter:
                 yield Notice(severity=severity, title=title, description=description)
 
             case NoticeEvent():
+                # Client lacks notice support: rendering inline beats dropping user-facing info
                 yield AgentMessageChunk.text(event.format(), message_id=self._current_message_id)
 
             case SubAgentEvent(
