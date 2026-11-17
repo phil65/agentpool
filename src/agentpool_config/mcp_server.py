@@ -88,6 +88,13 @@ class BaseMCPServerConfig(Schema):
     )
     """Tools to exclude from this server (blacklist). Mutually exclusive with enabled_tools."""
 
+    always_load: bool = Field(default=False, title="Always load tools")
+    """Load this server's tools up front instead of deferring them to tool search.
+
+    Only honored by agents with their own tool search (currently Claude Code),
+    which otherwise may hide MCP tools until the model searches for them.
+    """
+
     @model_validator(mode="after")
     def _validate_tool_filters(self) -> Self:
         """Validate that enabled_tools and disabled_tools are mutually exclusive."""

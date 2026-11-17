@@ -347,6 +347,23 @@ class ClaudeCodeAgentConfig(BaseAgentConfig):
     clients which support them (e.g. ACP ``prompt_suggestions_update``).
     """
 
+    enable_tool_search: bool | int | Literal["auto"] | None = Field(
+        default=None,
+        title="Enable Tool Search",
+        examples=[False, "auto", 20],
+    )
+    """Control Claude Code's MCP tool search (deferred tool loading).
+
+    - ``True``: always defer MCP tools behind tool search.
+    - ``False``: load all MCP tools up front.
+    - ``"auto"``: let Claude Code decide based on context usage.
+    - ``int``: auto mode with a custom threshold (percentage of context).
+    - ``None``: Claude Code's default.
+
+    Tools of the agentpool tool bridge (``tools``) are always loaded up front,
+    and individual MCP servers can opt in via ``always_load``.
+    """
+
     tools: list[AnyToolConfig | str] = Field(
         default_factory=list,
         title="Tools",

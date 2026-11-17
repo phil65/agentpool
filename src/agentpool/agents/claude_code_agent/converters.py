@@ -253,19 +253,20 @@ def convert_mcp_servers_to_sdk_format(
             case _ as unreachable:
                 assert_never(unreachable)
 
-        # Build SDK-compatible config
+        # Build SDK-compatible config (None fields are omitted from --mcp-config)
         config: McpServerConfig
+        always_load = True if server.always_load else None
         match server:
             case StdioMCPServerConfig(command=command, args=args):
-                config = McpStdioServerConfig(command=command, args=args)
+                config = McpStdioServerConfig(command=command, args=args, alwaysLoad=always_load)
                 if server.env:
                     config.env = server.get_env_vars()
             case SSEMCPServerConfig(url=url):
-                config = McpSSEServerConfig(url=str(url))
+                config = McpSSEServerConfig(url=str(url), alwaysLoad=always_load)
                 if server.headers:
                     config.headers = server.headers
             case StreamableHTTPMCPServerConfig(url=url):
-                config = McpHttpServerConfig(url=str(url))
+                config = McpHttpServerConfig(url=str(url), alwaysLoad=always_load)
                 if server.headers:
                     config.headers = server.headers
             case _ as unreachable:

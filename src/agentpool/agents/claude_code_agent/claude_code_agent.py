@@ -166,6 +166,7 @@ class ClaudeCodeAgent[TDeps = None, TResult = str](BaseAgent[TDeps, TResult]):
         setting_sources: list[SettingSource] | None = None,
         use_subscription: bool = False,
         prompt_suggestions: bool = False,
+        enable_tool_search: bool | int | Literal["auto"] | None = None,
         env: ExecutionEnvironment | StrPath | None = None,
         input_provider: InputProvider | None = None,
         agent_pool: AgentPool[Any] | None = None,
@@ -205,6 +206,7 @@ class ClaudeCodeAgent[TDeps = None, TResult = str](BaseAgent[TDeps, TResult]):
             setting_sources: Setting sources to load ("user", "project", "local")
             use_subscription: Force Claude subscription usage instead of API key
             prompt_suggestions: Predict the next user prompt after each turn
+            enable_tool_search: Control MCP tool search (True/False/"auto"/threshold)
             env: Execution environment
             input_provider: Provider for user input/confirmations
             agent_pool: Agent pool for multi-agent coordination
@@ -270,6 +272,7 @@ class ClaudeCodeAgent[TDeps = None, TResult = str](BaseAgent[TDeps, TResult]):
         self._setting_sources = setting_sources
         self._use_subscription = use_subscription
         self._prompt_suggestions = prompt_suggestions
+        self._enable_tool_search = enable_tool_search
         self._toolsets = toolsets or []
         # Client state
         self._client: ClaudeSDKClient | None = None
@@ -337,6 +340,7 @@ class ClaudeCodeAgent[TDeps = None, TResult = str](BaseAgent[TDeps, TResult]):
             setting_sources=config.setting_sources,
             use_subscription=config.use_subscription,
             prompt_suggestions=config.prompt_suggestions,
+            enable_tool_search=config.enable_tool_search,
             # Toolsets
             toolsets=config.get_tool_providers() if config.tools else [],
             # Runtime
@@ -375,7 +379,10 @@ class ClaudeCodeAgent[TDeps = None, TResult = str](BaseAgent[TDeps, TResult]):
 
         # Use HTTP transport to preserve _meta field with claudecode/toolUseId
         # SDK transport drops _meta in Claude Agent SDK's query.py
-        cfg = McpHttpServerConfig(type="http", url=self._tool_bridge.url)
+        # Bridge tools are the agent's own core tools: never defer them behind
+        # tool search (whose refresh path is also where Claude Code's
+        # list_changed handling is least reliable).
+        cfg = McpHttpServerConfig(type="http", url=self._tool_bridge.url, alwaysLoad=True)
         mcp_config = {self._tool_bridge.resolved_server_name: cfg}
         self._mcp_servers.update(mcp_config)
         self.log.info("Toolsets initialized", toolset_count=len(self._toolsets))
@@ -450,6 +457,7 @@ class ClaudeCodeAgent[TDeps = None, TResult = str](BaseAgent[TDeps, TResult]):
             tools=self._builtin_tools,
             fallback_model=self._fallback_model,
             prompt_suggestions=self._prompt_suggestions,
+            enable_tool_search=self._enable_tool_search,
             on_permission=self._on_permission,
             on_user_question=self._on_user_question,
             on_elicitation=self._on_elicitation,
