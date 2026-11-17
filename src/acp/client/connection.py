@@ -117,68 +117,64 @@ class ClientSideConnection(Agent):
         self, method: str, params: BaseModel, response_type: type[T]
     ) -> T:
         dct = params.model_dump(mode="json", by_alias=True, exclude_none=True)
-        resp = await self._conn.send_request(method, dct)
-        return response_type.model_validate(resp if isinstance(resp, dict) else {})
+        resp = await self._conn.request_object(method, dct)
+        return response_type.model_validate(resp)
 
     # agent-bound methods (client -> agent)
     async def initialize(self, params: InitializeRequest) -> InitializeResponse:
         dct = params.model_dump(
             mode="json", by_alias=True, exclude_none=True, exclude_defaults=True
         )
-        resp = await self._conn.send_request("initialize", dct)
+        resp = await self._conn.request_object("initialize", dct)
         return InitializeResponse.model_validate(resp)
 
     async def new_session(self, params: NewSessionRequest) -> NewSessionResponse:
         # Don't exclude_defaults - MCP server 'type' field is required for discriminated unions
         dct = params.model_dump(mode="json", by_alias=True, exclude_none=True)
-        resp = await self._conn.send_request("session/new", dct)
+        resp = await self._conn.request_object("session/new", dct)
         return NewSessionResponse.model_validate(resp)
 
     async def load_session(self, params: LoadSessionRequest) -> LoadSessionResponse:
         dct = params.model_dump(
             mode="json", by_alias=True, exclude_none=True, exclude_defaults=True
         )
-        resp = await self._conn.send_request("session/load", dct)
-        payload = resp if isinstance(resp, dict) else {}
-        return LoadSessionResponse.model_validate(payload)
+        resp = await self._conn.request_object("session/load", dct)
+        return LoadSessionResponse.model_validate(resp)
 
     async def list_sessions(self, params: ListSessionsRequest) -> ListSessionsResponse:
         dct = params.model_dump(
             mode="json", by_alias=True, exclude_none=True, exclude_defaults=True
         )
-        resp = await self._conn.send_request("session/list", dct)
+        resp = await self._conn.request_object("session/list", dct)
         return ListSessionsResponse.model_validate(resp)
 
     async def fork_session(self, params: ForkSessionRequest) -> ForkSessionResponse:
         dct = params.model_dump(
             mode="json", by_alias=True, exclude_none=True, exclude_defaults=True
         )
-        resp = await self._conn.send_request("session/fork", dct)
+        resp = await self._conn.request_object("session/fork", dct)
         return ForkSessionResponse.model_validate(resp)
 
     async def resume_session(self, params: ResumeSessionRequest) -> ResumeSessionResponse:
         dct = params.model_dump(
             mode="json", by_alias=True, exclude_none=True, exclude_defaults=True
         )
-        resp = await self._conn.send_request("session/resume", dct)
-        payload = resp if isinstance(resp, dict) else {}
-        return ResumeSessionResponse.model_validate(payload)
+        resp = await self._conn.request_object("session/resume", dct)
+        return ResumeSessionResponse.model_validate(resp)
 
     async def close_session(self, params: CloseSessionRequest) -> CloseSessionResponse:
         dct = params.model_dump(
             mode="json", by_alias=True, exclude_none=True, exclude_defaults=True
         )
-        resp = await self._conn.send_request("session/close", dct)
-        payload = resp if isinstance(resp, dict) else {}
-        return CloseSessionResponse.model_validate(payload)
+        resp = await self._conn.request_object("session/close", dct)
+        return CloseSessionResponse.model_validate(resp)
 
     async def set_session_mode(self, params: SetSessionModeRequest) -> SetSessionModeResponse:
         dct = params.model_dump(
             mode="json", by_alias=True, exclude_none=True, exclude_defaults=True
         )
-        resp = await self._conn.send_request("session/set_mode", dct)
-        payload = resp if isinstance(resp, dict) else {}
-        return SetSessionModeResponse.model_validate(payload)
+        resp = await self._conn.request_object("session/set_mode", dct)
+        return SetSessionModeResponse.model_validate(resp)
 
     async def delete_session(self, params: DeleteSessionRequest) -> DeleteSessionResponse:
         return await self._request("session/delete", params, DeleteSessionResponse)
@@ -223,31 +219,32 @@ class ClientSideConnection(Agent):
         dct = params.model_dump(
             mode="json", by_alias=True, exclude_none=True, exclude_defaults=True
         )
-        resp = await self._conn.send_request("session/set_config_option", dct)
-        payload = resp if isinstance(resp, dict) else {}
-        return SetSessionConfigOptionResponse.model_validate(payload)
+        resp = await self._conn.request_object("session/set_config_option", dct)
+        return SetSessionConfigOptionResponse.model_validate(resp)
 
     async def authenticate(self, params: AuthenticateRequest) -> AuthenticateResponse:
         dct = params.model_dump(
             mode="json", by_alias=True, exclude_none=True, exclude_defaults=True
         )
-        resp = await self._conn.send_request("authenticate", dct)
-        payload = resp if isinstance(resp, dict) else {}
-        return AuthenticateResponse.model_validate(payload)
+        resp = await self._conn.request_object("authenticate", dct)
+        return AuthenticateResponse.model_validate(resp)
 
     async def logout(self, params: LogoutRequest) -> LogoutResponse:
         dct = params.model_dump(
             mode="json", by_alias=True, exclude_none=True, exclude_defaults=True
         )
-        resp = await self._conn.send_request("logout", dct)
-        payload = resp if isinstance(resp, dict) else {}
-        return LogoutResponse.model_validate(payload)
+        resp = await self._conn.request_object("logout", dct)
+        return LogoutResponse.model_validate(resp)
 
     async def prompt(self, params: PromptRequest) -> PromptResponse:
         # Don't exclude_defaults here - the 'type' field in content blocks has a default
         # value but is required for discriminated unions to work
         dct = params.model_dump(mode="json", by_alias=True, exclude_none=True)
-        resp = await self._conn.send_request("session/prompt", dct)
+        resp = await self._conn.request_object("session/prompt", dct)
+        # The agent sends all updates of a turn before the prompt response, but they are
+        # handled concurrently: make sure the turn's updates are processed before the
+        # caller treats the turn as finished.
+        await self._conn.wait_for_notifications(partial(_is_session_update, params.session_id))
         return PromptResponse.model_validate(resp)
 
     async def cancel(self, params: CancelNotification) -> None:
@@ -257,7 +254,7 @@ class ClientSideConnection(Agent):
         await self._conn.send_notification("session/cancel", dct)
 
     async def ext_method(self, method: str, params: dict[str, Any]) -> dict[str, Any]:
-        return await self._conn.send_request(f"_{method}", params)
+        return await self._conn.request_object(f"_{method}", params)
 
     async def ext_notification(self, method: str, params: dict[str, Any]) -> None:
         await self._conn.send_notification(f"_{method}", params)
@@ -265,11 +262,23 @@ class ClientSideConnection(Agent):
     async def close(self) -> None:
         await self._conn.close()
 
+    async def wait_closed(self) -> None:
+        """Wait until the agent disconnected or the connection was closed."""
+        await self._conn.wait_closed()
+
     async def __aenter__(self) -> Self:
         return self
 
     async def __aexit__(self, *args: object) -> None:
         await self.close()
+
+
+def _is_session_update(session_id: str, method: str, params: Any) -> bool:
+    return (
+        method == "session/update"
+        and isinstance(params, dict)
+        and params.get("sessionId") == session_id
+    )
 
 
 @logfire.instrument(r"Handle Client Method {method}")

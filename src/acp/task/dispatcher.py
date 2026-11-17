@@ -8,18 +8,21 @@ from contextlib import suppress
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, Protocol
 
+from acp.exceptions import RequestError
 from acp.task.queue import InMemoryMessageQueue
 from acp.task.state import InMemoryMessageStateStore
 
 
 if TYPE_CHECKING:
+    from acp.task import RpcTask
     from acp.task.queue import MessageQueue
     from acp.task.state import MessageStateStore
     from acp.task.supervisor import TaskSupervisor
 
 
-RequestRunner = Callable[[dict[str, Any]], Awaitable[Any]]
-NotificationRunner = Callable[[dict[str, Any]], Awaitable[None]]
+RequestRunner = Callable[["RpcTask"], Awaitable[dict[str, Any]]]
+"""Handles a request and returns the JSON-RPC response payload that was sent."""
+NotificationRunner = Callable[["RpcTask"], Awaitable[None]]
 
 
 class MessageDispatcher(Protocol):
@@ -42,7 +45,11 @@ class MessageDispatcher(Protocol):
 
 @dataclass(kw_only=True)
 class DefaultMessageDispatcher(MessageDispatcher):
-    """Background worker that consumes RPC tasks from a broker."""
+    """Background worker that consumes RPC tasks from a broker.
+
+    Every message is handled in its own task, so a slow handler never blocks the
+    others; tasks are started in the order the messages were received.
+    """
 
     supervisor: TaskSupervisor
     request_runner: RequestRunner
@@ -62,10 +69,12 @@ class DefaultMessageDispatcher(MessageDispatcher):
         try:
             async for task in self.queue:
                 try:
+                    if self.supervisor.closed:
+                        continue  # Connection is shutting down, drain without handling
                     if task.kind == "request":
-                        await self._dispatch_request(task.message)
+                        self._dispatch_request(task)
                     else:
-                        await self._dispatch_notification(task.message)
+                        self._dispatch_notification(task)
                 finally:
                     self.queue.task_done()
         except asyncio.CancelledError:
@@ -78,22 +87,21 @@ class DefaultMessageDispatcher(MessageDispatcher):
                 await self._task
             self._task = None
 
-    async def _dispatch_request(self, msg: dict[str, Any]) -> None:
+    def _dispatch_request(self, task: RpcTask) -> None:
+        msg = task.message
         record = self.store.begin_incoming(msg.get("method", ""), msg.get("params"))
 
         async def runner() -> None:
-            try:
-                result = await self.request_runner(msg)
-            except Exception as exc:
-                self.store.fail_incoming(record, exc)
-                raise
+            response = await self.request_runner(task)
+            if "error" in response:
+                self.store.fail_incoming(record, RequestError.from_error_obj(response["error"]))
             else:
-                self.store.complete_incoming(record, result)
+                self.store.complete_incoming(record, response.get("result"))
 
         self.supervisor.create(runner(), name="acp.Dispatcher.request")
 
-    async def _dispatch_notification(self, message: dict[str, Any]) -> None:
+    def _dispatch_notification(self, task: RpcTask) -> None:
         async def runner() -> None:
-            await self.notification_runner(message)
+            await self.notification_runner(task)
 
         self.supervisor.create(runner(), name="acp.Dispatcher.notification")

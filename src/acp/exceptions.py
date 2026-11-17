@@ -46,5 +46,22 @@ class RequestError(Exception):
     def auth_required(cls, data: dict[str, Any] | None = None) -> Self:
         return cls(-32000, "Authentication required", data)
 
+    @classmethod
+    def from_error_obj(cls, error: Any) -> Self:
+        """Build an error from a peer's JSON-RPC error object.
+
+        Peers are not trusted to send a well-formed object: ``data`` is optional per
+        JSON-RPC 2.0 and ``code`` / ``message`` may be missing or have the wrong type.
+        """
+        if not isinstance(error, dict):
+            return cls.internal_error({"details": "Malformed error response", "error": error})
+        code = error.get("code")
+        message = error.get("message")
+        return cls(
+            code if isinstance(code, int) and not isinstance(code, bool) else -32603,
+            message if isinstance(message, str) and message else "Error",
+            error.get("data"),
+        )
+
     def to_error_obj(self) -> dict[str, Any]:
         return {"code": self.code, "message": str(self), "data": self.data}

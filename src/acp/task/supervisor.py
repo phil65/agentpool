@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import asyncio
 from collections.abc import Callable
-from contextlib import suppress
 from typing import TYPE_CHECKING, Any
 
 import structlog
@@ -34,6 +33,11 @@ class TaskSupervisor:
         self._closed = False
         self._error_handlers = error_handlers or []
 
+    @property
+    def closed(self) -> bool:
+        """Whether the supervisor stopped accepting new tasks."""
+        return self._closed
+
     def add_error_handler(self, handler: ErrorHandler) -> None:
         self._error_handlers.append(handler)
 
@@ -45,6 +49,7 @@ class TaskSupervisor:
         on_error: ErrorHandler | None = None,
     ) -> asyncio.Task[Any]:
         if self._closed:
+            coroutine.close()  # Avoid a "coroutine was never awaited" warning
             raise RuntimeError(f"TaskSupervisor for {self._source} already closed")
         task = asyncio.create_task(coroutine, name=name)
         self._tasks.add(task)
@@ -76,15 +81,18 @@ class TaskSupervisor:
                 logger.exception("Unhandled error in task", source=self._source)
 
     async def shutdown(self) -> None:
+        """Cancel all tracked tasks and wait for them to finish.
+
+        The calling task is left alone: a handler may close its own connection, and
+        cancelling and awaiting itself would end in a self-await cancellation cycle.
+        """
         self._closed = True
-        if not self._tasks:
+        current = asyncio.current_task()
+        tasks = [task for task in self._tasks if task is not current]
+        if not tasks:
             return
-        # Snapshot the set before iterating — done-callbacks call discard()
-        # which would mutate self._tasks during iteration.
-        tasks = list(self._tasks)
         for task in tasks:
             task.cancel()
-        for task in tasks:
-            with suppress(asyncio.CancelledError):
-                await task
-        self._tasks.clear()
+        # Failures were already routed to the error handlers by `_on_done`.
+        await asyncio.gather(*tasks, return_exceptions=True)
+        self._tasks.difference_update(tasks)

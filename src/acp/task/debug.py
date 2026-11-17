@@ -4,11 +4,11 @@ from __future__ import annotations
 
 from dataclasses import asdict, dataclass, field
 from datetime import datetime
-import logging
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal
 
 import anyenv
+import structlog
 
 from acp.task.state import InMemoryMessageStateStore
 
@@ -18,6 +18,9 @@ if TYPE_CHECKING:
 
     from acp import RequestError
     from acp.task.state import IncomingMessage
+
+
+logger = structlog.get_logger(__name__)
 
 
 @dataclass(kw_only=True)
@@ -166,7 +169,7 @@ class DebuggingMessageStateStore(InMemoryMessageStateStore):
                 f.write(anyenv.dump_json(data) + "\n")
         except Exception:
             # Don't let debug logging break the connection
-            logging.exception("Failed to write debug entry")
+            logger.exception("Failed to write debug entry")
 
     def _calculate_duration(self, request_id: int) -> float | None:
         """Calculate request duration in milliseconds."""

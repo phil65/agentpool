@@ -150,33 +150,33 @@ class AgentSideConnection(Client):
         """Request permission from the client."""
         dct = params.model_dump(by_alias=True, exclude_none=True, exclude_defaults=True)
         method = "session/request_permission"
-        resp = await self._conn.send_request(method, dct)
+        resp = await self._conn.request_object(method, dct)
         return RequestPermissionResponse.model_validate(resp)
 
     async def read_text_file(self, params: ReadTextFileRequest) -> ReadTextFileResponse:
         """Read text file from the client."""
         dct = params.model_dump(by_alias=True, exclude_none=True, exclude_defaults=True)
-        resp = await self._conn.send_request("fs/read_text_file", dct)
+        resp = await self._conn.request_object("fs/read_text_file", dct)
         return ReadTextFileResponse.model_validate(resp)
 
     async def write_text_file(self, params: WriteTextFileRequest) -> WriteTextFileResponse:
         """Write text file to the client."""
         dct = params.model_dump(by_alias=True, exclude_none=True, exclude_defaults=True)
-        r = await self._conn.send_request("fs/write_text_file", dct)
+        r = await self._conn.request_object("fs/write_text_file", dct)
         return WriteTextFileResponse.model_validate(r)
 
     # async def createTerminal(self, params: CreateTerminalRequest) -> TerminalHandle:
     async def create_terminal(self, params: CreateTerminalRequest) -> CreateTerminalResponse:
         """Create a terminal on the client."""
         dct = params.model_dump(by_alias=True, exclude_none=True, exclude_defaults=True)
-        resp = await self._conn.send_request("terminal/create", dct)
+        resp = await self._conn.request_object("terminal/create", dct)
         #  resp = CreateTerminalResponse.model_validate(resp)
         #  return TerminalHandle(resp.terminal_id, params.session_id, self._conn)
         return CreateTerminalResponse.model_validate(resp)
 
     async def ext_method(self, method: str, params: dict[str, Any]) -> dict[str, Any]:
         """Call an extension method on the client."""
-        return await self._conn.send_request(f"_{method}", params)
+        return await self._conn.request_object(f"_{method}", params)
 
     async def ext_notification(self, method: str, params: dict[str, Any]) -> None:
         """Send an extension notification to the client."""
@@ -185,13 +185,13 @@ class AgentSideConnection(Client):
     async def terminal_output(self, params: TerminalOutputRequest) -> TerminalOutputResponse:
         """Show terminal output on the client."""
         dct = params.model_dump(by_alias=True, exclude_none=True, exclude_defaults=True)
-        resp = await self._conn.send_request("terminal/output", dct)
+        resp = await self._conn.request_object("terminal/output", dct)
         return TerminalOutputResponse.model_validate(resp)
 
     async def release_terminal(self, params: ReleaseTerminalRequest) -> ReleaseTerminalResponse:
         """Release a terminal on the client."""
         dct = params.model_dump(by_alias=True, exclude_none=True, exclude_defaults=True)
-        resp = await self._conn.send_request("terminal/release", dct)
+        resp = await self._conn.request_object("terminal/release", dct)
         return ReleaseTerminalResponse.model_validate(resp)
 
     async def wait_for_terminal_exit(
@@ -199,19 +199,19 @@ class AgentSideConnection(Client):
     ) -> WaitForTerminalExitResponse:
         """Wait for a terminal to exit on the client."""
         dct = params.model_dump(by_alias=True, exclude_none=True, exclude_defaults=True)
-        resp = await self._conn.send_request("terminal/wait_for_exit", dct)
+        resp = await self._conn.request_object("terminal/wait_for_exit", dct)
         return WaitForTerminalExitResponse.model_validate(resp)
 
     async def kill_terminal(self, params: KillTerminalRequest) -> KillTerminalResponse:
         """Kill a terminal on the client."""
         dct = params.model_dump(by_alias=True, exclude_none=True, exclude_defaults=True)
-        resp = await self._conn.send_request("terminal/kill", dct)
+        resp = await self._conn.request_object("terminal/kill", dct)
         return KillTerminalResponse.model_validate(resp)
 
     async def elicitation(self, params: ElicitationRequest) -> ElicitationResponse:
         """Request structured user input from the client."""
         dct = params.model_dump(by_alias=True, exclude_none=True, exclude_defaults=True)
-        resp = await self._conn.send_request("elicitation/create", dct)
+        resp = await self._conn.request_object("elicitation/create", dct)
         return ElicitationResponse.model_validate(resp)
 
     async def elicitation_complete(self, params: ElicitationCompleteNotification) -> None:
@@ -227,7 +227,7 @@ class AgentSideConnection(Client):
     async def mcp_message(self, params: MessageMcpRequest) -> MessageMcpResponse:
         """**UNSTABLE**: Send an inner MCP request to an ``acp`` MCP server the client declared."""
         dct = params.model_dump(by_alias=True, exclude_none=True)
-        resp = await self._conn.send_request("mcp/message", dct)
+        resp = await self._conn.request_object("mcp/message", dct)
         return MessageMcpResponse.model_validate(resp)
 
     async def mcp_notification(self, params: MessageMcpNotification) -> None:
@@ -238,6 +238,10 @@ class AgentSideConnection(Client):
     async def close(self) -> None:
         """Close the connection."""
         await self._conn.close()
+
+    async def wait_closed(self) -> None:
+        """Wait until the client disconnected or the connection was closed."""
+        await self._conn.wait_closed()
 
     async def __aenter__(self) -> Self:
         """Enter the async context."""
