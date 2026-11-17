@@ -935,7 +935,7 @@ class BaseAgent[TDeps = None, TResult = str](MessageNode[TDeps, TResult]):
         Each agent type handles permission modes differently:
         - NativeAgent: tool_confirmation_mode ("always", "never", "per_tool")
         - ClaudeCodeAgent: permission_mode ("default", "acceptEdits", "plan", "bypassPermissions")
-        - CodexAgent: approval_policy ("never", "on-request", "on-failure", "untrusted")
+        - CodexAgent: approval_policy ("never", "on-request", "untrusted")
         - ACPAgent: auto_approve (bool)
         - AGUIAgent: Not supported
 

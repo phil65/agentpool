@@ -23,7 +23,7 @@ if TYPE_CHECKING:
     from agentpool.ui.base import InputProvider
 
 
-ApprovalPolicy = Literal["untrusted", "on-failure", "on-request", "never"]
+ApprovalPolicy = Literal["untrusted", "on-request", "never"]
 
 
 class CodexAgentConfig(BaseAgentConfig):
@@ -64,13 +64,13 @@ class CodexAgentConfig(BaseAgentConfig):
     approval_policy: ApprovalPolicy = Field(
         default="never",
         title="Approval Policy",
-        examples=["never", "on-request", "on-failure", "untrusted"],
+        examples=["never", "on-request", "untrusted"],
     )
     """Tool call approval policy.
 
     - "never": Execute tools without requesting approval (default for programmatic use)
     - "on-request": Request approval when tools request it
-    - "on-failure": Request approval when tool execution fails
+
     - "untrusted": Always request approval (most restrictive)
     """
 

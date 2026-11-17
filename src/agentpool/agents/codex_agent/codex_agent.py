@@ -73,7 +73,7 @@ if TYPE_CHECKING:
 
 logger = get_logger(__name__)
 
-VALID_POLICIES = ["never", "on-request", "on-failure", "untrusted"]
+VALID_POLICIES = ["never", "on-request", "untrusted"]
 VALID_EFFORTS = ["low", "medium", "high", "xhigh"]
 VALID_SANDBOXES = ["read-only", "workspace-write", "danger-full-access", "external-sandbox"]
 VALID_PERSONALITIES = ["none", "friendly", "pragmatic"]
@@ -597,7 +597,7 @@ class CodexAgent[TDeps = None, OutputDataT = str](BaseAgent[TDeps, OutputDataT])
         """Set the approval policy for tool execution.
 
         Args:
-            policy: Approval policy - "never", "on-request", "on-failure", or "untrusted"
+            policy: Approval policy - "never", "on-request", or "untrusted"
         """
         await self._set_mode(policy, "mode")
 
@@ -710,7 +710,7 @@ class CodexAgent[TDeps = None, OutputDataT = str](BaseAgent[TDeps, OutputDataT])
             case "mode":
                 raise UnknownModeError(mode_id, VALID_POLICIES)
             case "thought_level" if mode_id in VALID_EFFORTS:
-                self._current_effort = cast(ReasoningEffort, mode_id)
+                self._current_effort = str(mode_id)
             case "thought_level":
                 raise UnknownModeError(mode_id, VALID_EFFORTS)
             case "model":

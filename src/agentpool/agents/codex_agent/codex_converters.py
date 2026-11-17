@@ -24,6 +24,7 @@ from codexed.models import (
     ThreadItemWebSearch,
 )
 from pydantic_ai import (
+    AudioUrl,
     BinaryContent,
     CachePoint,
     FileUrl,
@@ -199,18 +200,19 @@ def to_session_data(thread_data: Thread, agent_name: str, cwd: str | None) -> Se
 
 def user_content_to_codex(content: Sequence[UserContent]) -> Iterator[UserInput]:
     """Convert pydantic-ai UserContent list to Codex UserInput list."""
-    from codexed.models import ImageUserInput, TextUserInput
+    from codexed.models import TextUserInput
+    from codexed.models.v2_protocol import UrlUserInput
 
     for item in content:
         match item:
             case str(text) | TextContent(content=text):
                 yield TextUserInput(text=text)
             case ImageUrl(url=url):
-                yield ImageUserInput(url=url)
+                yield UrlUserInput(url=url)
             case BinaryContent(data=data, media_type=media_type, is_image=is_image) if is_image:
                 b64 = base64.b64encode(data).decode()
                 data_uri = f"data:{media_type};base64,{b64}"
-                yield ImageUserInput(url=data_uri)
+                yield UrlUserInput(url=data_uri)
             case FileUrl() | BinaryContent() | CachePoint() | UploadedFile():
                 pass
             case _ as unreachable:
@@ -271,12 +273,31 @@ def _thread_item_to_tool_call_part(item: ThreadItem) -> ToolCallPart | NativeToo
     from codexed.models import (
         ThreadItemCommandExecution,
         ThreadItemFileChange,
+        ThreadItemFunctionCallOutput,
+        ThreadItemHookPrompt,
+        ThreadItemImageGeneration,
         ThreadItemImageView,
         ThreadItemMcpToolCall,
+        ThreadItemSleep,
+        ThreadItemSubAgentActivity,
         ThreadItemWebSearch,
     )
 
     match item:
+        case ThreadItemImageGeneration(id=tc_id, revised_prompt=prompt):
+            return NativeToolCallPart(
+                tool_name="image_generation",
+                args={"prompt": prompt} if prompt else {},
+                tool_call_id=tc_id,
+            )
+        case ThreadItemSubAgentActivity(id=tc_id, agent_path=agent_path, kind=kind):
+            return NativeToolCallPart(
+                tool_name="subagent",
+                args={"agent_path": agent_path, "kind": kind},
+                tool_call_id=tc_id,
+            )
+        case ThreadItemFunctionCallOutput() | ThreadItemHookPrompt() | ThreadItemSleep():
+            return None
         case ThreadItemCommandExecution(id=tc_id):
             return NativeToolCallPart(
                 tool_name="bash",
@@ -331,23 +352,37 @@ def _thread_item_to_tool_call_part(item: ThreadItem) -> ToolCallPart | NativeToo
             assert_never(unreachable)
 
 
-def _user_input_to_content(inp: UserInput) -> UserContent:
+def _user_input_to_content(inp: UserInput) -> UserContent:  # noqa: PLR0911
     """Convert Codex UserInput to pydantic-ai UserContent."""
     from codexed.models import (
-        ImageUserInput,
         LocalImageUserInput,
         MentionUserInput,
         SkillUserInput,
         TextUserInput,
     )
+    from codexed.models.v2_protocol import (
+        FileIdUserInput,
+        FileIdUserInput1,
+        LocalAudioUserInput,
+        UrlUserInput,
+        UrlUserInput1,
+    )
 
     match inp:
         case TextUserInput(text=text):
             return text
-        case ImageUserInput(url=url):
+        case UrlUserInput(url=url):
             return ImageUrl(url=url)
         case LocalImageUserInput(path=path):
             return ImageUrl(url=f"file://{path}")
+        case UrlUserInput1(url=url):
+            return AudioUrl(url=url)
+        case LocalAudioUserInput(path=path):
+            return AudioUrl(url=f"file://{path}")
+        case FileIdUserInput(file_id=file_id):
+            return f"[image file: {file_id}]"
+        case FileIdUserInput1(file_id=file_id):
+            return f"[audio file: {file_id}]"
         case SkillUserInput(name=name):
             return f"[Skill: {name}]"
         case MentionUserInput(name=name):
@@ -376,9 +411,14 @@ def _turn_to_chat_messages(turn: Turn) -> list[ChatMessage[list[UserContent]]]: 
         ThreadItemEnteredReviewMode,
         ThreadItemExitedReviewMode,
         ThreadItemFileChange,
+        ThreadItemFunctionCallOutput,
+        ThreadItemHookPrompt,
+        ThreadItemImageGeneration,
         ThreadItemImageView,
         ThreadItemMcpToolCall,
         ThreadItemReasoning,
+        ThreadItemSleep,
+        ThreadItemSubAgentActivity,
         ThreadItemUserMessage,
         ThreadItemWebSearch,
     )
@@ -479,7 +519,31 @@ def _turn_to_chat_messages(turn: Turn) -> list[ChatMessage[list[UserContent]]]: 
                     content=f"Status: {status}",
                 )
                 assistant_responses.append(ModelResponse(parts=parts))
-            case ThreadItemPlan() | ThreadItemContextCompaction():
+            case ThreadItemImageGeneration(id=tc_id, revised_prompt=prompt, saved_path=path):
+                parts = get_builtin_tool_parts(
+                    tool_name="image_generation",
+                    args={"prompt": prompt} if prompt else {},
+                    tc_id=tc_id,
+                    content=f"Image saved to {path}" if path else "Image generated",
+                )
+                assistant_responses.append(ModelResponse(parts=parts))
+
+            case ThreadItemSubAgentActivity(id=tc_id, agent_path=agent_path, kind=kind):
+                parts = get_builtin_tool_parts(
+                    tool_name="subagent",
+                    args={"agent_path": agent_path, "kind": kind},
+                    tc_id=tc_id,
+                    content=f"Subagent {kind}",
+                )
+                assistant_responses.append(ModelResponse(parts=parts))
+
+            case (
+                ThreadItemPlan()
+                | ThreadItemContextCompaction()
+                | ThreadItemFunctionCallOutput()
+                | ThreadItemHookPrompt()
+                | ThreadItemSleep()
+            ):
                 pass
             case _ as unreachable:
                 assert_never(unreachable)

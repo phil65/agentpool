@@ -17,12 +17,6 @@ POLICY_MODES = [
         category_id="mode",
     ),
     ModeInfo(
-        value="on-failure",
-        name="On Failure",
-        description="Ask for approval when a tool execution fails",
-        category_id="mode",
-    ),
-    ModeInfo(
         value="untrusted",
         name="Always Confirm",
         description="Request approval before executing any tool",
