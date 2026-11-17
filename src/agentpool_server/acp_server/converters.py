@@ -16,6 +16,8 @@ from pydantic_ai.messages import _document_format_lookup
 from acp.schema import (
     AcpMcpServer,
     AudioContentBlock,
+    AuthAccount,
+    AuthStatusResponse,
     BlobResourceContents,
     EmbeddedResourceContentBlock,
     HttpMcpServer,
@@ -50,6 +52,7 @@ if TYPE_CHECKING:
 
     from acp.schema import ContentBlock, McpServer, SelectSessionConfigOption, SystemPrompt
     from acp.schema.content_blocks import ResourceContents
+    from agentpool.agents.auth import AuthStatus
     from agentpool.agents.modes import ModeCategory, ModeInfo
     from agentpool.common_types import PathReference
     from agentpool.messaging import MessageNode
@@ -192,6 +195,21 @@ def to_session_config_option(category: ModeCategory) -> SelectSessionConfigOptio
         current_value=category.current_mode_id,
         options=[to_session_select_option(mode) for mode in category.available_modes],
     )
+
+
+def to_auth_status_response(status: AuthStatus) -> AuthStatusResponse:
+    accounts = [
+        AuthAccount(
+            label=a.label,
+            description=a.description,
+            active=a.active,
+            name=a.name,
+            email=a.email,
+            organization=a.organization,
+        )
+        for a in status.accounts
+    ]
+    return AuthStatusResponse(state=status.state, accounts=accounts)
 
 
 def system_prompt_text(system_prompt: SystemPrompt | None) -> str | None:

@@ -9,6 +9,7 @@ from typing import TYPE_CHECKING, Any, ClassVar, assert_never
 from acp import Agent as ACPAgent
 from acp.exceptions import RequestError
 from acp.schema import (
+    AuthStatusCapabilities,
     CloseSessionResponse,
     DeleteSessionResponse,
     ForkSessionResponse,
@@ -40,6 +41,7 @@ from agentpool.log import get_logger
 from agentpool.utils.tasks import TaskManager
 from agentpool_server.acp_server.converters import (
     system_prompt_text,
+    to_auth_status_response,
     to_session_config_option,
     to_session_info,
 )
@@ -52,6 +54,8 @@ if TYPE_CHECKING:
     from acp import Client
     from acp.schema import (
         AuthenticateRequest,
+        AuthStatusRequest,
+        AuthStatusResponse,
         CancelNotification,
         ClientCapabilities,
         CloseSessionRequest,
@@ -227,6 +231,8 @@ class AgentPoolACPAgent(ACPAgent):
         session_caps.status = SessionStatusCapabilities()
         session_caps.options = SessionOptionsCapabilities()
         session_caps.title = SessionTitleCapabilities()
+        assert response.agent_capabilities.auth
+        response.agent_capabilities.auth.status = AuthStatusCapabilities()
         return response
 
     async def _create_session(
@@ -446,6 +452,11 @@ class AgentPoolACPAgent(ACPAgent):
     async def authenticate(self, params: AuthenticateRequest) -> None:
         """Authenticate with the agent."""
         logger.info("Authentication requested", method_id=params.method_id)
+
+    async def auth_status(self, params: AuthStatusRequest) -> AuthStatusResponse:
+        """Report the auth state of the default agent's backend."""
+        status = await self.default_agent.get_auth_status()
+        return to_auth_status_response(status)
 
     async def logout(self, params: LogoutRequest) -> None:
         """Log out of the current authenticated state."""

@@ -11,6 +11,7 @@ import pytest
 from acp.exceptions import RequestError
 from acp.schema import (
     AgentMessageChunk,
+    AuthStatusRequest,
     ClientCapabilities,
     ClientSessionCapabilities,
     CompactionCapabilities,
@@ -128,6 +129,14 @@ async def test_initialize_advertises_session_capabilities(acp_agent: AgentPoolAC
     assert caps.additional_directories is not None
     assert caps.title is not None
     assert caps.status is not None
+    assert response.agent_capabilities.auth
+    assert response.agent_capabilities.auth.status is not None
+
+
+async def test_auth_status_reports_default_agent(acp_agent: AgentPoolACPAgent) -> None:
+    response = await acp_agent.auth_status(AuthStatusRequest())
+    assert response.state == "not_required"
+    assert response.accounts == []
 
 
 async def test_session_lifecycle(initialized_agent: AgentPoolACPAgent) -> None:
