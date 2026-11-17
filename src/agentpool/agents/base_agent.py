@@ -6,7 +6,7 @@ from abc import abstractmethod
 import asyncio
 from collections.abc import Callable
 from contextlib import suppress
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 import os
 from pathlib import Path
 import re
@@ -15,6 +15,7 @@ from typing import TYPE_CHECKING, Any, ClassVar, Literal, assert_never, overload
 from anyenv import MultiEventHandler, method_spawner
 from anyenv.signals import Signal
 import anyio
+from pydantic_ai import ModelRequest
 from upathtools.filesystems import IsolatedMemoryFileSystem
 
 from agentpool.agents.events import StreamCompleteEvent, resolve_event_handlers
@@ -99,6 +100,23 @@ def _parse_slash_command(command_text: str) -> tuple[str, str] | None:
 def _is_slash_command(text: str) -> bool:
     """Check if text starts with a slash command."""
     return bool(_SLASH_PATTERN.match(text.strip()))
+
+
+def split_exchange(
+    user_msg: ChatMessage[Any], response: ChatMessage[Any]
+) -> list[ChatMessage[Any]]:
+    """Split a run into conversation entries without duplicating the prompt.
+
+    A response's ``messages`` hold the whole exchange, starting with the request that
+    carried the prompt (that is also how storage persists runs). Keeping that request
+    in both entries would send every prompt to the model twice, so the user entry gets
+    the request that was actually sent and the response keeps the rest.
+    """
+    match response.messages:
+        case [ModelRequest() as request, *rest]:
+            return [replace(user_msg, messages=[request]), replace(response, messages=list(rest))]
+        case _:
+            return [user_msg, response]
 
 
 class BaseAgent[TDeps = None, TResult = str](MessageNode[TDeps, TResult]):
@@ -777,7 +795,7 @@ class BaseAgent[TDeps = None, TResult = str](MessageNode[TDeps, TResult]):
             if store_history:
                 # Log to persistent storage and add to conversation context
                 await self.log_message(final_message)
-                conversation.add_chat_messages([user_msg, final_message])
+                conversation.add_chat_messages(split_exchange(user_msg, final_message))
             # Route to connected agents (always - they decide what to do with it)
             await self.connections.route_message(final_message, wait=wait_for_connections)
 
