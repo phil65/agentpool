@@ -19,6 +19,7 @@ from acp.schema import (
     NewSessionRequest,
     Notice,
     NoticeCapabilities,
+    PromptSuggestionsUpdate,
     SessionInfoUpdate,
     SessionStatusRequest,
     SetSessionTitleRequest,
@@ -26,7 +27,7 @@ from acp.schema import (
     TextContentBlock,
     ToolCallStart,
 )
-from agentpool.agents.events import CompactionEvent, RunErrorEvent
+from agentpool.agents.events import CompactionEvent, PromptSuggestionEvent, RunErrorEvent
 from agentpool_server.acp_server.event_converter import ACPEventConverter
 
 
@@ -66,6 +67,16 @@ async def test_run_errors_become_notices_when_supported() -> None:
     assert isinstance(updates[0], Notice)
     assert updates[0].severity == "error"
     assert updates[0].description == "boom"
+
+
+async def test_prompt_suggestions_only_when_supported() -> None:
+    event = PromptSuggestionEvent(suggestions=["run the tests"])
+    assert await _collect(ACPEventConverter(), event) == []
+
+    [update] = await _collect(ACPEventConverter(use_prompt_suggestions=True), event)
+    assert isinstance(update, PromptSuggestionsUpdate)
+    [suggestion] = update.suggestions
+    assert suggestion.prompt == [TextContentBlock(text="run the tests")]
 
 
 @pytest.fixture

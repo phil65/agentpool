@@ -40,6 +40,9 @@ from acp.schema import (
     ContentToolCallContent,
     Cost,
     Notice,
+    PromptSuggestion,
+    PromptSuggestionsUpdate,
+    TextContentBlock,
     ToolCallLocation,
     ToolCallProgress,
     ToolCallStart,
@@ -53,6 +56,7 @@ from agentpool.agents.events import (
     FileContentItem,
     LocationContentItem,
     PlanUpdateEvent,
+    PromptSuggestionEvent,
     RunErrorEvent,
     RunStartedEvent,
     StreamCompleteEvent,
@@ -121,6 +125,9 @@ class ACPEventConverter:
 
     use_compaction_updates: bool = False
     """Send ``compaction_update`` updates (client advertised ``session.compaction``)."""
+
+    use_prompt_suggestions: bool = False
+    """Send ``prompt_suggestions_update`` (client advertised ``session.prompt_suggestions``)."""
 
     # Internal state
     _tool_states: dict[str, _ToolState] = field(default_factory=dict)
@@ -464,6 +471,13 @@ class ACPEventConverter:
                 ]
                 yield AgentPlanUpdate(entries=acp_entries)
 
+            case PromptSuggestionEvent(suggestions=suggestions) if self.use_prompt_suggestions:
+                yield PromptSuggestionsUpdate(
+                    suggestions=[
+                        PromptSuggestion(prompt=[TextContentBlock(text=s)]) for s in suggestions
+                    ]
+                )
+
             case CompactionEvent(phase=phase) if self.use_compaction_updates:
                 # One compaction per run; a later "completed" event patches the same entity
                 compaction_id = f"compaction-{self._current_message_id}"
@@ -573,6 +587,7 @@ class ACPEventConverter:
                 | PartEndEvent()
                 | PartStartEvent()
                 | PlanUpdateEvent()
+                | PromptSuggestionEvent()
                 | RunErrorEvent()
                 | RunStartedEvent()
                 | SubAgentEvent()
@@ -661,6 +676,7 @@ class ACPEventConverter:
                 | PartEndEvent()
                 | PartStartEvent()
                 | PlanUpdateEvent()
+                | PromptSuggestionEvent()
                 | RunErrorEvent()
                 | RunStartedEvent()
                 | SubAgentEvent()

@@ -6128,6 +6128,12 @@
           "title": "Use Claude Subscription",
           "type": "boolean"
         },
+        "prompt_suggestions": {
+          "default": false,
+          "description": "Predict the next user prompt after each turn.\n\nCosts an additional model request per turn. Suggestions are forwarded to\nclients which support them (e.g. ACP ``prompt_suggestions_update``).",
+          "title": "Prompt Suggestions",
+          "type": "boolean"
+        },
         "tools": {
           "description": "Tools and toolsets to expose to this Claude Code agent via MCP bridge.\n\nSupports both single tools and toolsets. These will be started as an\nin-process MCP server and made available to Claude Code.\n\nDocs: https://phil65.github.io/agentpool/YAML%20Configuration/tool_configuration/",
           "examples": [

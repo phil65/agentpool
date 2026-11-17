@@ -84,6 +84,7 @@ from agentpool.agents.events import (
     CompactionEvent,
     PartDeltaEvent,
     PartStartEvent,
+    PromptSuggestionEvent,
     TerminalContentItem,
     ToolCallCompleteEvent,
     ToolCallProgressEvent,
@@ -324,10 +325,12 @@ class ClaudeCodeStreamedResponse(StreamedResponse):
                         pre_tokens=compact_metadata["pre_tokens"],
                     )
 
+                case PromptSuggestionMessage(suggestion=suggestion):
+                    yield PromptSuggestionEvent(suggestions=[suggestion])
+
                 case (
                     StreamEvent()
                     | UserMessage()
-                    | PromptSuggestionMessage()
                     | ResultSuccessMessage()
                     | ResultErrorMessage()
                     | HookStartedSystemMessage()

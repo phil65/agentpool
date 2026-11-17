@@ -614,6 +614,16 @@ class PlanUpdateEvent:
 
 
 @dataclass(kw_only=True)
+class PromptSuggestionEvent:
+    """Event carrying predicted next user prompts, replacing any previous suggestions."""
+
+    suggestions: list[str]
+    """Suggested prompts, ordered most likely first."""
+    event_kind: Literal["prompt_suggestion"] = "prompt_suggestion"
+    """Event type identifier."""
+
+
+@dataclass(kw_only=True)
 class SubAgentEvent:
     """Event wrapping activity from a subagent or team member.
 
@@ -692,6 +702,7 @@ type RichAgentStreamEvent[OutputDataT] = (
     | ToolCallProgressEvent
     | ToolCallCompleteEvent
     | PlanUpdateEvent
+    | PromptSuggestionEvent
     | CompactionEvent
     | SubAgentEvent
     | CustomEvent[Any]

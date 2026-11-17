@@ -340,6 +340,13 @@ class ClaudeCodeAgentConfig(BaseAgentConfig):
     Note: Requires an active Claude subscription and logged-in session.
     """
 
+    prompt_suggestions: bool = Field(default=False, title="Prompt Suggestions")
+    """Predict the next user prompt after each turn.
+
+    Costs an additional model request per turn. Suggestions are forwarded to
+    clients which support them (e.g. ACP ``prompt_suggestions_update``).
+    """
+
     tools: list[AnyToolConfig | str] = Field(
         default_factory=list,
         title="Tools",

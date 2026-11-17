@@ -163,6 +163,7 @@ class ClaudeCodeAgent[TDeps = None, TResult = str](BaseAgent[TDeps, TResult]):
         fallback_model: AnthropicMaxModelName | str | None = None,
         setting_sources: list[SettingSource] | None = None,
         use_subscription: bool = False,
+        prompt_suggestions: bool = False,
         env: ExecutionEnvironment | StrPath | None = None,
         input_provider: InputProvider | None = None,
         agent_pool: AgentPool[Any] | None = None,
@@ -201,6 +202,7 @@ class ClaudeCodeAgent[TDeps = None, TResult = str](BaseAgent[TDeps, TResult]):
             fallback_model: Fallback model when default is overloaded
             setting_sources: Setting sources to load ("user", "project", "local")
             use_subscription: Force Claude subscription usage instead of API key
+            prompt_suggestions: Predict the next user prompt after each turn
             env: Execution environment
             input_provider: Provider for user input/confirmations
             agent_pool: Agent pool for multi-agent coordination
@@ -265,6 +267,7 @@ class ClaudeCodeAgent[TDeps = None, TResult = str](BaseAgent[TDeps, TResult]):
         self._fallback_model = fallback_model
         self._setting_sources = setting_sources
         self._use_subscription = use_subscription
+        self._prompt_suggestions = prompt_suggestions
         self._toolsets = toolsets or []
         # Client state
         self._client: ClaudeSDKClient | None = None
@@ -331,6 +334,7 @@ class ClaudeCodeAgent[TDeps = None, TResult = str](BaseAgent[TDeps, TResult]):
             fallback_model=config.fallback_model,
             setting_sources=config.setting_sources,
             use_subscription=config.use_subscription,
+            prompt_suggestions=config.prompt_suggestions,
             # Toolsets
             toolsets=config.get_tool_providers() if config.tools else [],
             # Runtime
@@ -443,6 +447,7 @@ class ClaudeCodeAgent[TDeps = None, TResult = str](BaseAgent[TDeps, TResult]):
             add_dirs=self._add_dir or [],
             tools=self._builtin_tools,
             fallback_model=self._fallback_model,
+            prompt_suggestions=self._prompt_suggestions,
             on_permission=self._on_permission,
             on_user_question=self._on_user_question,
             on_elicitation=self._on_elicitation,

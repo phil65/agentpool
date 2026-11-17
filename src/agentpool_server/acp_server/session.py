@@ -375,6 +375,12 @@ class ACPSession:
         session_caps = self.client_capabilities.session
         return bool(session_caps and session_caps.compaction is not None)
 
+    @property
+    def supports_prompt_suggestions(self) -> bool:
+        """Whether the client renders ``prompt_suggestions_update`` session updates."""
+        session_caps = self.client_capabilities.session
+        return bool(session_caps and session_caps.prompt_suggestions is not None)
+
     async def apply_initial_config_options(
         self, options: Sequence[InitialSessionConfigOption]
     ) -> None:
@@ -464,6 +470,7 @@ class ACPSession:
                 subagent_display_mode=self.subagent_display_mode,
                 use_notices=self.supports_notices,
                 use_compaction_updates=self.supports_compaction,
+                use_prompt_suggestions=self.supports_prompt_suggestions,
             )
 
             try:  # Use the session's persistent input provider
