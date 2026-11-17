@@ -187,14 +187,15 @@ async def run_agent(
     """Run an ACP agent over stdio or provided streams.
 
     This is the recommended entry point for running agents. It handles stream
-    setup and connection lifecycle automatically.
+    setup and connection lifecycle automatically, and returns once the client
+    disconnects (or raises when cancelled).
 
     Args:
         agent: An Agent implementation or a factory callable that takes
             an AgentSideConnection and returns an Agent. Using a factory allows
             the agent to access the connection for client communication.
-        input_stream: Optional ByteSendStream for output (defaults to stdio).
-        output_stream: Optional ByteReceiveStream for input (defaults to stdio).
+        input_stream: ByteSendStream the agent writes to (defaults to stdout).
+        output_stream: ByteReceiveStream the agent reads from (defaults to stdin).
         **connection_kwargs: Additional keyword arguments for AgentSideConnection.
 
     Example with direct agent:
@@ -220,31 +221,15 @@ async def run_agent(
         await run_agent(create_agent)
         ```
     """
+    if (input_stream is None) != (output_stream is None):
+        msg = "Pass both input_stream and output_stream, or neither to use stdio"
+        raise ValueError(msg)
     if input_stream is None or output_stream is None:
-        # For stdio, we need to create byte streams from the text wrappers
-        # This follows the MCP SDK server pattern
-        _stdin_file, _stdout_file = await stdio_streams()
-        # Note: run_agent expects ByteSendStream/ByteReceiveStream but stdio_streams
-        # returns text AsyncFiles. For now, we'll use the underlying buffer.
-        # TODO: Consider refactoring to use memory object streams like MCP SDK
-        msg = "run_agent with stdio streams requires explicit stream arguments for now"
-        raise NotImplementedError(msg)
+        output_stream, input_stream = await stdio_streams()
 
-    # Wrap agent instance in factory if needed
-    if callable(agent):
-        agent_factory = agent
-    else:
-
-        def agent_factory(connection: AgentSideConnection) -> Agent:
-            return agent
-
-    conn = AgentSideConnection(agent_factory, input_stream, output_stream, **connection_kwargs)
-    shutdown_event = asyncio.Event()
+    conn = AgentSideConnection(agent, input_stream, output_stream, **connection_kwargs)
     try:
-        # Keep the connection alive until cancelled
-        await shutdown_event.wait()
-    except asyncio.CancelledError:
-        pass
+        await conn.wait_closed()
     finally:
         await conn.close()
 

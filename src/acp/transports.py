@@ -146,6 +146,24 @@ async def serve(
             assert_never(unreachable)
 
 
+async def _run_until_closed(
+    conn: AgentSideConnection, shutdown_event: asyncio.Event | None
+) -> None:
+    """Keep the connection open until the peer disconnects, shutdown is signalled or cancelled."""
+    waiters: set[asyncio.Task[Any]] = {asyncio.create_task(conn.wait_closed())}
+    if shutdown_event is not None:
+        waiters.add(asyncio.create_task(shutdown_event.wait()))
+    try:
+        await asyncio.wait(waiters, return_when=asyncio.FIRST_COMPLETED)
+    except asyncio.CancelledError:
+        pass
+    finally:
+        for waiter in waiters:
+            waiter.cancel()
+        await asyncio.gather(*waiters, return_exceptions=True)
+        await conn.close()
+
+
 async def _serve_stdio(
     agent: Agent | Callable[[AgentSideConnection], Agent],
     shutdown_event: asyncio.Event | None,
@@ -160,15 +178,7 @@ async def _serve_stdio(
     reader, writer = await stdio_streams()
 
     conn = AgentSideConnection(agent_factory, writer, reader, debug_file=debug_file, **kwargs)
-    try:
-        if shutdown_event:
-            await shutdown_event.wait()
-        else:
-            await asyncio.Event().wait()  # Wait forever
-    except asyncio.CancelledError:
-        pass
-    finally:
-        await conn.close()
+    await _run_until_closed(conn, shutdown_event)
 
 
 async def _serve_streams(
@@ -184,15 +194,7 @@ async def _serve_streams(
 
     agent_factory = _ensure_factory(agent)
     conn = AgentSideConnection(agent_factory, writer, reader, debug_file=debug_file, **kwargs)
-    try:
-        if shutdown_event:
-            await shutdown_event.wait()
-        else:
-            await asyncio.Event().wait()
-    except asyncio.CancelledError:
-        pass
-    finally:
-        await conn.close()
+    await _run_until_closed(conn, shutdown_event)
 
 
 async def _serve_websocket(
@@ -224,31 +226,12 @@ async def _serve_websocket(
             agent_factory, ws_writer, ws_reader, debug_file=debug_file, **kwargs
         )
         connections.append(conn)
-
         try:
-            # Keep connection alive until client disconnects or shutdown
-            client_done = asyncio.Event()
-
-            async def monitor_websocket() -> None:
-                try:
-                    async for _ in websocket:
-                        pass  # Messages handled by ws_reader
-                except websockets.exceptions.ConnectionClosed:
-                    pass
-                finally:
-                    client_done.set()
-
-            monitor_task = asyncio.create_task(monitor_websocket())
-            tasks = [asyncio.create_task(client_done.wait()), asyncio.create_task(shutdown.wait())]
-            _done, _ = await asyncio.wait(tasks, return_when=asyncio.FIRST_COMPLETED)
-            monitor_task.cancel()
-            with contextlib.suppress(asyncio.CancelledError):
-                await monitor_task
-        except websockets.exceptions.ConnectionClosed:
-            logger.info("WebSocket client disconnected")
+            # The reader turns a closed socket into EOF, which closes the connection.
+            await _run_until_closed(conn, shutdown)
         finally:
             connections.remove(conn)
-            await conn.close()
+            logger.info("WebSocket client disconnected")
 
     logger.info("Starting WebSocket server on ws://%s:%d", host, port)
     async with websockets.serve(handle_client, host, port):
@@ -443,9 +426,10 @@ async def spawn_stdio_transport(
             with contextlib.suppress(asyncio.CancelledError):
                 await stderr_task
 
-        # Attempt graceful stdin shutdown first
+        # Attempt graceful stdin shutdown first. Bounded: closing waits for buffered
+        # data to drain, which never happens if the child stopped reading.
         if process.stdin is not None:
-            with contextlib.suppress(Exception):
+            with contextlib.suppress(Exception), anyio.move_on_after(shutdown_timeout):
                 await process.stdin.aclose()
 
         try:
