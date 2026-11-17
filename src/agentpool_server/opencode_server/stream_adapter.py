@@ -26,6 +26,7 @@ from agentpool.agents.events import (
     DiffContentItem,
     FileContentItem,
     LocationContentItem,
+    NoticeEvent,
     RunErrorEvent,
     StreamCompleteEvent,
     SubAgentEvent,
@@ -59,6 +60,7 @@ from opencode_sdk.models import (
     ToolStateError,
     ToolStatePending,
     ToolStateRunning,
+    TuiToastShowEvent,
 )
 
 
@@ -261,6 +263,13 @@ class OpenCodeStreamAdapter:
 
             case CompactionEvent(session_id=compact_session_id, phase="completed"):
                 yield SessionCompactedEvent.create(session_id=compact_session_id)
+
+            case NoticeEvent(severity=severity, title=title, description=description):
+                yield TuiToastShowEvent.create(
+                    message=description or title,
+                    variant=severity,
+                    title=title if description else None,
+                )
 
             case RunErrorEvent(message=error_message, agent_name=agent_name):
                 error_prefix = f"[{agent_name}] " if agent_name else ""

@@ -181,7 +181,7 @@ class ACPAgent[TDeps = None](BaseAgent[TDeps, str]):
         self._client_env = client_execution_env
         # ACP initialization
         self._init_request = init_request or InitializeRequest.create_for_package(
-            "agentpool", prompt_suggestions=True, compaction=True
+            "agentpool", prompt_suggestions=True, compaction=True, notices=True
         )
         # Tools
         self._tool_providers = tool_providers or []
@@ -241,6 +241,7 @@ class ACPAgent[TDeps = None](BaseAgent[TDeps, str]):
                 allow_file_operations=config.allow_file_operations,
                 prompt_suggestions=True,
                 compaction=True,
+                notices=True,
             ),
             # Tools
             tool_providers=config.get_tool_providers(),

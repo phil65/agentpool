@@ -55,6 +55,7 @@ from agentpool.agents.events import (
     DiffContentItem,
     FileContentItem,
     LocationContentItem,
+    NoticeEvent,
     PlanUpdateEvent,
     PromptSuggestionEvent,
     RunErrorEvent,
@@ -478,15 +479,29 @@ class ACPEventConverter:
                     ]
                 )
 
-            case CompactionEvent(phase=phase) if self.use_compaction_updates:
+            case CompactionEvent(phase=phase, error=error) if self.use_compaction_updates:
                 # One compaction per run; a later "completed" event patches the same entity
                 compaction_id = f"compaction-{self._current_message_id}"
-                status = "in_progress" if phase == "starting" else "completed"
-                yield CompactionUpdate(compaction_id=compaction_id, status=status)
+                status = {"starting": "in_progress", "completed": "completed", "failed": "failed"}
+                yield CompactionUpdate(
+                    compaction_id=compaction_id, status=status[phase], error=error
+                )
 
             case CompactionEvent(phase="starting"):
                 text = event.format()
                 yield AgentMessageChunk.text(text, message_id=self._current_message_id)
+
+            case CompactionEvent(phase="failed", error=error):
+                text = f"\n\n❌ **Compaction failed**{f': {error}' if error else ''}\n\n"
+                yield AgentMessageChunk.text(text, message_id=self._current_message_id)
+
+            case NoticeEvent(severity=severity, title=title, description=description) if (
+                self.use_notices
+            ):
+                yield Notice(severity=severity, title=title, description=description)
+
+            case NoticeEvent():
+                yield AgentMessageChunk.text(event.format(), message_id=self._current_message_id)
 
             case SubAgentEvent(
                 source_name=source_name,
@@ -588,6 +603,7 @@ class ACPEventConverter:
                 | PartStartEvent()
                 | PlanUpdateEvent()
                 | PromptSuggestionEvent()
+                | NoticeEvent()
                 | RunErrorEvent()
                 | RunStartedEvent()
                 | SubAgentEvent()
@@ -677,6 +693,7 @@ class ACPEventConverter:
                 | PartStartEvent()
                 | PlanUpdateEvent()
                 | PromptSuggestionEvent()
+                | NoticeEvent()
                 | RunErrorEvent()
                 | RunStartedEvent()
                 | SubAgentEvent()

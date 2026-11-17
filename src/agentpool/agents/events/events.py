@@ -48,7 +48,8 @@ if TYPE_CHECKING:
 SubAgentType = Literal["agent", "team_parallel", "team_sequential"]
 # Lifecycle events (aligned with AG-UI protocol)
 CompactionTrigger = Literal["auto", "manual"]
-CompactionPhase = Literal["starting", "completed"]
+CompactionPhase = Literal["starting", "completed", "failed"]
+NoticeSeverity = Literal["info", "warning", "error"]
 ToolCallStatus = Literal["pending", "in_progress", "completed", "failed"]
 
 
@@ -624,6 +625,25 @@ class PromptSuggestionEvent:
 
 
 @dataclass(kw_only=True)
+class NoticeEvent:
+    """Fire-and-forget information for the user, not part of the conversation."""
+
+    title: str
+    """Plain-text title that can stand alone."""
+    severity: NoticeSeverity = "info"
+    """Presentation severity hint."""
+    description: str | None = None
+    """Optional plain-text detail or guidance."""
+    event_kind: Literal["notice"] = "notice"
+    """Event type identifier."""
+
+    def format(self) -> str:
+        icon = {"info": "ℹ️", "warning": "⚠️", "error": "❌"}[self.severity]  # noqa: RUF001
+        detail = f": {self.description}" if self.description else ""
+        return f"\n\n{icon} **{self.title}**{detail}\n\n"
+
+
+@dataclass(kw_only=True)
 class SubAgentEvent:
     """Event wrapping activity from a subagent or team member.
 
@@ -647,7 +667,7 @@ class SubAgentEvent:
 
 @dataclass(kw_only=True)
 class CompactionEvent:
-    """Event indicating context compaction is starting or completed.
+    """Event indicating context compaction is starting, completed or failed.
 
     This is a semantic event that consumers (ACP, OpenCode) handle differently:
     - ACP: Converts to a text message for display
@@ -662,6 +682,8 @@ class CompactionEvent:
     """Current phase of compaction."""
     pre_tokens: int | None = None
     """Token count before compaction (available on completed phase from Claude Code)."""
+    error: str | None = None
+    """Error details for the failed phase."""
     event_kind: Literal["compaction"] = "compaction"
     """Event type identifier."""
 
@@ -703,6 +725,7 @@ type RichAgentStreamEvent[OutputDataT] = (
     | ToolCallCompleteEvent
     | PlanUpdateEvent
     | PromptSuggestionEvent
+    | NoticeEvent
     | CompactionEvent
     | SubAgentEvent
     | CustomEvent[Any]

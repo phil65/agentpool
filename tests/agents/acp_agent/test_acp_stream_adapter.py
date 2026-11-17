@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING
 from acp.schema import (
     CompactionUpdate,
     InitializeRequest,
+    Notice,
     PromptSuggestion,
     PromptSuggestionsUpdate,
     ResourceContentBlock,
@@ -16,7 +17,7 @@ from acp.schema import (
 from agentpool.agents.acp_agent.client_handler import TimeoutableEvent
 from agentpool.agents.acp_agent.session_state import ACPSessionState
 from agentpool.agents.acp_agent.stream_adapter import AcpAgentStreamedResponse
-from agentpool.agents.events import CompactionEvent, PromptSuggestionEvent
+from agentpool.agents.events import CompactionEvent, NoticeEvent, PromptSuggestionEvent
 
 
 if TYPE_CHECKING:
@@ -60,21 +61,35 @@ async def test_compaction_updates_start_once_per_id() -> None:
         CompactionUpdate(compaction_id="c1", status="in_progress"),
         CompactionUpdate(compaction_id="c1", status="in_progress"),
         CompactionUpdate(compaction_id="c1", status="completed"),
-        CompactionUpdate(compaction_id="c2", status="failed"),
+        CompactionUpdate(compaction_id="c2", status="failed", error="too large"),
+        CompactionUpdate(compaction_id="c3", status="cancelled"),
     )
     assert events == [
         CompactionEvent(session_id="local", phase="starting"),
         CompactionEvent(session_id="local", phase="completed"),
+        CompactionEvent(session_id="local", phase="failed", error="too large"),
+        CompactionEvent(session_id="local", phase="failed"),
+    ]
+
+
+async def test_notices_map_unknown_severity_to_info() -> None:
+    events = await _stream(
+        Notice(severity="warning", title="Low quota", description="10% left"),
+        Notice(severity="critical", title="Custom"),
+    )
+    assert events == [
+        NoticeEvent(severity="warning", title="Low quota", description="10% left"),
+        NoticeEvent(severity="info", title="Custom"),
     ]
 
 
 def test_initialize_request_advertises_session_capabilities() -> None:
     request = InitializeRequest.create_for_package(
-        "agentpool", prompt_suggestions=True, compaction=True
+        "agentpool", prompt_suggestions=True, compaction=True, notices=True
     )
     assert request.client_capabilities
     session = request.client_capabilities.session
     assert session
     assert session.prompt_suggestions is not None
     assert session.compaction is not None
-    assert session.notices is None
+    assert session.notices is not None

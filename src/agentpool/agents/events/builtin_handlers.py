@@ -19,6 +19,7 @@ from pydantic_ai import (
 )
 
 from agentpool.agents.events import (
+    NoticeEvent,
     RunErrorEvent,
     StreamCompleteEvent,
     ToolCallProgressEvent,
@@ -75,6 +76,7 @@ async def detailed_print_handler(ctx: AgentContext[Any], event: RichAgentStreamE
     - Tool calls with inputs
     - Tool results
     - Tool progress with title
+    - Notices
     - Errors
     """
     match event:
@@ -110,6 +112,9 @@ async def detailed_print_handler(ctx: AgentContext[Any], event: RichAgentStreamE
             if title:
                 emoji = {"completed": "✅", "failed": "❌"}.get(status, "⏳")
                 print(f"  {emoji} {title}", flush=True, file=sys.stderr)
+
+        case NoticeEvent():
+            print(event.format(), end="", flush=True, file=sys.stderr)
 
         case RunErrorEvent(message=message, code=code):
             error_info = f" [{code}]" if code else ""

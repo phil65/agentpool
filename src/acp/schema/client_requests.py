@@ -14,6 +14,7 @@ from acp.schema.capabilities import (
     ClientSessionCapabilities,
     CompactionCapabilities,
     FileSystemCapabilities,
+    NoticeCapabilities,
     PromptSuggestionsCapabilities,
 )
 from acp.schema.common import Implementation
@@ -309,6 +310,7 @@ class InitializeRequest(Request):
         terminal_auth: bool = False,
         prompt_suggestions: bool = False,
         compaction: bool = False,
+        notices: bool = False,
         metadata: dict[str, Any] | None = None,
     ) -> Self:
         """Create a new InitializeRequest instance."""
@@ -317,6 +319,7 @@ class InitializeRequest(Request):
         session = ClientSessionCapabilities(
             prompt_suggestions=PromptSuggestionsCapabilities() if prompt_suggestions else None,
             compaction=CompactionCapabilities() if compaction else None,
+            notices=NoticeCapabilities() if notices else None,
         )
         caps = ClientCapabilities(terminal=terminal, fs=fs, auth=auth, session=session)
         impl = Implementation(title=title, name=name, version=version)
@@ -336,6 +339,7 @@ class InitializeRequest(Request):
         terminal_auth: bool = False,
         prompt_suggestions: bool = False,
         compaction: bool = False,
+        notices: bool = False,
         metadata: dict[str, Any] | None = None,
     ) -> InitializeRequest:
         """Create ACP initialize request for app with given name (based on pkg metadata)."""
@@ -353,6 +357,7 @@ class InitializeRequest(Request):
             terminal_auth=terminal_auth,
             prompt_suggestions=prompt_suggestions,
             compaction=compaction,
+            notices=notices,
             metadata=metadata,
         )
 

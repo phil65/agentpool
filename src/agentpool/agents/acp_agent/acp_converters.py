@@ -60,6 +60,7 @@ from acp.schema import (
     EmbeddedResourceContentBlock,
     FileEditToolCallContent,
     ImageContentBlock,
+    Notice,
     PromptSuggestionsUpdate,
     ResourceContentBlock,
     SelectSessionConfigOption,
@@ -77,6 +78,7 @@ from agentpool.agents.events import (
     CompactionEvent,
     DiffContentItem,
     LocationContentItem,
+    NoticeEvent,
     PartDeltaEvent,
     PlanUpdateEvent,
     PromptSuggestionEvent,
@@ -531,6 +533,19 @@ def acp_to_native_event(  # noqa: PLR0911
 
         case CompactionUpdate(status="completed"):
             return CompactionEvent(session_id=session_id, phase="completed")
+
+        case CompactionUpdate(status="failed" | "cancelled", error=error):
+            return CompactionEvent(session_id=session_id, phase="failed", error=error)
+
+        case Notice(
+            severity="info" | "warning" | "error" as severity,
+            title=title,
+            description=description,
+        ):
+            return NoticeEvent(severity=severity, title=title, description=description)
+
+        case Notice(title=title, description=description):
+            return NoticeEvent(title=title, description=description)
 
         case _:
             return None

@@ -10,6 +10,7 @@ import pytest
 
 from acp.exceptions import RequestError
 from acp.schema import (
+    AgentMessageChunk,
     ClientCapabilities,
     ClientSessionCapabilities,
     CompactionCapabilities,
@@ -27,7 +28,12 @@ from acp.schema import (
     TextContentBlock,
     ToolCallStart,
 )
-from agentpool.agents.events import CompactionEvent, PromptSuggestionEvent, RunErrorEvent
+from agentpool.agents.events import (
+    CompactionEvent,
+    NoticeEvent,
+    PromptSuggestionEvent,
+    RunErrorEvent,
+)
 from agentpool_server.acp_server.event_converter import ACPEventConverter
 
 
@@ -59,6 +65,26 @@ async def test_compaction_updates_only_when_supported() -> None:
     assert isinstance(second, CompactionUpdate)
     assert (first.status, second.status) == ("in_progress", "completed")
     assert first.compaction_id == second.compaction_id
+
+
+async def test_failed_compaction_carries_error() -> None:
+    event = CompactionEvent(session_id="s", phase="failed", error="too large")
+    [update] = await _collect(ACPEventConverter(use_compaction_updates=True), event)
+    assert isinstance(update, CompactionUpdate)
+    assert (update.status, update.error) == ("failed", "too large")
+
+    [fallback] = await _collect(ACPEventConverter(), event)
+    assert isinstance(fallback, AgentMessageChunk)
+
+
+async def test_notice_events_fall_back_to_text() -> None:
+    event = NoticeEvent(severity="warning", title="Low quota", description="10% left")
+    [notice] = await _collect(ACPEventConverter(use_notices=True), event)
+    assert notice == Notice(severity="warning", title="Low quota", description="10% left")
+
+    [fallback] = await _collect(ACPEventConverter(), event)
+    assert isinstance(fallback, AgentMessageChunk)
+    assert "Low quota" in fallback.content.text
 
 
 async def test_run_errors_become_notices_when_supported() -> None:
