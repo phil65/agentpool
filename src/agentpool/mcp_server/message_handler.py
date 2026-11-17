@@ -140,4 +140,6 @@ class MCPMessageHandler:
 
         Sent by servers when a URL mode elicitation completes out-of-band.
         """
-        logger.info("MCP elicitation completed", elicitation_id=message.params.elicitation_id)
+        elicitation_id = message.params.elicitation_id
+        logger.info("MCP elicitation completed", elicitation_id=elicitation_id)
+        await self.client.complete_url_elicitation(elicitation_id)

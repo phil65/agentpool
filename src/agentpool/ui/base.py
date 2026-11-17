@@ -69,10 +69,21 @@ class InputProvider(ABC):
     def get_elicitation(
         self,
         params: types.ElicitRequestParams,
+        *,
+        tool_call_id: str | None = None,
     ) -> Coroutine[Any, Any, types.ElicitResult | types.ErrorData]:
         """Get user response to elicitation request.
 
         Args:
-            context: Current agent context
             params: MCP elicit request parameters
+            tool_call_id: ID of the tool call requesting input, if any
+        """
+
+    async def elicitation_complete(self, elicitation_id: str) -> None:  # noqa: B027
+        """Handle completion of a URL elicitation this provider handled.
+
+        Sent by MCP servers once the out-of-band URL flow finished. No-op by default.
+
+        Args:
+            elicitation_id: ID of the completed URL elicitation
         """

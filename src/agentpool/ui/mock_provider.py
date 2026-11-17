@@ -76,6 +76,8 @@ class MockInputProvider(InputProvider):
     async def get_elicitation(
         self,
         params: types.ElicitRequestParams,
+        *,
+        tool_call_id: str | None = None,
     ) -> types.ElicitResult | types.ErrorData:
         from mcp import types
 

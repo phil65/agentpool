@@ -89,6 +89,8 @@ class StdlibInputProvider(InputProvider):
     async def get_elicitation(
         self,
         params: types.ElicitRequestParams,
+        *,
+        tool_call_id: str | None = None,
     ) -> types.ElicitResult | types.ErrorData:
         """Get user response to elicitation request using stdlib input."""
         print(f"\n{params.message}", file=sys.stderr)

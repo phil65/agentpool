@@ -53,7 +53,7 @@ class AgentContext[TDeps = Any](NodeContext[TDeps]):
     async def handle_elicitation(self, params: ElicitRequestParams) -> ElicitResult | ErrorData:
         """Handle elicitation request for additional information."""
         provider = self.get_input_provider()
-        return await provider.get_elicitation(params)
+        return await provider.get_elicitation(params, tool_call_id=self.tool_call_id)
 
     async def report_progress(self, progress: float, total: float | None, message: str) -> None:
         """Report progress by emitting event into the agent's stream."""

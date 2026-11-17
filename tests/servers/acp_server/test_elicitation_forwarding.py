@@ -35,7 +35,8 @@ def _provider(caps: ClientCapabilities, response: ElicitationResponse | None = N
             return_value=RequestPermissionResponse(outcome=AllowedOutcome(option_id="false"))
         ),
     )
-    session: Any = SimpleNamespace(client_capabilities=caps, requests=requests)
+    client = SimpleNamespace(elicitation_complete=AsyncMock())
+    session: Any = SimpleNamespace(client_capabilities=caps, requests=requests, client=client)
     return ACPInputProvider(session)
 
 
@@ -49,11 +50,12 @@ async def test_form_elicitation_is_forwarded() -> None:
     provider = _provider(_form_caps(), response)
     params = types.ElicitRequestFormParams(message="Who?", requested_schema=FORM_SCHEMA)
 
-    result = await provider.get_elicitation(params)
+    result = await provider.get_elicitation(params, tool_call_id="tc1")
 
     assert result == types.ElicitResult(action="accept", content={"name": "x", "count": 2})
     request: ElicitationRequest = provider.session.requests.elicit.call_args.args[0]
     assert request.mode == "form"
+    assert request.tool_call_id == "tc1"
     assert request.requested_schema
     assert set(request.requested_schema.properties) == {"name", "count"}
     provider.session.requests.request_permission.assert_not_called()
@@ -76,6 +78,32 @@ async def test_url_elicitation_needs_url_capability() -> None:
         "e1",
         "https://example.com",
     )
+
+
+async def test_url_elicitation_completion_is_relayed() -> None:
+    caps = ClientCapabilities(elicitation=ElicitationCapabilities(url=ElicitationUrlCapabilities()))
+    provider = _provider(caps, ElicitationResponse.accept())
+    params = types.ElicitRequestURLParams(
+        message="Log in", url="https://example.com", elicitation_id="e1"
+    )
+    await provider.get_elicitation(params)
+
+    await provider.elicitation_complete("unknown")
+    await provider.elicitation_complete("e1")
+    await provider.elicitation_complete("e1")
+
+    complete = provider.session.client.elicitation_complete
+    assert complete.call_count == 1
+    assert complete.call_args.args[0].elicitation_id == "e1"
+
+
+async def test_url_elicitation_without_client_support_is_declined() -> None:
+    provider = _provider(ClientCapabilities())
+    params = types.ElicitRequestURLParams(
+        message="Log in", url="https://example.com", elicitation_id="e1"
+    )
+    assert await provider.get_elicitation(params) == types.ElicitResult(action="decline")
+    provider.session.requests.request_permission.assert_not_called()
 
 
 async def test_unsupported_schema_falls_back_to_permission_options() -> None:

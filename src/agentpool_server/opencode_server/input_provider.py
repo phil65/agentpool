@@ -262,6 +262,8 @@ class OpenCodeInputProvider(InputProvider):
     async def get_elicitation(
         self,
         params: types.ElicitRequestParams,
+        *,
+        tool_call_id: str | None = None,
     ) -> types.ElicitResult | types.ErrorData:
         """Get user response to elicitation request via OpenCode questions.
 
@@ -270,6 +272,7 @@ class OpenCodeInputProvider(InputProvider):
 
         Args:
             params: MCP elicit request parameters
+            tool_call_id: ID of the tool call requesting input, if any
 
         Returns:
             Elicit result with user's response or error data

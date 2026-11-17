@@ -389,7 +389,7 @@ class CodexAgent[TDeps = None, OutputDataT = str](BaseAgent[TDeps, OutputDataT])
                 f"{question.header}: {question.question}" if question.header else question.question
             )
             mcp_params = ElicitRequestFormParams(message=message, requested_schema=schema)
-            result = await input_provider.get_elicitation(params=mcp_params)
+            result = await input_provider.get_elicitation(mcp_params, tool_call_id=params.item_id)
 
             match result:
                 case ErrorData():

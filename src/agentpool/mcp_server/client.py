@@ -56,6 +56,7 @@ if TYPE_CHECKING:
     )
     from upathtools.filesystems import MCPFileSystem, MCPToolsFileSystem
 
+    from agentpool.ui.base import InputProvider
     from agentpool_config.mcp_server import MCPServerConfig
 
 
@@ -82,6 +83,8 @@ class MCPClient:
     ) -> None:
         # Mutable handler swapped per call_tool for dynamic elicitation
         self._current_elicitation_handler: ElicitationHandler | None = None
+        # Input providers that handled URL elicitations, to route completion notifications
+        self._url_elicitations: dict[str, InputProvider] = {}
         self.config = config
         self._sampling_callback = sampling_callback
         # Store message handler or mark for lazy creation
@@ -150,6 +153,11 @@ class MCPClient:
         """Handle server log messages."""
         level = MCP_TO_LOGGING.get(message.level, logging.INFO)
         logger.log(level, "MCP Server: ", data=message.data)
+
+    async def complete_url_elicitation(self, elicitation_id: str) -> None:
+        """Forward an MCP URL elicitation completion to the provider that handled it."""
+        if provider := self._url_elicitations.pop(elicitation_id, None):
+            await provider.elicitation_complete(elicitation_id)
 
     async def _forwarding_elicitation_callback[T](
         self,
@@ -387,8 +395,15 @@ class MCPClient:
                 context: RequestContext[Any, Any],
             ) -> T | dict[str, Any] | Any:
                 from fastmcp.client.elicitation import ElicitResult
-                from mcp.types import ElicitResult as MCPElicitResult, ErrorData
+                from mcp.types import (
+                    ElicitRequestURLParams,
+                    ElicitResult as MCPElicitResult,
+                    ErrorData,
+                )
 
+                if isinstance(params, ElicitRequestURLParams) and params.elicitation_id:
+                    provider = agent_ctx.get_input_provider()
+                    self._url_elicitations[params.elicitation_id] = provider
                 result = await agent_ctx.handle_elicitation(params)
                 match result:
                     case MCPElicitResult(action="accept", content=content):

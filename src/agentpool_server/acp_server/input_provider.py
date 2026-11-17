@@ -4,13 +4,12 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any, Literal, assert_never
 import uuid
-import webbrowser
 
 from mcp import types
 from pydantic import ValidationError
 
 from acp import AllowedOutcome, DeniedOutcome, PermissionOption
-from acp.schema import ElicitationRequest, ElicitationSchema
+from acp.schema import ElicitationCompleteNotification, ElicitationRequest, ElicitationSchema
 from acp.utils import DEFAULT_PERMISSION_OPTIONS
 from agentpool.log import get_logger
 from agentpool.ui.base import InputProvider
@@ -95,6 +94,8 @@ class ACPInputProvider(InputProvider):
         """
         self.session = session
         self._tool_approvals: dict[str, Literal["allow_always", "reject_always"]] = {}
+        # URL elicitations forwarded to the client, awaiting `elicitation/complete`
+        self._pending_url_elicitations: set[str] = set()
 
     async def get_tool_confirmation(
         self,
@@ -198,7 +199,9 @@ class ACPInputProvider(InputProvider):
                 logger.warning("Unknown permission option", option_id=option_id)
                 return "abort_run"
 
-    def _to_acp_elicitation(self, params: types.ElicitRequestParams) -> ElicitationRequest | None:
+    def _to_acp_elicitation(
+        self, params: types.ElicitRequestParams, tool_call_id: str | None = None
+    ) -> ElicitationRequest | None:
         """Translate an MCP elicitation into an ACP one, if the client supports that mode."""
         caps = self.session.client_capabilities.elicitation
         if caps is None:
@@ -207,7 +210,8 @@ class ACPInputProvider(InputProvider):
             case types.ElicitRequestURLParams(elicitation_id=elicit_id, message=msg, url=url):
                 if caps.url is None:
                     return None
-                return ElicitationRequest.url_based(msg, elicit_id or str(uuid.uuid4()), url)
+                elicit_id = elicit_id or str(uuid.uuid4())
+                return ElicitationRequest.url_based(msg, elicit_id, url, tool_call_id=tool_call_id)
             case types.ElicitRequestFormParams(requested_schema=schema, message=msg):
                 if caps.form is None:
                     return None
@@ -217,13 +221,15 @@ class ACPInputProvider(InputProvider):
                     # ACP only allows flat objects of primitive properties
                     logger.debug("Schema not expressible as ACP elicitation", schema=schema)
                     return None
-                return ElicitationRequest.form(msg, acp_schema)
+                return ElicitationRequest.form(msg, acp_schema, tool_call_id=tool_call_id)
             case _ as unreachable:
                 assert_never(unreachable)
 
     async def get_elicitation(  # noqa: PLR0911
         self,
         params: types.ElicitRequestParams,
+        *,
+        tool_call_id: str | None = None,
     ) -> types.ElicitResult | types.ErrorData:
         """Get user response to elicitation request.
 
@@ -233,13 +239,16 @@ class ACPInputProvider(InputProvider):
 
         Args:
             params: MCP elicit request parameters
+            tool_call_id: ID of the tool call requesting input, if any
 
         Returns:
             Elicit result with user's response or error data
         """
         try:
-            if request := self._to_acp_elicitation(params):
+            if request := self._to_acp_elicitation(params, tool_call_id):
                 acp_response = await self.session.requests.elicit(request)
+                if request.elicitation_id and acp_response.action == "accept":
+                    self._pending_url_elicitations.add(request.elicitation_id)
                 match acp_response.action:
                     case "accept":
                         content = acp_response.content
@@ -250,34 +259,12 @@ class ACPInputProvider(InputProvider):
                         return types.ElicitResult(action="cancel")
             # Handle URL mode elicitation (OAuth, credentials, payments)
             match params:
-                case types.ElicitRequestURLParams(
-                    elicitation_id=elicit_id,
-                    message=message,
-                    url=url,
-                ):
-                    msg = "URL elicitation request"
-                    logger.info(msg, message=message, url=url, elicitation_id=elicit_id)
-                    tool_call_id = f"elicit_url_{elicit_id}"
-                    title = f"URL Authorization: {message}"
-                    url_options = [
-                        PermissionOption(option_id="accept", name="Open URL", kind="allow_once"),
-                        PermissionOption(option_id="decline", name="Decline", kind="reject_once"),
-                    ]
-                    response = await self.session.requests.request_permission(
-                        tool_call_id=tool_call_id,
-                        title=title,
-                        options=url_options,
-                    )
-                    match response.outcome:
-                        case AllowedOutcome(option_id="accept"):
-                            webbrowser.open(params.url)
-                            return types.ElicitResult(action="accept")
-                        case AllowedOutcome():
-                            return types.ElicitResult(action="decline")
-                        case DeniedOutcome():
-                            return types.ElicitResult(action="cancel")
-                        case _ as unreachable:
-                            assert_never(unreachable)
+                case types.ElicitRequestURLParams(message=message, url=url):
+                    # Opening a browser here would happen on the server machine, which
+                    # is not where the user is for remote clients.
+                    msg = "Declining URL elicitation: client does not support URL elicitation"
+                    logger.info(msg, message=message, url=url)
+                    return types.ElicitResult(action="decline")
                 case types.ElicitRequestFormParams(requested_schema=schema, message=message):
                     logger.info("Elicitation request", message=message, schema=schema)
                     tool_call_id = f"elicit_{hash(message)}"
@@ -329,6 +316,14 @@ class ACPInputProvider(InputProvider):
         except Exception as e:
             logger.exception("Failed to handle elicitation")
             return types.ErrorData(code=types.INTERNAL_ERROR, message=f"Elicitation failed: {e}")
+
+    async def elicitation_complete(self, elicitation_id: str) -> None:
+        """Tell the client a forwarded URL elicitation finished (``elicitation/complete``)."""
+        if elicitation_id not in self._pending_url_elicitations:
+            return
+        self._pending_url_elicitations.discard(elicitation_id)
+        notification = ElicitationCompleteNotification(elicitation_id=elicitation_id)
+        await self.session.client.elicitation_complete(notification)
 
     def _handle_boolean_elicitation_response(
         self, response: RequestPermissionResponse, schema: dict[str, Any]
