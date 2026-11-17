@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import asyncio
 from dataclasses import dataclass, field
+from decimal import Decimal
 import re
 from typing import TYPE_CHECKING, Any, Literal, assert_never
 
@@ -209,6 +210,7 @@ class ACPSession:
         self._task_lock = asyncio.Lock()
         self._cancelled = False
         self.last_usage: Usage | None = None
+        self.total_cost = Decimal(0)  # Cumulative cost of this session's turns
         self.fs = ACPFileSystem(self.client, session_id=self.session_id)
         self.command_store = CommandStore(commands=get_all_commands())
         self.command_store._initialize_sync()
@@ -445,7 +447,6 @@ class ACPSession:
         Returns:
             Stop reason
         """
-        self._cancelled = False
         fs = self.agent.env.get_fs()
         contents = [from_acp_content(i, fs=fs) for i in content_blocks]
         self.log.debug("Converted content", content=contents)
@@ -454,6 +455,8 @@ class ACPSession:
             return "refusal"
         commands, non_command_content = split_commands(contents, self.command_store)
         async with self._task_lock:
+            # Reset only once the previous turn is over, it may still be cancelling
+            self._cancelled = False
             if commands:  # Process commands if found
                 for command in commands:
                     self.log.info("Processing slash command", command=command)
@@ -471,6 +474,8 @@ class ACPSession:
                 use_notices=self.supports_notices,
                 use_compaction_updates=self.supports_compaction,
                 use_prompt_suggestions=self.supports_prompt_suggestions,
+                context_window=await self._get_context_window(),
+                session_cost=self.total_cost,
             )
 
             try:  # Use the session's persistent input provider
@@ -483,51 +488,55 @@ class ACPSession:
                 ):
                     if self._cancelled:
                         self.log.info("Cancelled during event loop, cleaning up tool calls")
-                        # Send cancellation notifications for any pending tool calls
-                        # This happens in the same async context as the converter
-                        async for cancel_update in converter.cancel_pending_tools():
-                            await self.notifications.send_update(cancel_update)
-                        # CRITICAL: Allow time for client to process tool completion notifications
-                        # before sending PromptResponse. Without this delay, the client may receive
-                        # and process the PromptResponse before the tool notifications, causing UI
-                        # state desync where subsequent prompts appear stuck/unresponsive.
-                        # This is needed because even though send() awaits the write, the client
-                        # may process messages asynchronously or out of order.
-                        await anyio.sleep(0.05)
-                        return "cancelled"
-
+                        return await self._finish_cancelled_turn(converter)
                     event_count += 1
                     async for update in converter.convert(event):
                         await self.notifications.send_update(update)
-                    # Yield control to allow notifications to be sent immediately
-                    await anyio.sleep(0.01)
                 self.log.info("Streaming finished", events_processed=event_count)
 
             except asyncio.CancelledError:
-                # Task was cancelled (e.g., via interrupt()) - return proper stop reason
-                # This is critical: CancelledError doesn't inherit from Exception,
-                # so we must catch it explicitly to send the PromptResponse
+                # Task was cancelled (e.g., via interrupt() or `$/cancel_request`). Answer
+                # with the proper stop reason instead of propagating the cancellation.
                 self.log.info("Stream cancelled via CancelledError, cleaning up tool calls")
-                # Send cancellation notifications for any pending tool calls
-                async for cancel_update in converter.cancel_pending_tools():
-                    await self.notifications.send_update(cancel_update)
-                # CRITICAL: Allow time for client to process tool completion notifications
-                # before sending PromptResponse. See comment in cancellation branch above.
-                await anyio.sleep(0.05)
-                return "cancelled"
+                return await self._finish_cancelled_turn(converter)
             except UsageLimitExceeded as e:
                 self.log.info("Usage limit exceeded", error=str(e))
                 return infer_stop_reason(str(e))
             except Exception as e:
                 self.log.exception("Error during streaming")
-                # Send error notification asynchronously to avoid blocking response
-                coro = self._send_error_notification(f"❌ Agent error: {e}")
-                self.acp_agent.tasks.create_task(coro)
+                # Awaited so the error shows up within this turn, before the response
+                await self._send_error_notification(f"❌ Agent error: {e}")
                 return "end_turn"
-            else:
-                # Title generation is now handled automatically by log_session
-                self.last_usage = converter.last_usage
-                return "end_turn"
+            finally:
+                self.total_cost = converter.session_cost
+            # An interrupted agent may end its stream normally without another event
+            if self._cancelled:
+                return await self._finish_cancelled_turn(converter)
+            self.last_usage = converter.last_usage
+            return "end_turn"
+
+    async def _finish_cancelled_turn(self, converter: ACPEventConverter) -> StopReason:
+        """Close the turn's pending tool calls and report it as cancelled."""
+        async for cancel_update in converter.cancel_pending_tools():
+            await self.notifications.send_update(cancel_update)
+        # Give the client time to apply the tool call updates before the PromptResponse;
+        # some clients were seen handling the response first, leaving the UI stuck.
+        await anyio.sleep(0.05)
+        return "cancelled"
+
+    async def _get_context_window(self) -> int | None:
+        """Context window of the agent's current model, if it can be determined."""
+        if not (model_name := self.agent.model_name):
+            return None
+        try:
+            models = await self.agent.get_available_models()
+        except Exception:
+            self.log.debug("Could not fetch models for context window lookup", exc_info=True)
+            return None
+        for info in models or []:
+            if model_name in (info.id, info.pydantic_ai_id):
+                return info.context_window
+        return None
 
     async def _send_error_notification(self, message: str) -> None:
         """Send error notification, with exception handling."""
@@ -661,9 +670,7 @@ class ACPSession:
             await self.command_store.execute_command(command_str, cmd_ctx)
         except Exception as e:
             logger.exception("Command execution failed")
-            # Send error notification asynchronously to avoid blocking
-            coro = self._send_error_notification(f"❌ Command error: {e}")
-            self.acp_agent.tasks.create_task(coro)
+            await self._send_error_notification(f"❌ Command error: {e}")
 
     def register_update_callback(self, callback: Callable[[], None]) -> None:
         """Register callback for command updates."""

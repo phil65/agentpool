@@ -11,6 +11,7 @@ This separation enables easy testing without mocks.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from decimal import Decimal
 from typing import TYPE_CHECKING, Any, Literal, assert_never
 import uuid
 
@@ -18,6 +19,7 @@ from pydantic_ai import (
     FinalResultEvent,
     FunctionToolCallEvent,
     FunctionToolResultEvent,
+    ModelResponse,
     NativeToolCallPart,
     NativeToolReturnPart,
     PartDeltaEvent,
@@ -80,8 +82,24 @@ if TYPE_CHECKING:
     from acp.schema.tool_call import ToolCallContent, ToolCallKind
     from agentpool.agents.events import RichAgentStreamEvent
     from agentpool.agents.events.events import SubAgentType
+    from agentpool.messaging import ChatMessage
 
 logger = get_logger(__name__)
+
+
+def context_tokens(message: ChatMessage[Any]) -> int | None:
+    """Tokens in the model's context after a run: the size of its last request.
+
+    The run usage sums every request of a tool loop, so it overcounts the context;
+    it is only used when the run consisted of a single request.
+    """
+    for model_message in reversed(message.messages):
+        if isinstance(model_message, ModelResponse) and model_message.usage.total_tokens:
+            return model_message.usage.input_tokens + model_message.usage.output_tokens
+    usage = message.usage
+    if usage.requests <= 1 and usage.total_tokens:
+        return usage.input_tokens + usage.output_tokens
+    return None
 
 
 @dataclass
@@ -129,6 +147,12 @@ class ACPEventConverter:
 
     use_prompt_suggestions: bool = False
     """Send ``prompt_suggestions_update`` (client advertised ``session.prompt_suggestions``)."""
+
+    context_window: int | None = None
+    """Context window of the model in tokens; ``usage_update`` is only sent when known."""
+
+    session_cost: Decimal = Decimal(0)
+    """Cumulative session cost, including this turn once it completed."""
 
     # Internal state
     _tool_states: dict[str, _ToolState] = field(default_factory=dict)
@@ -453,17 +477,18 @@ class ACPEventConverter:
                 pass  # No notification needed
 
             case StreamCompleteEvent(message=message):
-                request_usage = message.usage
-                if request_usage.total_tokens > 0:
-                    self.last_usage = to_usage(request_usage)
-                    cost_obj: Cost | None = None
-                    if message.cost_info and message.cost_info.total_cost:
-                        cost_obj = Cost(amount=float(message.cost_info.total_cost), currency="USD")
-                    yield UsageUpdate(
-                        used=request_usage.total_tokens,
-                        size=request_usage.total_tokens,  # best approximation
-                        cost=cost_obj,
+                if message.usage.total_tokens > 0:
+                    self.last_usage = to_usage(message.usage)
+                if message.cost_info:
+                    self.session_cost += message.cost_info.total_cost
+                # Without the window size a fill level would be made up, so skip the update
+                if self.context_window and (used := context_tokens(message)) is not None:
+                    cost = (
+                        Cost(amount=float(self.session_cost), currency="USD")
+                        if self.session_cost
+                        else None
                     )
+                    yield UsageUpdate(used=used, size=self.context_window, cost=cost)
 
             case PlanUpdateEvent(entries=entries):
                 acp_entries = [

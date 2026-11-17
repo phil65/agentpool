@@ -63,7 +63,7 @@ class ACPSessionManager:
         client_info: Implementation | None = None,
         additional_directories: Sequence[str] = (),
         system_prompt: str | None = None,
-    ) -> str:
+    ) -> ACPSession:
         """Create a new ACP session.
 
         Args:
@@ -79,7 +79,10 @@ class ACPSessionManager:
             system_prompt: Client-provided system instructions
 
         Returns:
-            Session ID for the created session
+            The created session
+
+        Raises:
+            ValueError: A session with this ID is already active
         """
         from agentpool.utils.identifiers import generate_session_id
 
@@ -93,13 +96,16 @@ class ACPSessionManager:
                 logger.warning("Session ID already exists", session_id=session_id)
                 msg = f"Session {session_id} already exists"
                 raise ValueError(msg)
-            # Create and persist session data via pool's SessionManager
-            data = SessionData(
-                session_id=session_id,
-                agent_name=agent.name,
-                cwd=cwd,
-                metadata={"protocol": "acp", "mcp_server_count": len(mcp_servers or [])},
-            )
+            # Persist session data. A loaded/resumed session keeps its stored record
+            # (title, creation time, SDK session id, ...) and only gets refreshed.
+            metadata = {"protocol": "acp", "mcp_server_count": len(mcp_servers or [])}
+            if stored := await self.storage.load_session(session_id):
+                data = stored.with_agent(agent.name).with_metadata(**metadata)
+                data = data.model_copy(update={"cwd": cwd or stored.cwd})
+            else:
+                data = SessionData(
+                    session_id=session_id, agent_name=agent.name, cwd=cwd, metadata=metadata
+                )
             await self.storage.save_session(data)
             # Create the ACP-specific runtime session
             session = ACPSession(
@@ -120,7 +126,7 @@ class ACPSessionManager:
             await session.initialize_mcp_servers()
             self._active[session_id] = session
             logger.info("Created ACP session", session_id=session_id, agent=agent.name)
-            return session_id
+            return session
 
     def get_session(self, session_id: str) -> ACPSession | None:
         """Get an active session by ID."""

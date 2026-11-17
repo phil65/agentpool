@@ -37,6 +37,7 @@ from acp.schema import (
     SetSessionModeResponse,
     SetSessionTitleResponse,
 )
+from agentpool.agents.exceptions import UnknownCategoryError, UnknownModeError
 from agentpool.log import get_logger
 from agentpool.utils.tasks import TaskManager
 from agentpool_server.acp_server.converters import (
@@ -80,6 +81,7 @@ if TYPE_CHECKING:
     from agentpool.agents.base_agent import BaseAgent
     from agentpool.storage.manager import SessionMetadataGeneratedEvent
     from agentpool_server.acp_server.server import ACPServer
+    from agentpool_server.acp_server.session import ACPSession
 
 logger = get_logger(__name__)
 
@@ -127,6 +129,14 @@ async def get_session_config_options(agent: BaseAgent) -> list[SessionConfigOpti
     #     if opt.id == config_id:
     #         opt.current_value = value_id
     #         break
+
+
+async def _set_mode(agent: BaseAgent, mode_id: str, *, category_id: str) -> None:
+    """Switch an agent mode, reporting unknown modes/categories as invalid params."""
+    try:
+        await agent.set_mode(mode_id, category_id=category_id)
+    except (UnknownModeError, UnknownCategoryError) as exc:
+        raise RequestError.invalid_params({"details": str(exc)}) from exc
 
 
 @dataclass
@@ -235,13 +245,22 @@ class AgentPoolACPAgent(ACPAgent):
         response.agent_capabilities.auth.status = AuthStatusCapabilities()
         return response
 
+    def _require_initialized(self) -> None:
+        if not self._initialized:
+            raise RequestError.invalid_request({"details": "Connection not initialized"})
+
+    def _require_session(self, session_id: str) -> ACPSession:
+        if session := self.session_manager.get_session(session_id):
+            return session
+        raise RequestError.resource_not_found(session_id)
+
     async def _create_session(
         self,
         params: NewSessionRequest | LoadSessionRequest | ResumeSessionRequest | ForkSessionRequest,
         session_id: str | None = None,
-    ) -> str:
+    ) -> ACPSession:
         """Create an ACP session from a session setup request."""
-        new_id = await self.session_manager.create_session(
+        session = await self.session_manager.create_session(
             agent=self.default_agent,
             cwd=params.cwd or "",
             client=self.client,
@@ -253,54 +272,56 @@ class AgentPoolACPAgent(ACPAgent):
             additional_directories=params.additional_directories,
             system_prompt=system_prompt_text(params.system_prompt),
         )
-        if params.config_options and (session := self.session_manager.get_session(new_id)):
+        if params.config_options:
             await session.apply_initial_config_options(params.config_options)
-        return new_id
+        return session
+
+    async def _attach_stored_session(
+        self, params: LoadSessionRequest | ResumeSessionRequest
+    ) -> ACPSession:
+        """Return the active session, or recreate it from storage.
+
+        Raises:
+            RequestError: The session exists neither in memory nor in storage.
+        """
+        if session := self.session_manager.get_session(params.session_id):
+            return session
+        if not await self.session_manager.storage.load_session(params.session_id):
+            raise RequestError.resource_not_found(params.session_id)
+        return await self._create_session(params, session_id=params.session_id)
+
+    def _schedule_session_setup(self, session: ACPSession) -> None:
+        """Send commands and load rules once the session response is out."""
+        self.tasks.create_task(session.send_available_commands_update())
+        self.tasks.create_task(session.agent.load_rules(session.cwd))
 
     async def new_session(self, params: NewSessionRequest) -> NewSessionResponse:
         """Create a new session."""
         from agentpool.agents.acp_agent import ACPAgent as ACPAgentClient
 
-        if not self._initialized:
-            raise RuntimeError("Agent not initialized")
-
+        self._require_initialized()
         logger.info("Creating new session", default_agent=self.default_agent.name)
-        try:
-            session_id = await self._create_session(params)
-            state: SessionModeState | None = None
-            config_options: list[SessionConfigOption] = []
-
-            if session := self.session_manager.get_session(session_id):
-                if isinstance(session.agent, ACPAgentClient):
-                    # Nested ACP agent - pass through its state directly
-                    if session.agent._state:
-                        state = session.agent._state.modes
-                    # Also get config_options from nested agent
-                    config_options = await get_session_config_options(session.agent)
-                else:
-                    # Use unified helpers for all other agents
-                    state = await get_session_mode_state(session.agent)
-                    config_options = await get_session_config_options(session.agent)
-        except Exception:
-            logger.exception("Failed to create new session")
-            raise
+        session = await self._create_session(params)
+        state: SessionModeState | None = None
+        if isinstance(session.agent, ACPAgentClient):
+            # Nested ACP agent - pass through its state directly
+            if session.agent._state:
+                state = session.agent._state.modes
         else:
-            # Schedule available commands update after session response is returned
-            if session := self.session_manager.get_session(session_id):
-                # Schedule task to run after response is sent
-                self.tasks.create_task(session.send_available_commands_update())
-                self.tasks.create_task(session.agent.load_rules(session.cwd))
-                self.tasks.create_task(session._register_prompt_hub_commands())
-                if self.load_skills:
-                    coro_4 = session.init_client_skills()
-                    self.tasks.create_task(coro_4, name=f"init_client_skills_{session_id}")
-            logger.info("Created session", session_id=session_id)
-
-            return NewSessionResponse(
-                session_id=session_id,
-                modes=state,
-                config_options=config_options if config_options else None,
-            )
+            state = await get_session_mode_state(session.agent)
+        config_options = await get_session_config_options(session.agent)
+        # Schedule follow-up work to run after the response is sent
+        self._schedule_session_setup(session)
+        self.tasks.create_task(session._register_prompt_hub_commands())
+        if self.load_skills:
+            coro = session.init_client_skills()
+            self.tasks.create_task(coro, name=f"init_client_skills_{session.session_id}")
+        logger.info("Created session", session_id=session.session_id)
+        return NewSessionResponse(
+            session_id=session.session_id,
+            modes=state,
+            config_options=config_options or None,
+        )
 
     async def load_session(self, params: LoadSessionRequest) -> LoadSessionResponse:
         """Load an existing session from storage.
@@ -311,88 +332,48 @@ class AgentPoolACPAgent(ACPAgent):
         from agentpool.agents.acp_agent import ACPAgent as ACPAgentClient
         from agentpool.agents.acp_agent.acp_converters import model_messages_to_session_updates
 
-        if not self._initialized:
-            raise RuntimeError("Agent not initialized")
-
-        try:
-            # Get or create an active session wrapper
-            session = self.session_manager.get_session(params.session_id)
-            if not session:
-                session_id = await self._create_session(params, session_id=params.session_id)
-                session = self.session_manager.get_session(session_id)
-
-            if not session:
-                logger.error("Failed to create session")
-                return LoadSessionResponse()
-
-            # Load session via agent - this populates agent.conversation
-            if not await self.default_agent.load_session(params.session_id):
-                logger.warning("Agent failed to load session", session_id=params.session_id)
-                return LoadSessionResponse()
-
-            # Replay loaded conversation to client via ACP notifications
-            if msgs := self.default_agent.conversation.chat_messages:
-                model_messages: list[ModelMessage] = []
-                for chat_msg in msgs:
-                    if chat_msg.messages:
-                        model_messages.extend(chat_msg.messages)
-                for update in model_messages_to_session_updates(model_messages):
-                    await session.notifications.send_update(update)
-                # await session.notifications.send_update(
-                #     UsageUpdate(used=chat_msg.usage.total_tokens)
-                # )
-                # await session.notifications.send_update(
-                #     SessionInfoUpdate(
-                #         session_id=params.session_id,
-                #         title="",
-                #         updated_at=model_messages[-1].timestamp,
-                #     )
-                # )
-
-                logger.info(
-                    "Conversation replayed",
-                    session_id=params.session_id,
-                    message_count=len(model_messages),
-                )
-            mode_state: SessionModeState | None = None
-            if isinstance(self.default_agent, ACPAgentClient) and self.default_agent._state:
-                mode_state = self.default_agent._state.modes
-            config_opts = await get_session_config_options(self.default_agent)
-            # Schedule post-load tasks
-            self.tasks.create_task(session.send_available_commands_update())
-            self.tasks.create_task(session.agent.load_rules(session.cwd))
-            logger.info("Session loaded", session_id=params.session_id)
-            return LoadSessionResponse(modes=mode_state, config_options=config_opts)
-        except Exception:
-            logger.exception("Failed to load session", session_id=params.session_id)
-            return LoadSessionResponse()
+        self._require_initialized()
+        session = await self._attach_stored_session(params)
+        # Load session via agent - this populates agent.conversation
+        if not await self.default_agent.load_session(params.session_id):
+            details = f"Agent {self.default_agent.name!r} failed to load the session"
+            raise RequestError.internal_error({"details": details})
+        # Replay loaded conversation to client via ACP notifications
+        model_messages: list[ModelMessage] = [
+            model_msg
+            for chat_msg in self.default_agent.conversation.chat_messages
+            for model_msg in chat_msg.messages
+        ]
+        for update in model_messages_to_session_updates(model_messages):
+            await session.notifications.send_update(update)
+        logger.info(
+            "Conversation replayed",
+            session_id=params.session_id,
+            message_count=len(model_messages),
+        )
+        mode_state: SessionModeState | None = None
+        if isinstance(self.default_agent, ACPAgentClient) and self.default_agent._state:
+            mode_state = self.default_agent._state.modes
+        config_opts = await get_session_config_options(self.default_agent)
+        self._schedule_session_setup(session)
+        logger.info("Session loaded", session_id=params.session_id)
+        return LoadSessionResponse(modes=mode_state, config_options=config_opts)
 
     async def list_sessions(self, params: ListSessionsRequest) -> ListSessionsResponse:
         """List available sessions.
 
         Delegates to the current agent's list_sessions method which handles
         fetching sessions from storage with proper titles.
-
-        Uses a short TTL cache to avoid redundant expensive storage reads
-        when clients request the list multiple times in quick succession.
         """
-        if not self._initialized:
-            raise RuntimeError("Agent not initialized")
-
+        self._require_initialized()
         # Get agent from first active session, or fall back to default
         first_session = next(iter(self.session_manager._active.values()), None)
         agent = first_session.agent if first_session else self.default_agent
-        try:
-            logger.info("Listing sessions for agent", agent_name=agent.name)
-            agent_sessions = await agent.list_sessions()
-            logger.info("Agent returned sessions", count=len(agent_sessions))
-            sessions = [to_session_info(s) for s in agent_sessions]
-        except Exception:
-            logger.exception("Failed to list sessions")
-            return ListSessionsResponse(sessions=[])
-        else:
-            logger.info("Listed sessions", count=len(sessions))
-            return ListSessionsResponse(sessions=sessions)
+        logger.info("Listing sessions for agent", agent_name=agent.name)
+        agent_sessions = await agent.list_sessions()
+        sessions = [to_session_info(s) for s in agent_sessions]
+        logger.info("Listed sessions", count=len(sessions))
+        return ListSessionsResponse(sessions=sessions)
 
     async def fork_session(self, params: ForkSessionRequest) -> ForkSessionResponse:
         """Fork an existing session.
@@ -400,15 +381,12 @@ class AgentPoolACPAgent(ACPAgent):
         Creates a new session with the same state as the original.
         UNSTABLE: This feature is not part of the spec yet.
         """
-        if not self._initialized:
-            raise RuntimeError("Agent not initialized")
-
+        self._require_initialized()
         logger.info("Forking session", session_id=params.session_id)
         # For now, just create a new session - full fork implementation would copy state
-        session_id = await self._create_session(params)
-        session = self.session_manager.get_session(session_id)
-        config_options = await get_session_config_options(session.agent) if session else []
-        return ForkSessionResponse(session_id=session_id, config_options=config_options)
+        session = await self._create_session(params)
+        config_options = await get_session_config_options(session.agent)
+        return ForkSessionResponse(session_id=session.session_id, config_options=config_options)
 
     async def resume_session(self, params: ResumeSessionRequest) -> ResumeSessionResponse:
         """Resume an existing session without replaying history.
@@ -416,38 +394,16 @@ class AgentPoolACPAgent(ACPAgent):
         Like load_session but doesn't send session/update notifications with
         previous messages. The agent restores its internal state so the
         conversation can continue.
-
-        UNSTABLE: This feature is not part of the spec yet.
         """
-        if not self._initialized:
-            raise RuntimeError("Agent not initialized")
-
-        try:
-            # Get or create session wrapper
-            session = self.session_manager.get_session(params.session_id)
-            if not session:
-                session_id = await self._create_session(params, session_id=params.session_id)
-                session = self.session_manager.get_session(session_id)
-
-            if not session:
-                logger.error("Failed to create session for resume")
-                return ResumeSessionResponse()
-
-            # Load session state in the agent (populates conversation) but don't replay to client
-            # This restores the agent's internal state so it can continue the conversation
-            if not await self.default_agent.load_session(params.session_id):
-                logger.warning("Agent failed to load session state", session_id=params.session_id)
-                # Continue anyway - session wrapper is created, agent may still work
-
-            # Schedule post-resume tasks
-            self.tasks.create_task(session.send_available_commands_update())
-            self.tasks.create_task(session.agent.load_rules(session.cwd))
-            logger.info("Session resumed", session_id=params.session_id)
-            return ResumeSessionResponse()
-
-        except Exception:
-            logger.exception("Failed to resume session", session_id=params.session_id)
-            return ResumeSessionResponse()
+        self._require_initialized()
+        session = await self._attach_stored_session(params)
+        # Restore the agent's state (conversation) without replaying it to the client
+        if not await self.default_agent.load_session(params.session_id):
+            details = f"Agent {self.default_agent.name!r} failed to restore the session"
+            raise RequestError.internal_error({"details": details})
+        self._schedule_session_setup(session)
+        logger.info("Session resumed", session_id=params.session_id)
+        return ResumeSessionResponse()
 
     async def authenticate(self, params: AuthenticateRequest) -> None:
         """Authenticate with the agent."""
@@ -468,65 +424,38 @@ class AgentPoolACPAgent(ACPAgent):
         """Log out of the current authenticated state."""
         logger.info("Logout requested")
 
-    async def prompt(self, params: PromptRequest) -> PromptResponse:
-        """Process a prompt request."""
-        if not self._initialized:
-            raise RuntimeError("Agent not initialized")
+    async def _recreate_session(self, session_id: str) -> ACPSession:
+        """Recreate a session that is not active anymore (e.g. after a pool swap)."""
+        stored = await self.session_manager.storage.load_session(session_id)
+        if stored is None:
+            raise RequestError.resource_not_found(session_id)
+        logger.info("Session not active, recreating", session_id=session_id)
+        session = await self.session_manager.create_session(
+            agent=self.default_agent,
+            cwd=stored.cwd or ".",
+            client=self.client,
+            acp_agent=self,
+            session_id=session_id,
+            client_capabilities=self.client_capabilities,
+            client_info=self.client_info,
+        )
+        self._schedule_session_setup(session)
+        return session
 
+    async def prompt(self, params: PromptRequest) -> PromptResponse:
+        """Process a prompt request.
+
+        Failures while running the agent are shown to the user in the session and end
+        the turn; only protocol-level problems (unknown session, ...) become errors.
+        """
+        self._require_initialized()
         logger.info("Processing prompt", session_id=params.session_id)
         session = self.session_manager.get_session(params.session_id)
-        # Auto-recreate session if not found (e.g., after pool swap)
-        if not session:
-            logger.info("Session not found, recreating", session_id=params.session_id)
-            # Try to get cwd from stored session data
-            cwd = "."
-            try:
-                stored = await self.session_manager.storage.load_session(params.session_id)
-                if stored and stored.cwd:
-                    cwd = stored.cwd
-            except Exception:  # noqa: BLE001
-                pass  # Use default cwd
-
-            try:
-                # Recreate session with same ID using default agent
-                await self.session_manager.create_session(
-                    agent=self.default_agent,
-                    cwd=cwd,
-                    client=self.client,
-                    acp_agent=self,
-                    session_id=params.session_id,
-                    client_capabilities=self.client_capabilities,
-                    client_info=self.client_info,
-                )
-                if session := self.session_manager.get_session(params.session_id):
-                    # Initialize session extras
-                    self.tasks.create_task(session.send_available_commands_update())
-                    self.tasks.create_task(session.agent.load_rules(session.cwd))
-            except Exception:
-                logger.exception("Failed to recreate session", session_id=params.session_id)
-                return PromptResponse(stop_reason="end_turn")
-
-        try:
-            if not session:
-                raise ValueError(f"Session {params.session_id} not found")  # noqa: TRY301
-            stop_reason = await session.process_prompt(params.prompt)
-            # Return the actual stop reason from the session
-        except Exception as e:
-            logger.exception("Failed to process prompt", session_id=params.session_id)
-            msg = f"Error processing prompt: {e}"
-            if session:
-                # Send error notification asynchronously to avoid blocking response
-                name = f"error_notification_{params.session_id}"
-                self.tasks.create_task(session._send_error_notification(msg), name=name)
-
-            return PromptResponse(stop_reason="end_turn")
-        else:
-            response = PromptResponse(
-                stop_reason=stop_reason,
-                usage=session.last_usage,
-            )
-            logger.info("Returning PromptResponse", stop_reason=stop_reason)
-            return response
+        if session is None:
+            session = await self._recreate_session(params.session_id)
+        stop_reason = await session.process_prompt(params.prompt)
+        logger.info("Returning PromptResponse", stop_reason=stop_reason)
+        return PromptResponse(stop_reason=stop_reason, usage=session.last_usage)
 
     async def close_session(self, params: CloseSessionRequest) -> CloseSessionResponse:
         """Close an active session and free its resources.
@@ -535,15 +464,10 @@ class AgentPoolACPAgent(ACPAgent):
         closes the session and releases all associated resources.
         """
         logger.info("Stopping session", session_id=params.session_id)
-        try:
-            # Cancel ongoing work first
-            if session := self.session_manager.get_session(params.session_id):
-                await session.cancel()
-            # Close and release session resources
-            await self.session_manager.close_session(params.session_id)
-            logger.info("Session stopped", session_id=params.session_id)
-        except Exception:
-            logger.exception("Failed to close session", session_id=params.session_id)
+        if session := self.session_manager.get_session(params.session_id):
+            await session.cancel()
+        await self.session_manager.close_session(params.session_id)
+        logger.info("Session stopped", session_id=params.session_id)
         return CloseSessionResponse()
 
     async def delete_session(self, params: DeleteSessionRequest) -> DeleteSessionResponse:
@@ -594,14 +518,14 @@ class AgentPoolACPAgent(ACPAgent):
             logger.exception("Failed to cancel session", session_id=params.session_id)
 
     async def ext_method(self, method: str, params: dict[str, Any]) -> dict[str, Any]:
-        return {"example": "response"}
+        """No extension methods are implemented."""
+        raise RequestError.method_not_found(f"_{method}")
 
     async def ext_notification(self, method: str, params: dict[str, Any]) -> None:
-        return None
+        """Unknown extension notifications are ignored, as the protocol requires."""
+        logger.debug("Ignoring extension notification", method=method)
 
-    async def set_session_mode(
-        self, params: SetSessionModeRequest
-    ) -> SetSessionModeResponse | None:
+    async def set_session_mode(self, params: SetSessionModeRequest) -> SetSessionModeResponse:
         """Set the session mode (change tool confirmation level).
 
         Calls set_mode directly on the agent with the mode_id, allowing the agent
@@ -609,64 +533,45 @@ class AgentPoolACPAgent(ACPAgent):
         """
         from agentpool.agents.acp_agent import ACPAgent as ACPAgentClient
 
-        session = self.session_manager.get_session(params.session_id)
-        if not session:
-            logger.warning("Session not found for mode switch", session_id=params.session_id)
-            return None
-        try:
-            # Call set_mode directly - agent handles mode-specific logic
-            await session.agent.set_mode(params.mode_id, category_id="mode")
-            # Update stored mode state for ACPAgent
-            if (
-                isinstance(session.agent, ACPAgentClient)
-                and session.agent._state
-                and session.agent._state.modes
-            ):
-                session.agent._state.modes.current_mode_id = params.mode_id
-
-            logger.info("Set mode", mode_id=params.mode_id, session_id=params.session_id)
-            return SetSessionModeResponse()
-
-        except Exception:
-            logger.exception("Failed to set session mode", session_id=params.session_id)
-            return None
+        session = self._require_session(params.session_id)
+        await _set_mode(session.agent, params.mode_id, category_id="mode")
+        # Update stored mode state for ACPAgent
+        if (
+            isinstance(session.agent, ACPAgentClient)
+            and session.agent._state
+            and session.agent._state.modes
+        ):
+            session.agent._state.modes.current_mode_id = params.mode_id
+        logger.info("Set mode", mode_id=params.mode_id, session_id=params.session_id)
+        return SetSessionModeResponse()
 
     async def set_session_config_option(
         self, params: SetSessionConfigOptionRequest
-    ) -> SetSessionConfigOptionResponse | None:
+    ) -> SetSessionConfigOptionResponse:
         """Set a session config option.
 
         Forwards the config option change to the agent's set_mode method
         and returns the updated config options.
         """
-        session = self.session_manager.get_session(params.session_id)
-        if not session or not session.agent:
-            msg = "Session not found for config option change"
-            logger.warning(msg, session_id=params.session_id)
-            return None
+        session = self._require_session(params.session_id)
         logger.info(
             "Set config option",
             config_id=params.config_id,
             value=params.value,
             session_id=params.session_id,
         )
-        try:
-            match params.value:
-                case bool():
-                    # Boolean config option — forward as string mode_id
-                    bool_str = str(params.value).lower()
-                    await session.agent.set_mode(bool_str, category_id=params.config_id)
-                case str():
-                    # Select config option — config_id maps to category_id, value to mode_id
-                    await session.agent.set_mode(params.value, category_id=params.config_id)
-                case _ as unreachable:
-                    assert_never(unreachable)
-            # Return updated config options
-            config_options = await get_session_config_options(session.agent)
-            return SetSessionConfigOptionResponse(config_options=config_options)
-        except Exception:
-            logger.exception("Failed to set session config option", session_id=params.session_id)
-            return None
+        match params.value:
+            case bool():
+                # Boolean config option — forward as string mode_id
+                value = str(params.value).lower()
+            case str():
+                # Select config option — config_id maps to category_id, value to mode_id
+                value = params.value
+            case _ as unreachable:
+                assert_never(unreachable)
+        await _set_mode(session.agent, value, category_id=params.config_id)
+        config_options = await get_session_config_options(session.agent)
+        return SetSessionConfigOptionResponse(config_options=config_options)
 
     async def swap_pool(self, config_path: str, agent_name: str | None = None) -> list[str]:
         """Swap the agent pool with a new one from configuration.

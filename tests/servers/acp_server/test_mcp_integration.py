@@ -116,7 +116,7 @@ async def test_session_manager_with_mcp(
     mcp_servers = [StdioMcpServer(name="tools", command="echo", args=["tools"], env=[])]
     async with agent_pool:
         try:
-            session_id = await session_manager.create_session(
+            created = await session_manager.create_session(
                 agent=agent,
                 cwd=tempfile.gettempdir(),
                 client=test_client,
@@ -125,10 +125,10 @@ async def test_session_manager_with_mcp(
                 client_capabilities=client_capabilities,
             )
 
-            session = session_manager.get_session(session_id)
-            assert session is not None
+            session = session_manager.get_session(created.session_id)
+            assert session is created
             assert session.mcp_servers == mcp_servers
-            await session_manager.close_session(session_id)
+            await session_manager.close_session(created.session_id)
 
         except Exception:
             logger.exception("Session manager test failed")

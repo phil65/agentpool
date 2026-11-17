@@ -161,7 +161,8 @@ class ACPInputProvider(InputProvider):
                 case AllowedOutcome(option_id=option_id):
                     return self._handle_permission_response(option_id, tool_name)
                 case DeniedOutcome():
-                    return "skip"
+                    # The client cancelled the prompt turn: stop instead of running on
+                    return "abort_run"
                 case _ as outcome:
                     logger.warning("Unexpected permission outcome", outcome=outcome)
 
