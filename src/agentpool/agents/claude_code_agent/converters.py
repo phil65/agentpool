@@ -112,6 +112,7 @@ def to_auth_status(account: ClaudeCodeAccountInfo | None) -> AuthStatus:
         external = AuthAccount(label=account.api_provider, description="External credentials")
         return AuthStatus(state="not_required", accounts=[external])
     source = account.token_source or account.api_key_source
+    # Inferred: not verified what a logged-out CLI reports in its init account info.
     if not (source or account.email):
         return AuthStatus(state="unauthenticated")
     label = account.subscription_type or (

@@ -860,6 +860,7 @@ class ClaudeCodeAgent[TDeps = None, TResult = str](BaseAgent[TDeps, TResult]):
 
     async def get_auth_status(self) -> AuthStatus:
         """Get the Claude account the CLI is using."""
+        # Waits for the deferred CLI connection, so the first call can be slow.
         await self.ensure_initialized()
         server_info = await self._client.get_server_info() if self._client else None
         return to_auth_status(server_info.account if server_info else None)

@@ -451,10 +451,16 @@ class AgentPoolACPAgent(ACPAgent):
 
     async def authenticate(self, params: AuthenticateRequest) -> None:
         """Authenticate with the agent."""
+        # TODO: No auth methods are advertised, so clients seeing ``unauthenticated`` from
+        # auth/status cannot sign in. Terminal auth (`claude /login`, `codex login`) would fit.
         logger.info("Authentication requested", method_id=params.method_id)
 
     async def auth_status(self, params: AuthStatusRequest) -> AuthStatusResponse:
         """Report the auth state of the default agent's backend."""
+        # TODO: auth/status is per connection, but pools may mix backends and sessions can
+        # switch agents. Consider aggregating accounts of all pool members.
+        # TODO: Send auth/status_update on changes (Claude AuthStatusMessage, Codex
+        # account/updated notification).
         status = await self.default_agent.get_auth_status()
         return to_auth_status_response(status)
 

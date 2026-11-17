@@ -1109,6 +1109,7 @@ class BaseAgent[TDeps = None, TResult = str](MessageNode[TDeps, TResult]):
 
         Defaults to ``not_required``: credentials come from config/env, there is no sign-in.
         """
+        # TODO: AGUIAgent inherits this, though ``unknown`` may fit a remote endpoint better.
         from agentpool.agents.auth import AuthStatus
 
         return AuthStatus(state="not_required")

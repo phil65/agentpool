@@ -469,6 +469,8 @@ def _suggestion_to_text(blocks: Sequence[ContentBlock]) -> str:
             case TextContentBlock(text=text):
                 parts.append(text)
             case ResourceContentBlock(uri=uri, name=name, title=title):
+                # TODO: pydantic_ai_helpers.format_uri_as_link uses the `[@name](uri)` mention
+                # style; consider aligning.
                 parts.append(f"[{title or name}]({uri})")
     return "".join(parts)
 
