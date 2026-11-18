@@ -1,3 +1,28 @@
+## Upstream Schema Sync
+
+The models in `acp.schema` are hand-written against a pinned release of the upstream
+[ACP schema](https://github.com/agentclientprotocol/agent-client-protocol/tree/main/schema).
+Each protocol version has a pin in `schema/acp/v{N}/`:
+
+| File | Content |
+| --- | --- |
+| `VERSION` | Upstream git tag, e.g. `schema-v1.33.0` |
+| `schema.unstable.json`, `meta.unstable.json` | Upstream files of that tag, unchanged |
+| `conformance.toml` | Renames and known differences, each with a reason |
+
+```bash
+uv run python -m acp.schema_reference latest            # pinned vs newest upstream tag
+uv run python -m acp.schema_reference sync --dry-run    # changelog of the newest tag
+uv run python -m acp.schema_reference sync              # pin the newest tag
+uv run python -m acp.schema_reference check             # models vs pinned schema
+```
+
+Use `--protocol 2` for the v2 pin. To sync, run `sync`, apply the printed changelog to
+the models by hand, and run `check` until it reports no undocumented differences.
+`tests/acp/test_schema_reference.py` runs the same check, so drift fails CI; a known
+difference that no longer occurs fails it too, so remove fixed entries from
+`conformance.toml`.
+
 ## ACP Protocol Features
 
 ### JSON-RPC 2.0 Communication
