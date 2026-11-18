@@ -23,21 +23,6 @@ ToolKind = "ToolCallKind"
 [known]
 # Finding id = reason.
 
-# Not implemented yet: session cursors RFD.
-"missing-shape:CursorAnchor[type=agent_message]" = "session cursors not implemented"
-"missing-shape:CursorAnchor[type=agent_thought]" = "session cursors not implemented"
-"missing-shape:CursorAnchor[type=compaction]" = "session cursors not implemented"
-"missing-shape:CursorAnchor[type=session_message]" = "session cursors not implemented"
-"missing-shape:CursorAnchor[type=tool_call]" = "session cursors not implemented"
-"missing-shape:CursorAnchor[type=user_message]" = "session cursors not implemented"
-"missing-shape:CursorCapabilities" = "session cursors not implemented"
-"missing-shape:CursorForkCapabilities" = "session cursors not implemented"
-"missing-shape:SessionCursorsCapabilities" = "session cursors not implemented"
-"missing-shape:SessionUpdate[sessionUpdate=cursor_update]" = "session cursors not implemented"
-"missing-field:ClientSessionCapabilities.cursors" = "session cursors not implemented"
-"missing-field:ForkSessionRequest.cursorId" = "session cursors not implemented"
-"missing-enum:CursorAnchorPosition" = "session cursors not implemented"
-
 # Modelled differently.
 "missing-shape:ProxyNotification" = "proxy JSON-RPC envelopes are not modelled, only their params"
 "missing-shape:ProxyRequest" = "proxy JSON-RPC envelopes are not modelled, only their params"
@@ -50,3 +35,4 @@ ToolKind = "ToolCallKind"
 "extra-field:ClientRequest.jsonrpc" = "upstream adds jsonrpc at the top level of the schema, not per envelope"
 "extra-field:CompactionCapabilities._meta" = "harmless: every AnnotatedObject accepts _meta"
 "extra-field:NoticeCapabilities._meta" = "harmless: every AnnotatedObject accepts _meta"
+"extra-field:SessionCursorsCapabilities._meta" = "harmless: every AnnotatedObject accepts _meta"

@@ -25,6 +25,7 @@ from acp.schema.content_blocks import (
     TextContentBlock,
     TextResourceContents,
 )
+from acp.schema.cursors import CursorAnchor, CursorCapabilities, CursorId  # noqa: TC001
 from acp.schema.slash_commands import AvailableCommand  # noqa: TC001
 from acp.schema.tool_call import (  # noqa: TC001
     ToolCallContent,
@@ -729,6 +730,26 @@ class SessionMessageChunk(AnnotatedObject):
     """A single content block appended to the message."""
 
 
+class CursorUpdate(AnnotatedObject):
+    """**UNSTABLE**: A session cursor was announced or its capabilities changed.
+
+    Upserts by ``cursor_id``. The first update for a cursor MUST include ``anchor``,
+    which is fixed afterwards; later updates change only ``capabilities``.
+    Only sent if the client advertised ``session.cursors``.
+    """
+
+    session_update: Literal["cursor_update"] = Field(default="cursor_update", init=False)
+
+    cursor_id: CursorId
+    """The Agent-owned ID of this cursor, unique within the session."""
+
+    anchor: CursorAnchor | None = None
+    """Where the cursor is. Required on the first update for a cursor."""
+
+    capabilities: CursorCapabilities | None = None
+    """The methods that currently accept this cursor; a new cursor starts with none."""
+
+
 SessionUpdate = Annotated[
     (
         UserMessageChunk
@@ -751,6 +772,7 @@ SessionUpdate = Annotated[
         | SubagentUpdate
         | SessionMessage
         | SessionMessageChunk
+        | CursorUpdate
     ),
     Field(discriminator="session_update"),
 ]

@@ -132,6 +132,14 @@ class ForkSessionRequest(SessionSetupRequest):
     session_id: str
     """The ID of the session to fork."""
 
+    cursor_id: str | None = None
+    """**UNSTABLE**: Fork at this session cursor instead of the end of the session.
+
+    The new session's history is the source history before the cursor. Only IDs of
+    cursors announced on the source session that currently advertise
+    ``capabilities.fork`` are valid; Agents reject others with ``-32602``.
+    """
+
 
 class ResumeSessionRequest(SessionSetupRequest):
     """Request parameters for resuming an existing session.

@@ -34,6 +34,14 @@ class AuthCapabilities(AnnotatedObject):
     """Whether the client supports ``terminal`` authentication methods."""
 
 
+class SessionCursorsCapabilities(AnnotatedObject):
+    """**UNSTABLE**: Client support for ``cursor_update`` session updates.
+
+    ``{}`` advertises support. See the
+    [Session Cursors RFD](https://agentclientprotocol.com/rfds/session-cursors).
+    """
+
+
 class CompactionCapabilities(AnnotatedObject):
     """Client support for ID-addressed context compaction updates.
 
@@ -98,6 +106,9 @@ class ClientSessionCapabilities(AnnotatedObject):
 
     prompt_suggestions: PromptSuggestionsCapabilities | None = None
     """**UNSTABLE**: Support for ``prompt_suggestions_update`` session updates."""
+
+    cursors: SessionCursorsCapabilities | None = None
+    """**UNSTABLE**: Support for ``cursor_update`` session updates."""
 
 
 class SubagentCapabilities(AnnotatedObject):
