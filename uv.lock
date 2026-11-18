@@ -220,7 +220,7 @@ requires-dist = [
     { name = "keyring", specifier = ">=25.6.0" },
     { name = "lancedb", marker = "python_full_version < '3.14' and extra == 'mcp-discovery'", specifier = "==0.30.0" },
     { name = "langfuse", marker = "extra == 'langfuse'" },
-    { name = "llmling-models", specifier = ">=1.7.0" },
+    { name = "llmling-models", specifier = ">=1.7.2" },
     { name = "logfire", extras = ["fastapi"] },
     { name = "markitdown", marker = "python_full_version < '3.14' and extra == 'markitdown'" },
     { name = "mcp", specifier = ">=1.2.0" },
@@ -3131,7 +3131,7 @@ wheels = [
 
 [[package]]
 name = "llmling-models"
-version = "1.7.0"
+version = "1.7.2"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "anyenv", extra = ["httpx"] },
@@ -3141,9 +3141,9 @@ dependencies = [
     { name = "schemez" },
     { name = "tokonomics" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/66/9e/fc55cc49aa0d0c3df7be747389e944b5c6126abb27b7e12fc97722c2fe3f/llmling_models-1.7.0.tar.gz", hash = "sha256:8f1489615756cd6298347bc24c88b25f271b0c956438eefde8a07e093c974c3b", size = 100623, upload-time = "2026-11-16T21:00:11.263Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/32/6d/2ce6181dea7df12b977929c14ab8e53c1d6d255d9a1825a9b62a7d1ead88/llmling_models-1.7.2.tar.gz", hash = "sha256:28bc1b70ae7b0c7d1085edd46e531fa0d8f7f0f519e4594cc50f604f507ebbc5", size = 100549, upload-time = "2026-11-18T22:16:21.598Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/1e/ba/6ad28e395de6f6377ca04651245a89d3da0d623b8e963ae2d54ad0e35861/llmling_models-1.7.0-py3-none-any.whl", hash = "sha256:8e0ffd499e0acc7f1251f026286e539f2f8ff354d95948f5929bcc769f033151", size = 130814, upload-time = "2026-11-16T21:00:09.467Z" },
+    { url = "https://files.pythonhosted.org/packages/15/67/e8baafc5e85df8534fba75e1cfe0ab03bf6acd5ec66fbf12fe9d1c08893e/llmling_models-1.7.2-py3-none-any.whl", hash = "sha256:923f5373c1e67b217aa38e6d2651309adfac3586b5eafd948cc8aafd675de4a1", size = 130704, upload-time = "2026-11-18T22:16:19.726Z" },
 ]
 
 [[package]]
