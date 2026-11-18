@@ -139,7 +139,9 @@ returns `{ "outcome": "promptRequired" }` instead of starting one.
 | `usage_update` | `_meta["_claude/rateLimit"]` | SDK rate-limit info |
 | `usage_update` | `_meta["_claude/origin"]` | Origin of the turn's result message |
 | `session/prompt` response | `_meta.quota` | `{ token_count, model_usage: [{ model, token_count }] }` |
-| `InitializeResponse` | `_meta.claudeCode.promptQueueing`, `_meta.authStatus` | Adapter feature flags |
+| `InitializeResponse` | `_meta.steering` | `{ "supported": true }`: accepts `_session/steering` |
+| `InitializeResponse.agentCapabilities` | `_meta.claudeCode.promptQueueing` | Prompts sent during a turn are queued |
+| `InitializeResponse.agentCapabilities` | `_meta.authStatus` | Empty object: agent pushes `_auth/status_update` |
 | Extension notification | `_claude/sdkMessage` | Raw SDK message (see `emitRawSDKMessages`) |
 
 ## agentpool
