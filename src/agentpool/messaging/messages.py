@@ -137,7 +137,10 @@ class TokenCost:
             TokenCost if usage data available, None otherwise
         """
         logger.debug("Token usage", usage=usage)
-        if model in {"None", "test"}:
+        # pydantic-ai's local models (TestModel is "test", FunctionModel is
+        # "function:<name>") are never priced; looking them up would download
+        # the whole LiteLLM price list on every call, since misses aren't cached.
+        if model in {"None", "test"} or model.startswith("function:"):
             price = Decimal(0)
         else:
             # Determine provider and model ref
