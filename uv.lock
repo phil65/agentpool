@@ -270,7 +270,7 @@ requires-dist = [
     { name = "uvicorn", extras = ["standard"] },
     { name = "watchfiles", specifier = ">=1.1.1" },
     { name = "websockets", specifier = ">=15.0" },
-    { name = "yamling", specifier = ">=2.0.2" },
+    { name = "yamling", specifier = ">=2.1.9" },
     { name = "zstandard", marker = "extra == 'zed'", specifier = ">=0.23.0" },
 ]
 provides-extras = ["a2a", "ag-ui", "bot", "braintrust", "clipboard", "coding", "composio", "events", "langfuse", "markitdown", "mcp-discovery", "mcp-run", "notifications", "promptlayer", "tiktoken", "tts", "zed"]
@@ -7437,7 +7437,7 @@ wheels = [
 
 [[package]]
 name = "upathtools"
-version = "1.20.5"
+version = "1.20.8"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "aiofile" },
@@ -7446,9 +7446,9 @@ dependencies = [
     { name = "ripgrep-rs" },
     { name = "universal-pathlib" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/dd/86/387ffe0a9d659d25f8c4959c038b546ea6dc836d9deb3db3a76e967caed0/upathtools-1.20.5.tar.gz", hash = "sha256:7c0f2ff006ec23260aa2cf7a9ba58a653f6fd953c14801be97cb4e8b39900c53", size = 215364, upload-time = "2026-11-16T20:52:22.136Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/c4/b1/2cf0f2ce64ac4876b25a93dac7ec6cb7c2e7c6e2c4a949ac1fc3e923bb97/upathtools-1.20.8.tar.gz", hash = "sha256:5b6606c4cc96c42cb64cf7e074afaeb153aed6a44b4851021f7a72c4e836c0e0", size = 215347, upload-time = "2026-11-18T20:27:00.52Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/cc/19/156c0a9cbf42c1787efd5f93da719a00e08d61005b76268867bee39200ee/upathtools-1.20.5-py3-none-any.whl", hash = "sha256:e08bf3b49edd8fafd758f7f2c9d62caf2e845d64d895d26d68e8bfdc0b515bdf", size = 274405, upload-time = "2026-11-16T20:52:20.366Z" },
+    { url = "https://files.pythonhosted.org/packages/4a/38/3b85b2c85dc5c663df98b4d66e35360863b61f56a4e4ddda608597617a96/upathtools-1.20.8-py3-none-any.whl", hash = "sha256:6b8548831e46040d37cb5728b31e0afb7e1fc272c2f32d4b16e870677cbe25c4", size = 274432, upload-time = "2026-11-18T20:26:58.802Z" },
 ]
 
 [package.optional-dependencies]
@@ -7748,7 +7748,7 @@ wheels = [
 
 [[package]]
 name = "yamling"
-version = "2.1.7"
+version = "2.1.9"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "anyenv" },
@@ -7759,9 +7759,9 @@ dependencies = [
     { name = "universal-pathlib" },
     { name = "upathtools" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/f0/77/16d795d8c89ab018f8aeac0b075adb0491dbe2f3e95410f89ac93ff46803/yamling-2.1.7.tar.gz", hash = "sha256:b75e5b37dc3d2a874286604ec7179a3a149541c3ebfeb7f50ee7e66e1bacabf9", size = 24561, upload-time = "2025-12-10T10:47:50.064Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/18/fa/ae837fcf6c6b777a374805bb535c22417a2a120766de16aa5bf132eea555/yamling-2.1.9.tar.gz", hash = "sha256:e38684d5e8a12e097cf98454f4a456a6556ccf7f358967634c0ccbea6b279298", size = 29009, upload-time = "2026-11-18T20:40:55.275Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/2a/3f/d981b71fd7332a3f70a17e4111e01f36ec38b7333eda8ae508cc2959b7de/yamling-2.1.7-py3-none-any.whl", hash = "sha256:730c4be2c5efe44660e1b77db82a87c305cdfcc669052742925b026c1078081a", size = 30465, upload-time = "2025-12-10T10:47:47.611Z" },
+    { url = "https://files.pythonhosted.org/packages/13/95/2d94f3c7d094063c9b8dbf1a2e394ddea1572ca4e2298f3394cfcf1c655a/yamling-2.1.9-py3-none-any.whl", hash = "sha256:c6f7450c61e53437d606035d1449cd5617dce257c708fdf9912255f1e54250f8", size = 29780, upload-time = "2026-11-18T20:40:54.079Z" },
 ]
 
 [[package]]
