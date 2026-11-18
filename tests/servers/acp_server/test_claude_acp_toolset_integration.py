@@ -20,8 +20,8 @@ from agentpool.models.manifest import AgentsManifest
 from agentpool_config.toolsets import SubagentToolsetConfig
 
 
-if not shutil.which("claude-code-acp"):
-    pytest.skip("claude-code-acp CLI not available", allow_module_level=True)
+if not shutil.which("claude-agent-acp"):
+    pytest.skip("claude-agent-acp CLI not available", allow_module_level=True)
 
 pytestmark = [pytest.mark.integration]
 
@@ -31,7 +31,7 @@ def claude_config_with_subagent() -> ACPAgentConfig:
     """Create Claude ACP config with Subagent toolset."""
     return ACPAgentConfig(
         name="claude_orchestrator",
-        command="claude-code-acp",
+        command="claude-agent-acp",
         tools=[SubagentToolsetConfig()],
         env_vars={"ANTHROPIC_API_KEY": ""},  # Use subscription, not direct API key
     )
@@ -66,7 +66,7 @@ async def test_claude_acp_subagent_invocation(manifest_with_claude: AgentsManife
     """Test invoking subagent tools through Claude ACP agent.
 
     Note: This test requires:
-    - claude-code-acp to be installed and accessible
+    - claude-agent-acp to be installed and accessible
     - Valid API credentials for Claude
     """
     async with AgentPool(manifest=manifest_with_claude) as pool:
@@ -98,7 +98,7 @@ async def test_claude_acp_multiple_toolsets():
 
     tools = [SubagentToolsetConfig(), DebugToolsetConfig()]
     config = ACPAgentConfig(
-        name="claude_multi", command="claude-code-acp", cwd=str(Path.cwd()), tools=tools
+        name="claude_multi", command="claude-agent-acp", cwd=str(Path.cwd()), tools=tools
     )
     async with AgentPool() as pool, ACPAgent.from_config(config, agent_pool=pool) as agent:
         # All toolsets should be exposed via single bridge

@@ -115,7 +115,7 @@ class ACPRequests:
         request = CreateTerminalRequest(
             session_id=self.id,
             command=command,
-            # Only include args if non-empty, following claude-code-acp pattern.
+            # Only include args if non-empty, following claude-agent-acp pattern.
             # When args is None/empty, ACP clients interpret command as a shell command.
             args=args or None,
             cwd=cwd,

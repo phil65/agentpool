@@ -32,7 +32,7 @@ class AgentTestConfig:
 
 # Agents to test - these are the MCP-capable ones
 AGENTS_TO_TEST = [
-    AgentTestConfig(name="Claude Code", command="claude-code-acp", args=[]),
+    AgentTestConfig(name="Claude Code", command="claude-agent-acp", args=[]),
     AgentTestConfig(name="Gemini CLI", command="gemini", args=["--experimental-acp"]),
     AgentTestConfig(
         name="FastAgent",
@@ -42,7 +42,7 @@ AGENTS_TO_TEST = [
     AgentTestConfig(name="Auggie", command="auggie", args=["--acp"]),
     AgentTestConfig(name="Kimi", command="kimi", args=["--acp"]),
     # Non-MCP-capable agents for comparison
-    AgentTestConfig(name="Codex", command="npx", args=["@zed-industries/codex-acp"]),
+    AgentTestConfig(name="Codex", command="npx", args=["@agentclientprotocol/codex-acp"]),
     AgentTestConfig(name="OpenCode", command="opencode", args=["acp"]),
     AgentTestConfig(name="Goose", command="goose", args=["acp"]),
 ]

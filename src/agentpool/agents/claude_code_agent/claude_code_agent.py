@@ -93,7 +93,7 @@ _MCP_TOOL_PATTERN = re.compile(r"^mcp__agentpool-(.+)-tools__(.+)$")
 
 VALID_EFFORTS: set[str] = {"low", "medium", "high", "xhigh", "max"}
 
-# see https://github.com/zed-industries/claude-agent-acp/blob/main/src/acp-agent.ts for a list
+# see https://github.com/agentclientprotocol/claude-agent-acp/blob/main/src/acp-agent.ts for a list
 UNSUPPORTED_COMMANDS = frozenset({
     # "cost",
     "keybindings-help",

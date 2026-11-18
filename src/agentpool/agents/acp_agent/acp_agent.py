@@ -6,7 +6,7 @@ ACP-compatible agent into the agentpool pool.
 
 The ACPAgent class acts as an ACP client, spawning an ACP server subprocess
 and communicating with it via JSON-RPC over stdio. This allows:
-- Integration of external ACP-compatible agents (like claude-code-acp)
+- Integration of external ACP-compatible agents (like claude-agent-acp)
 - Composition with native agents via connections, teams, etc.
 - Full ACP protocol support including file operations and terminals
 
@@ -15,7 +15,7 @@ Example:
     from agentpool.models.acp_agents import ACPAgentConfig
 
     config = ACPAgentConfig(
-        command="claude-code-acp",
+        command="claude-agent-acp",
         name="claude_coder",
         cwd="/path/to/project",
     )
@@ -795,7 +795,7 @@ class ACPAgent[TDeps = None](BaseAgent[TDeps, str]):
 if __name__ == "__main__":
 
     async def main() -> None:
-        async with ACPAgent(command="claude-code-acp") as agent:
+        async with ACPAgent(command="claude-agent-acp") as agent:
             async for event in agent.run_stream("hello"):
                 print(event)
 

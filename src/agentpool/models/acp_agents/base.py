@@ -204,7 +204,7 @@ class ACPAgentConfig(BaseACPAgentConfig):
     command: str = Field(
         ...,
         title="Command",
-        examples=["claude-code-acp", "aider", "my-custom-acp"],
+        examples=["claude-agent-acp", "aider", "my-custom-acp"],
     )
     """Command to spawn the ACP server."""
 
