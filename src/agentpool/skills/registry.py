@@ -2,10 +2,12 @@
 
 from __future__ import annotations
 
+from functools import partial
 from typing import TYPE_CHECKING, Any, ClassVar
 
 from fsspec import AbstractFileSystem
 from upathtools import is_directory
+from upathtools.filesystems.base import BaseAsyncFileSystem, BaseFileSystem, WrapperFileSystem
 from upathtools.helpers import to_upath, upath_to_fs
 
 from agentpool.log import get_logger
@@ -15,7 +17,7 @@ from agentpool.utils.baseregistry import BaseRegistry
 
 
 if TYPE_CHECKING:
-    from collections.abc import Sequence
+    from collections.abc import Callable, Sequence
 
     from upathtools import JoinablePathLike, UPath
 
@@ -57,14 +59,16 @@ class SkillsRegistry(BaseRegistry[str, Skill]):
         """
         from upathtools.async_ops import to_async_fs
 
+        skill_path_for: Callable[[str], UPath]
         if isinstance(skills_dir, AbstractFileSystem):
             fs = to_async_fs(skills_dir)
             search_path = base_path if base_path is not None else fs.root_marker
-            original_skills_dir: UPath | None = None
+            skill_path_for = partial(_path_on_filesystem, skills_dir)
         else:
             original_skills_dir = to_upath(skills_dir).expanduser()
             fs = upath_to_fs(original_skills_dir, **storage_options)
             search_path = fs.root_marker
+            skill_path_for = original_skills_dir.joinpath
 
         try:
             entries = await fs._ls(search_path, detail=True)
@@ -83,19 +87,18 @@ class SkillsRegistry(BaseRegistry[str, Skill]):
         logger.info("Found skills", skills=skill_dirs, skills_dir=search_path)
         for skill_entry in skill_dirs:
             entry_name = skill_entry["name"]
-            if original_skills_dir is not None:
-                skill_dir_path = original_skills_dir / entry_name
-            else:
-                skill_dir_path = to_upath(entry_name)
+            skill_dir_path = skill_path_for(entry_name)
 
             fs_skill_md_path = f"{entry_name}/SKILL.md"
             try:
-                await fs._cat_file(fs_skill_md_path)
+                content = await fs._cat_file(fs_skill_md_path)
             except FileNotFoundError:
                 continue
 
             try:
-                skill = Skill.from_skill_dir(skill_dir_path)
+                # Parse the content read above: skill_dir_path may live on an async
+                # filesystem (e.g. the ACP client's) that can't be read synchronously.
+                skill = Skill.from_skill_md(skill_dir_path, content.decode("utf-8"))
                 self.register(skill.name, skill, replace=True)
             except Exception as e:  # noqa: BLE001
                 logger.warning(
@@ -119,6 +122,19 @@ class SkillsRegistry(BaseRegistry[str, Skill]):
         """Lazy load full instructions for a skill."""
         skill = self.get(skill_name)
         return skill.load_instructions()
+
+
+def _path_on_filesystem(fs: AbstractFileSystem, path: str) -> UPath:
+    """Return a UPath for ``path`` that stays bound to ``fs``.
+
+    upathtools filesystems (such as the ACP client filesystem) hand out paths
+    bound to the very instance, so later reads go through the same session.
+    Other fsspec filesystems get a UPath with their protocol instead of being
+    treated as local paths.
+    """
+    if isinstance(fs, BaseFileSystem | BaseAsyncFileSystem | WrapperFileSystem):
+        return fs.get_upath(path)
+    return to_upath(fs.unstrip_protocol(path))
 
 
 if __name__ == "__main__":

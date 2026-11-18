@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from acp.filesystem import ACPPath
 from agentpool.agents.context import AgentContext  # noqa: TC001
 from agentpool.resource_providers import StaticResourceProvider
 
@@ -49,7 +50,12 @@ async def load_skill(ctx: AgentContext, skill_name: str) -> str:
         if meta:
             parts.append(meta)
         parts.append(instructions)
-        parts.append(f"Skill directory: {skill.skill_path}")
+        # Skills from the ACP client live on its filesystem; the session's file
+        # tools take plain paths there, not `acp://` URLs.
+        skill_dir = (
+            skill.skill_path.path if isinstance(skill.skill_path, ACPPath) else skill.skill_path
+        )
+        parts.append(f"Skill directory: {skill_dir}")
         return "\n\n".join(parts)
     available = ", ".join(s.name for s in skills)
     return f"Skill {skill_name!r} not found. Available skills: {available}"

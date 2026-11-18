@@ -96,9 +96,29 @@ class Skill(BaseModel):
         if skill_file is None:
             raise FileNotFoundError(f"SKILL.md not found in {skill_dir}")
 
-        content = skill_file.read_text("utf-8")
-        metadata, _body = parse_frontmatter(content)
-        return cls(skill_path=skill_dir, **metadata)
+        return cls.from_skill_md(skill_dir, skill_file.read_text("utf-8"))
+
+    @classmethod
+    def from_skill_md(cls, skill_dir: UPath, content: str) -> Skill:
+        """Build a Skill from SKILL.md content that has already been read.
+
+        The instructions are taken from the content, so they are never read
+        again from ``skill_dir``. Use this when the file comes from an async
+        filesystem that cannot be read synchronously later.
+
+        Args:
+            skill_dir: Path to the skill directory containing SKILL.md.
+            content: Raw content of the SKILL.md file.
+
+        Returns:
+            Validated Skill instance with instructions loaded.
+
+        Raises:
+            ValueError: If frontmatter is missing or invalid YAML.
+            ValidationError: If fields fail Pydantic validation.
+        """
+        metadata, body = parse_frontmatter(content)
+        return cls(skill_path=skill_dir, instructions=body, **metadata)
 
 
 def find_skill_md(skill_dir: UPath) -> UPath | None:

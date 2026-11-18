@@ -338,14 +338,27 @@ class ACPSession:
         except Exception:
             self.log.exception("Failed to register MCP prompts as commands")
 
+    @property
+    def client_skill_dirs(self) -> list[str]:
+        """Client-side skill directories: ``.claude/skills`` under every workspace root.
+
+        The roots are the session cwd and the client's ``additionalDirectories``,
+        which ACP requires to be absolute paths.
+        """
+        roots = (
+            [self.cwd, *self.additional_directories] if self.cwd else self.additional_directories
+        )
+        return [f"{root.rstrip('/')}/.claude/skills" for root in dict.fromkeys(roots)]
+
     async def init_client_skills(self) -> None:
-        """Discover and load skills from client-side .claude/skills directory."""
-        try:
-            await self.agent_pool.skills.add_skills_directory(".claude/skills", fs=self.fs)
-            skills = self.agent_pool.skills.list_skills()
-            self.log.info("Collected client-side skills", skill_count=len(skills))
-        except Exception as e:
-            self.log.exception("Failed to discover client-side skills", error=e)
+        """Discover and load skills from the client's workspace roots over ACP."""
+        for skills_dir in self.client_skill_dirs:
+            try:
+                await self.agent_pool.skills.add_skills_directory(skills_dir, fs=self.fs)
+            except Exception:
+                self.log.exception("Failed to discover client-side skills", path=skills_dir)
+        skills = self.agent_pool.skills.list_skills()
+        self.log.info("Collected client-side skills", skill_count=len(skills))
 
     @property
     def agent_pool(self) -> AgentPool[Any]:
