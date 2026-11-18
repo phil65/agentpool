@@ -187,6 +187,7 @@
             ],
             [
               {
+                "always_load": false,
                 "auth": {
                   "oauth": false,
                   "persist": "keyring",
@@ -818,7 +819,7 @@
         "command": {
           "description": "Command to spawn the ACP server.",
           "examples": [
-            "claude-code-acp",
+            "claude-agent-acp",
             "aider",
             "my-custom-acp"
           ],
@@ -1116,6 +1117,7 @@
             ],
             [
               {
+                "always_load": false,
                 "auth": {
                   "oauth": false,
                   "persist": "keyring",
@@ -2215,23 +2217,30 @@
           "type": "string"
         },
         "identifier": {
-          "description": "String identifier for the model.",
-          "enum": [
-            "claude-haiku-4-5",
-            "claude-haiku-4-5-20251001",
-            "claude-opus-4-5",
-            "claude-opus-4-5-20251101",
-            "claude-opus-4-6",
-            "claude-sonnet-4-5",
-            "claude-sonnet-4-5-20250929",
-            "claude-sonnet-4-6"
+          "anyOf": [
+            {
+              "enum": [
+                "claude-haiku-4-5",
+                "claude-haiku-4-5-20251001",
+                "claude-opus-4-5",
+                "claude-opus-4-5-20251101",
+                "claude-opus-4-6",
+                "claude-sonnet-4-5",
+                "claude-sonnet-4-5-20250929",
+                "claude-sonnet-4-6"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "string"
+            }
           ],
+          "description": "String identifier for the model.",
           "examples": [
             "claude-3-opus",
             "claude-3-sonnet"
           ],
-          "title": "Model identifier",
-          "type": "string"
+          "title": "Model identifier"
         },
         "auth_method": {
           "default": "api_key",
@@ -5415,6 +5424,7 @@
             ],
             [
               {
+                "always_load": false,
                 "auth": {
                   "oauth": false,
                   "persist": "keyring",
@@ -6133,6 +6143,31 @@
           "description": "Predict the next user prompt after each turn.\n\nCosts an additional model request per turn. Suggestions are forwarded to\nclients which support them (e.g. ACP ``prompt_suggestions_update``).",
           "title": "Prompt Suggestions",
           "type": "boolean"
+        },
+        "enable_tool_search": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "integer"
+            },
+            {
+              "const": "auto",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Control Claude Code's MCP tool search (deferred tool loading).\n\n- ``True``: always defer MCP tools behind tool search.\n- ``False``: load all MCP tools up front.\n- ``\"auto\"``: let Claude Code decide based on context usage.\n- ``int``: auto mode with a custom threshold (percentage of context).\n- ``None``: Claude Code's default.\n\nTools of the agentpool tool bridge (``tools``) are always loaded up front,\nand individual MCP servers can opt in via ``always_load``.",
+          "examples": [
+            false,
+            "auto",
+            20
+          ],
+          "title": "Enable Tool Search"
         },
         "tools": {
           "description": "Tools and toolsets to expose to this Claude Code agent via MCP bridge.\n\nSupports both single tools and toolsets. These will be started as an\nin-process MCP server and made available to Claude Code.\n\nDocs: https://phil65.github.io/agentpool/YAML%20Configuration/tool_configuration/",
@@ -7324,6 +7359,7 @@
             ],
             [
               {
+                "always_load": false,
                 "auth": {
                   "oauth": false,
                   "persist": "keyring",
@@ -16137,56 +16173,63 @@
           "type": "string"
         },
         "identifier": {
-          "description": "String identifier for the model.",
-          "enum": [
-            "aqa",
-            "deep-research-pro-preview-12-2025",
-            "gemini-2.0-flash",
-            "gemini-2.0-flash-001",
-            "gemini-2.0-flash-lite",
-            "gemini-2.0-flash-lite-001",
-            "gemini-2.5-computer-use-preview-10-2025",
-            "gemini-2.5-flash",
-            "gemini-2.5-flash-image",
-            "gemini-2.5-flash-lite",
-            "gemini-2.5-flash-lite-preview-09-2025",
-            "gemini-2.5-flash-native-audio-latest",
-            "gemini-2.5-flash-native-audio-preview-09-2025",
-            "gemini-2.5-flash-native-audio-preview-12-2025",
-            "gemini-2.5-flash-preview-tts",
-            "gemini-2.5-pro",
-            "gemini-2.5-pro-preview-tts",
-            "gemini-3-flash-preview",
-            "gemini-3-pro-image-preview",
-            "gemini-3-pro-preview",
-            "gemini-3.1-pro-preview",
-            "gemini-3.1-pro-preview-customtools",
-            "gemini-flash-latest",
-            "gemini-flash-lite-latest",
-            "gemini-pro-latest",
-            "gemini-robotics-er-1.5-preview",
-            "gemma-3-12b-it",
-            "gemma-3-1b-it",
-            "gemma-3-27b-it",
-            "gemma-3-4b-it",
-            "gemma-3n-e2b-it",
-            "gemma-3n-e4b-it",
-            "imagen-4.0-fast-generate-001",
-            "imagen-4.0-generate-001",
-            "imagen-4.0-ultra-generate-001",
-            "nano-banana-pro-preview",
-            "veo-2.0-generate-001",
-            "veo-3.0-fast-generate-001",
-            "veo-3.0-generate-001",
-            "veo-3.1-fast-generate-preview",
-            "veo-3.1-generate-preview"
+          "anyOf": [
+            {
+              "enum": [
+                "aqa",
+                "deep-research-pro-preview-12-2025",
+                "gemini-2.0-flash",
+                "gemini-2.0-flash-001",
+                "gemini-2.0-flash-lite",
+                "gemini-2.0-flash-lite-001",
+                "gemini-2.5-computer-use-preview-10-2025",
+                "gemini-2.5-flash",
+                "gemini-2.5-flash-image",
+                "gemini-2.5-flash-lite",
+                "gemini-2.5-flash-lite-preview-09-2025",
+                "gemini-2.5-flash-native-audio-latest",
+                "gemini-2.5-flash-native-audio-preview-09-2025",
+                "gemini-2.5-flash-native-audio-preview-12-2025",
+                "gemini-2.5-flash-preview-tts",
+                "gemini-2.5-pro",
+                "gemini-2.5-pro-preview-tts",
+                "gemini-3-flash-preview",
+                "gemini-3-pro-image-preview",
+                "gemini-3-pro-preview",
+                "gemini-3.1-pro-preview",
+                "gemini-3.1-pro-preview-customtools",
+                "gemini-flash-latest",
+                "gemini-flash-lite-latest",
+                "gemini-pro-latest",
+                "gemini-robotics-er-1.5-preview",
+                "gemma-3-12b-it",
+                "gemma-3-1b-it",
+                "gemma-3-27b-it",
+                "gemma-3-4b-it",
+                "gemma-3n-e2b-it",
+                "gemma-3n-e4b-it",
+                "imagen-4.0-fast-generate-001",
+                "imagen-4.0-generate-001",
+                "imagen-4.0-ultra-generate-001",
+                "nano-banana-pro-preview",
+                "veo-2.0-generate-001",
+                "veo-3.0-fast-generate-001",
+                "veo-3.0-generate-001",
+                "veo-3.1-fast-generate-preview",
+                "veo-3.1-generate-preview"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "string"
+            }
           ],
+          "description": "String identifier for the model.",
           "examples": [
             "gemini-2.0-flash",
             "gemini-1.5-pro"
           ],
-          "title": "Model identifier",
-          "type": "string"
+          "title": "Model identifier"
         },
         "max_tokens": {
           "anyOf": [
@@ -22200,6 +22243,7 @@
             ],
             [
               {
+                "always_load": false,
                 "auth": {
                   "oauth": false,
                   "persist": "keyring",
@@ -24344,28 +24388,35 @@
           "type": "string"
         },
         "identifier": {
-          "description": "String identifier for the model.",
-          "enum": [
-            "gpt-5-codex",
-            "gpt-5-pro",
-            "gpt-5.1",
-            "gpt-5.1-chat-latest",
-            "gpt-5.1-codex",
-            "gpt-5.1-codex-max",
-            "gpt-5.1-codex-mini",
-            "gpt-5.2",
-            "gpt-5.2-chat-latest",
-            "gpt-5.2-codex",
-            "gpt-5.2-pro",
-            "gpt-5.3-codex",
-            "gpt-5.3-codex-spark"
+          "anyOf": [
+            {
+              "enum": [
+                "gpt-5-codex",
+                "gpt-5-pro",
+                "gpt-5.1",
+                "gpt-5.1-chat-latest",
+                "gpt-5.1-codex",
+                "gpt-5.1-codex-max",
+                "gpt-5.1-codex-mini",
+                "gpt-5.2",
+                "gpt-5.2-chat-latest",
+                "gpt-5.2-codex",
+                "gpt-5.2-pro",
+                "gpt-5.3-codex",
+                "gpt-5.3-codex-spark"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "string"
+            }
           ],
+          "description": "String identifier for the model.",
           "examples": [
             "gpt-4",
             "gpt-4-turbo"
           ],
-          "title": "Model identifier",
-          "type": "string"
+          "title": "Model identifier"
         },
         "max_tokens": {
           "anyOf": [
@@ -25147,150 +25198,157 @@
           "type": "string"
         },
         "identifier": {
-          "description": "String identifier for the model.",
-          "enum": [
-            "aion-labs/aion-2.0",
-            "alibaba/tongyi-deepresearch-30b-a3b",
-            "allenai/molmo-2-8b",
-            "allenai/olmo-3-32b-think",
-            "allenai/olmo-3-7b-instruct",
-            "allenai/olmo-3-7b-think",
-            "allenai/olmo-3.1-32b-instruct",
-            "allenai/olmo-3.1-32b-think",
-            "amazon/nova-2-lite-v1",
-            "amazon/nova-premier-v1",
-            "anthropic/claude-haiku-4.5",
-            "anthropic/claude-opus-4.5",
-            "anthropic/claude-opus-4.6",
-            "anthropic/claude-sonnet-4.5",
-            "anthropic/claude-sonnet-4.6",
-            "arcee-ai/trinity-large-preview:free",
-            "arcee-ai/trinity-mini",
-            "arcee-ai/trinity-mini:free",
-            "baidu/ernie-4.5-21b-a3b",
-            "baidu/ernie-4.5-21b-a3b-thinking",
-            "baidu/ernie-4.5-vl-28b-a3b",
-            "bytedance-seed/seed-1.6",
-            "bytedance-seed/seed-1.6-flash",
-            "deepcogito/cogito-v2.1-671b",
-            "deepseek/deepseek-chat-v3.1",
-            "deepseek/deepseek-v3.1-terminus",
-            "deepseek/deepseek-v3.1-terminus:exacto",
-            "deepseek/deepseek-v3.2",
-            "deepseek/deepseek-v3.2-exp",
-            "deepseek/deepseek-v3.2-speciale",
-            "essentialai/rnj-1-instruct",
-            "google/gemini-2.5-flash-image",
-            "google/gemini-2.5-flash-lite-preview-09-2025",
-            "google/gemini-3-flash-preview",
-            "google/gemini-3-pro-image-preview",
-            "google/gemini-3-pro-preview",
-            "google/gemini-3.1-pro-preview",
-            "google/gemini-3.1-pro-preview-customtools",
-            "ibm-granite/granite-4.0-h-micro",
-            "kwaipilot/kat-coder-pro",
-            "liquid/lfm-2-24b-a2b",
-            "liquid/lfm-2.2-6b",
-            "liquid/lfm-2.5-1.2b-instruct:free",
-            "liquid/lfm-2.5-1.2b-thinking:free",
-            "liquid/lfm2-8b-a1b",
-            "meituan/longcat-flash-chat",
-            "minimax/minimax-m2",
-            "minimax/minimax-m2-her",
-            "minimax/minimax-m2.1",
-            "minimax/minimax-m2.5",
-            "mistralai/devstral-2512",
-            "mistralai/ministral-14b-2512",
-            "mistralai/ministral-3b-2512",
-            "mistralai/ministral-8b-2512",
-            "mistralai/mistral-large-2512",
-            "mistralai/mistral-medium-3.1",
-            "mistralai/mistral-small-creative",
-            "mistralai/voxtral-small-24b-2507",
-            "moonshotai/kimi-k2-0905",
-            "moonshotai/kimi-k2-0905:exacto",
-            "moonshotai/kimi-k2-thinking",
-            "moonshotai/kimi-k2.5",
-            "nex-agi/deepseek-v3.1-nex-n1",
-            "nousresearch/hermes-4-405b",
-            "nousresearch/hermes-4-70b",
-            "nvidia/llama-3.3-nemotron-super-49b-v1.5",
-            "nvidia/nemotron-3-nano-30b-a3b",
-            "nvidia/nemotron-3-nano-30b-a3b:free",
-            "nvidia/nemotron-nano-12b-v2-vl",
-            "nvidia/nemotron-nano-12b-v2-vl:free",
-            "nvidia/nemotron-nano-9b-v2",
-            "nvidia/nemotron-nano-9b-v2:free",
-            "openai/gpt-4o-audio-preview",
-            "openai/gpt-5-codex",
-            "openai/gpt-5-image",
-            "openai/gpt-5-image-mini",
-            "openai/gpt-5-pro",
-            "openai/gpt-5.1",
-            "openai/gpt-5.1-chat",
-            "openai/gpt-5.1-codex",
-            "openai/gpt-5.1-codex-max",
-            "openai/gpt-5.1-codex-mini",
-            "openai/gpt-5.2",
-            "openai/gpt-5.2-chat",
-            "openai/gpt-5.2-codex",
-            "openai/gpt-5.2-pro",
-            "openai/gpt-5.3-codex",
-            "openai/gpt-audio",
-            "openai/gpt-audio-mini",
-            "openai/gpt-oss-safeguard-20b",
-            "openai/o3-deep-research",
-            "openai/o4-mini-deep-research",
-            "opengvlab/internvl3-78b",
-            "openrouter/bodybuilder",
-            "openrouter/free",
-            "perplexity/sonar-pro-search",
-            "prime-intellect/intellect-3",
-            "qwen/qwen-plus-2025-07-28",
-            "qwen/qwen-plus-2025-07-28:thinking",
-            "qwen/qwen3-30b-a3b-thinking-2507",
-            "qwen/qwen3-coder-flash",
-            "qwen/qwen3-coder-next",
-            "qwen/qwen3-coder-plus",
-            "qwen/qwen3-max",
-            "qwen/qwen3-max-thinking",
-            "qwen/qwen3-next-80b-a3b-instruct",
-            "qwen/qwen3-next-80b-a3b-instruct:free",
-            "qwen/qwen3-next-80b-a3b-thinking",
-            "qwen/qwen3-vl-235b-a22b-instruct",
-            "qwen/qwen3-vl-235b-a22b-thinking",
-            "qwen/qwen3-vl-30b-a3b-instruct",
-            "qwen/qwen3-vl-30b-a3b-thinking",
-            "qwen/qwen3-vl-32b-instruct",
-            "qwen/qwen3-vl-8b-instruct",
-            "qwen/qwen3-vl-8b-thinking",
-            "qwen/qwen3.5-397b-a17b",
-            "qwen/qwen3.5-plus-02-15",
-            "relace/relace-apply-3",
-            "relace/relace-search",
-            "stepfun/step-3.5-flash",
-            "stepfun/step-3.5-flash:free",
-            "thedrummer/cydonia-24b-v4.1",
-            "upstage/solar-pro-3:free",
-            "writer/palmyra-x5",
-            "x-ai/grok-4-fast",
-            "x-ai/grok-4.1-fast",
-            "x-ai/grok-code-fast-1",
-            "xiaomi/mimo-v2-flash",
-            "z-ai/glm-4.5v",
-            "z-ai/glm-4.6",
-            "z-ai/glm-4.6:exacto",
-            "z-ai/glm-4.6v",
-            "z-ai/glm-4.7",
-            "z-ai/glm-4.7-flash",
-            "z-ai/glm-5"
+          "anyOf": [
+            {
+              "enum": [
+                "aion-labs/aion-2.0",
+                "alibaba/tongyi-deepresearch-30b-a3b",
+                "allenai/molmo-2-8b",
+                "allenai/olmo-3-32b-think",
+                "allenai/olmo-3-7b-instruct",
+                "allenai/olmo-3-7b-think",
+                "allenai/olmo-3.1-32b-instruct",
+                "allenai/olmo-3.1-32b-think",
+                "amazon/nova-2-lite-v1",
+                "amazon/nova-premier-v1",
+                "anthropic/claude-haiku-4.5",
+                "anthropic/claude-opus-4.5",
+                "anthropic/claude-opus-4.6",
+                "anthropic/claude-sonnet-4.5",
+                "anthropic/claude-sonnet-4.6",
+                "arcee-ai/trinity-large-preview:free",
+                "arcee-ai/trinity-mini",
+                "arcee-ai/trinity-mini:free",
+                "baidu/ernie-4.5-21b-a3b",
+                "baidu/ernie-4.5-21b-a3b-thinking",
+                "baidu/ernie-4.5-vl-28b-a3b",
+                "bytedance-seed/seed-1.6",
+                "bytedance-seed/seed-1.6-flash",
+                "deepcogito/cogito-v2.1-671b",
+                "deepseek/deepseek-chat-v3.1",
+                "deepseek/deepseek-v3.1-terminus",
+                "deepseek/deepseek-v3.1-terminus:exacto",
+                "deepseek/deepseek-v3.2",
+                "deepseek/deepseek-v3.2-exp",
+                "deepseek/deepseek-v3.2-speciale",
+                "essentialai/rnj-1-instruct",
+                "google/gemini-2.5-flash-image",
+                "google/gemini-2.5-flash-lite-preview-09-2025",
+                "google/gemini-3-flash-preview",
+                "google/gemini-3-pro-image-preview",
+                "google/gemini-3-pro-preview",
+                "google/gemini-3.1-pro-preview",
+                "google/gemini-3.1-pro-preview-customtools",
+                "ibm-granite/granite-4.0-h-micro",
+                "kwaipilot/kat-coder-pro",
+                "liquid/lfm-2-24b-a2b",
+                "liquid/lfm-2.2-6b",
+                "liquid/lfm-2.5-1.2b-instruct:free",
+                "liquid/lfm-2.5-1.2b-thinking:free",
+                "liquid/lfm2-8b-a1b",
+                "meituan/longcat-flash-chat",
+                "minimax/minimax-m2",
+                "minimax/minimax-m2-her",
+                "minimax/minimax-m2.1",
+                "minimax/minimax-m2.5",
+                "mistralai/devstral-2512",
+                "mistralai/ministral-14b-2512",
+                "mistralai/ministral-3b-2512",
+                "mistralai/ministral-8b-2512",
+                "mistralai/mistral-large-2512",
+                "mistralai/mistral-medium-3.1",
+                "mistralai/mistral-small-creative",
+                "mistralai/voxtral-small-24b-2507",
+                "moonshotai/kimi-k2-0905",
+                "moonshotai/kimi-k2-0905:exacto",
+                "moonshotai/kimi-k2-thinking",
+                "moonshotai/kimi-k2.5",
+                "nex-agi/deepseek-v3.1-nex-n1",
+                "nousresearch/hermes-4-405b",
+                "nousresearch/hermes-4-70b",
+                "nvidia/llama-3.3-nemotron-super-49b-v1.5",
+                "nvidia/nemotron-3-nano-30b-a3b",
+                "nvidia/nemotron-3-nano-30b-a3b:free",
+                "nvidia/nemotron-nano-12b-v2-vl",
+                "nvidia/nemotron-nano-12b-v2-vl:free",
+                "nvidia/nemotron-nano-9b-v2",
+                "nvidia/nemotron-nano-9b-v2:free",
+                "openai/gpt-4o-audio-preview",
+                "openai/gpt-5-codex",
+                "openai/gpt-5-image",
+                "openai/gpt-5-image-mini",
+                "openai/gpt-5-pro",
+                "openai/gpt-5.1",
+                "openai/gpt-5.1-chat",
+                "openai/gpt-5.1-codex",
+                "openai/gpt-5.1-codex-max",
+                "openai/gpt-5.1-codex-mini",
+                "openai/gpt-5.2",
+                "openai/gpt-5.2-chat",
+                "openai/gpt-5.2-codex",
+                "openai/gpt-5.2-pro",
+                "openai/gpt-5.3-codex",
+                "openai/gpt-audio",
+                "openai/gpt-audio-mini",
+                "openai/gpt-oss-safeguard-20b",
+                "openai/o3-deep-research",
+                "openai/o4-mini-deep-research",
+                "opengvlab/internvl3-78b",
+                "openrouter/bodybuilder",
+                "openrouter/free",
+                "perplexity/sonar-pro-search",
+                "prime-intellect/intellect-3",
+                "qwen/qwen-plus-2025-07-28",
+                "qwen/qwen-plus-2025-07-28:thinking",
+                "qwen/qwen3-30b-a3b-thinking-2507",
+                "qwen/qwen3-coder-flash",
+                "qwen/qwen3-coder-next",
+                "qwen/qwen3-coder-plus",
+                "qwen/qwen3-max",
+                "qwen/qwen3-max-thinking",
+                "qwen/qwen3-next-80b-a3b-instruct",
+                "qwen/qwen3-next-80b-a3b-instruct:free",
+                "qwen/qwen3-next-80b-a3b-thinking",
+                "qwen/qwen3-vl-235b-a22b-instruct",
+                "qwen/qwen3-vl-235b-a22b-thinking",
+                "qwen/qwen3-vl-30b-a3b-instruct",
+                "qwen/qwen3-vl-30b-a3b-thinking",
+                "qwen/qwen3-vl-32b-instruct",
+                "qwen/qwen3-vl-8b-instruct",
+                "qwen/qwen3-vl-8b-thinking",
+                "qwen/qwen3.5-397b-a17b",
+                "qwen/qwen3.5-plus-02-15",
+                "relace/relace-apply-3",
+                "relace/relace-search",
+                "stepfun/step-3.5-flash",
+                "stepfun/step-3.5-flash:free",
+                "thedrummer/cydonia-24b-v4.1",
+                "upstage/solar-pro-3:free",
+                "writer/palmyra-x5",
+                "x-ai/grok-4-fast",
+                "x-ai/grok-4.1-fast",
+                "x-ai/grok-code-fast-1",
+                "xiaomi/mimo-v2-flash",
+                "z-ai/glm-4.5v",
+                "z-ai/glm-4.6",
+                "z-ai/glm-4.6:exacto",
+                "z-ai/glm-4.6v",
+                "z-ai/glm-4.7",
+                "z-ai/glm-4.7-flash",
+                "z-ai/glm-5"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "string"
+            }
           ],
+          "description": "String identifier for the model.",
           "examples": [
             "anthropic/claude-3.5-sonnet",
             "openai/gpt-4-turbo"
           ],
-          "title": "Model identifier",
-          "type": "string"
+          "title": "Model identifier"
         },
         "max_tokens": {
           "anyOf": [
@@ -27750,6 +27808,7 @@
             ],
             [
               {
+                "always_load": false,
                 "auth": {
                   "oauth": false,
                   "persist": "keyring",
@@ -29554,6 +29613,12 @@
             ]
           ],
           "title": "Disabled tools"
+        },
+        "always_load": {
+          "default": false,
+          "description": "Load this server's tools up front instead of deferring them to tool search.\n\nOnly honored by agents with their own tool search (currently Claude Code),\nwhich otherwise may hide MCP tools until the model searches for them.",
+          "title": "Always load tools",
+          "type": "boolean"
         },
         "url": {
           "description": "URL of the SSE server endpoint.",
@@ -31393,6 +31458,12 @@
           ],
           "title": "Disabled tools"
         },
+        "always_load": {
+          "default": false,
+          "description": "Load this server's tools up front instead of deferring them to tool search.\n\nOnly honored by agents with their own tool search (currently Claude Code),\nwhich otherwise may hide MCP tools until the model searches for them.",
+          "title": "Always load tools",
+          "type": "boolean"
+        },
         "command": {
           "description": "Command to execute (e.g. \"pipx\", \"python\", \"node\").",
           "examples": [
@@ -32493,6 +32564,12 @@
             ]
           ],
           "title": "Disabled tools"
+        },
+        "always_load": {
+          "default": false,
+          "description": "Load this server's tools up front instead of deferring them to tool search.\n\nOnly honored by agents with their own tool search (currently Claude Code),\nwhich otherwise may hide MCP tools until the model searches for them.",
+          "title": "Always load tools",
+          "type": "boolean"
         },
         "url": {
           "description": "URL of the HTTP server endpoint.",
@@ -34235,6 +34312,7 @@
             ],
             [
               {
+                "always_load": false,
                 "auth": {
                   "oauth": false,
                   "persist": "keyring",
