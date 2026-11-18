@@ -402,7 +402,7 @@ class Finding:
     """One difference between the models and the reference."""
 
     id: str
-    """Stable id, e.g. ``missing-field:ToolCall.name``; used as key in ``conformance.toml``."""
+    """Stable id, e.g. ``missing-field:ToolCallUpdate.name``; key in ``conformance.toml``."""
 
     detail: str
 

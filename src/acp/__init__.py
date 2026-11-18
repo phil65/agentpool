@@ -125,7 +125,7 @@ from acp.schema import (
     ToolCallContent,
     ToolCallKind,
     ToolCallStatus,
-    ToolCall,
+    ToolCallUpdate,
 )
 from acp.stdio import stdio_streams, run_agent, connect_to_agent
 from acp.transports import (
@@ -170,7 +170,7 @@ __all__ = [  # noqa: RUF022
     "AvailableCommand",
     "PlanEntry",
     "AllowedOutcome",
-    "ToolCall",
+    "ToolCallUpdate",
     "DeniedOutcome",
     "ToolCallContent",
     "PermissionOption",

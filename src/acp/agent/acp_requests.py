@@ -16,7 +16,7 @@ from acp.schema import (
     ReleaseTerminalRequest,
     RequestPermissionRequest,
     TerminalOutputRequest,
-    ToolCall,
+    ToolCallUpdate,
     WaitForTerminalExitRequest,
     WriteTextFileRequest,
 )
@@ -269,7 +269,7 @@ class ACPRequests:
                 PermissionOption(option_id="reject-once", name="Reject", kind="reject_once"),
             ]
 
-        tool_call = ToolCall(tool_call_id=tool_call_id, title=title, raw_input=raw_input)
+        tool_call = ToolCallUpdate(tool_call_id=tool_call_id, title=title, raw_input=raw_input)
         request = RequestPermissionRequest(
             session_id=self.id,
             tool_call=tool_call,

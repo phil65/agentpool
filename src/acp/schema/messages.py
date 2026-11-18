@@ -138,8 +138,8 @@ class ClientRequestMessage(JsonRPCMessage):
     [1]: https://www.jsonrpc.org/specification#compatibility
     """
 
-    id: int | str | None = None
-    """JSON RPC Request Id."""
+    id: int | str | None
+    """JSON RPC Request Id. Required on requests; ``null`` is allowed but discouraged."""
 
     method: ClientMethod | str
     """Method name."""
@@ -156,8 +156,8 @@ class AgentRequestMessage(JsonRPCMessage):
     [1]: https://www.jsonrpc.org/specification#compatibility
     """
 
-    id: int | str | None = None
-    """JSON RPC Request Id."""
+    id: int | str | None
+    """JSON RPC Request Id. Required on requests; ``null`` is allowed but discouraged."""
 
     method: AgentMethod | str
     """Method name."""

@@ -38,12 +38,6 @@ ToolKind = "ToolCallKind"
 "missing-field:ForkSessionRequest.cursorId" = "session cursors not implemented"
 "missing-enum:CursorAnchorPosition" = "session cursors not implemented"
 
-# Bugs to fix.
-"required-field:ToolCallContent[type=diff].oldText" = "bug: old_text has no default, so diffs of new files fail to parse"
-"omittable-field:ToolCall.title" = "bug: title may be left out, but upstream requires it on tool_call"
-"omittable-field:AgentRequest.id" = "bug: request envelopes default id to None; requests need an id"
-"omittable-field:ClientRequest.id" = "bug: request envelopes default id to None; requests need an id"
-
 # Modelled differently.
 "missing-shape:ProxyNotification" = "proxy JSON-RPC envelopes are not modelled, only their params"
 "missing-shape:ProxyRequest" = "proxy JSON-RPC envelopes are not modelled, only their params"

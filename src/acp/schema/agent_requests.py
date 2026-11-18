@@ -8,7 +8,7 @@ from acp.schema.base import Request
 from acp.schema.common import EnvVariable  # noqa: TC001
 from acp.schema.elicitation import ElicitationRequest
 from acp.schema.mcp import MessageMcpRequest
-from acp.schema.tool_call import PermissionOption, ToolCall  # noqa: TC001
+from acp.schema.tool_call import PermissionOption, ToolCallUpdate  # noqa: TC001
 
 
 class BaseAgentRequest(Request):
@@ -112,7 +112,7 @@ class RequestPermissionRequest(BaseAgentRequest):
     options: Sequence[PermissionOption]
     """Available permission options for the user to choose from."""
 
-    tool_call: ToolCall
+    tool_call: ToolCallUpdate
     """Details about the tool call requiring permission."""
 
 

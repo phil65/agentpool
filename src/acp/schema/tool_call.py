@@ -43,7 +43,7 @@ ToolCallStatus = Literal["pending", "in_progress", "completed", "failed"]
 PermissionKind = Literal["allow_once", "allow_always", "reject_once", "reject_always"]
 
 
-class ToolCall(AnnotatedObject):
+class ToolCallUpdate(AnnotatedObject):
     """Details about the tool call requiring permission."""
 
     content: Sequence[ToolCallContent] | None = None
@@ -83,7 +83,7 @@ class FileEditToolCallContent(AnnotatedObject):
     new_text: str
     """The new content after modification."""
 
-    old_text: str | None
+    old_text: str | None = None
     """The original content (None for new files)."""
 
     path: str
