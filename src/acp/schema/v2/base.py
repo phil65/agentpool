@@ -16,7 +16,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Any, TypeIs
 
 from pydantic import MISSING, BaseModel, ConfigDict
-from pydantic.alias_generators import to_camel
+from pydantic.alias_generators import to_camel, to_snake
 
 
 if TYPE_CHECKING:
@@ -82,12 +82,18 @@ Not a possible protocol value, so it cannot clash with real tags such as the
 def open_discriminator(prop: str, known: frozenset[str]) -> Callable[[Any], str]:
     """Discriminator of an open union tagged by ``prop``.
 
-    Known values select their variant (a malformed payload is an error, it does not
-    fall back); any other value selects the variant tagged :data:`OTHER_TAG`.
+    ``prop`` is the wire name; model instances are read through the matching Python
+    attribute (``sessionUpdate`` -> ``session_update``). Known values select their variant
+    (a malformed payload is an error, it does not fall back); any other value selects
+    the variant tagged :data:`OTHER_TAG`.
     """
+    attr = to_snake(prop)
 
     def discriminate(value: Any) -> str:
-        tag = value.get(prop) if isinstance(value, dict) else getattr(value, prop, None)
+        if isinstance(value, dict):
+            tag = value.get(prop, value.get(attr))
+        else:
+            tag = getattr(value, attr, None)
         return tag if isinstance(tag, str) and tag in known else OTHER_TAG
 
     return discriminate

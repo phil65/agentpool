@@ -1,14 +1,16 @@
 """v2 agent-owned, display-only terminals.
 
-Agents run commands themselves and show them as terminals: ``terminal_update`` upserts
-a terminal's state (command, absolute cwd, output snapshot, exit status), and
-``terminal_output_chunk`` appends independently base64-encoded output bytes. Tool
-calls reference terminals by ``terminalId``. There are no client execution methods.
+Agents run commands themselves; terminals only display them. Tool calls reference a
+terminal by ``terminalId`` (``Terminal`` content); ``terminal_update`` upserts carry
+command, cwd, replay snapshots and exit status, and ``terminal_output_chunk`` appends
+independently base64-encoded bytes. Clients cannot execute or control processes,
+except cancelling terminals that allow it.
 """
 
 from __future__ import annotations
 
-from typing import Literal
+import base64
+from typing import Literal, Self
 
 from pydantic import MISSING, Field
 
@@ -22,6 +24,15 @@ class TerminalOutput(AnnotatedObject):
     data: str
     """Base64-encoded replacement terminal output bytes."""
 
+    @classmethod
+    def from_bytes(cls, data: bytes) -> Self:
+        """Create a snapshot from raw output bytes."""
+        return cls(data=base64.b64encode(data).decode("ascii"))
+
+    def decode(self) -> bytes:
+        """The raw output bytes."""
+        return base64.b64decode(self.data)
+
 
 class TerminalSize(AnnotatedObject):
     """The size of an agent-owned terminal in character cells."""
@@ -34,11 +45,13 @@ class TerminalSize(AnnotatedObject):
 
 
 class TerminalExitStatus(AnnotatedObject):
-    """Exit information for an agent-owned terminal."""
+    """Exit information for an agent-owned terminal.
+
+    Its presence marks the terminal as exited, even when neither code nor signal is known.
+    """
 
     exit_code: int | MISSING | None = MISSING
-    """Process exit code as the platform reports it, when known. Negative values are allowed,
-    for example signed Windows exit codes. Omitted and ``null`` are equivalent."""
+    """Process exit code as the platform reports it; negative values are allowed."""
 
     signal: str | MISSING | None = MISSING
     """Signal that terminated the process, when known."""
@@ -56,7 +69,11 @@ class TerminalCapabilities(AnnotatedObject):
 
 
 class TerminalUpdate(AnnotatedObject):
-    """An upsert for the stored state of an agent-owned terminal."""
+    """An upsert of an agent-owned terminal's state, keyed by ``terminal_id``.
+
+    Other fields are patches: omitted leaves the stored value unchanged, ``None``
+    clears it.
+    """
 
     session_update: Literal["terminal_update"] = Field(default="terminal_update", init=False)
 
@@ -95,9 +112,21 @@ class TerminalOutputChunk(AnnotatedObject):
     data: str
     """Independently base64-encoded terminal output bytes."""
 
+    @classmethod
+    def from_bytes(cls, terminal_id: TerminalId, data: bytes) -> Self:
+        """Create a chunk from raw output bytes."""
+        return cls(terminal_id=terminal_id, data=base64.b64encode(data).decode("ascii"))
+
+    def decode(self) -> bytes:
+        """The raw output bytes."""
+        return base64.b64decode(self.data)
+
 
 class CancelTerminalRequest(AnnotatedObject):
-    """Request parameters for cancelling one terminal."""
+    """Parameters of ``terminal/cancel``: cancel one terminal.
+
+    Only for terminals that currently advertise ``capabilities.cancel``.
+    """
 
     session_id: SessionId
     """The ID of the session that owns the terminal."""
