@@ -7,11 +7,13 @@ Wire rules, matching the v2 schema's patch semantics:
   sent as ``null``. On upserts, a left out field is unchanged and ``null`` clears it.
 - Serialize with :func:`to_wire` (``by_alias``, no ``exclude_none``), so explicit
   ``null`` values reach the peer.
+- ``MISSING`` is truthy. Test fields with :func:`is_set` (or ``is MISSING``), never
+  with ``if field:``.
 """
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, TypeIs
 
 from pydantic import MISSING, BaseModel, ConfigDict
 from pydantic.alias_generators import to_camel
@@ -45,6 +47,14 @@ class AnnotatedObject(Schema):
     and an object patches the stored metadata by top-level key (a key set to ``null``
     is removed, any other value replaces that key).
     """
+
+
+def is_set[T](value: T | MISSING) -> TypeIs[T]:
+    """Whether a field was given (``None`` counts as given): narrows ``T | MISSING`` to ``T``.
+
+    ``MISSING`` is truthy, so ``if field:`` does not work for this.
+    """
+    return value is not MISSING
 
 
 def to_wire(model: BaseModel) -> dict[str, Any]:
