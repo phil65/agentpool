@@ -41,6 +41,32 @@ on both sides; this design is about wiring it into agentpool's skill model.
 The harness itself is not taken as a dependency: it is bound to pydantic-ai
 workspaces and native agents, and cannot read UPath/MCP sources.
 
+## Alignment with the Agent Skills spec and client guide
+
+Checked against agentskills.io `specification` and
+`client-implementation/adding-skills-support`. Adopted here:
+
+- **Name must match the parent directory** (spec). Following the client guide's
+  lenient-validation advice, a mismatch logs a warning and the skill still loads.
+  (MCP skills are already held to this by the URI rule, enforced by FastMCP.)
+- **`compatibility`** must be 1-500 characters when given (min length added).
+- **Structured wrapping on activation**: `render()` wraps the result in
+  `<skill_content name="...">`, and lists bundled files (without reading them) in a
+  `<skill_resources>` block, capped at 100 entries with an "incomplete" note. For MCP
+  skills the list comes from the entry, so it costs nothing.
+- **Relative paths** resolve against the skill root; the rendered text says so, and for
+  skills the agent cannot reach directly it points to `read_skill_file` instead.
+- **Filtering**: `disable-model-invocation` skills are hidden from the catalog, not
+  refused at activation.
+- **Discovery convention**: `~/.agents/skills/` and `.agents/skills/` are added to
+  `SkillsRegistry.DEFAULT_SKILL_PATHS`, and the ACP session's client skill dirs scan
+  `.agents/skills` next to `.claude/skills`.
+
+Deliberately not adopted now (follow-up): malformed-YAML fallback quoting, relaxing the
+name character/length rules to warnings, catalog embedded in the tool description with
+an enum-constrained name parameter, compaction protection for skill content, activation
+de-duplication, user-explicit `/skill` activation.
+
 ## Architecture
 
 ```
