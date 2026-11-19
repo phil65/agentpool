@@ -23,7 +23,20 @@ Use `--protocol 2` for the v2 pin.
 (the official TypeScript SDK and claude-agent-acp), built on the same schema releases.
 `uv run python -m acp.schema_reference refs` lists the upstream commits since each pin
 that touched the watched paths, with a compare link; `refs --update NAME` moves a pin.
-Set `GITHUB_TOKEN` to avoid GitHub's anonymous rate limit. To sync, run `sync`, apply the printed changelog to
+Set `GITHUB_TOKEN` to avoid GitHub's anonymous rate limit.
+
+## Draft ACP v2
+
+v2 is prepared next to v1 but not used yet:
+
+- `acp.schema.v2`: the v2 models (optional fields default to `MISSING` and are left
+  out, `None` is sent as `null`; serialize with `to_wire`, test fields with `is_set`).
+- `acp.v2.agent` / `acp.v2.client`: `Agent` / `Client` base classes (unimplemented
+  methods answer `-32601`) and their connections, which enforce the v2 rules
+  (initialize first, no repeated initialize after other requests, string/integer
+  request IDs, no batches).
+- `acp.router.RoutedAgentConnection`: serves a client with the v1 or the v2 agent,
+  selected by the `initialize` request, like the TypeScript SDK's router. To sync, run `sync`, apply the printed changelog to
 the models by hand, and run `check` until it reports no undocumented differences.
 `tests/acp/test_schema_reference.py` runs the same check, so drift fails CI; a known
 difference that no longer occurs fails it too, so remove fixed entries from

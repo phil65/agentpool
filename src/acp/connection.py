@@ -98,8 +98,14 @@ class Connection:
         dispatcher_type: type[MessageDispatcher] | None = None,
         sender_type: type[MessageSender] | None = None,
         observers: list[StreamObserver] | None = None,
+        reject_batches: bool = False,
+        strict_request_ids: bool = False,
     ) -> None:
         self._handler = handler
+        # ACP v2: answer a JSON array (a JSON-RPC batch) with a single -32600 instead
+        # of skipping it, and reject requests whose ID is not a string or integer.
+        self.reject_batches = reject_batches
+        self.strict_request_ids = strict_request_ids
         self._writer = writer
         self._reader = reader
         self._text_reader = TextReceiveStream(reader)
@@ -282,13 +288,9 @@ class Connection:
                 lines = (buffer + chunk).split("\n")
                 buffer = lines.pop()  # Keep incomplete line in buffer
                 for line in lines:
-                    if message := self._decode_line(line):
-                        self._notify_observers("incoming", message)
-                        await self._process_message(message)
+                    await self._handle_line(line)
             # A final frame without trailing newline
-            if message := self._decode_line(buffer):
-                self._notify_observers("incoming", message)
-                await self._process_message(message)
+            await self._handle_line(buffer)
         except asyncio.CancelledError:
             return
         except (anyio.ClosedResourceError, anyio.BrokenResourceError, anyio.EndOfStream):
@@ -296,6 +298,24 @@ class Connection:
         # EOF / closed: reject in-flight requests so callers get an error
         # instead of hanging forever (e.g. subprocess crash during initialize).
         self._disconnect(ConnectionError("Connection closed: remote end sent EOF"))
+
+    async def _handle_line(self, line: str) -> None:
+        if self.reject_batches and _is_batch(line):
+            await self._reply_error(None, RequestError.invalid_request({"details": "batch"}))
+            return
+        if message := self._decode_line(line):
+            self._notify_observers("incoming", message)
+            await self._process_message(message)
+
+    async def _reply_error(self, request_id: RequestId | None, error: RequestError) -> None:
+        payload = {"jsonrpc": "2.0", "id": request_id, "error": error.to_error_obj()}
+        try:
+            await self._sender.send(payload)
+        except ConnectionError:
+            if not self.closed:
+                raise
+            return
+        self._notify_observers("outgoing", payload)
 
     def _decode_line(self, line: str) -> dict[str, Any] | None:
         """Decode one frame, returning None for blank or malformed ones.
@@ -325,7 +345,11 @@ class Connection:
                 done = asyncio.get_running_loop().create_future()
                 self._pending_notifications[done] = (method, message.get("params"))
                 await self._queue.publish(RpcTask("notification", message, done))
-            case {"method": str(), "id": _}:
+            case {"method": str(), "id": request_id}:
+                if self.strict_request_ids and not is_request_id(request_id):
+                    error = RequestError.invalid_request({"details": "ID must be string/int"})
+                    await self._reply_error(None, error)
+                    return
                 await self._queue.publish(RpcTask("request", message))
             case {"id": _}:
                 self._handle_response(message)
@@ -458,3 +482,13 @@ class Connection:
 
     def _on_task_error(self, task: asyncio.Task[Any], exc: BaseException) -> None:
         logger.error("Background task failed", task=task.get_name(), exc_info=exc)
+
+
+def _is_batch(line: str) -> bool:
+    """Whether a frame is a JSON array (a JSON-RPC batch); malformed JSON is not."""
+    if not (stripped := line.strip()).startswith("["):
+        return False
+    try:
+        return isinstance(anyenv.load_json(stripped), list)
+    except anyenv.JsonLoadError:
+        return False

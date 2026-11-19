@@ -10,7 +10,7 @@ import structlog
 
 from acp.agent.protocol import Agent
 from acp.client.protocol import Client
-from acp.connection import Connection
+from acp.connection import Connection, MethodHandler
 from acp.exceptions import RequestError
 from acp.schema import (
     ArchiveSessionRequest,
@@ -127,6 +127,22 @@ class AgentSideConnection(Client):
             state_store=store,
             observers=observers,
         )
+
+    @classmethod
+    def on_connection(
+        cls,
+        connection: Connection,
+        to_agent: Callable[[AgentSideConnection], Agent] | Agent,
+    ) -> tuple[AgentSideConnection, MethodHandler]:
+        """Serve v1 on an existing connection, returning the side and its handler.
+
+        Used by the version router (:mod:`acp.router`), which owns the connection
+        until ``initialize`` and then delegates incoming messages to the handler.
+        """
+        self = cls.__new__(cls)
+        agent = to_agent if isinstance(to_agent, Agent) else to_agent(self)
+        self._conn = connection
+        return self, partial(_agent_handler, agent)
 
     # client-bound methods (agent -> client)
     async def session_update(self, params: SessionNotification) -> None:
