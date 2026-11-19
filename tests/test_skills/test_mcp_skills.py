@@ -55,11 +55,11 @@ Read references/guide.md from ${SKILL_DIR}.
 def write_skill(root: Path, name: str, content: str, files: dict[str, str] | None = None) -> Path:
     skill_dir = root / name
     skill_dir.mkdir(parents=True)
-    (skill_dir / "SKILL.md").write_text(content, encoding="utf-8")
+    (skill_dir / "SKILL.md").write_text(content, encoding="utf-8", newline="")
     for rel, text in (files or {}).items():
         target = skill_dir / rel
         target.parent.mkdir(parents=True, exist_ok=True)
-        target.write_text(text, encoding="utf-8")
+        target.write_text(text, encoding="utf-8", newline="")
     return skill_dir
 
 
