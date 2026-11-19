@@ -1,12 +1,45 @@
 """Centralized MIME type utilities for agentpool.
 
-Uses pydantic-ai's enhanced MimeTypes instance for better cross-platform
-coverage of modern file types (.xlsx, .docx, .webp, .mkv, etc.).
+Guesses use a fixed table instead of the machine's ``mime.types`` files: those map
+common source files to unrelated types (e.g. ``.ts`` to ``video/mp2t`` on many Linux
+distributions, ``.rs`` to ``application/rls-services+xml``), which made results
+differ between machines and sent such files down the binary path.
 """
 
 from __future__ import annotations
 
-from pydantic_ai.messages import _mime_types
+import mimetypes
+
+
+_mime_types = mimetypes.MimeTypes()  # Python's built-in table only, no system files
+for _mime, _extension in (
+    # Types Python's table lacks (some only before 3.14), as pydantic-ai adds them
+    ("application/rtf", ".rtf"),
+    ("application/vnd.oasis.opendocument.presentation", ".odp"),
+    ("application/vnd.oasis.opendocument.spreadsheet", ".ods"),
+    ("application/vnd.oasis.opendocument.text", ".odt"),
+    ("application/vnd.openxmlformats-officedocument.presentationml.presentation", ".pptx"),
+    ("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", ".xlsx"),
+    ("application/vnd.openxmlformats-officedocument.wordprocessingml.document", ".docx"),
+    ("text/markdown", ".md"),
+    ("text/markdown", ".mdx"),
+    ("text/x-asciidoc", ".asciidoc"),
+    ("image/webp", ".webp"),
+    ("video/3gpp", ".three_gp"),
+    ("video/x-matroska", ".mkv"),
+    ("video/x-ms-wmv", ".wmv"),
+    ("video/x-flv", ".flv"),
+    ("audio/aac", ".aac"),
+    ("audio/aiff", ".aiff"),
+    ("audio/flac", ".flac"),
+    ("audio/ogg", ".oga"),
+    ("audio/wav", ".wav"),
+    ("application/yaml", ".yaml"),
+    ("application/yaml", ".yml"),
+    ("application/toml", ".toml"),
+    ("application/xml", ".xml"),
+):
+    _mime_types.add_type(_mime, _extension)
 
 
 # MIME type prefixes that are definitely binary (no need to probe content)
@@ -21,14 +54,10 @@ BINARY_MIME_PREFIXES = (
     "application/pdf",
     "application/x-executable",
     "application/x-sharedlib",
-)
-
-# MIME type prefixes that should be treated as text
-TEXT_MIME_PREFIXES = (
-    "text/",
-    "application/json",
-    "application/xml",
-    "application/javascript",
+    "application/vnd.openxmlformats-officedocument.",
+    "application/vnd.oasis.opendocument.",
+    "application/msword",
+    "application/vnd.ms-",
 )
 
 # How many bytes to probe for binary detection
@@ -38,8 +67,8 @@ BINARY_PROBE_SIZE = 8192
 def guess_type(path: str) -> str | None:
     """Guess the MIME type of a file based on its path/extension.
 
-    Uses pydantic-ai's enhanced MimeTypes instance which has better
-    coverage for modern file types across platforms.
+    Uses a fixed table (Python's built-in types plus common additions), so the result
+    does not depend on the machine.
 
     Args:
         path: File path or URL to guess type for
@@ -63,20 +92,6 @@ def is_binary_mime(mime_type: str | None) -> bool:
     if mime_type is None:
         return False
     return any(mime_type.startswith(prefix) for prefix in BINARY_MIME_PREFIXES)
-
-
-def is_text_mime(mime_type: str | None) -> bool:
-    """Check if a MIME type represents text content.
-
-    Args:
-        mime_type: MIME type string or None
-
-    Returns:
-        True if the MIME type is text-based (defaults to True for unknown)
-    """
-    if mime_type is None:
-        return True  # Default to text for unknown types
-    return any(mime_type.startswith(prefix) for prefix in TEXT_MIME_PREFIXES)
 
 
 def is_binary_content(data: bytes) -> bool:
