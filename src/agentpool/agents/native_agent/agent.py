@@ -18,7 +18,6 @@ from pydantic_ai.tools import ToolDefinition
 
 from agentpool.agents.base_agent import BaseAgent
 from agentpool.agents.events import RunStartedEvent, StreamCompleteEvent
-from agentpool.agents.exceptions import UnknownCategoryError, UnknownModeError
 from agentpool.agents.native_agent.helpers import forward_supported_events, process_tool_event
 from agentpool.log import get_logger
 from agentpool.messaging import ChatMessage, MessageHistory
@@ -63,7 +62,7 @@ if TYPE_CHECKING:
 
     from agentpool.agents.context import AgentContext
     from agentpool.agents.events import RichAgentStreamEvent
-    from agentpool.agents.modes import ModeCategory
+    from agentpool.agents.modes import ConfigOption
     from agentpool.common_types import (
         AnyEventHandlerType,
         ModelType,
@@ -92,7 +91,6 @@ logger = get_logger(__name__)
 NoneType = type(None)
 
 TResult = TypeVar("TResult")
-VALID_MODES = ["always", "never", "per_tool"]
 
 
 class AgentKwargs(TypedDict, total=False):
@@ -877,40 +875,12 @@ class Agent[TDeps = None, OutputDataT = str](BaseAgent[TDeps, OutputDataT]):
         delta = timedelta(days=200)
         return await discover_models(self._providers or ["models.dev"], max_age=delta)
 
-    async def get_modes(self) -> list[ModeCategory]:
-        """Get available mode categories for this agent."""
-        from agentpool.agents.native_agent.helpers import (
-            get_model_category,
-            get_permission_category,
-        )
+    @property
+    def config_options(self) -> Sequence[ConfigOption[Self]]:
+        """Tool confirmation and model selection."""
+        from agentpool.agents.native_agent.config_options import CONFIG_OPTIONS
 
-        categories: list[ModeCategory] = []
-        # Use native ToolConfirmationMode value directly
-        mode_category = get_permission_category(self.tool_confirmation_mode)
-        categories.append(mode_category)
-        if models := await self.get_available_models():
-            current_model = self.model_name or (models[0].id if models else "")
-            model_category = get_model_category(current_model, models)
-            categories.append(model_category)
-        return categories
-
-    async def _set_mode(self, mode_id: str | bool, category_id: str) -> None:
-        """Handle permissions and model mode switching."""
-        from agentpool_config.nodes import ToolConfirmationMode
-
-        match category_id:
-            case "mode":
-                if mode_id not in VALID_MODES:
-                    raise UnknownModeError(mode_id, VALID_MODES)
-                self.tool_confirmation_mode = cast(ToolConfirmationMode, mode_id)
-            case "model":
-                assert isinstance(mode_id, str)
-                self._model, settings = self._resolve_model_string(mode_id)
-                if settings:
-                    self.model_settings = settings
-            case _:
-                raise UnknownCategoryError(category_id, ["mode", "model"])
-        await self.update_state(config_id=category_id, value_id=mode_id)
+        return CONFIG_OPTIONS
 
     async def list_sessions(
         self,

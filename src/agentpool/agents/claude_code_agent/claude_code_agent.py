@@ -27,13 +27,10 @@ from agentpool.agents.claude_code_agent.converters import (
     to_thinking_config,
 )
 from agentpool.agents.claude_code_agent.slash_commands import create_claude_code_command
-from agentpool.agents.claude_code_agent.static_info import models_to_category
 from agentpool.agents.events import RunErrorEvent, RunStartedEvent, StreamCompleteEvent
 from agentpool.agents.events.reconstructor import MessageReconstructor
 from agentpool.agents.exceptions import (
     AgentNotInitializedError,
-    UnknownCategoryError,
-    UnknownModeError,
 )
 from agentpool.common_types import MCPServerStatus
 from agentpool.log import get_logger
@@ -74,7 +71,7 @@ if TYPE_CHECKING:
 
     from agentpool.agents.auth import AuthStatus
     from agentpool.agents.events import RichAgentStreamEvent
-    from agentpool.agents.modes import ModeCategory
+    from agentpool.agents.modes import ConfigOption
     from agentpool.common_types import AnyEventHandlerType, SimpleJsonType, StrPath
     from agentpool.delegation import AgentPool
     from agentpool.hooks import AgentHooks
@@ -90,8 +87,6 @@ ThinkingMode = Literal["off", "4k", "8k", "16k", "32k"]
 
 _MCP_TOOL_PATTERN = re.compile(r"^mcp__agentpool-(.+)-tools__(.+)$")
 """Pattern to detect CC-provided tool names ( mcp__agentpool-{agent_name}-tools__{tool_name} )."""
-
-VALID_EFFORTS: set[str] = {"low", "medium", "high", "xhigh", "max"}
 
 # see https://github.com/agentclientprotocol/claude-agent-acp/blob/main/src/acp-agent.ts for a list
 UNSUPPORTED_COMMANDS = frozenset({
@@ -873,106 +868,12 @@ class ClaudeCodeAgent[TDeps = None, TResult = str](BaseAgent[TDeps, TResult]):
         server_info = await self._client.get_server_info() if self._client else None
         return to_auth_status(server_info.account if server_info else None)
 
-    async def get_modes(self) -> list[ModeCategory]:
-        """Get available mode categories for Claude Code agent.
+    @property
+    def config_options(self) -> Sequence[ConfigOption[Self]]:
+        """Permission mode, model, thinking level and reasoning effort."""
+        from agentpool.agents.claude_code_agent.config_options import CONFIG_OPTIONS
 
-        Claude Code exposes permission modes, model selection, thinking level,
-        and reasoning effort.
-
-        Returns:
-            List of ModeCategory for permissions, models, thinking, and effort
-        """
-        from agentpool.agents.claude_code_agent.static_info import (
-            EFFORT_MODES,
-            MODES,
-            THINKING_MODES,
-        )
-        from agentpool.agents.modes import ModeCategory
-
-        categories = [
-            ModeCategory(
-                id="mode",
-                name="Mode",
-                available_modes=MODES,
-                current_mode_id=self._permission_mode or "default",
-                category="mode",
-            )
-        ]
-        # Model selection
-        models = await self.get_available_models()
-        categories.append(models_to_category(models, current_mode=self.model_name))
-        # Thinking level selection
-        categories.append(
-            ModeCategory(
-                id="thought_level",
-                name="Thinking Level",
-                available_modes=THINKING_MODES,
-                current_mode_id=self._thinking_mode,
-                category="thought_level",
-            )
-        )
-        # Reasoning effort selection
-        categories.append(
-            ModeCategory(
-                id="effort",
-                name="Reasoning Effort",
-                available_modes=EFFORT_MODES,
-                current_mode_id=self._effort or "high",
-                category="other",
-            )
-        )
-
-        return categories
-
-    async def _set_mode(self, mode_id: str | bool, category_id: str) -> None:
-        """Handle permissions, model, thinking_level, and effort mode switching."""
-        from clawd_code_sdk.models import ReasoningEffort
-
-        from agentpool.agents.claude_code_agent.static_info import VALID_MODES
-
-        match category_id:
-            case "mode":
-                # Map mode_id to PermissionMode
-                if mode_id not in VALID_MODES:
-                    raise UnknownModeError(mode_id, list(VALID_MODES))
-                self._permission_mode = mode_id
-                if self._client:  # Update SDK client if initialized
-                    await self.ensure_initialized()
-                    await self._client.set_permission_mode(self._permission_mode)
-            case "model":
-                # Validate model exists
-                if models := await self.get_available_models():
-                    valid_ids = {m.id_override if m.id_override else m.id for m in models}
-                    if mode_id not in valid_ids:
-                        raise UnknownModeError(mode_id, list(valid_ids))
-                # Set the model directly
-                assert isinstance(mode_id, str)
-                self._model = mode_id
-                if self._client:
-                    await self.ensure_initialized()
-                    assert isinstance(mode_id, str)
-                    await self._client.set_model(mode_id)
-            case "thought_level":
-                # Validate thinking mode
-                if mode_id not in THINKING_MODE_TOKENS:
-                    raise UnknownModeError(mode_id, list(THINKING_MODE_TOKENS.keys()))
-                self._thinking_mode = mode_id
-                # Set thinking tokens via SDK
-                if self._client:
-                    await self.ensure_initialized()
-                    tokens = THINKING_MODE_TOKENS[self._thinking_mode]
-                    await self._client.set_max_thinking_tokens(tokens)
-            case "effort":
-                # Validate effort level
-                if mode_id not in VALID_EFFORTS:
-                    raise UnknownModeError(mode_id, list(VALID_EFFORTS))
-                self._effort = cast(ReasoningEffort, mode_id)
-                # Effort is a CLI startup flag only - requires session reconnect
-                if self._client:
-                    await self.reconnect(resume_session=True)
-            case _:
-                raise UnknownCategoryError(category_id)
-        await self.update_state(config_id=category_id, value_id=mode_id)
+        return CONFIG_OPTIONS
 
     async def list_sessions(
         self,

@@ -2,23 +2,10 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
-
 from tokonomics.model_discovery.model_info import ModelInfo, ModelPricing
 
-from agentpool.agents.modes import ModeCategory, ModeInfo
+from agentpool.agents.modes import ModeInfo
 
-
-if TYPE_CHECKING:
-    from clawd_code_sdk import PermissionMode
-
-
-VALID_MODES: set[PermissionMode] = {
-    "default",
-    "acceptEdits",
-    "plan",
-    "bypassPermissions",
-}
 
 # Static Claude Code models - these are the simple IDs the SDK accepts
 # Use id_override to ensure pydantic_ai_id returns simple names like "opus"
@@ -131,6 +118,12 @@ EFFORT_MODES = [
         category_id="effort",
     ),
     ModeInfo(
+        value="xhigh",
+        name="Extra High",
+        description="Very deep reasoning for hard problems",
+        category_id="effort",
+    ),
+    ModeInfo(
         value="max",
         name="Max",
         description="Maximum reasoning depth",
@@ -170,23 +163,3 @@ THINKING_MODES = [
         category_id="thought_level",
     ),
 ]
-
-
-def models_to_category(models: list[ModelInfo], current_mode: str | None) -> ModeCategory:
-
-    # Use id_override if available (e.g., "opus" for Claude Code SDK)
-    def get_id(m: ModelInfo) -> str:
-        return m.id_override or m.id
-
-    modes = [
-        ModeInfo(value=get_id(m), name=m.name, description=m.description or "", category_id="model")
-        for m in models
-    ]
-
-    return ModeCategory(
-        id="model",
-        name="Model",
-        available_modes=modes,
-        current_mode_id=current_mode or get_id(models[0]),
-        category="model",
-    )

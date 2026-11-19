@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from decimal import Decimal
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, ClassVar, Literal, Self, assert_never, cast
+from typing import TYPE_CHECKING, Any, ClassVar, Literal, Self, assert_never
 from uuid import uuid4
 
 import anyenv
@@ -34,8 +34,6 @@ from agentpool.agents.events import RunStartedEvent, StreamCompleteEvent
 from agentpool.agents.events.reconstructor import MessageReconstructor
 from agentpool.agents.exceptions import (
     AgentNotInitializedError,
-    UnknownCategoryError,
-    UnknownModeError,
 )
 from agentpool.log import get_logger
 from agentpool.messaging import ChatMessage
@@ -61,7 +59,7 @@ if TYPE_CHECKING:
     from agentpool.agents.auth import AuthStatus
     from agentpool.agents.context import ConfirmationResult
     from agentpool.agents.events import RichAgentStreamEvent
-    from agentpool.agents.modes import ModeCategory
+    from agentpool.agents.modes import ConfigOption
     from agentpool.common_types import AnyEventHandlerType, MCPServerStatus, StrPath
     from agentpool.delegation import AgentPool
     from agentpool.hooks import AgentHooks
@@ -74,11 +72,6 @@ if TYPE_CHECKING:
 
 
 logger = get_logger(__name__)
-
-VALID_POLICIES = ["never", "on-request", "untrusted"]
-VALID_EFFORTS = ["low", "medium", "high", "xhigh"]
-VALID_SANDBOXES = ["read-only", "workspace-write", "danger-full-access", "external-sandbox"]
-VALID_PERSONALITIES = ["none", "friendly", "pragmatic"]
 
 
 class CodexAgent[TDeps = None, OutputDataT = str](BaseAgent[TDeps, OutputDataT]):
@@ -654,94 +647,12 @@ class CodexAgent[TDeps = None, OutputDataT = str](BaseAgent[TDeps, OutputDataT])
             return AuthStatus(state="unknown")
         return to_auth_status(response)
 
-    async def get_modes(self) -> list[ModeCategory]:
-        """Get available mode categories for Codex agent (approval poliy, effort, model)."""
-        from agentpool.agents.codex_agent.static_info import (
-            EFFORT_MODES,
-            PERSONALITY_MODES,
-            POLICY_MODES,
-            SANDBOX_MODES,
-        )
-        from agentpool.agents.modes import ModeCategory, ModeInfo
+    @property
+    def config_options(self) -> Sequence[ConfigOption[Self]]:
+        """Approval policy, reasoning effort, sandbox, personality and model."""
+        from agentpool.agents.codex_agent.config_options import CONFIG_OPTIONS
 
-        categories = [
-            ModeCategory(
-                id="mode",
-                name="Tool Approval",
-                available_modes=POLICY_MODES,
-                current_mode_id=self._approval_policy,
-                category="mode",
-            ),
-            ModeCategory(
-                id="thought_level",
-                name="Reasoning Effort",
-                available_modes=EFFORT_MODES,
-                current_mode_id=self._current_effort or "medium",
-                category="thought_level",
-            ),
-            ModeCategory(
-                id="sandbox",
-                name="Sandbox Mode",
-                available_modes=SANDBOX_MODES,
-                current_mode_id=self._current_sandbox or "workspace-write",
-                category="other",
-            ),
-            ModeCategory(
-                id="personality",
-                name="Personality",
-                available_modes=PERSONALITY_MODES,
-                current_mode_id=self._current_personality or "none",
-                category="other",
-            ),
-        ]
-        if models := await self.get_available_models():
-            model_modes = [
-                ModeInfo(
-                    value=m.id,
-                    name=m.name or m.id,
-                    description=m.description or "",
-                    category_id="model",
-                )
-                for m in models
-            ]
-            categories.append(
-                ModeCategory(
-                    id="model",
-                    name="Model",
-                    available_modes=model_modes,
-                    current_mode_id=self._current_model or "",
-                    category="model",
-                )
-            )
-        return categories
-
-    async def _set_mode(self, mode_id: str | bool, category_id: str) -> None:
-        """Handle approval_policy, reasoning_effort, and model mode switching."""
-        from agentpool.models.codex_agents import ApprovalPolicy
-
-        match category_id:
-            case "mode" if mode_id in VALID_POLICIES:
-                self._approval_policy = cast(ApprovalPolicy, mode_id)
-            case "mode":
-                raise UnknownModeError(mode_id, VALID_POLICIES)
-            case "thought_level" if mode_id in VALID_EFFORTS:
-                self._current_effort = str(mode_id)
-            case "thought_level":
-                raise UnknownModeError(mode_id, VALID_EFFORTS)
-            case "model":
-                assert isinstance(mode_id, str)
-                self._current_model = mode_id
-            case "sandbox" if mode_id in VALID_SANDBOXES:
-                self._current_sandbox = cast(SandboxMode, mode_id)
-            case "sandbox":
-                raise UnknownModeError(mode_id, VALID_SANDBOXES)
-            case "personality" if mode_id in VALID_PERSONALITIES:
-                self._current_personality = cast(Personality, mode_id)
-            case "personality":
-                raise UnknownModeError(mode_id, VALID_PERSONALITIES)
-            case _:
-                raise UnknownCategoryError(category_id)
-        await self.update_state(config_id=category_id, value_id=mode_id)
+        return CONFIG_OPTIONS
 
     async def list_sessions(
         self,

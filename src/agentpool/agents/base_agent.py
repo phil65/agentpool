@@ -10,7 +10,7 @@ from dataclasses import dataclass, field, replace
 import os
 from pathlib import Path
 import re
-from typing import TYPE_CHECKING, Any, ClassVar, Literal, assert_never, overload
+from typing import TYPE_CHECKING, Any, ClassVar, Literal, Self, assert_never, overload
 
 from anyenv import MultiEventHandler, method_spawner
 from anyenv.signals import Signal
@@ -51,7 +51,12 @@ if TYPE_CHECKING:
         RichAgentStreamEvent,
         StreamWithCommandsEvent,
     )
-    from agentpool.agents.modes import ConfigOptionChanged, ModeCategory, ModeCategoryId
+    from agentpool.agents.modes import (
+        ConfigOption,
+        ConfigOptionChanged,
+        ModeCategory,
+        ModeCategoryId,
+    )
     from agentpool.common_types import (
         AgentName,
         AnyEventHandlerType,
@@ -1103,7 +1108,15 @@ class BaseAgent[TDeps = None, TResult = str](MessageNode[TDeps, TResult]):
         """
         ...
 
-    @abstractmethod
+    @property
+    def config_options(self) -> Sequence[ConfigOption[Self]]:
+        """The switchable settings of this agent, in display order.
+
+        ``get_modes()`` and ``set_mode()`` work from this list. Agents whose options
+        come from elsewhere (e.g. a remote ACP server) override those methods instead.
+        """
+        return ()
+
     async def get_modes(self) -> list[ModeCategory]:
         """Get available mode categories for this agent.
 
@@ -1120,7 +1133,8 @@ class BaseAgent[TDeps = None, TResult = str](MessageNode[TDeps, TResult]):
         Returns:
             List of ModeCategory, empty list if no modes supported
         """
-        ...
+        categories = [await option.describe(self) for option in self.config_options]
+        return [c for c in categories if c is not None]
 
     async def get_auth_status(self) -> AuthStatus:
         """Get the authentication status of the agent backend.
@@ -1161,10 +1175,14 @@ class BaseAgent[TDeps = None, TResult = str](MessageNode[TDeps, TResult]):
 
         await self._set_mode(mode_id, resolved_category)
 
-    @abstractmethod
     async def _set_mode(self, mode_id: str | bool, category_id: str) -> None:
-        """Agent-specific mode switching implementation."""
-        ...
+        """Apply ``mode_id`` to the config option ``category_id``."""
+        from agentpool.agents.exceptions import UnknownCategoryError
+
+        options = {option.id: option for option in self.config_options}
+        if (option := options.get(category_id)) is None:
+            raise UnknownCategoryError(category_id, list(options))
+        await option.apply(self, mode_id)
 
     @abstractmethod
     async def list_sessions(

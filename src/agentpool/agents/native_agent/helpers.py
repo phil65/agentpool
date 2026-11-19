@@ -20,7 +20,6 @@ from pydantic_ai import (
 
 from agentpool import log
 from agentpool.agents.events import ToolCallCompleteEvent
-from agentpool.agents.modes import ModeCategory, ModeInfo
 from agentpool.utils.pydantic_ai_helpers import safe_args_as_dict
 
 
@@ -30,11 +29,9 @@ if TYPE_CHECKING:
     from pydantic_ai import AgentStreamEvent as PydanticAIStreamEvent, ModelMessage
     from pydantic_ai.models import Model
     from pydantic_ai.native_tools import AbstractNativeTool
-    from tokonomics.model_discovery import ModelInfo
 
     from agentpool.agents.events import RichAgentStreamEvent
     from agentpool.agents.events.events import AgentStreamEvent
-    from agentpool_config.nodes import ToolConfirmationMode
 
 logger = log.get_logger(__name__)
 
@@ -153,51 +150,3 @@ def extract_text_from_messages(
             content += "\n\n"
         content += "[Request interrupted by user]"
     return content
-
-
-def get_permission_category(current_mode: ToolConfirmationMode) -> ModeCategory:
-    """Get permission mode category using native ToolConfirmationMode values."""
-    return ModeCategory(
-        id="mode",
-        name="Tool Confirmation",
-        available_modes=[
-            ModeInfo(
-                value="always",
-                name="Always",
-                description="Always require confirmation for all tools",
-                category_id="mode",
-            ),
-            ModeInfo(
-                value="never",
-                name="Never",
-                description="Never require confirmation (auto-approve all)",
-                category_id="mode",
-            ),
-            ModeInfo(
-                value="per_tool",
-                name="Per Tool",
-                description="Require confirmation only for tools marked as needing it",
-                category_id="mode",
-            ),
-        ],
-        current_mode_id=current_mode,
-        category="mode",
-    )
-
-
-def get_model_category(current_model: str, models: list[ModelInfo]) -> ModeCategory:
-    return ModeCategory(
-        id="model",
-        name="Model",
-        available_modes=[
-            ModeInfo(
-                value=m.id,
-                name=m.name or m.id,
-                description=m.description or "",
-                category_id="model",
-            )
-            for m in models
-        ],
-        current_mode_id=current_model,
-        category="model",
-    )

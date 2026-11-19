@@ -6,15 +6,15 @@ to clients. Each agent type can define its own mode categories.
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Literal, Protocol, TypeVar, runtime_checkable
+from abc import ABC, abstractmethod
+from dataclasses import dataclass, field, replace
+from typing import TYPE_CHECKING, Any, ClassVar, Literal
+
+from agentpool.agents.exceptions import UnknownModeError
 
 
 if TYPE_CHECKING:
     from agentpool.agents.base_agent import BaseAgent
-
-# TypeVar for generic protocol - contravariant because it's used in method parameters
-AgentT_contra = TypeVar("AgentT_contra", bound="BaseAgent", contravariant=True)
 
 
 # Standard config option IDs aligned with ACP's SessionConfigOptionCategory.
@@ -63,47 +63,12 @@ class ConfigOptionChanged:
     """New value ID for this config option."""
 
 
-@runtime_checkable
-class ModeCategoryProtocol(Protocol[AgentT_contra]):
-    """Protocol for mode categories that can apply themselves.
-
-    Generic over agent type. Use ModeCategoryProtocol[CodexAgent] for
-    Codex-specific categories, ModeCategoryProtocol[BaseAgent] for
-    agent-agnostic ones.
-
-    State (current mode) lives on the agent - categories just know how to
-    read and write it via get_current() and apply().
-    """
-
-    @property
-    def id(self) -> str:
-        """Unique identifier for this category."""
-
-    @property
-    def name(self) -> str:
-        """Human-readable display name for the category."""
-
-    @property
-    def available_modes(self) -> list[ModeInfo]:
-        """List of available modes in this category."""
-
-    @property
-    def category(self) -> str | None:
-        """Optional semantic category for UX purposes."""
-
-    def get_current(self, agent: AgentT_contra) -> str:
-        """Get the current mode ID from the agent."""
-
-    async def apply(self, agent: AgentT_contra, mode_id: str) -> None:
-        """Apply a mode to the agent."""
-
-
 @dataclass
 class ModeCategory:
     """Data container for mode category information.
 
-    Used by get_modes() to expose available modes to clients.
-    For mode-switching behavior, see ModeCategoryProtocol.
+    Used by get_modes() to expose available modes to clients; built from a
+    :class:`ConfigOption` by :meth:`ConfigOption.describe`.
 
     Examples:
         - Permissions: default, acceptEdits
@@ -138,3 +103,92 @@ class ModeCategory:
 
     MUST NOT be required for correctness. Clients should handle gracefully.
     """
+
+
+OptionCategory = Literal["mode", "model", "thought_level", "other"]
+"""Semantic category of an option, for UX (see :attr:`ModeCategory.category`)."""
+
+
+class ConfigOption[AgentT: BaseAgent[Any, Any]](ABC):
+    """A switchable agent setting that describes and applies itself.
+
+    Agents declare their options in :attr:`BaseAgent.config_options`; ``get_modes()``
+    and ``set_mode()`` work from that list, so each option is defined once. The state
+    stays on the agent: an option reads it in :meth:`current` and changes it in
+    :meth:`_apply`.
+    """
+
+    id: ClassVar[str]
+    """Unique identifier of the option within an agent (used as config ID)."""
+
+    name: ClassVar[str]
+    """Human-readable display name."""
+
+    category: ClassVar[OptionCategory | None] = None
+    """Optional semantic category for UX purposes."""
+
+    strict: ClassVar[bool] = True
+    """Whether values must be one of :meth:`choices`."""
+
+    @abstractmethod
+    async def choices(self, agent: AgentT) -> list[ModeInfo]:
+        """The selectable values; an option without choices is not offered."""
+
+    @abstractmethod
+    def current(self, agent: AgentT) -> str:
+        """The current value ID, or ``""`` if unset."""
+
+    @abstractmethod
+    async def _apply(self, agent: AgentT, value: str) -> None:
+        """Change the agent's state (and its backend, if needed) to ``value``."""
+
+    async def describe(self, agent: AgentT) -> ModeCategory | None:
+        """The option as a :class:`ModeCategory`, or ``None`` if it has no choices."""
+        if not (choices := await self.choices(agent)):
+            return None
+        modes = [replace(c, category_id=self.id) for c in choices]
+        return ModeCategory(
+            id=self.id,
+            name=self.name,
+            available_modes=modes,
+            current_mode_id=self.current(agent) or str(modes[0].value),
+            category=self.category,
+        )
+
+    async def apply(self, agent: AgentT, value: str | bool) -> None:
+        """Validate ``value``, apply it and announce the change."""
+        if not isinstance(value, str):
+            raise UnknownModeError(value, [str(c.value) for c in await self.choices(agent)])
+        if self.strict:
+            valid = [str(c.value) for c in await self.choices(agent)]
+            if value not in valid:
+                raise UnknownModeError(value, valid)
+        await self._apply(agent, value)
+        await agent.update_state(config_id=self.id, value_id=value)
+
+
+class ModelOption[AgentT: BaseAgent[Any, Any]](ConfigOption[AgentT]):
+    """Model selection: choices from ``get_available_models()``.
+
+    Not strict by default, since agents usually accept models outside their list
+    (e.g. any ``provider:model`` string). Subclasses implement :meth:`_apply`.
+    """
+
+    id = "model"
+    name = "Model"
+    category = "model"
+    strict = False
+
+    async def choices(self, agent: AgentT) -> list[ModeInfo]:
+        models = await agent.get_available_models() or []
+        return [
+            ModeInfo(
+                value=m.id_override or m.id,
+                name=m.name or m.id,
+                description=m.description or "",
+            )
+            for m in models
+        ]
+
+    def current(self, agent: AgentT) -> str:
+        return agent.model_name or ""
