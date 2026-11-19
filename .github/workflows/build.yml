@@ -105,13 +105,13 @@ jobs:
     needs: test
     if: startsWith(github.ref, 'refs/tags/')
     strategy:
+      # One platform failing must not cancel the other binaries.
+      fail-fast: false
       matrix:
+        # No darwin-x86_64 (Intel Mac): lancedb ships no wheels for it.
         include:
           - runner: ubuntu-22.04
             os: linux
-            arch: x86_64
-          - runner: macos-15-intel
-            os: darwin
             arch: x86_64
           - runner: macos-14
             os: darwin
