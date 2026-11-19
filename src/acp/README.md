@@ -17,7 +17,13 @@ uv run python -m acp.schema_reference sync              # pin the newest tag
 uv run python -m acp.schema_reference check             # models vs pinned schema
 ```
 
-Use `--protocol 2` for the v2 pin. To sync, run `sync`, apply the printed changelog to
+Use `--protocol 2` for the v2 pin.
+
+`schema/acp/references.toml` additionally pins reference implementations by commit
+(the official TypeScript SDK and claude-agent-acp), built on the same schema releases.
+`uv run python -m acp.schema_reference refs` lists the upstream commits since each pin
+that touched the watched paths, with a compare link; `refs --update NAME` moves a pin.
+Set `GITHUB_TOKEN` to avoid GitHub's anonymous rate limit. To sync, run `sync`, apply the printed changelog to
 the models by hand, and run `check` until it reports no undocumented differences.
 `tests/acp/test_schema_reference.py` runs the same check, so drift fails CI; a known
 difference that no longer occurs fails it too, so remove fixed entries from

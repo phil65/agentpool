@@ -2,10 +2,11 @@
 
 from __future__ import annotations
 
-from typing import Any, Literal
+from typing import TYPE_CHECKING, Any, Literal
 
 from pydantic import MISSING, BaseModel, Field
 import pytest
+from upathtools import UPath
 
 from acp.schema_reference import (
     Finding,
@@ -13,10 +14,16 @@ from acp.schema_reference import (
     UpstreamSchema,
     changelog,
     check,
+    load_references,
     run_check,
     split_known,
     tag_sort_key,
+    update_reference,
 )
+
+
+if TYPE_CHECKING:
+    from pathlib import Path
 
 
 @pytest.mark.parametrize("protocol_version", [1, 2])
@@ -243,3 +250,24 @@ def test_constraint_differences_are_reported() -> None:
 
     variant = "SessionUpdate[sessionUpdate=agent_message_chunk]"
     assert ids == {f"constraint:{variant}.content", f"constraint:{variant}.messageId"}
+
+
+def test_update_reference_moves_only_the_named_pin(tmp_path: Path) -> None:
+    path = UPath(tmp_path / "references.toml")
+    path.write_text(
+        '[a]\nrepo = "x/a"\ncommit = "111"\npaths = ["src"]\n\n'
+        '[b]\nrepo = "x/b"\ncommit = "222"\npaths = ["lib"]\n',
+        encoding="utf-8",
+    )
+
+    update_reference("b", "333", path)
+
+    pins = {r.name: r.commit for r in load_references(path)}
+    assert pins == {"a": "111", "b": "333"}
+
+
+def test_pinned_reference_implementations_are_valid() -> None:
+    references = load_references()
+
+    assert {r.name for r in references} >= {"typescript-sdk", "claude-agent-acp"}
+    assert all(len(r.commit) == 40 and r.paths for r in references)

@@ -17,6 +17,8 @@ Commands (``uv run python -m acp.schema_reference <command>``):
 - ``sync [--tag TAG] [--dry-run]``: download a tag (default: newest), print the
   schema changelog against the pinned one, and update the pin
 - ``check``: compare the models with the pinned schema
+- ``refs [--update NAME [--commit SHA]]``: show what changed in the pinned reference
+  implementations (``schema/acp/references.toml``) since their pinned commit, or move a pin
 """
 
 from __future__ import annotations
@@ -833,6 +835,135 @@ def _diff_keys(kind: str, old: Iterable[str], new: Iterable[str]) -> list[str]:
 
 
 # ---------------------------------------------------------------------------
+# Pinned reference implementations
+# ---------------------------------------------------------------------------
+
+REFERENCES_FILE = REFERENCE_ROOT / "references.toml"
+
+
+@dataclass(frozen=True)
+class ReferenceImplementation:
+    """An upstream implementation pinned by commit (``schema/acp/references.toml``)."""
+
+    name: str
+    repo: str
+    commit: str
+    paths: tuple[str, ...]
+    """Paths in the repository whose changes are of interest."""
+
+    description: str = ""
+
+
+def load_references(path: UPath = REFERENCES_FILE) -> list[ReferenceImplementation]:
+    """Read the pinned reference implementations."""
+    data = tomllib.loads(path.read_text("utf-8"))
+    return [
+        ReferenceImplementation(
+            name=name,
+            repo=entry["repo"],
+            commit=entry["commit"],
+            paths=tuple(entry.get("paths", ())),
+            description=entry.get("description", ""),
+        )
+        for name, entry in data.items()
+    ]
+
+
+@dataclass(frozen=True)
+class UpstreamCommit:
+    """A commit of a reference implementation."""
+
+    sha: str
+    date: str
+    subject: str
+
+
+@dataclass(frozen=True)
+class ReferenceChanges:
+    """What changed in a reference implementation since its pinned commit."""
+
+    reference: ReferenceImplementation
+    head: UpstreamCommit
+    commits: list[UpstreamCommit]
+    """Commits since the pin that touched the reference's paths, newest first."""
+
+    files: list[str]
+    """Files under the reference's paths that differ between the pin and the head."""
+
+    @property
+    def compare_url(self) -> str:
+        repo, pin, head = self.reference.repo, self.reference.commit, self.head.sha
+        return f"https://github.com/{repo}/compare/{pin[:12]}...{head[:12]}"
+
+
+def _github(endpoint: str, **params: str | int) -> Any:
+    import os
+
+    import httpx
+
+    headers = {"Accept": "application/vnd.github+json"}
+    if token := os.environ.get("GITHUB_TOKEN"):
+        headers["Authorization"] = f"Bearer {token}"
+    response = httpx.get(
+        f"https://api.github.com/{endpoint}", params=params, headers=headers, timeout=30
+    )
+    response.raise_for_status()
+    return response.json()
+
+
+def _commit(data: JSON) -> UpstreamCommit:
+    return UpstreamCommit(
+        sha=data["sha"],
+        date=data["commit"]["committer"]["date"][:10],
+        subject=data["commit"]["message"].split("\n", 1)[0],
+    )
+
+
+def reference_changes(reference: ReferenceImplementation) -> ReferenceChanges:
+    """Fetch the changes of ``reference`` since its pinned commit."""
+    repo = f"repos/{reference.repo}"
+    head = _commit(_github(f"{repo}/commits/HEAD"))
+    pinned = _commit(_github(f"{repo}/commits/{reference.commit}"))
+    compare = _github(f"{repo}/compare/{reference.commit}...{head.sha}")
+    files = sorted(
+        entry["filename"]
+        for entry in compare.get("files", [])
+        if any(_under(entry["filename"], path) for path in reference.paths)
+    )
+    seen: dict[str, UpstreamCommit] = {}
+    for path in reference.paths:
+        for data in _github(f"{repo}/commits", path=path, since=f"{pinned.date}T00:00:00Z"):
+            commit = _commit(data)
+            if commit.sha != reference.commit:
+                seen.setdefault(commit.sha, commit)
+    in_range = {entry["sha"] for entry in compare.get("commits", [])}
+    commits = sorted(
+        (c for c in seen.values() if c.sha in in_range), key=lambda c: c.date, reverse=True
+    )
+    return ReferenceChanges(reference, head, commits, files)
+
+
+def _under(filename: str, path: str) -> bool:
+    return filename == path or filename.startswith(path.rstrip("/") + "/")
+
+
+def update_reference(name: str, commit: str, path: UPath = REFERENCES_FILE) -> None:
+    """Move the pin of reference ``name`` to ``commit``, keeping the file's layout."""
+    lines = path.read_text("utf-8").splitlines(keepends=True)
+    section: str | None = None
+    for index, line in enumerate(lines):
+        stripped = line.strip()
+        if stripped.startswith("[") and stripped.endswith("]"):
+            section = stripped[1:-1]
+        elif section == name and stripped.startswith("commit"):
+            lines[index] = f'commit = "{commit}"\n'
+            path.write_text("".join(lines), encoding="utf-8")
+            return
+    msg = f"no reference named {name!r} in {path}"
+    raise KeyError(msg)
+
+
+# ---------------------------------------------------------------------------
 # CLI
 # ---------------------------------------------------------------------------
 
@@ -848,6 +979,34 @@ def _print_report(protocol_version: int, report: Report) -> None:
         print("  ok: no undocumented differences")
 
 
+def _refs_command(update: str | None, commit: str | None) -> int:
+    references = load_references()
+    if update is not None:
+        reference = next((r for r in references if r.name == update), None)
+        if reference is None:
+            print(f"unknown reference {update!r}", file=sys.stderr)
+            return 1
+        target = commit or _commit(_github(f"repos/{reference.repo}/commits/HEAD")).sha
+        update_reference(update, target)
+        print(f"{update}: pinned {target[:12]} (was {reference.commit[:12]})")
+        return 0
+    for reference in references:
+        changes = reference_changes(reference)
+        print(f"{reference.name} ({reference.repo})")
+        print(
+            f"  pinned {reference.commit[:12]}, head {changes.head.sha[:12]} ({changes.head.date})"
+        )
+        if not changes.commits and not changes.files:
+            print("  no changes in the watched paths")
+            continue
+        for c in changes.commits:
+            print(f"  {c.sha[:12]} {c.date} {c.subject}")
+        if changes.files:
+            print(f"  changed files: {', '.join(changes.files)}")
+        print(f"  {changes.compare_url}")
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     """Entry point of ``python -m acp.schema_reference``."""
     parser = argparse.ArgumentParser(prog="python -m acp.schema_reference", description=__doc__)
@@ -858,8 +1017,14 @@ def main(argv: list[str] | None = None) -> int:
     sync.add_argument("--tag", help="upstream tag (default: newest)")
     sync.add_argument("--dry-run", action="store_true", help="only print the changelog")
     commands.add_parser("check", help="compare the models with the pinned reference")
+    refs = commands.add_parser("refs", help="changes in the pinned reference implementations")
+    refs.add_argument("--update", metavar="NAME", help="move the pin of this reference")
+    refs.add_argument("--commit", help="commit to pin (default: the current upstream head)")
     args = parser.parse_args(argv)
     version: int = args.protocol
+
+    if args.command == "refs":
+        return _refs_command(args.update, args.commit)
 
     if args.command == "latest":
         pinned = Reference.load(version).tag
