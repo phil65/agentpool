@@ -207,7 +207,7 @@ requires-dist = [
     { name = "epregistry" },
     { name = "evented", specifier = ">=1.0.5" },
     { name = "evented", extras = ["all"], marker = "extra == 'events'" },
-    { name = "exxec", specifier = ">=0.1.0" },
+    { name = "exxec", specifier = ">=0.5.3" },
     { name = "fasta2a", marker = "extra == 'a2a'" },
     { name = "fastapi" },
     { name = "fastembed", marker = "python_full_version < '3.14' and extra == 'mcp-discovery'", specifier = ">=0.7.4" },
@@ -1917,7 +1917,7 @@ wheels = [
 
 [[package]]
 name = "exxec"
-version = "0.4.1"
+version = "0.5.3"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "anyenv" },
@@ -1926,9 +1926,9 @@ dependencies = [
     { name = "schemez" },
     { name = "upathtools" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/a2/e3/4704f37bcfc30c07baf401254340ac48be6be80c439eff039813d6dc227e/exxec-0.4.1.tar.gz", hash = "sha256:12abc6324d421bdecf337193b324230b241eaab8a3d0e477e0e077315bb4264f", size = 94422, upload-time = "2026-04-25T02:28:55.746Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/b5/98/9b52d43644dcf492ae961615c57fe02364e83f08b38db9afed96f3b66c53/exxec-0.5.3.tar.gz", hash = "sha256:53a7d4dad4d7b46c92bbd088ae739efa4a81cc733de773d578ed15830685bc97", size = 106537, upload-time = "2026-11-19T00:24:17.523Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/d3/34/c66b5a28616e17ded711fee9d596bda9f5cece41001973a0d1319a61c333/exxec-0.4.1-py3-none-any.whl", hash = "sha256:623215b41a63da4ef77e4b03c5a07626abae602ebd0657740002e79748598984", size = 133988, upload-time = "2026-04-25T02:29:01.106Z" },
+    { url = "https://files.pythonhosted.org/packages/a5/bc/b5b1b7054fc583143e288b6b7b9ead4df9a19c5bd3c9c2af987276505f06/exxec-0.5.3-py3-none-any.whl", hash = "sha256:06666e81ca28cd01036ca710b169a31d2577307d3feaa66d87d6bd9f63f405ce", size = 136193, upload-time = "2026-11-19T00:24:16.313Z" },
 ]
 
 [[package]]
