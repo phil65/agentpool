@@ -4,7 +4,8 @@ from __future__ import annotations
 
 from typing import Any, Literal
 
-from pydantic import BaseModel, Field
+from pydantic import MISSING, BaseModel, Field
+import pytest
 
 from acp.schema_reference import (
     Finding,
@@ -18,8 +19,9 @@ from acp.schema_reference import (
 )
 
 
-def test_v1_models_conform_to_pinned_reference() -> None:
-    report = run_check(1)
+@pytest.mark.parametrize("protocol_version", [1, 2])
+def test_models_conform_to_pinned_reference(protocol_version: int) -> None:
+    report = run_check(protocol_version)
     new = "\n".join(f"{f.id}: {f.detail}" for f in report.new)
     stale = "\n".join(report.stale)
     assert report.ok, f"undocumented differences:\n{new}\nstale known differences:\n{stale}"
@@ -195,3 +197,26 @@ def test_tags_sort_by_version() -> None:
         "schema-v2.0.0-alpha.17",
         "schema-v2.0.0",
     ]
+
+
+def test_nullability_differences_are_reported() -> None:
+    nullable_chunk = {
+        **CHUNK,
+        "properties": {**CHUNK["properties"], "messageId": {"type": ["string", "null"]}},
+    }
+
+    class Chunk(BaseModel):
+        session_update: Literal["agent_message_chunk"] = Field(
+            default="agent_message_chunk", alias="sessionUpdate"
+        )
+        content: str | None  # upstream does not allow null
+        message_id: str | MISSING = Field(default=MISSING, alias="messageId")  # rejects null
+
+    upstream = UpstreamSchema.parse(
+        _schema(ContentChunk=nullable_chunk, SessionUpdate=UPDATE, ToolKind=KIND), META
+    )
+
+    ids = _ids(check(upstream, _ours(Chunk, OpenKind), {}, check_nullability=True))
+
+    variant = "SessionUpdate[sessionUpdate=agent_message_chunk]"
+    assert ids == {f"sends-null:{variant}.content", f"rejects-null:{variant}.messageId"}

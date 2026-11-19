@@ -8,7 +8,7 @@ from acp.schema.base import Response
 from acp.schema.elicitation import ElicitationResponse
 from acp.schema.mcp import MessageMcpResponse
 from acp.schema.terminal import TerminalExitStatus  # noqa: TC001
-from acp.schema.tool_call import AllowedOutcome, DeniedOutcome
+from acp.schema.tool_call import AllowedOutcome, DeniedOutcome, RequestPermissionOutcome
 
 
 # terminal
@@ -72,7 +72,7 @@ class ReadTextFileResponse(Response):
 class RequestPermissionResponse(Response):
     """Response to a permission request."""
 
-    outcome: DeniedOutcome | AllowedOutcome
+    outcome: RequestPermissionOutcome
     """The user's decision on the permission request."""
 
     @classmethod

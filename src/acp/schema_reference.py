@@ -22,7 +22,7 @@ Commands (``uv run python -m acp.schema_reference <command>``):
 from __future__ import annotations
 
 import argparse
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 import importlib
 import inspect
 import json
@@ -42,7 +42,7 @@ from typing import (
     get_origin,
 )
 
-from pydantic import BaseModel
+from pydantic import MISSING, BaseModel
 from upathtools import UPath
 
 
@@ -53,7 +53,7 @@ if TYPE_CHECKING:
 REPO = "agentclientprotocol/agent-client-protocol"
 REFERENCE_ROOT = UPath(__file__).resolve().parents[2] / "schema" / "acp"
 REFERENCE_FILES = ("schema.unstable.json", "meta.unstable.json")
-MODEL_PACKAGES: dict[int, str] = {1: "acp.schema"}
+MODEL_PACKAGES: dict[int, str] = {1: "acp.schema", 2: "acp.schema.v2"}
 """Package holding the hand-written models of each protocol version."""
 
 METHOD_GROUPS = {
@@ -93,6 +93,9 @@ class Shape:
 
     bases: frozenset[str] = frozenset()
     """Definitions this shape inherits via ``allOf``."""
+
+    nullable: frozenset[str] = frozenset()
+    """Wire names of properties that accept ``null``."""
 
     branch_of: str | None = None
     """For a variant made from a tagged branch inside an object definition: that
@@ -149,8 +152,14 @@ class UpstreamSchema:
             elif "enum" in node:
                 enums[name] = EnumDef(name, frozenset(node["enum"]), open=False)
             elif _is_object(node, defs):
-                props, required, bases = _collect(node, defs)
-                shapes[name] = Shape(name, props, required, bases=bases)
+                collected = _collect(node, defs)
+                shapes[name] = Shape(
+                    name,
+                    collected.properties,
+                    collected.required,
+                    bases=collected.bases,
+                    nullable=collected.nullable,
+                )
                 branches = [
                     branch
                     for part in node.get("oneOf", []) + node.get("anyOf", [])
@@ -201,36 +210,63 @@ def _is_object(node: JSON, defs: Mapping[str, JSON]) -> bool:
     )
 
 
-def _collect(
-    node: JSON, defs: Mapping[str, JSON]
-) -> tuple[frozenset[str], frozenset[str], frozenset[str]]:
-    """Properties, required properties and ``allOf`` bases of an object node.
+@dataclass(frozen=True)
+class _Collected:
+    properties: frozenset[str]
+    required: frozenset[str]
+    bases: frozenset[str]
+    nullable: frozenset[str]
+
+
+def _collect(node: JSON, defs: Mapping[str, JSON]) -> _Collected:
+    """Properties, required and nullable properties and ``allOf`` bases of an object.
 
     Properties of ``anyOf`` / ``oneOf`` branches inside an object count as
     optional properties of the object.
     """
-    props = set(node.get("properties", {}))
+    own: JSON = node.get("properties", {})
+    props = set(own)
     required = set(node.get("required", []))
+    nullable = {prop for prop, schema in own.items() if _accepts_null(schema, defs)}
     bases: set[str] = set()
     for part in node.get("allOf", []):
         if ref := part.get("$ref"):
             bases.add(_ref_name(ref))
             part = defs[_ref_name(ref)]  # noqa: PLW2901
-        sub_props, sub_required, sub_bases = _collect(part, defs)
-        props |= sub_props
-        required |= sub_required
-        bases |= sub_bases
+        sub = _collect(part, defs)
+        props |= sub.properties
+        required |= sub.required
+        bases |= sub.bases
+        nullable |= sub.nullable
     branch_required: list[frozenset[str]] = []
     for part in node.get("anyOf", []) + node.get("oneOf", []):
         resolved = defs[_ref_name(part["$ref"])] if "$ref" in part else part
-        sub_props, sub_required, sub_bases = _collect(resolved, defs)
-        props |= sub_props
-        bases |= sub_bases
-        branch_required.append(sub_required)
+        sub = _collect(resolved, defs)
+        props |= sub.properties
+        bases |= sub.bases
+        nullable |= sub.nullable
+        branch_required.append(sub.required)
     if branch_required:
         # Required in every branch means required for the object.
         required |= frozenset.intersection(*branch_required)
-    return frozenset(props), frozenset(required), frozenset(bases)
+    return _Collected(frozenset(props), frozenset(required), frozenset(bases), frozenset(nullable))
+
+
+def _accepts_null(schema: JSON, defs: Mapping[str, JSON], depth: int = 0) -> bool:
+    """Whether a property schema accepts ``null``."""
+    kind = schema.get("type")
+    if kind == "null" or (isinstance(kind, list) and "null" in kind):
+        return True
+    if depth > 8:  # noqa: PLR2004
+        return False
+    if ref := schema.get("$ref"):
+        return _accepts_null(defs[_ref_name(ref)], defs, depth + 1)
+    if any(_accepts_null(part, defs, depth + 1) for part in schema.get("anyOf", [])):
+        return True
+    if any(_accepts_null(part, defs, depth + 1) for part in schema.get("oneOf", [])):
+        return True
+    parts = schema.get("allOf", [])
+    return len(parts) == 1 and _accepts_null(parts[0], defs, depth + 1)
 
 
 def _parse_variant(union: str, variant: JSON, defs: Mapping[str, JSON]) -> Shape | None:
@@ -244,8 +280,16 @@ def _parse_variant(union: str, variant: JSON, defs: Mapping[str, JSON]) -> Shape
     )
     if tag is None:
         return None
-    props, required, bases = _collect(variant, defs)
-    return Shape(f"{union}[{tag[0]}={tag[1]}]", props, required, union, tag, bases)
+    collected = _collect(variant, defs)
+    return Shape(
+        f"{union}[{tag[0]}={tag[1]}]",
+        collected.properties,
+        collected.required,
+        union,
+        tag,
+        collected.bases,
+        collected.nullable,
+    )
 
 
 def _parse_branch(name: str, node: JSON, branch: JSON, defs: Mapping[str, JSON]) -> Shape | None:
@@ -256,17 +300,7 @@ def _parse_branch(name: str, node: JSON, branch: JSON, defs: Mapping[str, JSON])
         "allOf": [*node.get("allOf", []), *branch.get("allOf", [])],
     }
     shape = _parse_variant(name, merged, defs)
-    if shape is None:
-        return None
-    return Shape(
-        shape.key,
-        shape.properties,
-        shape.required,
-        shape.union,
-        shape.discriminator,
-        shape.bases,
-        branch_of=name,
-    )
+    return None if shape is None else replace(shape, branch_of=name)
 
 
 # ---------------------------------------------------------------------------
@@ -349,7 +383,11 @@ class FieldInfo:
     """The field must be present when parsing."""
 
     omittable: bool
-    """The field can be left out when serializing: optional with a ``None`` default."""
+    """The field can be left out when serializing: optional with a ``None`` or
+    ``MISSING`` default."""
+
+    accepts_none: bool
+    """The annotation allows ``None`` (sent as ``null`` unless excluded)."""
 
 
 def wire_fields(model: type[BaseModel]) -> dict[str, FieldInfo]:
@@ -358,8 +396,9 @@ def wire_fields(model: type[BaseModel]) -> dict[str, FieldInfo]:
         (info.alias or name): FieldInfo(
             required=info.is_required(),
             omittable=not info.is_required()
-            and info.default is None
+            and (info.default is None or info.default is MISSING)
             and info.default_factory is None,
+            accepts_none=any(member is type(None) for member in _flatten(info.annotation)),
         )
         for name, info in model.model_fields.items()
         if not info.exclude
@@ -388,13 +427,26 @@ class Conformance:
     known: dict[str, str] = field(default_factory=dict)
     """Finding id to the reason the difference is accepted."""
 
+    check_nullability: bool = False
+    """Compare which fields accept ``null``. For model packages that send ``None`` as
+    ``null`` and leave out ``MISSING`` fields (v2), not for ``exclude_none`` ones (v1)."""
+
+    allow_missing: bool = False
+    """Accept upstream shapes, enums and methods without a counterpart yet, while a
+    model package is being written. Fields of the shapes that exist are still checked."""
+
     @classmethod
     def load(cls, path: UPath) -> Conformance:
         """Read ``conformance.toml``; a missing file means no renames or differences."""
         if not path.exists():
             return cls()
         data = tomllib.loads(path.read_text("utf-8"))
-        return cls(dict(data.get("renames", {})), dict(data.get("known", {})))
+        return cls(
+            dict(data.get("renames", {})),
+            dict(data.get("known", {})),
+            bool(data.get("check_nullability", False)),
+            bool(data.get("allow_missing", False)),
+        )
 
 
 @dataclass(frozen=True)
@@ -407,7 +459,13 @@ class Finding:
     detail: str
 
 
-def check(upstream: UpstreamSchema, ours: OurSchema, renames: Mapping[str, str]) -> list[Finding]:
+def check(
+    upstream: UpstreamSchema,
+    ours: OurSchema,
+    renames: Mapping[str, str],
+    *,
+    check_nullability: bool = False,
+) -> list[Finding]:
     """Compare the models with the upstream schema.
 
     ``renames`` maps upstream definition names (shapes, unions, enums) to ours.
@@ -429,7 +487,8 @@ def check(upstream: UpstreamSchema, ours: OurSchema, renames: Mapping[str, str])
             if key not in inlined and key not in upstream.union_members:
                 findings.append(Finding(f"missing-shape:{key}", "no matching model"))
             continue
-        findings.extend(_compare_fields(key, shape, model, added_tags.get(key, set())))
+        tags = added_tags.get(key, set())
+        findings.extend(_compare_fields(key, shape, model, tags, check_nullability))
     findings.extend(_check_enums(upstream, ours, renames))
     findings.extend(_check_methods(upstream, ours))
     return findings
@@ -475,7 +534,11 @@ def _match_shapes(
         elif shape.union and shape.discriminator:
             prop, value = shape.discriminator
             union = renames.get(shape.union, shape.union)
-            candidates = ours.union_members(union) or list(ours.models.values())
+            # Without our union, only models named like an upstream base of the
+            # variant qualify: tags such as `type: "text"` recur across unions.
+            candidates = ours.union_members(union) or [
+                ours.models[base] for base in shape.bases if base in ours.models
+            ]
             hits = [m for m in candidates if _discriminator_value(m, prop) == value]
             if len(hits) > 1:
                 # Same tag in several unions: prefer the model whose fields fit best.
@@ -486,7 +549,11 @@ def _match_shapes(
 
 
 def _compare_fields(
-    key: str, shape: Shape, model: type[BaseModel], added_tags: set[str]
+    key: str,
+    shape: Shape,
+    model: type[BaseModel],
+    added_tags: set[str],
+    check_nullability: bool,
 ) -> Iterator[Finding]:
     fields = wire_fields(model)
     tag = shape.discriminator[0] if shape.discriminator else None
@@ -508,6 +575,18 @@ def _compare_fields(
             yield Finding(
                 f"required-field:{key}.{prop}",
                 f"optional upstream, required in {where}: valid messages fail to parse",
+            )
+        if not check_nullability:
+            continue
+        if prop in shape.nullable and not info.accepts_none:
+            yield Finding(
+                f"rejects-null:{key}.{prop}",
+                f"upstream allows null, {where} does not: valid messages fail to parse",
+            )
+        elif info.accepts_none and prop not in shape.nullable:
+            yield Finding(
+                f"sends-null:{key}.{prop}",
+                f"{where} accepts None and would send null, upstream does not allow it",
             )
 
 
@@ -531,7 +610,19 @@ def run_check(protocol_version: int, root: UPath = REFERENCE_ROOT) -> Report:
     reference = Reference.load(protocol_version, root)
     conformance = Conformance.load(reference.directory / "conformance.toml")
     ours = OurSchema.load(MODEL_PACKAGES[protocol_version])
-    return split_known(check(reference.parsed, ours, conformance.renames), conformance.known)
+    findings = check(
+        reference.parsed,
+        ours,
+        conformance.renames,
+        check_nullability=conformance.check_nullability,
+    )
+    if conformance.allow_missing:
+        findings = [f for f in findings if not f.id.startswith(MISSING_KINDS)]
+    return split_known(findings, conformance.known)
+
+
+MISSING_KINDS = ("missing-shape:", "missing-enum:", "missing-method:")
+"""Finding kinds that ``allow_missing`` accepts."""
 
 
 def split_known(findings: Iterable[Finding], known: Mapping[str, str]) -> Report:

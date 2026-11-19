@@ -338,6 +338,10 @@ class AllowedOutcome(AnnotatedObject):
     outcome: Literal["selected"] = Field(default="selected", init=False)
 
 
+RequestPermissionOutcome = DeniedOutcome | AllowedOutcome
+"""The user's decision on a permission request: cancelled, or an option selected."""
+
+
 class PermissionOption(AnnotatedObject):
     """An option presented to the user when requesting permission."""
 

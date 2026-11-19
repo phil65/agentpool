@@ -1,0 +1,19 @@
+# Conformance of `acp.schema.v2` against the pinned upstream schema (see VERSION).
+#
+# Checked by `uv run python -m acp.schema_reference --protocol 2 check` and
+# tests/acp/test_schema_reference.py. Every difference reported by the check must be
+# listed under [known] with a reason; listed differences that no longer occur fail
+# the check too, so remove them once fixed.
+
+# v2 sends None as null and leaves MISSING fields out, so nullability must match.
+check_nullability = true
+
+# The v2 models are being written module by module: accept upstream types that have
+# no model yet. Fields of existing models are still checked. Turn off when complete.
+allow_missing = true
+
+[renames]
+# Upstream definition name = our name (models, unions and Literal aliases).
+
+[known]
+# Finding id = reason.
