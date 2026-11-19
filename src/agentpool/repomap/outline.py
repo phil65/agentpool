@@ -3,8 +3,7 @@
 from __future__ import annotations
 
 from pathlib import Path
-import re
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 
 if TYPE_CHECKING:
@@ -60,7 +59,7 @@ async def generate_file_outline(
     return get_file_map_from_content(content, Path(path_str).name, max_tokens=max_tokens)
 
 
-def get_file_map_from_content(content: str, filename: str, max_tokens: int = 2048) -> str | None:  # noqa: PLR0915
+def get_file_map_from_content(content: str, filename: str, max_tokens: int = 2048) -> str | None:
     """Generate structure map from content without filesystem IO.
 
     Pure function for generating a file structure map when you already
@@ -112,36 +111,7 @@ def get_file_map_from_content(content: str, filename: str, max_tokens: int = 204
     )
     context.add_lines_of_interest(lois)
     context.add_context()
-    tree_output: str = context.format()
-    # Add line number annotations to definitions
-    code_lines = content.splitlines()
-    lois_set = set(lois)
-    def_pattern = re.compile(r"^(.*?)(class\s+\w+|def\s+\w+|async\s+def\s+\w+)")
-    result_lines = []
-    for output_line in tree_output.splitlines():
-        modified_line = output_line
-        if def_pattern.search(output_line):
-            stripped = output_line.lstrip("│ \t")
-            for line_num in lois_set:
-                if line_num <= len(code_lines):
-                    continue
-                orig_line = code_lines[line_num].strip()
-                if orig_line and stripped.startswith(orig_line.split("(")[0].split(":")[0]):
-                    if re.search(r"(class\s+\w+|def\s+\w+|async\s+def\s+\w+)", output_line):
-                        start_line_display = line_num + 1
-                        end_line = line_ranges.get(line_num, -1)
-                        if end_line >= 0 and end_line != line_num:
-                            end_line_display = end_line + 1
-                            line_info = f"  # [{start_line_display}-{end_line_display}]"
-                        else:
-                            line_info = f"  # [{start_line_display}]"
-                        modified_line = f"{output_line}{line_info}"
-                    break
-        result_lines.append(modified_line)
-
-    tree_output = "\n".join(result_lines)
-    if result_lines:
-        tree_output += "\n"
+    tree_output = _render_with_line_ranges(context, line_ranges)
     # Build final output with header
     lines = content.count("\n") + 1
     tokens_approx = len(tree_output) // 4
@@ -155,3 +125,33 @@ def get_file_map_from_content(content: str, filename: str, max_tokens: int = 204
     if len(result) > max_chars:
         result = result[:max_chars] + "\n... [truncated]\n"
     return result
+
+
+def _render_with_line_ranges(context: Any, line_ranges: dict[int, int]) -> str:
+    """Render a TreeContext like ``format()``, marking definitions with their lines.
+
+    Each shown definition line gets ``# [start-end]`` (1-based). Rendering here,
+    instead of post-processing ``format()``, keeps the source line index, so
+    identical signatures (e.g. several ``__init__``) get their own ranges.
+
+    Args:
+        context: grep-ast TreeContext after ``add_context()``
+        line_ranges: Definition start line -> end line (0-based)
+    """
+    show_lines: set[int] = context.show_lines
+    output_lines: dict[int, str] = context.output_lines
+    out: list[str] = []
+    dots = 0 not in show_lines
+    for i, line in enumerate(context.lines):
+        if i not in show_lines:
+            if dots:
+                out.append("⋮")
+                dots = False
+            continue
+        rendered = f"│{output_lines.get(i, line)}"
+        if (end := line_ranges.get(i)) is not None:
+            span = f"{i + 1}-{end + 1}" if end > i else f"{i + 1}"
+            rendered += f"  # [{span}]"
+        out.append(rendered)
+        dots = True
+    return "".join(f"{line}\n" for line in out)

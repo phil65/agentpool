@@ -2,7 +2,16 @@
 
 from __future__ import annotations
 
-from typing import Any, Literal, NamedTuple, cast
+from typing import TYPE_CHECKING, Any, Literal, NamedTuple, cast
+
+from agentpool.log import get_logger
+
+
+if TYPE_CHECKING:
+    from tree_sitter import Parser, Query
+
+
+logger = get_logger(__name__)
 
 
 class Tag(NamedTuple):
@@ -20,7 +29,30 @@ class Tag(NamedTuple):
 type RankedTag = Tag | tuple[str]
 
 
-def get_tags_from_content(content: str, filename: str) -> list[Tag]:  # noqa: PLR0915
+def _load_parser_and_query(filename: str) -> tuple[Parser, Query] | None:
+    """Get the tree-sitter parser and tag query for a file, if both are available."""
+    from grep_ast.tsl import get_language, get_parser  # type: ignore[import-untyped]
+    from tree_sitter import Query, QueryError
+    from tree_sitter_language_pack import SupportedLanguage
+
+    from agentpool.repomap.languages import filename_to_grammar, get_scm_fname
+
+    if not (grammar := filename_to_grammar(filename)) or not (scm := get_scm_fname(grammar)):
+        return None
+    lang = cast(SupportedLanguage, grammar)
+    try:
+        language = get_language(lang)
+        parser: Parser = get_parser(lang)
+    except Exception:  # noqa: BLE001
+        return None
+    try:
+        return parser, Query(language, scm.read_text("utf-8"))
+    except QueryError:
+        logger.warning("Tag query does not match the grammar", language=grammar, query=str(scm))
+        return None
+
+
+def get_tags_from_content(content: str, filename: str) -> list[Tag]:
     """Extract tags from content without filesystem IO.
 
     Uses tree-sitter to parse the file and extract definitions and references.
@@ -34,32 +66,14 @@ def get_tags_from_content(content: str, filename: str) -> list[Tag]:  # noqa: PL
     Returns:
         List of Tag objects (definitions and references)
     """
-    from grep_ast import filename_to_lang  # type: ignore[import-untyped]
-    from grep_ast.tsl import get_language, get_parser  # type: ignore[import-untyped]
     from pygments.lexers import guess_lexer_for_filename
     from pygments.token import Token
-    from tree_sitter import Query, QueryCursor
-    from tree_sitter_language_pack import SupportedLanguage
+    from tree_sitter import QueryCursor
 
-    from agentpool.repomap.languages import get_scm_fname
-
-    val = filename_to_lang(filename)
-    if not val:
+    if (loaded := _load_parser_and_query(filename)) is None:
         return []
-    lang = cast(SupportedLanguage, val)
-    try:
-        language = get_language(lang)
-        parser = get_parser(lang)
-    except Exception:  # noqa: BLE001
-        return []
-
-    query_scm = get_scm_fname(lang)
-    if not query_scm or not query_scm.exists():
-        return []
-    query_scm_text = query_scm.read_text("utf-8")
-
+    parser, query = loaded
     tree = parser.parse(bytes(content, "utf-8"))
-    query = Query(language, query_scm_text)
     cursor = QueryCursor(query)
 
     tags: list[Tag] = []
