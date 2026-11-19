@@ -220,3 +220,26 @@ def test_nullability_differences_are_reported() -> None:
 
     variant = "SessionUpdate[sessionUpdate=agent_message_chunk]"
     assert ids == {f"sends-null:{variant}.content", f"rejects-null:{variant}.messageId"}
+
+
+def test_constraint_differences_are_reported() -> None:
+    limited_chunk = {
+        **CHUNK,
+        "properties": {**CHUNK["properties"], "content": {"type": "string", "minLength": 1}},
+    }
+
+    class Chunk(BaseModel):
+        session_update: Literal["agent_message_chunk"] = Field(
+            default="agent_message_chunk", alias="sessionUpdate"
+        )
+        content: str  # lacks min_length=1
+        message_id: str | None = Field(default=None, alias="messageId", max_length=5)
+
+    upstream = UpstreamSchema.parse(
+        _schema(ContentChunk=limited_chunk, SessionUpdate=UPDATE, ToolKind=KIND), META
+    )
+
+    ids = _ids(check(upstream, _ours(Chunk, OpenKind), {}, check_constraints=True))
+
+    variant = "SessionUpdate[sessionUpdate=agent_message_chunk]"
+    assert ids == {f"constraint:{variant}.content", f"constraint:{variant}.messageId"}

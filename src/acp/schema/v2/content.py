@@ -79,7 +79,7 @@ class ResourceLink(AnnotatedObject):
     mime_type: MediaType | MISSING | None = MISSING
     """MIME type of the resource."""
 
-    size: int | MISSING | None = MISSING
+    size: int | MISSING | None = Field(default=MISSING, ge=0)
     """Size of the resource in bytes."""
 
     annotations: Annotations | MISSING | None = MISSING

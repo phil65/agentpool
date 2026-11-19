@@ -38,8 +38,8 @@ class PromptRequest(AnnotatedObject):
     session_id: SessionId
     """The session to send the message to."""
 
-    prompt: Sequence[ContentBlock]
-    """The content of the user message."""
+    prompt: Sequence[ContentBlock] = Field(min_length=1)
+    """The content of the user message; at least one block."""
 
     idempotency_key: IdempotencyKey | MISSING | None = MISSING
     """Identifies this submission, so a retry does not insert the message twice."""

@@ -49,6 +49,8 @@ from upathtools import UPath
 if TYPE_CHECKING:
     from collections.abc import Iterable, Iterator, Mapping
 
+    from pydantic.fields import FieldInfo as PydanticFieldInfo
+
 
 REPO = "agentclientprotocol/agent-client-protocol"
 REFERENCE_ROOT = UPath(__file__).resolve().parents[2] / "schema" / "acp"
@@ -96,6 +98,9 @@ class Shape:
 
     nullable: frozenset[str] = frozenset()
     """Wire names of properties that accept ``null``."""
+
+    constraints: Mapping[str, Mapping[str, float]] = field(default_factory=dict)
+    """Numeric and length constraints per property, as pydantic names (``ge``, ...)."""
 
     branch_of: str | None = None
     """For a variant made from a tagged branch inside an object definition: that
@@ -159,6 +164,7 @@ class UpstreamSchema:
                     collected.required,
                     bases=collected.bases,
                     nullable=collected.nullable,
+                    constraints=collected.constraints,
                 )
                 branches = [
                     branch
@@ -216,6 +222,7 @@ class _Collected:
     required: frozenset[str]
     bases: frozenset[str]
     nullable: frozenset[str]
+    constraints: dict[str, dict[str, float]]
 
 
 def _collect(node: JSON, defs: Mapping[str, JSON]) -> _Collected:
@@ -228,6 +235,7 @@ def _collect(node: JSON, defs: Mapping[str, JSON]) -> _Collected:
     props = set(own)
     required = set(node.get("required", []))
     nullable = {prop for prop, schema in own.items() if _accepts_null(schema, defs)}
+    constraints = {prop: c for prop, schema in own.items() if (c := _constraints(schema))}
     bases: set[str] = set()
     for part in node.get("allOf", []):
         if ref := part.get("$ref"):
@@ -238,6 +246,7 @@ def _collect(node: JSON, defs: Mapping[str, JSON]) -> _Collected:
         required |= sub.required
         bases |= sub.bases
         nullable |= sub.nullable
+        constraints = {**sub.constraints, **constraints}
     branch_required: list[frozenset[str]] = []
     for part in node.get("anyOf", []) + node.get("oneOf", []):
         resolved = defs[_ref_name(part["$ref"])] if "$ref" in part else part
@@ -245,11 +254,37 @@ def _collect(node: JSON, defs: Mapping[str, JSON]) -> _Collected:
         props |= sub.properties
         bases |= sub.bases
         nullable |= sub.nullable
+        constraints = {**sub.constraints, **constraints}
         branch_required.append(sub.required)
     if branch_required:
         # Required in every branch means required for the object.
         required |= frozenset.intersection(*branch_required)
-    return _Collected(frozenset(props), frozenset(required), frozenset(bases), frozenset(nullable))
+    return _Collected(
+        frozenset(props), frozenset(required), frozenset(bases), frozenset(nullable), constraints
+    )
+
+
+CONSTRAINT_KEYS = {
+    "minimum": "ge",
+    "maximum": "le",
+    "exclusiveMinimum": "gt",
+    "exclusiveMaximum": "lt",
+    "minLength": "min_length",
+    "maxLength": "max_length",
+    "minItems": "min_length",
+    "maxItems": "max_length",
+}
+"""JSON schema keywords and the pydantic constraints they correspond to."""
+
+
+def _constraints(schema: JSON) -> dict[str, float]:
+    """Numeric and length constraints of a property schema (also inside ``anyOf: [x, null]``)."""
+    found = {CONSTRAINT_KEYS[k]: float(v) for k, v in schema.items() if k in CONSTRAINT_KEYS}
+    for key in ("anyOf", "oneOf"):
+        parts = [part for part in schema.get(key, []) if part.get("type") != "null"]
+        if len(parts) == 1:
+            found |= _constraints(parts[0])
+    return found
 
 
 def _accepts_null(schema: JSON, defs: Mapping[str, JSON], depth: int = 0) -> bool:
@@ -289,6 +324,7 @@ def _parse_variant(union: str, variant: JSON, defs: Mapping[str, JSON]) -> Shape
         tag,
         collected.bases,
         collected.nullable,
+        collected.constraints,
     )
 
 
@@ -389,6 +425,9 @@ class FieldInfo:
     accepts_none: bool
     """The annotation allows ``None`` (sent as ``null`` unless excluded)."""
 
+    constraints: dict[str, float]
+    """Numeric and length constraints, e.g. ``{"ge": 1}``."""
+
 
 def wire_fields(model: type[BaseModel]) -> dict[str, FieldInfo]:
     """Wire name and behaviour of each serialized field of ``model``."""
@@ -399,10 +438,21 @@ def wire_fields(model: type[BaseModel]) -> dict[str, FieldInfo]:
             and (info.default is None or info.default is MISSING)
             and info.default_factory is None,
             accepts_none=any(member is type(None) for member in _flatten(info.annotation)),
+            constraints=_field_constraints(info),
         )
         for name, info in model.model_fields.items()
         if not info.exclude
     }
+
+
+def _field_constraints(info: PydanticFieldInfo) -> dict[str, float]:
+    found: dict[str, float] = {}
+    for item in info.metadata:
+        for name in ("ge", "le", "gt", "lt", "min_length", "max_length"):
+            value = getattr(item, name, None)
+            if isinstance(value, int | float):
+                found[name] = float(value)
+    return found
 
 
 def _discriminator_value(model: type[BaseModel], prop: str) -> str | None:
@@ -431,6 +481,9 @@ class Conformance:
     """Compare which fields accept ``null``. For model packages that send ``None`` as
     ``null`` and leave out ``MISSING`` fields (v2), not for ``exclude_none`` ones (v1)."""
 
+    check_constraints: bool = False
+    """Compare numeric and length constraints (``minimum``, ``minItems``, ...)."""
+
     allow_missing: bool = False
     """Accept upstream shapes, enums and methods without a counterpart yet, while a
     model package is being written. Fields of the shapes that exist are still checked."""
@@ -445,6 +498,7 @@ class Conformance:
             dict(data.get("renames", {})),
             dict(data.get("known", {})),
             bool(data.get("check_nullability", False)),
+            bool(data.get("check_constraints", False)),
             bool(data.get("allow_missing", False)),
         )
 
@@ -465,6 +519,7 @@ def check(
     renames: Mapping[str, str],
     *,
     check_nullability: bool = False,
+    check_constraints: bool = False,
 ) -> list[Finding]:
     """Compare the models with the upstream schema.
 
@@ -488,7 +543,9 @@ def check(
                 findings.append(Finding(f"missing-shape:{key}", "no matching model"))
             continue
         tags = added_tags.get(key, set())
-        findings.extend(_compare_fields(key, shape, model, tags, check_nullability))
+        findings.extend(
+            _compare_fields(key, shape, model, tags, check_nullability, check_constraints)
+        )
     findings.extend(_check_enums(upstream, ours, renames))
     findings.extend(_check_methods(upstream, ours))
     return findings
@@ -554,6 +611,7 @@ def _compare_fields(
     model: type[BaseModel],
     added_tags: set[str],
     check_nullability: bool,
+    check_constraints: bool = False,
 ) -> Iterator[Finding]:
     fields = wire_fields(model)
     tag = shape.discriminator[0] if shape.discriminator else None
@@ -575,6 +633,11 @@ def _compare_fields(
             yield Finding(
                 f"required-field:{key}.{prop}",
                 f"optional upstream, required in {where}: valid messages fail to parse",
+            )
+        if check_constraints and dict(shape.constraints.get(prop, {})) != info.constraints:
+            yield Finding(
+                f"constraint:{key}.{prop}",
+                f"upstream {dict(shape.constraints.get(prop, {}))}, {where} {info.constraints}",
             )
         if not check_nullability:
             continue
@@ -615,6 +678,7 @@ def run_check(protocol_version: int, root: UPath = REFERENCE_ROOT) -> Report:
         ours,
         conformance.renames,
         check_nullability=conformance.check_nullability,
+        check_constraints=conformance.check_constraints,
     )
     if conformance.allow_missing:
         findings = [f for f in findings if not f.id.startswith(MISSING_KINDS)]

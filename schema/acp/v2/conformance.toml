@@ -8,6 +8,9 @@
 # v2 sends None as null and leaves MISSING fields out, so nullability must match.
 check_nullability = true
 
+# Numeric and length constraints (minimum, minItems, ...) must match too.
+check_constraints = true
+
 # The v2 models are being written module by module: accept upstream types that have
 # no model yet. Fields of existing models are still checked. Turn off when complete.
 allow_missing = true
