@@ -243,7 +243,7 @@ requires-dist = [
     { name = "fasta2a", marker = "extra == 'a2a'" },
     { name = "fastapi" },
     { name = "fastembed", marker = "python_full_version < '3.14' and extra == 'mcp-discovery'", specifier = ">=0.7.4" },
-    { name = "fastmcp", specifier = ">=2.12.4" },
+    { name = "fastmcp", specifier = ">=4.2.0" },
     { name = "fsspec" },
     { name = "grep-ast", marker = "extra == 'coding'" },
     { name = "httpx" },

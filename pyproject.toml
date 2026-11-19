@@ -44,7 +44,7 @@ dependencies = [
   "aclientp[bridge,tracing,websocket]>=0.1.1",
   "exxec>=0.6.0",
   "fastapi",
-  "fastmcp>=2.12.4",
+  "fastmcp>=4.2.0",
   "fsspec",
   "httpx",
   "jinja2",
