@@ -179,7 +179,16 @@ def _run_toad_stdio(config: str | None) -> None:
     os.system("clear" if os.name != "nt" else "cls")
     # Run toad with agentpool as subprocess
     result = subprocess.run(
-        ["uvx", "--from", "batrachian-toad@latest", "toad", "acp", agentpool_cmd],
+        [
+            "uvx",
+            "--python",
+            "3.14",
+            "--from",
+            "batrachian-toad@latest",
+            "toad",
+            "acp",
+            agentpool_cmd,
+        ],
         check=False,
     )
     if result.returncode not in {0, 130}:  # 130 = Ctrl+C
