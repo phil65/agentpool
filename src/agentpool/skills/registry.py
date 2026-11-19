@@ -28,7 +28,12 @@ logger = get_logger(__name__)
 class SkillsRegistry(BaseRegistry[str, Skill]):
     """Registry for Claude Code Skills with auto-discovery."""
 
-    DEFAULT_SKILL_PATHS: ClassVar = ["~/.claude/skills/", ".claude/skills/"]
+    DEFAULT_SKILL_PATHS: ClassVar = [
+        "~/.claude/skills/",
+        "~/.agents/skills/",
+        ".claude/skills/",
+        ".agents/skills/",
+    ]
 
     def __init__(self, skills_dirs: Sequence[JoinablePathLike] | None = None) -> None:
         """Initialize with custom skill directories or auto-detect."""
@@ -118,10 +123,10 @@ class SkillsRegistry(BaseRegistry[str, Skill]):
             raise ToolError(f"Expected Skill instance, got {type(item)}")
         return item
 
-    def get_skill_instructions(self, skill_name: str) -> str:
+    async def get_skill_instructions(self, skill_name: str) -> str:
         """Lazy load full instructions for a skill."""
         skill = self.get(skill_name)
-        return skill.load_instructions()
+        return await skill.load_instructions()
 
 
 def _path_on_filesystem(fs: AbstractFileSystem, path: str) -> UPath:

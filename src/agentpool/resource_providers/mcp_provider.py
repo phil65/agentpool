@@ -20,7 +20,9 @@ if TYPE_CHECKING:
     from fastmcp.client.sampling import SamplingHandler
     from mcp.types import ResourceTemplate
 
+    from agentpool.mcp_server.skills_fs import MCPSkillsFileSystem
     from agentpool.prompts.prompts import MCPClientPrompt
+    from agentpool.skills.skill import Skill
     from agentpool.tools.base import FunctionTool, Tool
     from agentpool_config.mcp_server import MCPServerConfig
 
@@ -57,6 +59,8 @@ class MCPResourceProvider(ResourceProvider):
         self._tools_cache: list[FunctionTool] | None = None
         self._prompts_cache: list[MCPClientPrompt] | None = None
         self._resources_cache: list[ResourceInfo] | None = None
+        self._skills_cache: list[Skill] | None = None
+        self._skills_fs: MCPSkillsFileSystem | None = None
         self.client = MCPClient(
             config=self.server,
             sampling_callback=self._sampling_callback,
@@ -143,6 +147,11 @@ class MCPResourceProvider(ResourceProvider):
         self._resources_cache = None
         # Notify subscribers via signal
         await self.resources_changed.emit(self.create_change_event("resources"))
+        # Skills are served as resources, and the extension defines no skills
+        # notification of its own, so a resource change also invalidates skills.
+        if self._skills_cache is not None:
+            self._skills_cache = None
+            await self.skills_changed.emit(self.create_change_event("skills"))
 
     async def refresh_tools_cache(self) -> None:
         """Refresh the tools cache by fetching from client."""
@@ -252,6 +261,72 @@ class MCPResourceProvider(ResourceProvider):
                 case BlobResourceContents(blob=blob_data):
                     result.append(f"[Binary data: {len(blob_data)} bytes]")
         return result
+
+    @property
+    def skill_namespace(self) -> str:
+        """Prefix the skills tools address this server's skills by.
+
+        The configured server name, else the name the server reports, else the
+        configuration's client ID.
+        """
+        return self.server.name or self.client.server_name or self.server.client_id
+
+    async def refresh_skills_cache(self) -> None:
+        """Refresh the skills cache from the server's ``skills/list``.
+
+        No skill file is read: each skill is built from its entry's frontmatter,
+        and its files are read on demand through a verifying filesystem.
+        """
+        from agentpool.mcp_server.skills_fs import MCPSkillsFileSystem
+        from agentpool.skills.skill import Skill
+
+        try:
+            entries = await self.client.list_skills()
+        except Exception:
+            logger.exception("Failed to list MCP skills", server=self.name)
+            self._skills_cache = []
+            return
+        if self._skills_fs is None:
+            self._skills_fs = MCPSkillsFileSystem(self.client)
+        accepted = self._skills_fs.set_entries(entries)
+        skills: list[Skill] = []
+        for root, entry in accepted.items():
+            try:
+                skill = Skill.from_frontmatter(
+                    self._skills_fs.get_upath(root),
+                    entry.frontmatter.root,
+                    server=self.skill_namespace,
+                    agent_accessible=False,
+                )
+            except Exception as e:  # noqa: BLE001
+                logger.warning("Skipping invalid MCP skill", uri=entry.uri, error=str(e))
+                continue
+            # The Skills extension forbids honouring allowed-tools from MCP skills
+            # without explicit user approval, which AgentPool has no flow for.
+            skill.allowed_tools = None
+            skills.append(skill)
+        self._skills_cache = skills
+        logger.debug("Refreshed MCP skills cache", server=self.name, num_skills=len(skills))
+
+    async def get_skills(self) -> list[Skill]:
+        """Get cached skills, refreshing if necessary."""
+        if self._skills_cache is None:
+            await self.refresh_skills_cache()
+        return self._skills_cache or []
+
+    async def get_skill_instructions(self, skill_name: str) -> str:
+        """Get full instructions for one of this server's skills.
+
+        Args:
+            skill_name: Name of the skill (without the server prefix)
+
+        Raises:
+            KeyError: If the server publishes no such skill
+        """
+        for skill in await self.get_skills():
+            if skill.name == skill_name:
+                return await skill.load_instructions()
+        raise KeyError(f"Skill {skill_name!r} not found")
 
     async def list_resource_templates(self) -> list[ResourceTemplate]:
         """Get available resource templates from the MCP server.

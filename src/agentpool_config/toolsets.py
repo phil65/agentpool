@@ -48,7 +48,7 @@ ExecutionEnvironmentToolName = Literal[
     "list_processes",
 ]
 
-SkillsToolName = Literal["load_skill", "list_skills"]
+SkillsToolName = Literal["load_skill", "list_skills", "read_skill_file"]
 CodeToolName = Literal["format_code", "ast_grep"]
 PlanToolName = Literal["get_plan", "add_plan_entry", "update_plan_entry", "remove_plan_entry"]
 PlanToolMode = Literal["granular", "declarative"]
@@ -288,9 +288,10 @@ class ProcessManagementToolsetConfig(BaseToolsetConfig):
 class SkillsToolsetConfig(BaseToolsetConfig):
     """Configuration for skills toolset.
 
-    Provides tools to discover and load Claude Code Skills from the pool's
-    skills registry. Skills are discovered from configured directories
-    (e.g., ~/.claude/skills/, .claude/skills/).
+    Provides tools to list skills, load their instructions, and read their
+    bundled files. Skills come from the pool's skills registry, discovered from
+    configured directories (e.g., ~/.claude/skills/, .agents/skills/), and from
+    the agent's MCP servers that publish skills through the MCP Skills extension.
     """
 
     model_config = ConfigDict(

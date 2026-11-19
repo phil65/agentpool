@@ -69,7 +69,7 @@ async def acp_test_session(
         debug_file: File path for JSON-RPC debug messages.
         debug_commands: Enable debug slash commands for testing.
         agent: Name of specific agent to use from config.
-        load_skills: Load client-side skills from .claude/skills directory.
+        load_skills: Load client-side skills from .claude/skills and .agents/skills.
         cwd: Working directory for the ACP server subprocess.
         event_configs: Event configurations for the agent.
         event_handlers: Event handlers for the agent (e.g., ["detailed"] for logging).

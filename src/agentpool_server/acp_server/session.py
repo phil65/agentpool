@@ -341,15 +341,20 @@ class ACPSession:
 
     @property
     def client_skill_dirs(self) -> list[str]:
-        """Client-side skill directories: ``.claude/skills`` under every workspace root.
+        """Client-side skill directories under every workspace root.
 
-        The roots are the session cwd and the client's ``additionalDirectories``,
-        which ACP requires to be absolute paths.
+        Both ``.claude/skills`` and the cross-client ``.agents/skills`` convention
+        are scanned. The roots are the session cwd and the client's
+        ``additionalDirectories``, which ACP requires to be absolute paths.
         """
         roots = (
             [self.cwd, *self.additional_directories] if self.cwd else self.additional_directories
         )
-        return [f"{root.rstrip('/')}/.claude/skills" for root in dict.fromkeys(roots)]
+        return [
+            f"{root.rstrip('/')}/{subdir}"
+            for root in dict.fromkeys(roots)
+            for subdir in (".claude/skills", ".agents/skills")
+        ]
 
     async def init_client_skills(self) -> None:
         """Discover and load skills from the client's workspace roots over ACP."""

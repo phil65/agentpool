@@ -1,7 +1,7 @@
 # Skills over MCP (SEP-2640) — Design
 
 Date: 2026-11-19
-Status: Draft, awaiting review
+Status: Implemented
 
 ## Goal
 
@@ -119,8 +119,9 @@ A read-only async fsspec filesystem (`BaseAsyncFileSystem` from upathtools) over
 MCP connection's skill entries. It is the single place that enforces the spec's
 host-side read rules.
 
-- Constructed with the agentpool `MCPClient` and a mapping of skill path → `MCPSkill`
-  entry; `set_entries()` replaces the mapping on refresh.
+- Constructed with a `ResourceReader` (a protocol with `read_resource_bytes(uri)`, implemented
+  by `MCPClient`); `set_entries(entries)` replaces the served skills and returns the accepted
+  entries keyed by skill directory path. Nested skills share file entries, as the spec allows.
 - Paths are the skill URI without the scheme: `<skill-path>/<file-path>`.
 - `_ls` / `_info` / `_exists` / `_isdir` / `_isfile` are answered from the entries
   alone (directories are derived from the file list); no network traffic.
@@ -171,8 +172,11 @@ the calling agent's resource providers (`ctx.agent.tools.providers`).
 Naming / no shadowing (spec requirement: identity is server + URI):
 
 - Pool (local) skills keep their bare name.
-- MCP skills are addressed as `<provider-name>/<skill-name>`, always — never bare, so
-  an MCP skill can never shadow a local one or another server's.
+- MCP skills are addressed as `<namespace>/<skill-name>`, always — never bare, so
+  an MCP skill can never shadow a local one. The namespace is the configured server
+  `name`, else the name the server reports, else the config's `client_id`. If two
+  providers produce the same qualified name, the later skill is skipped with a warning
+  (no reassignment, so no cross-server shadowing).
 
 Tools:
 
@@ -204,7 +208,7 @@ Tools:
   skipped with a warning instead of failing the request.
 - Registered in `MCPServer.__init__` via `self.fastmcp.add_provider(...)`; the provider
   registers `SkillsExtension` itself.
-- New flag on `MCPPoolServerConfig`: `skills: bool = True`.
+- New flag on `MCPPoolServerConfig`: `serve_skills: bool = True` (named like `serve_nodes` / `serve_prompts`).
 
 ## Error handling summary
 

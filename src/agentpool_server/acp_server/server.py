@@ -61,7 +61,7 @@ class ACPServer(BaseServer):
             debug_file: File path for debug message logging
             debug_commands: Whether to enable debug slash commands for testing
             agent: Optional specific agent name to use (defaults to first agent)
-            load_skills: Whether to load client-side skills from .claude/skills
+            load_skills: Whether to load client-side skills from .claude/skills and .agents/skills
             config_path: Path to the configuration file (for tracking/hot-switching)
             transport: Transport configuration ("stdio", "websocket", or transport object)
         """
@@ -94,7 +94,7 @@ class ACPServer(BaseServer):
             debug_file: Path to debug file
             debug_commands: Enable debug slash commands for testing
             agent: Optional specific agent name to use (defaults to first agent)
-            load_skills: Whether to load client-side skills from .claude/skills
+            load_skills: Whether to load client-side skills from .claude/skills and .agents/skills
             transport: Transport configuration ("stdio", "websocket", or transport object)
 
         Returns:

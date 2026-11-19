@@ -66,7 +66,7 @@ def acp_command(  # noqa: PLR0915
         bool,
         t.Option(
             "--skills/--no-skills",
-            help="Load client-side skills from .claude/skills directory",
+            help="Load client-side skills from .claude/skills and .agents/skills directories",
         ),
     ] = True,
     transport: Annotated[

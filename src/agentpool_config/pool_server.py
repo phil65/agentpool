@@ -50,6 +50,9 @@ class MCPPoolServerConfig(BasePoolServerConfig):
     - list[str]: Specific prompt names
     """
 
+    serve_skills: bool = Field(default=True, title="Serve skills")
+    """Publish the pool's skills through the MCP Skills extension (SEP-2640)."""
+
     transport: TransportType = Field(
         default="stdio",
         title="Transport type",

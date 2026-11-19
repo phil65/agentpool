@@ -90,6 +90,10 @@ class MCPServer(BaseServer):
             middleware=[middleware],
         )
         self.server = self.fastmcp._mcp_server
+        if config.serve_skills:
+            from agentpool_server.mcp_server.skills_provider import PoolSkillsProvider
+
+            self.fastmcp.add_provider(PoolSkillsProvider(pool.skills))
 
         # Register static handlers
         self._register_logging_handlers()

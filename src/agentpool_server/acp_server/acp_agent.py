@@ -166,7 +166,7 @@ class AgentPoolACPAgent(ACPAgent):
     """Whether to enable debug slash commands for testing."""
 
     load_skills: bool = True
-    """Whether to load client-side skills from .claude/skills directory."""
+    """Whether to load client-side skills from .claude/skills and .agents/skills."""
 
     server: ACPServer | None = field(default=None)
     """Reference to the ACPServer for pool hot-switching."""

@@ -95,6 +95,13 @@ class BaseMCPServerConfig(Schema):
     which otherwise may hide MCP tools until the model searches for them.
     """
 
+    skills: bool = Field(default=True, title="Use server skills")
+    """Discover skills the server publishes through the MCP Skills extension (SEP-2640).
+
+    When enabled, the client opts into the extension, and the server's skills
+    become available to the agent owning this connection as ``<server>/<skill>``.
+    """
+
     @model_validator(mode="after")
     def _validate_tool_filters(self) -> Self:
         """Validate that enabled_tools and disabled_tools are mutually exclusive."""

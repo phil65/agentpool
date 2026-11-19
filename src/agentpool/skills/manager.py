@@ -115,6 +115,6 @@ class SkillsManager:
         """Get a skill by name."""
         return self.registry.get(name)
 
-    def get_skill_instructions(self, skill_name: str) -> str:
+    async def get_skill_instructions(self, skill_name: str) -> str:
         """Get full instructions for a specific skill."""
-        return self.registry.get_skill_instructions(skill_name)
+        return await self.registry.get_skill_instructions(skill_name)

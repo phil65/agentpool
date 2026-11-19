@@ -10,6 +10,7 @@ be swapped per tool call (allowing AgentContext.handle_elicitation to be used).
 
 from __future__ import annotations
 
+import base64
 import contextlib
 from importlib.metadata import version
 import logging
@@ -42,6 +43,8 @@ if TYPE_CHECKING:
     from fastmcp.client.logging import LogMessage
     from fastmcp.client.messages import MessageHandler, MessageHandlerT
     from fastmcp.client.sampling import SamplingHandler
+    from fastmcp.skills import MCPSkill
+    from mcp.client.extension import ClientExtension
     from mcp.types import (
         BlobResourceContents,
         ElicitRequestParams,
@@ -230,8 +233,15 @@ class MCPClient:
                 icons=icons,
             )
 
+        extensions: list[ClientExtension] = []
+        if config.skills:
+            from fastmcp.skills import SkillsClientExtension
+
+            extensions.append(SkillsClientExtension())
+
         return fastmcp.Client(
             transport,
+            extensions=extensions,
             log_handler=self._log_handler,
             roots=self._accessible_roots,
             timeout=config.timeout,
@@ -313,6 +323,64 @@ class MCPClient:
             return await self._client.read_resource(uri)
         except Exception as e:
             raise RuntimeError(f"Failed to read resource {uri!r}: {e}") from e
+
+    async def read_resource_bytes(self, uri: str) -> bytes:
+        """Read a resource and return its first content item as bytes.
+
+        Text content is encoded as UTF-8; blob content is base64-decoded.
+
+        Args:
+            uri: URI of the resource to read
+
+        Raises:
+            RuntimeError: If not connected or read fails
+            FileNotFoundError: If the server returned no content
+        """
+        from mcp.types import BlobResourceContents, TextResourceContents
+
+        contents = await self.read_resource(uri)
+        if not contents:
+            raise FileNotFoundError(f"Resource {uri!r} has no content")
+        match contents[0]:
+            case TextResourceContents(text=text):
+                return text.encode("utf-8")
+            case BlobResourceContents(blob=blob):
+                return base64.b64decode(blob)
+
+    @property
+    def server_name(self) -> str | None:
+        """Name the connected server reports for itself, if any."""
+        info = self._client.server_info if self.connected else None
+        return info.name if info and info.name else None
+
+    @property
+    def supports_skills(self) -> bool:
+        """Whether skills were negotiated: enabled in config and advertised by the server."""
+        from fastmcp.skills import SkillsClientExtension
+
+        if not self.config.skills or not self.connected:
+            return False
+        capabilities = self._client.server_capabilities
+        extensions = capabilities.extensions if capabilities else None
+        return extensions is not None and SkillsClientExtension.identifier in extensions
+
+    async def list_skills(self) -> list[MCPSkill]:
+        """List the skills the server publishes through the Skills extension.
+
+        Returns:
+            Every skill entry across all pages, or an empty list when the
+            extension was not negotiated.
+
+        Raises:
+            RuntimeError: If listing fails
+        """
+        self._ensure_connected()
+        if not self.supports_skills:
+            return []
+        try:
+            return await self._client.list_skills()
+        except Exception as e:
+            raise RuntimeError(f"Failed to list skills: {e}") from e
 
     async def get_prompt(
         self, name: str, arguments: dict[str, str] | None = None

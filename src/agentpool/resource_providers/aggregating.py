@@ -14,6 +14,7 @@ if TYPE_CHECKING:
 
     from agentpool.prompts.prompts import BasePrompt
     from agentpool.resource_providers.resource_info import ResourceInfo
+    from agentpool.skills.skill import Skill
     from agentpool.tools.base import Tool
 
 ToolMode = Literal["codemode"]
@@ -126,6 +127,23 @@ class AggregatingResourceProvider(ResourceProvider):
     async def get_resources(self) -> list[ResourceInfo]:
         """Get resources from all providers."""
         return [r for provider in self.providers for r in await provider.get_resources()]
+
+    async def get_skills(self) -> list[Skill]:
+        """Get skills from all providers.
+
+        Skills are not de-duplicated here: each carries its origin, and the
+        skills tools address them by qualified name.
+        """
+        return [s for provider in self.providers for s in await provider.get_skills()]
+
+    async def get_skill_instructions(self, skill_name: str) -> str:
+        """Get instructions from the first provider that has the skill."""
+        for provider in self.providers:
+            try:
+                return await provider.get_skill_instructions(skill_name)
+            except KeyError:
+                continue
+        raise KeyError(f"Skill {skill_name!r} not found in any provider")
 
     async def get_request_parts(
         self, name: str, arguments: dict[str, str] | None = None
