@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import asyncio
 from contextlib import AsyncExitStack
-from typing import TYPE_CHECKING, Any, Self, cast
+from typing import TYPE_CHECKING, Self, cast
 
 import anyio
 
@@ -17,10 +17,6 @@ from agentpool_config.mcp_server import BaseMCPServerConfig
 if TYPE_CHECKING:
     from collections.abc import Sequence
     from types import TracebackType
-
-    from fastmcp.client._sdk_context_shim import RequestContext
-    from mcp import types
-    from mcp.types import SamplingMessage
 
     from agentpool_config.mcp_server import MCPServerConfig
 
@@ -35,9 +31,7 @@ class MCPManager:
         self,
         name: str = "mcp",
         owner: str | None = None,
-        sampling_model: str = "openai:gpt-5-nano",
         servers: Sequence[MCPServerConfig | str] | None = None,
-        accessible_roots: list[str] | None = None,
     ) -> None:
         self.name = name
         self.owner = owner
@@ -45,13 +39,11 @@ class MCPManager:
         for server in servers or []:
             self.add_server_config(server)
         self.providers: list[MCPResourceProvider] = []
-        self.sampling_model = sampling_model
         self.aggregating_provider = AggregatingResourceProvider(
             providers=cast(list[ResourceProvider], self.providers),
             name=f"{name}_aggregated",
         )
         self.exit_stack = AsyncExitStack()
-        self._accessible_roots = accessible_roots
 
     def add_server_config(self, cfg: MCPServerConfig | str) -> None:
         """Add a new MCP server to the manager."""
@@ -78,35 +70,6 @@ class MCPManager:
         exc_tb: TracebackType | None,
     ) -> None:
         await self.cleanup()
-
-    async def _sampling_callback(
-        self,
-        messages: list[SamplingMessage],
-        params: types.CreateMessageRequestParams,
-        context: RequestContext[Any, Any],
-    ) -> str:
-        """Handle MCP sampling by creating a new agent with specified preferences."""
-        from agentpool.agents import Agent
-        from agentpool.mcp_server.conversions import sampling_messages_to_user_content
-
-        prompts = sampling_messages_to_user_content(messages)
-        model = self.sampling_model
-        if (prefs := params.model_preferences) and prefs.hints and prefs.hints[0].name:
-            model = prefs.hints[0].name  # Extract model from preferences
-        # Create usage limits from sampling parameters
-        # limits = UsageLimits(output_tokens_limit=params.max_tokens, request_limit=1)
-        # TODO: Re-add per-turn usage_limits once implemented for all agents
-        # TODO: Apply temperature from params.temperature
-        sys_prompt = params.system_prompt or ""
-        agent = Agent(name="sampling-agent", model=model, system_prompt=sys_prompt, session=False)
-        try:
-            async with agent:
-                result = await agent.run(*prompts, store_history=False)
-                return result.content
-
-        except Exception as e:
-            logger.exception("Sampling failed")
-            return f"Sampling failed: {e!s}"
 
     async def setup_server(
         self, config: MCPServerConfig, *, add_to_config: bool = False
@@ -137,8 +100,6 @@ class MCPManager:
             name=f"{self.name}_{config.client_id}",
             owner=self.owner,
             source="pool" if self.owner == "pool" else "node",
-            sampling_callback=self._sampling_callback,
-            accessible_roots=self._accessible_roots,
         )
         provider = await self.exit_stack.enter_async_context(provider)
         self.providers.append(provider)

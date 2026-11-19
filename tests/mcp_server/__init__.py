@@ -1,1 +1,1 @@
-"""Compact FastMCP server demonstrating sampling and elicitation in one workflow."""
+"""FastMCP test server for elicitation, progress, prompts and return types."""

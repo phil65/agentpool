@@ -1,4 +1,4 @@
-"""Compact FastMCP server demonstrating sampling and elicitation in one workflow."""
+"""FastMCP test server for elicitation, progress, prompts and return types."""
 
 from pathlib import Path
 from typing import Any, Literal
@@ -8,44 +8,16 @@ from fastmcp import Context, FastMCP
 from fastmcp.tools import ToolResult
 from fastmcp.utilities.types import Audio, File, Image
 from mcp.types import (
-    CreateMessageRequest,
-    CreateMessageRequestParams,
-    CreateMessageResult,
     ElicitRequest,
     ElicitRequestFormParams,
     ElicitResult,
     InputRequiredResult,
-    ModelHint,
-    ModelPreferences,
-    SamplingMessage,
     TextContent,
 )
 from pydantic import BaseModel
 
 
 mcp = FastMCP("Test Server")
-
-
-@mcp.tool
-async def sample_test(ctx: Context, message: str) -> str | InputRequiredResult:
-    """Ask the client's LLM a yes/no question via sampling (multi round-trip)."""
-    match (ctx.input_responses or {}).get("answer"):
-        case CreateMessageResult(content=TextContent(text=text)):
-            return text
-        case None:
-            params = CreateMessageRequestParams(
-                messages=[
-                    SamplingMessage(role="user", content=TextContent(type="text", text=message))
-                ],
-                max_tokens=500,
-                system_prompt="only 'yes' or 'no'.",
-                model_preferences=ModelPreferences(hints=[ModelHint(name="gpt-5-nano")]),
-            )
-            return InputRequiredResult(
-                input_requests={"answer": CreateMessageRequest(params=params)}
-            )
-        case other:
-            return f"Unexpected sampling response: {other!r}"
 
 
 @mcp.tool

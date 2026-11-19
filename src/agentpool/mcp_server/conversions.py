@@ -25,10 +25,8 @@ if TYPE_CHECKING:
     from mcp.types import (
         ContentBlock,
         PromptMessage,
-        SamplingMessage,
-        SamplingMessageContentBlock,
     )
-    from pydantic_ai import ModelRequestPart, ModelResponsePart, UserContent
+    from pydantic_ai import ModelRequestPart, ModelResponsePart
 
 logger = get_logger(__name__)
 
@@ -63,38 +61,6 @@ def to_mcp_messages(
         case TextPart(content=msg):
             text_content = TextContent(type="text", text=msg)
             yield PromptMessage(role="assistant", content=text_content)
-
-
-def sampling_messages_to_user_content(msgs: list[SamplingMessage]) -> list[UserContent]:
-
-    # Convert messages to prompts for the agent
-    prompts: list[UserContent] = []
-    for mcp_msg in msgs:
-        match mcp_msg.content:
-            case list(content_blocks):
-                prompts.extend(c for i in content_blocks if (c := content_block_to_user_content(i)))
-            case _ as content_block:
-                if content := content_block_to_user_content(content_block):
-                    prompts.append(content)
-    return prompts
-
-
-def content_block_to_user_content(content: SamplingMessageContentBlock) -> UserContent | None:
-    from mcp import types
-
-    match content:
-        case types.TextContent(text=text):
-            return text
-        case (
-            types.ImageContent(data=data, mime_type=mime)
-            | types.AudioContent(data=data, mime_type=mime)
-        ):
-            bin_content = BinaryContent(data=base64.b64decode(data), media_type=mime)
-            return BinaryContent.narrow_type(bin_content)
-        case types.ToolUseContent() | types.ToolResultContent():
-            return None
-        case _ as unreachable:
-            assert_never(unreachable)
 
 
 async def from_mcp_content(

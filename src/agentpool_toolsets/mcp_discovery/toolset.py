@@ -32,8 +32,6 @@ from agentpool.resource_providers import ResourceProvider
 if TYPE_CHECKING:
     from collections.abc import Sequence
 
-    from fastmcp.client.sampling import SamplingHandler
-
     from agentpool.mcp_server.registries.official_registry_client import RegistryServer
     from agentpool.tools.base import Tool
     from agentpool_config.mcp_server import MCPServerConfig
@@ -63,7 +61,6 @@ class MCPDiscoveryToolset(ResourceProvider):
         registry_url: str = "https://registry.modelcontextprotocol.io",
         allowed_servers: list[str] | None = None,
         blocked_servers: list[str] | None = None,
-        sampling_callback: SamplingHandler[Any, Any] | None = None,
     ) -> None:
         """Initialize the MCP Discovery toolset.
 
@@ -72,7 +69,6 @@ class MCPDiscoveryToolset(ResourceProvider):
             registry_url: Base URL for the MCP registry API
             allowed_servers: If set, only these server names can be used
             blocked_servers: Server names that cannot be used
-            sampling_callback: Callback for MCP sampling requests
         """
         super().__init__(name=name)
         self._registry_url = registry_url
@@ -82,7 +78,6 @@ class MCPDiscoveryToolset(ResourceProvider):
         self._tools_cache: dict[str, list[dict[str, Any]]] = {}
         self._allowed_servers = set(allowed_servers) if allowed_servers else None
         self._blocked_servers = set(blocked_servers) if blocked_servers else set()
-        self._sampling_callback = sampling_callback
         self._tools: list[Tool] | None = None
         # Lazy-loaded semantic search components
         self._db: Any = None
@@ -199,7 +194,7 @@ class MCPDiscoveryToolset(ResourceProvider):
             del self._connections[server_name]
 
         config = await self._get_server_config(server_name)
-        client = MCPClient(config=config, sampling_callback=self._sampling_callback)
+        client = MCPClient(config=config)
         await client.__aenter__()
         self._connections[server_name] = client
         logger.info("Connected to MCP server", server=server_name)
@@ -406,7 +401,7 @@ class MCPDiscoveryToolset(ResourceProvider):
         Use this to execute a specific tool on an MCP server. The server
         connection is reused if already established.
 
-        This properly supports progress reporting, elicitation, and sampling
+        This properly supports progress reporting and elicitation
         through the AgentContext integration.
 
         Args:
@@ -428,7 +423,7 @@ class MCPDiscoveryToolset(ResourceProvider):
         try:
             client = await self._get_connection(server_name)
 
-            # Use MCPClient.call_tool which handles progress, elicitation, and sampling
+            # Use MCPClient.call_tool which handles progress and elicitation
             return await client.call_tool(
                 name=tool_name,
                 run_context=ctx,

@@ -45,9 +45,9 @@ Using agents as tools for downloads - shows how to use one agent as a tool for a
 
 MCP server integration with git tools - demonstrates how to integrate MCP servers via YAML configuration.
 
-### [MCP Sampling & Elicitation](mcp_sampling_elicitation/)
+### [MCP Elicitation](mcp_elicitation/)
 
-MCP server with sampling tools - shows advanced MCP features including sampling and elicitation.
+MCP server asking the user for input - shows multi-step elicitation with structured answers.
 
 ## Structured Responses
 

@@ -1,6 +1,6 @@
 """Tests for MCP Discovery Toolset.
 
-Tests that the toolset properly wires up elicitation, sampling, and progress
+Tests that the toolset properly wires up elicitation and progress
 reporting through the MCPClient wrapper.
 """
 
@@ -30,19 +30,8 @@ TEST_SERVER_CONFIG = StdioMCPServerConfig(
 
 
 async def test_toolset_initialization():
-    """Test that toolset initializes with sampling callback support."""
-
-    # Mock sampling callback
-    async def mock_sampling_callback(*args, **kwargs):
-        return "mocked response"
-
-    toolset = MCPDiscoveryToolset(
-        name="test_discovery",
-        sampling_callback=mock_sampling_callback,
-    )
-
-    # Verify callback is stored
-    assert toolset._sampling_callback == mock_sampling_callback
+    """Test that toolset initializes and exposes its tools."""
+    toolset = MCPDiscoveryToolset(name="test_discovery")
 
     # Verify tools can be loaded
     tools = await toolset.get_tools()
@@ -52,16 +41,9 @@ async def test_toolset_initialization():
     assert any(t.name == "call_mcp_tool" for t in tools)
 
 
-async def test_connection_uses_sampling_callback():
-    """Test that MCPClient connections are created with sampling callback."""
-
-    async def mock_sampling_callback(*args, **kwargs):
-        return "mocked"
-
-    toolset = MCPDiscoveryToolset(
-        name="test_discovery",
-        sampling_callback=mock_sampling_callback,
-    )
+async def test_connection_is_created_lazily():
+    """Test that MCPClient connections are created from the server config."""
+    toolset = MCPDiscoveryToolset(name="test_discovery")
 
     # Mock the registry and server config to avoid real connection
     mock_config = MagicMock()
@@ -77,10 +59,7 @@ async def test_connection_uses_sampling_callback():
         # Trigger connection
         await toolset._get_connection("test-server")
 
-        # Verify MCPClient was created with sampling_callback
-        mock_client_cls.assert_called_once_with(
-            config=mock_config, sampling_callback=mock_sampling_callback
-        )
+        mock_client_cls.assert_called_once_with(config=mock_config)
 
 
 # Integration tests using local test MCP server
@@ -127,26 +106,6 @@ async def test_mcp_client_call_tool_with_elicitation():
         # Verify elicitation was called
         assert agent_ctx.handle_elicitation.called
         assert "test elicit" in str(agent_ctx.handle_elicitation.call_args)
-
-
-async def test_mcp_client_call_tool_with_sampling():
-    """Test that MCPClient properly forwards sampling requests."""
-    sampling_callback = AsyncMock(return_value="yes")
-    client = MCPClient(config=TEST_SERVER_CONFIG, sampling_callback=sampling_callback)
-    run_ctx = AsyncMock(spec=RunContext)
-    agent_ctx = AsyncMock(spec=AgentContext)
-
-    async with client:
-        result = await client.call_tool(
-            name="sample_test",
-            run_context=run_ctx,
-            arguments={"message": "Is this code good?"},
-            agent_ctx=agent_ctx,
-        )
-
-        # Verify sampling was called
-        assert sampling_callback.called
-        assert "yes" in str(result).lower() or result is not None
 
 
 async def test_converted_tool_has_both_contexts():

@@ -42,7 +42,6 @@ if TYPE_CHECKING:
     from fastmcp.client.elicitation import ElicitationHandler
     from fastmcp.client.logging import LogMessage
     from fastmcp.client.messages import MessageHandler, MessageHandlerT
-    from fastmcp.client.sampling import SamplingHandler
     from fastmcp.skills import MCPSkill
     from mcp.client.extension import ClientExtension
     from mcp.types import (
@@ -73,9 +72,7 @@ class MCPClient:
     def __init__(
         self,
         config: MCPServerConfig,
-        sampling_callback: SamplingHandler[Any, Any] | None = None,
         message_handler: MessageHandlerT | MessageHandler | None = None,
-        accessible_roots: list[str] | None = None,
         tool_change_callback: Callable[[MetaDict], Awaitable[None]] | None = None,
         prompt_change_callback: Callable[[MetaDict], Awaitable[None]] | None = None,
         resource_change_callback: Callable[[MetaDict], Awaitable[None]] | None = None,
@@ -89,10 +86,8 @@ class MCPClient:
         # Input providers that handled URL elicitations, to route completion notifications
         self._url_elicitations: dict[str, InputProvider] = {}
         self.config = config
-        self._sampling_callback = sampling_callback
         # Store message handler or mark for lazy creation
         self._message_handler = message_handler
-        self._accessible_roots = accessible_roots or []
         self._tool_change_callback = tool_change_callback
         self._prompt_change_callback = prompt_change_callback
         self._resource_change_callback = resource_change_callback
@@ -243,10 +238,8 @@ class MCPClient:
             transport,
             extensions=extensions,
             log_handler=self._log_handler,
-            roots=self._accessible_roots,
             timeout=config.timeout,
             elicitation_handler=self._forwarding_elicitation_callback,
-            sampling_handler=self._sampling_callback,
             message_handler=msg_handler,
             auth="oauth" if (force_oauth or oauth) else None,
             client_info=client_info,

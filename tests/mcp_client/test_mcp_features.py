@@ -2,7 +2,7 @@
 # dependencies = ["agentpool"]
 # ///
 
-"""Demo: Agent using MCP server with code fixer (sampling + elicitation)."""
+"""Demo: Agent using the MCP test server (progress reporting)."""
 
 from __future__ import annotations
 

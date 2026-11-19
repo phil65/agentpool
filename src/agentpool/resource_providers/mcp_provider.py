@@ -17,7 +17,6 @@ if TYPE_CHECKING:
     from types import TracebackType
     from typing import Literal
 
-    from fastmcp.client.sampling import SamplingHandler
     from mcp.types import ResourceTemplate
 
     from agentpool.mcp_server.skills_fs import MCPSkillsFileSystem
@@ -41,8 +40,6 @@ class MCPResourceProvider(ResourceProvider):
         name: str = "mcp",
         owner: str | None = None,
         source: Literal["pool", "node"] = "node",
-        sampling_callback: SamplingHandler[Any, Any] | None = None,
-        accessible_roots: list[str] | None = None,
     ) -> None:
         from agentpool.mcp_server import MCPClient
         from agentpool_config.mcp_server import BaseMCPServerConfig
@@ -52,9 +49,6 @@ class MCPResourceProvider(ResourceProvider):
         self.source = source
         self.exit_stack = AsyncExitStack()
 
-        self._accessible_roots = accessible_roots
-        self._sampling_callback = sampling_callback
-
         self._saved_enabled_states: dict[str, bool] = {}
         self._tools_cache: list[FunctionTool] | None = None
         self._prompts_cache: list[MCPClientPrompt] | None = None
@@ -63,8 +57,6 @@ class MCPResourceProvider(ResourceProvider):
         self._skills_fs: MCPSkillsFileSystem | None = None
         self.client = MCPClient(
             config=self.server,
-            sampling_callback=self._sampling_callback,
-            accessible_roots=self._accessible_roots,
             tool_change_callback=self._on_tools_changed,
             prompt_change_callback=self._on_prompts_changed,
             resource_change_callback=self._on_resources_changed,
