@@ -177,8 +177,8 @@ docs = [
   # Only add below (Copier)
 ]
 lint = [
-  "mypy[faster-cache]",
   "ruff",
+  "ty",
   "types-PyYAML",
   "types-Pygments",
   "types-croniter",
@@ -221,41 +221,6 @@ allowed-commit-types = [
 ]
 docstring-style = "google"
 
-[tool.mypy]
-python_version = "3.13"
-pretty = true
-strict = true
-check_untyped_defs = true
-exclude = ["venv/", ".venv/"]
-plugins = ["pydantic.mypy"]
-warn_return_any = true
-warn_unused_configs = true
-disallow_untyped_defs = true
-disallow_incomplete_defs = true
-disallow_untyped_decorators = true
-no_implicit_optional = true
-warn_redundant_casts = true
-warn_unused_ignores = true
-warn_no_return = true
-# warn_unreachable = true
-strict_equality = true
-
-[[tool.mypy.overrides]]
-module = "tests.*"
-disallow_untyped_defs = false
-disallow_untyped_calls = false
-disallow_incomplete_defs = false
-disable_error_code = [
-  "no-untyped-def",
-  "no-untyped-call",
-  "no-any-return",
-  "unused-ignore"
-]
-
-[[tool.mypy.overrides]]
-module = ["fsspec.*"]
-ignore_missing_imports = true
-
 [tool.pytest]
 addopts = ["-m", "not slow and not acp_snapshot"]
 filterwarnings = [
@@ -291,7 +256,7 @@ target-version = "py313"
 future-annotations = true
 select = [
   "A",  # Flake8-builtins
-  # "ANN",  # Flake8-Annotations
+  "ANN",  # Flake8-Annotations (enforces complete annotations; ty does not)
   # "ASYNC",  # Flake8-Async
   # "ARG",  # # Flake8-Unused-Arguments
   "B",  # flake8-bugbear
@@ -377,6 +342,7 @@ ignore = [
   "SLF001",  # Private member accessed
   "TRY003",  # Avoid specifying long messages outside the exception class
   "TC006",  # runtime-cast-value
+  "ANN401",  # Dynamically typed expressions (Any) are allowed
 ]
 
 [tool.ruff.lint.flake8-quotes]
@@ -414,8 +380,10 @@ max-complexity = 15
 
 [tool.ruff.lint.per-file-ignores]
 "__init__.py" = ["E402", "I001"]
-"scripts/*" = ["INP001"]
-"*tests/*" = ["D100", "PLR2004"]
+"scripts/*" = ["INP001", "ANN"]
+"*tests/*" = ["D100", "PLR2004", "ANN"]  # tests need not be fully annotated
+"duties.py" = ["ANN"]  # tooling, not package code
+"examples/**/*.py" = ["ANN"]
 "docs/examples/**/*.py" = [
   "TC001",
 ]  # Examples don't need TYPE_CHECKING imports
@@ -425,7 +393,8 @@ preview = true
 
 [tool.ty]
 [tool.ty.src]
-exclude = []
+# `ty check` (hooks, CI, editors) type-checks the package code only.
+include = ["src"]
 
 [tool.ty.environment]
 python = ".venv"
@@ -435,9 +404,6 @@ python-platform = "all"
 [tool.ty.rules]
 # Pydantic discriminated unions narrow `type: str` to `Literal[...]` in subclasses
 incompatible-mutable-override = "ignore"
-unused-type-ignore-comment = "ignore"
-invalid-type-form = "ignore"
-not-subscriptable = "ignore"
 possibly-missing-import = "warn"
 division-by-zero = "warn"
 

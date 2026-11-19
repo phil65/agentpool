@@ -43,7 +43,7 @@ class CommandHook(Hook):
         enabled: bool = True,
         env: dict[str, str] | None = None,
         execution_env: ExecutionEnvironment | None = None,
-    ):
+    ) -> None:
         """Initialize command hook.
 
         Args:

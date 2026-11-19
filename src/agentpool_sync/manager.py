@@ -50,7 +50,7 @@ class SyncManager:
         root: Path | str,
         registry_file: Path | str | None = None,
         packages_file: Path | str | None = None,
-    ):
+    ) -> None:
         """Initialize the sync manager.
 
         Args:

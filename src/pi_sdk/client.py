@@ -76,7 +76,7 @@ class RpcClient:
                         print(f"Got {len(msgs)} messages")
     """
 
-    def __init__(self, options: RpcClientOptions | None = None):
+    def __init__(self, options: RpcClientOptions | None = None) -> None:
         self._options = options or RpcClientOptions()
         self._process: asyncio.subprocess.Process | None = None
         self._event_listeners: list[EventListener] = []

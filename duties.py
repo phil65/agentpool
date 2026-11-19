@@ -116,7 +116,7 @@ def _get_lint_targets(filepath: str | None) -> tuple[str, str, str | None]:
     """Get lint targets based on optional filepath.
 
     Returns:
-        Tuple of (ruff_target, mypy_target, jsonschema_files_or_none)
+        Tuple of (ruff_target, ty_target, jsonschema_files_or_none)
     """
     if filepath is None:
         return (
@@ -130,8 +130,8 @@ def _get_lint_targets(filepath: str | None) -> tuple[str, str, str | None]:
     # For ruff, use the file directly
     ruff_target = filepath
 
-    # For mypy, if it's under src/, use the file; otherwise skip
-    mypy_target = filepath if filepath.startswith("src/") else ""
+    # For ty, if it's under src/, use the file; otherwise skip
+    ty_target = filepath if filepath.startswith("src/") else ""
 
     # For jsonschema, only run if the file matches the patterns
     jsonschema_files = None
@@ -141,7 +141,7 @@ def _get_lint_targets(filepath: str | None) -> tuple[str, str, str | None]:
     ):
         jsonschema_files = filepath
 
-    return ruff_target, mypy_target, jsonschema_files
+    return ruff_target, ty_target, jsonschema_files
 
 
 @duty(capture=False)
@@ -152,14 +152,13 @@ def lint(ctx, filepath: str | None = None):  # noqa: D417
         filepath: Optional path to a specific file to lint.
                   If not provided, lints the entire project.
     """
-    ruff_target, mypy_target, jsonschema_files = _get_lint_targets(filepath)
+    ruff_target, ty_target, jsonschema_files = _get_lint_targets(filepath)
 
-    ctx.run("ty check .")
     ctx.run(f"uv run ruff check --fix --unsafe-fixes {ruff_target}")
     ctx.run(f"uv run ruff format {ruff_target}")
 
-    if mypy_target:
-        ctx.run(f"uv run mypy {mypy_target} --fixed-format-cache")
+    if ty_target:
+        ctx.run(f"uv run ty check {ty_target}")
 
     if jsonschema_files:
         ctx.run(
@@ -182,13 +181,13 @@ def lint_check(ctx, filepath: str | None = None):  # noqa: D417
         filepath: Optional path to a specific file to lint.
                   If not provided, lints the entire project.
     """
-    ruff_target, mypy_target, jsonschema_files = _get_lint_targets(filepath)
+    ruff_target, ty_target, jsonschema_files = _get_lint_targets(filepath)
 
     ctx.run(f"uv run ruff check {ruff_target}")
     ctx.run(f"uv run ruff format --check {ruff_target}")
 
-    if mypy_target:
-        ctx.run(f"uv run mypy {mypy_target} --fixed-format-cache")
+    if ty_target:
+        ctx.run(f"uv run ty check {ty_target}")
 
     if jsonschema_files:
         ctx.run(

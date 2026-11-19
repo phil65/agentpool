@@ -24,7 +24,7 @@ class AgentReconciler:
         include_file_content: bool = True,
         max_diff_lines: int = 500,
         default_agent: str | None = None,
-    ):
+    ) -> None:
         """Initialize the reconciler.
 
         Args:
@@ -128,7 +128,7 @@ class LoggingHandler:
     Useful for dry-run/preview scenarios.
     """
 
-    def __init__(self, logger: Callable[[str], None] | None = None):
+    def __init__(self, logger: Callable[[str], None] | None = None) -> None:
         """Initialize the handler.
 
         Args:

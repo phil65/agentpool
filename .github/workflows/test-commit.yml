@@ -32,7 +32,7 @@ on:
         default: true
         type: boolean
       run_typecheck:
-        description: "Run mypy type checking"
+        description: "Run ty type checking"
         required: false
         default: true
         type: boolean
@@ -97,7 +97,7 @@ jobs:
           args: "format --check"
 
   typecheck:
-    name: Type Check (mypy)
+    name: Type Check (ty)
     if: ${{ inputs.run_typecheck }}
     runs-on: ${{ inputs.os }}
     continue-on-error: true
@@ -123,9 +123,9 @@ jobs:
       - name: Install dependencies
         run: uv sync --all-extras --no-group lint
 
-      - name: Static type checking (mypy)
+      - name: Static type checking (ty)
         id: typecheck
-        run: uv run --no-group docs mypy src/
+        run: uv run --no-group docs ty check
 
   test:
     name: Test (pytest)
@@ -185,9 +185,9 @@ jobs:
             echo "| Format (ruff format) | skipped |" >> $GITHUB_STEP_SUMMARY
           fi
           if [ "${{ inputs.run_typecheck }}" == "true" ]; then
-            echo "| Type Check (mypy) | ${{ needs.typecheck.outputs.result }} |" >> $GITHUB_STEP_SUMMARY
+            echo "| Type Check (ty) | ${{ needs.typecheck.outputs.result }} |" >> $GITHUB_STEP_SUMMARY
           else
-            echo "| Type Check (mypy) | skipped |" >> $GITHUB_STEP_SUMMARY
+            echo "| Type Check (ty) | skipped |" >> $GITHUB_STEP_SUMMARY
           fi
           if [ -n "${{ inputs.test_command }}" ]; then
             echo "| Tests (\`${{ inputs.test_command }}\`) | ${{ needs.test.outputs.result }} |" >> $GITHUB_STEP_SUMMARY

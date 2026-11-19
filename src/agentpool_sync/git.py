@@ -13,7 +13,7 @@ class GitError(Exception):
 class GitRepo:
     """Git repository wrapper for change detection."""
 
-    def __init__(self, root: Path | str):
+    def __init__(self, root: Path | str) -> None:
         """Initialize with repository root path.
 
         Args:

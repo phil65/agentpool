@@ -69,7 +69,7 @@ class AgentPool[TPoolDeps = None](BaseRegistry[NodeName, MessageNode[Any, Any]])
         parallel_load: bool = True,
         event_handlers: list[AnyEventHandlerType] | None = None,
         main_agent_name: str | None = None,
-    ):
+    ) -> None:
         """Initialize agent pool with immediate agent creation.
 
         Args:

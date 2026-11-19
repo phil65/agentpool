@@ -423,7 +423,7 @@ List your selections, one per line, followed by your reasoning."""
         # Create model for individual instance
 
         class Extraction(Schema):
-            instances: list[item_model]  # type: ignore[valid-type]
+            instances: list[item_model]  # ty: ignore[invalid-type-form]
             # explanation: str | None = None
 
         # Use structured output via context manager

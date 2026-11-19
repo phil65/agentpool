@@ -37,7 +37,7 @@ class CallableHook(Hook):
         timeout: float = 60.0,
         enabled: bool = True,
         arguments: dict[str, Any] | None = None,
-    ):
+    ) -> None:
         """Initialize callable hook.
 
         Args:

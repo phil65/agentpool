@@ -667,4 +667,4 @@ class TeamResponse[TMessageContent = Any](list[AgentResponse[Any]]):
             "duration": self.duration,
             "success_count": len(self),
         }
-        return ChatMessage(content=content, role="assistant", metadata=meta)  # type: ignore
+        return ChatMessage(content=content, role="assistant", metadata=meta)

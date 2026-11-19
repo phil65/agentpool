@@ -18,7 +18,7 @@ from typing import Any
 class LSPProxy:
     """Proxies between TCP clients and a stdio-based LSP server."""
 
-    def __init__(self, command: list[str], port_file: str):
+    def __init__(self, command: list[str], port_file: str) -> None:
         self.command = command
         self.port_file = port_file
         self._port_file_path = Path(port_file)

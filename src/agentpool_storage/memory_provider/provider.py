@@ -424,7 +424,9 @@ class MemoryStorageProvider(StorageProvider):
         the creation time and other conversation data are kept, and a missing title
         never clears a stored one.
         """
-        conv = next((c for c in self.conversations if c["id"] == data.session_id), None)
+        conv: dict[str, Any] | None = next(
+            (c for c in self.conversations if c["id"] == data.session_id), None
+        )
         if conv is None:
             conv = {"id": data.session_id, "start_time": data.created_at, "title": None}
             self.conversations.append(conv)

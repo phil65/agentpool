@@ -269,10 +269,14 @@ class MCPSkillsFileSystem(BaseAsyncFileSystem[MCPSkillsPath, MCPSkillsInfo]):
             self._verified[resource.digest] = content
         return content[start:end]
 
-    async def _pipe_file(self, path: str, value: bytes, **kwargs: Any) -> None:
+    async def _pipe_file(
+        self, path: str, value: bytes, mode: str = "overwrite", **kwargs: Any
+    ) -> None:
         raise PermissionError("The MCP skills filesystem is read-only")
 
-    async def _put_file(self, lpath: str, rpath: str, **kwargs: Any) -> None:
+    async def _put_file(
+        self, lpath: str, rpath: str, mode: str = "overwrite", **kwargs: Any
+    ) -> None:
         raise PermissionError("The MCP skills filesystem is read-only")
 
     async def _mkdir(self, path: str, create_parents: bool = True, **kwargs: Any) -> None:
@@ -289,6 +293,7 @@ class MCPSkillsFileSystem(BaseAsyncFileSystem[MCPSkillsPath, MCPSkillsInfo]):
         path: str | list[str],
         recursive: bool = False,
         batch_size: int | None = None,
+        maxdepth: int | None = None,
         **kwargs: Any,
     ) -> None:
         raise PermissionError("The MCP skills filesystem is read-only")

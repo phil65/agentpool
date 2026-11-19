@@ -56,11 +56,12 @@ repos:
         language: system
         files: ^src/agentpool/config_resources/.*\.yml$|^docs/examples/.*/config\.yml$
         require_serial: true
-      - id: mypy
-        name: mypy
-        entry: uv run mypy --fixed-format-cache
+      - id: ty
+        name: ty
+        entry: uv run ty check
         language: system
         types: [python]
+        pass_filenames: false
         require_serial: true
 
   # Phase 4: Tests (most expensive, system command)

@@ -32,7 +32,7 @@ def resolve_type(field_type: Any) -> Any:
     # Handle lists/sets
     if origin in {list, set}:
         item_type = get_args(field_type)[0]
-        return list[resolve_type(item_type)]  # type: ignore[misc]
+        return list[resolve_type(item_type)]  # ty: ignore[invalid-type-form]
 
     return field_type
 
@@ -67,7 +67,7 @@ def create_typer_command[T: BaseModel](
             params[field_name] = inspect.Parameter(
                 field_name,
                 inspect.Parameter.POSITIONAL_OR_KEYWORD,
-                annotation=Annotated[field_type, typer.Argument(help=field.description)],
+                annotation=Annotated[field_type, typer.Argument(help=field.description)],  # ty: ignore[invalid-type-form]
                 default=default,
             )
             continue
@@ -78,7 +78,7 @@ def create_typer_command[T: BaseModel](
             field_name,
             inspect.Parameter.KEYWORD_ONLY,
             annotation=Annotated[
-                field_type,
+                field_type,  # ty: ignore[invalid-type-form]
                 typer.Option(
                     "--" + option_name,  # Explicit param_decls
                     help=field.description,

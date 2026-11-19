@@ -55,8 +55,8 @@ uv run ruff format --check
 # Format code
 uv run ruff format src/
 
-# Type checking with mypy
-uv run --no-group docs mypy src/
+# Type checking with ty
+uv run ty check
 ```
 
 ### Running AgentPool
@@ -251,7 +251,7 @@ AgentPool acts as a protocol adapter:
 - Python 3.13+ required (use modern syntax: match/case, walrus operator)
 - Follow PEP 8 via Ruff
 - Google-style docstrings (no types in Args section)
-- Type hints required (checked with mypy --strict)
+- Type hints required (type-checked with ty; complete annotations enforced by ruff's ANN rules)
 - Use `from __future__ import annotations` for forward references
 
 ### Testing
@@ -313,7 +313,7 @@ pytest tests/path/to/test_file.py -k "test_pattern"
 pytest -m unit --no-cov
 
 # Full validation
-pytest && mypy src/ && ruff check src/
+pytest && ty check && ruff check src/
 ```
 
 ### Debugging Agent Issues

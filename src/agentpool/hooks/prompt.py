@@ -50,7 +50,7 @@ class PromptHook(Hook):
         timeout: float = 30.0,
         enabled: bool = True,
         model: str | None = None,
-    ):
+    ) -> None:
         """Initialize prompt hook.
 
         Args:

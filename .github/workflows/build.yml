@@ -49,8 +49,8 @@ jobs:
         with:
           args: "format --check"
 
-      - name: Static type checking (MyPy)
-        run: uv run --no-group docs mypy src/
+      - name: Static type checking (ty)
+        run: uv run --no-group docs ty check
 
       - name: Run tests
         env:
