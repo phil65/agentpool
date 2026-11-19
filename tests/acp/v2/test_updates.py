@@ -16,16 +16,19 @@ from acp.schema.v2.session_updates import (
     IdleStateSessionUpdate,
     RunningStateSessionUpdate,
     SessionUpdate,
+    ToolCallSessionUpdate,
     UnknownSessionUpdate,
     UpdateSessionNotification,
 )
 from acp.schema.v2.terminals import TerminalOutputChunk, TerminalUpdate
 from acp.schema.v2.tool_calls import (
+    AddDiffChange,
     Diff,
     ModifyDiffChange,
     MoveDiffChange,
     Terminal,
     ToolCallUpdate,
+    UnknownDiffChange,
 )
 
 
@@ -49,7 +52,7 @@ UPDATES: TypeAdapter[Any] = TypeAdapter(SessionUpdate)
             {"sessionUpdate": "state_update", "state": "idle", "stopReason": "end_turn"},
             IdleStateSessionUpdate,
         ),
-        ({"sessionUpdate": "tool_call_update", "toolCallId": "t1"}, ToolCallUpdate),
+        ({"sessionUpdate": "tool_call_update", "toolCallId": "t1"}, ToolCallSessionUpdate),
         ({"sessionUpdate": "terminal_update", "terminalId": "x"}, TerminalUpdate),
         ({"sessionUpdate": "cursor_update", "cursorId": "c1"}, CursorUpdate),
         ({"sessionUpdate": "_vendor_thing", "data": [1, 2]}, UnknownSessionUpdate),
@@ -63,7 +66,7 @@ def test_session_updates_round_trip(payload: dict[str, Any], expected: type[Base
 
 
 def test_tool_call_update_patch_semantics() -> None:
-    clear_title = ToolCallUpdate(tool_call_id="t1", title=None, status="in_progress")
+    clear_title = ToolCallSessionUpdate(tool_call_id="t1", title=None, status="in_progress")
 
     assert to_wire(clear_title) == {
         "sessionUpdate": "tool_call_update",
@@ -83,7 +86,9 @@ def test_tool_call_with_diff_and_terminal_content() -> None:
                 "type": "diff",
                 "changes": [
                     {"operation": "modify", "path": "/a.py", "fileType": "text"},
+                    {"operation": "add", "path": "/new.py"},
                     {"operation": "move", "oldPath": "/b.py", "path": "/c.py"},
+                    {"operation": "_chmod", "path": "/d.py", "mode": "755"},
                 ],
                 "patch": {"format": "git_patch", "text": "diff --git a/a.py b/a.py"},
             },
@@ -91,13 +96,18 @@ def test_tool_call_with_diff_and_terminal_content() -> None:
         ],
     })
 
-    assert isinstance(update, ToolCallUpdate)
+    assert isinstance(update, ToolCallSessionUpdate)
     content = update.content
     assert content is not MISSING
     assert content is not None
     diff, terminal = content
     assert isinstance(diff, Diff)
-    assert [type(c) for c in diff.changes] == [ModifyDiffChange, MoveDiffChange]
+    assert [type(c) for c in diff.changes] == [
+        ModifyDiffChange,
+        AddDiffChange,
+        MoveDiffChange,
+        UnknownDiffChange,
+    ]
     assert isinstance(terminal, Terminal)
 
 
@@ -147,3 +157,25 @@ def test_message_chunk_requires_message_id() -> None:
             "sessionUpdate": "agent_message_chunk",
             "content": to_wire(TextContent(text="hi")),
         })
+
+
+def test_terminal_update_with_exit_status() -> None:
+    update = UPDATES.validate_python({
+        "sessionUpdate": "terminal_update",
+        "terminalId": "term1",
+        "command": "ls",
+        "cwd": "/work",
+        "size": {"cols": 80, "rows": 24},
+        "exitStatus": {"exitCode": 0},
+    })
+
+    assert isinstance(update, TerminalUpdate)
+    assert update.exit_status is not MISSING
+    assert update.exit_status is not None
+    assert update.exit_status.exit_code == 0
+
+
+def test_tool_call_update_without_tag_for_permission_requests() -> None:
+    payload = to_wire(ToolCallUpdate(tool_call_id="t1", title="Edit a.py"))
+
+    assert payload == {"toolCallId": "t1", "title": "Edit a.py"}

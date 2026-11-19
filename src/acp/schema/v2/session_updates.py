@@ -228,6 +228,12 @@ StateSessionUpdate = Annotated[
 """A ``state_update`` session update: a snapshot of the session's foreground activity."""
 
 
+class ToolCallSessionUpdate(ToolCallUpdate):
+    """``tool_call_update``: a tool call was created or updated."""
+
+    session_update: Literal["tool_call_update"] = Field(default="tool_call_update", init=False)
+
+
 # --- The union --------------------------------------------------------------------
 
 
@@ -276,7 +282,7 @@ SessionUpdate = Annotated[
     | Annotated[AgentThought, Tag("agent_thought")]
     | Annotated[StateSessionUpdate, Tag("state_update")]
     | Annotated[ToolCallContentChunk, Tag("tool_call_content_chunk")]
-    | Annotated[ToolCallUpdate, Tag("tool_call_update")]
+    | Annotated[ToolCallSessionUpdate, Tag("tool_call_update")]
     | Annotated[TerminalUpdate, Tag("terminal_update")]
     | Annotated[TerminalOutputChunk, Tag("terminal_output_chunk")]
     | Annotated[PlanUpdate, Tag("plan_update")]

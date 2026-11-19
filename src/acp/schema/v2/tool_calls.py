@@ -236,9 +236,11 @@ class ToolCallCapabilities(AnnotatedObject):
 
 
 class ToolCallUpdate(AnnotatedObject):
-    """A tool call was created or updated (upsert by ``tool_call_id``)."""
+    """A tool call upsert, keyed by ``tool_call_id``.
 
-    session_update: Literal["tool_call_update"] = Field(default="tool_call_update", init=False)
+    Sent as the ``tool_call_update`` session update (:class:`ToolCallSessionUpdate` in
+    :mod:`acp.schema.v2.session_updates`), and embedded in tool call permission requests.
+    """
 
     tool_call_id: ToolCallId
     """Unique identifier of the tool call in the session."""
