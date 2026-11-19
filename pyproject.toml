@@ -31,6 +31,7 @@ classifiers = [
   "Typing :: Typed",
 ]
 dependencies = [
+  "aclientp[bridge,tracing,websocket]>=0.1.1",
   "alembic>=1.16.5",
   "anyenv[httpx]>=2.0.17",
   "bashkit>=0.1.11",
@@ -41,7 +42,6 @@ dependencies = [
   "docstring-parser>=0.17.0",
   "epregistry",
   "evented>=1.0.5",
-  "aclientp[bridge,tracing,websocket]>=0.1.1",
   "exxec>=0.6.0",
   "fastapi",
   "fastmcp>=4.2.0",
@@ -400,6 +400,10 @@ include = ["src"]
 python = ".venv"
 python-version = "3.13"
 python-platform = "all"
+
+[tool.ty.analysis]
+# Not installed on Python 3.15 (no wheels yet); type-checked wherever installed.
+allowed-unresolved-imports = ["fastembed.**", "markitdown.**"]
 
 [tool.ty.rules]
 # Pydantic discriminated unions narrow `type: str` to `Literal[...]` in subclasses
