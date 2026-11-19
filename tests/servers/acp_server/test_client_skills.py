@@ -5,9 +5,10 @@ from __future__ import annotations
 from textwrap import dedent
 from typing import TYPE_CHECKING
 
-from acp.client.implementations import HeadlessACPClient
-from acp.filesystem import ACPFileSystem, ACPPath
-from acp.schema import ForkSessionRequest, InitializeRequest, NewSessionRequest
+from aclientp.client.implementations import HeadlessACPClient
+from aclientp.filesystem import ACPFileSystem, ACPPath
+from aclientp.schema import ForkSessionRequest, InitializeRequest, NewSessionRequest
+
 from agentpool.skills.registry import SkillsRegistry
 from agentpool_server.acp_server.acp_agent import AgentPoolACPAgent
 

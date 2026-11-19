@@ -15,6 +15,22 @@ from decimal import Decimal
 from typing import TYPE_CHECKING, Any, Literal, assert_never
 import uuid
 
+from aclientp.schema import (
+    AgentMessageChunk,
+    AgentPlanUpdate,
+    AgentThoughtChunk,
+    CompactionUpdate,
+    ContentToolCallContent,
+    Cost,
+    Notice,
+    PromptSuggestion,
+    PromptSuggestionsUpdate,
+    TextContentBlock,
+    ToolCallLocation,
+    ToolCallProgress,
+    ToolCallStart,
+    UsageUpdate,
+)
 from pydantic_ai import (
     FinalResultEvent,
     FunctionToolCallEvent,
@@ -34,23 +50,7 @@ from pydantic_ai import (
     ToolReturnPart,
 )
 
-from acp.schema import (
-    AgentMessageChunk,
-    AgentPlanUpdate,
-    AgentThoughtChunk,
-    CompactionUpdate,
-    ContentToolCallContent,
-    Cost,
-    Notice,
-    PromptSuggestion,
-    PromptSuggestionsUpdate,
-    TextContentBlock,
-    ToolCallLocation,
-    ToolCallProgress,
-    ToolCallStart,
-    UsageUpdate,
-)
-from acp.utils import generate_tool_title, infer_tool_kind, to_acp_content_blocks
+from agentpool.acp_utils import generate_tool_title, infer_tool_kind, to_acp_content_blocks
 from agentpool.agents.events import (
     CompactionEvent,
     CustomEvent,
@@ -78,8 +78,9 @@ from agentpool_server.acp_server.converters import to_usage
 if TYPE_CHECKING:
     from collections.abc import AsyncIterator
 
-    from acp.schema import SessionUpdate, Usage
-    from acp.schema.tool_call import ToolCallContent, ToolCallKind
+    from aclientp.schema import SessionUpdate, Usage
+    from aclientp.schema.tool_call import ToolCallContent, ToolCallKind
+
     from agentpool.agents.events import RichAgentStreamEvent
     from agentpool.agents.events.events import SubAgentType
     from agentpool.messaging import ChatMessage
@@ -228,11 +229,12 @@ class ACPEventConverter:
         self, event: RichAgentStreamEvent[Any]
     ) -> AsyncIterator[SessionUpdate]:
         """Convert an agent event to zero or more ACP session updates."""
-        from acp.schema import (
+        from aclientp.schema import (
             FileEditToolCallContent,
             PlanEntry as ACPPlanEntry,
             TerminalToolCallContent,
         )
+
         from agentpool_server.acp_server.syntax_detection import format_zed_code_block
 
         match event:

@@ -5,7 +5,7 @@ from __future__ import annotations
 import asyncio
 from typing import TYPE_CHECKING
 
-from acp.schema import (
+from aclientp.schema import (
     CompactionUpdate,
     ImageContentBlock,
     InitializeRequest,
@@ -15,6 +15,7 @@ from acp.schema import (
     ResourceContentBlock,
     TextContentBlock,
 )
+
 from agentpool.agents.acp_agent.client_handler import TimeoutableEvent
 from agentpool.agents.acp_agent.session_state import ACPSessionState
 from agentpool.agents.acp_agent.stream_adapter import AcpAgentStreamedResponse
@@ -22,7 +23,8 @@ from agentpool.agents.events import CompactionEvent, NoticeEvent, PromptSuggesti
 
 
 if TYPE_CHECKING:
-    from acp.schema import SessionUpdate
+    from aclientp.schema import SessionUpdate
+
     from agentpool.agents.events import RichAgentStreamEvent
 
 

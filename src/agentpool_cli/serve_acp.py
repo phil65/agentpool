@@ -26,7 +26,7 @@ from agentpool_cli import log
 
 
 if TYPE_CHECKING:
-    from acp import Transport
+    from aclientp import Transport
 
 
 logger = log.get_logger(__name__)
@@ -118,7 +118,8 @@ def acp_command(  # noqa: PLR0915
     the pool's default agent is used (set via 'default_agent' in config,
     or falls back to the first agent).
     """
-    from acp import StdioTransport, WebSocketTransport
+    from aclientp import StdioTransport, WebSocketTransport
+
     from agentpool import log
     from agentpool.config_resources import ACP_ASSISTANT
     from agentpool.models.manifest import AgentsManifest

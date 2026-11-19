@@ -5,12 +5,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-import anyenv
-import anyio
-from pydantic import TypeAdapter
-from slashed import CommandContext  # noqa: TC002
-
-from acp.schema import (
+from aclientp.schema import (
     AgentMessageChunk,
     AgentThoughtChunk,
     ContentToolCallContent,
@@ -22,6 +17,11 @@ from acp.schema import (
     ToolCallStart,
     UserMessageChunk,
 )
+import anyenv
+import anyio
+from pydantic import TypeAdapter
+from slashed import CommandContext  # noqa: TC002
+
 from agentpool.log import get_logger
 from agentpool.messaging.context import NodeContext  # noqa: TC001
 from agentpool_commands.base import NodeCommand

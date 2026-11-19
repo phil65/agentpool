@@ -5,18 +5,19 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Any, Literal, assert_never
 import uuid
 
+from aclientp import AllowedOutcome, DeniedOutcome, PermissionOption
+from aclientp.schema import ElicitationCompleteNotification, ElicitationRequest, ElicitationSchema
 from mcp import types
 from pydantic import ValidationError
 
-from acp import AllowedOutcome, DeniedOutcome, PermissionOption
-from acp.schema import ElicitationCompleteNotification, ElicitationRequest, ElicitationSchema
-from acp.utils import DEFAULT_PERMISSION_OPTIONS
+from agentpool.acp_utils import DEFAULT_PERMISSION_OPTIONS
 from agentpool.log import get_logger
 from agentpool.ui.base import InputProvider
 
 
 if TYPE_CHECKING:
-    from acp import RequestPermissionResponse
+    from aclientp import RequestPermissionResponse
+
     from agentpool import AgentContext
     from agentpool.agents.context import ConfirmationResult
     from agentpool_server.acp_server.session import ACPSession
@@ -116,7 +117,7 @@ class ACPInputProvider(InputProvider):
         """
         tool_name = context.tool_name or "unknown"
         args = context.tool_input
-        from acp.utils import generate_tool_title
+        from agentpool.acp_utils import generate_tool_title
 
         try:
             # Check if we have a standing approval/rejection for this tool

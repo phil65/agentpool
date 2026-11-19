@@ -14,11 +14,11 @@ from dataclasses import dataclass
 import sys
 from typing import Any
 
-from acp.client.implementations import NoOpClient
-from acp.schema import InitializeRequest
-from acp.schema.capabilities import ClientCapabilities, FileSystemCapabilities
-from acp.schema.common import Implementation
-from acp.stdio import spawn_agent_process
+from aclientp.client.implementations import NoOpClient
+from aclientp.schema import InitializeRequest
+from aclientp.schema.capabilities import ClientCapabilities, FileSystemCapabilities
+from aclientp.schema.common import Implementation
+from aclientp.stdio import spawn_agent_process
 
 
 @dataclass

@@ -6,9 +6,9 @@ from dataclasses import KW_ONLY, dataclass, field
 from importlib.metadata import version as _version
 from typing import TYPE_CHECKING, Any, ClassVar, assert_never
 
-from acp import Agent as ACPAgent
-from acp.exceptions import RequestError
-from acp.schema import (
+from aclientp import Agent as ACPAgent
+from aclientp.exceptions import RequestError
+from aclientp.schema import (
     AuthStatusCapabilities,
     CloseSessionResponse,
     DeleteSessionResponse,
@@ -37,6 +37,7 @@ from acp.schema import (
     SetSessionModeResponse,
     SetSessionTitleResponse,
 )
+
 from agentpool.agents.exceptions import UnknownCategoryError, UnknownModeError
 from agentpool.log import get_logger
 from agentpool.utils.tasks import TaskManager
@@ -50,10 +51,8 @@ from agentpool_server.acp_server.session_manager import ACPSessionManager
 
 
 if TYPE_CHECKING:
-    from pydantic_ai import ModelMessage
-
-    from acp import Client
-    from acp.schema import (
+    from aclientp import Client
+    from aclientp.schema import (
         AuthenticateRequest,
         AuthStatusRequest,
         AuthStatusResponse,
@@ -77,6 +76,8 @@ if TYPE_CHECKING:
         SetSessionModeRequest,
         SetSessionTitleRequest,
     )
+    from pydantic_ai import ModelMessage
+
     from agentpool import AgentPool
     from agentpool.agents.base_agent import BaseAgent
     from agentpool.storage.manager import SessionMetadataGeneratedEvent

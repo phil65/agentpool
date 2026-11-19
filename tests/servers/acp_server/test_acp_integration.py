@@ -5,9 +5,8 @@ from __future__ import annotations
 import tempfile
 from unittest.mock import AsyncMock
 
+from aclientp import ClientCapabilities
 import pytest
-
-from acp import ClientCapabilities
 
 # Add another agent to the pool for switching
 from agentpool import Agent

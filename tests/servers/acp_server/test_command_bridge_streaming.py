@@ -7,11 +7,11 @@ import time
 from typing import TYPE_CHECKING
 from unittest.mock import AsyncMock
 
+from aclientp import ClientCapabilities
 import anyio
 import pytest
 from slashed import Command
 
-from acp import ClientCapabilities
 from agentpool import Agent, AgentPool
 from agentpool_server.acp_server.session import ACPSession
 
@@ -19,7 +19,7 @@ from agentpool_server.acp_server.session import ACPSession
 if TYPE_CHECKING:
     from datetime import datetime
 
-    from acp.schema import Audience
+    from aclientp.schema import Audience
 
 
 async def test_session_command_immediate_execution():

@@ -6,9 +6,9 @@ import sys
 import tempfile
 from typing import TYPE_CHECKING
 
+from aclientp import EnvVariable, StdioMcpServer
 import pytest
 
-from acp import EnvVariable, StdioMcpServer
 from agentpool import Agent
 from agentpool.delegation import AgentPool
 from agentpool.log import get_logger
@@ -19,7 +19,8 @@ from agentpool_server.acp_server.session_manager import ACPSessionManager
 
 
 if TYPE_CHECKING:
-    from acp import ClientCapabilities
+    from aclientp import ClientCapabilities
+
     from agentpool_server.acp_server.acp_agent import AgentPoolACPAgent
 
 

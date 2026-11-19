@@ -17,6 +17,30 @@ from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, Literal, assert_never, overload
 from uuid import uuid4
 
+from aclientp.schema import (
+    AgentMessageChunk,
+    AgentPlanUpdate,
+    AgentThoughtChunk,
+    AudioContentBlock,
+    BlobResourceContents,
+    CompactionUpdate,
+    ContentToolCallContent,
+    EmbeddedResourceContentBlock,
+    FileEditToolCallContent,
+    ImageContentBlock,
+    Notice,
+    PromptSuggestionsUpdate,
+    ResourceContentBlock,
+    SelectSessionConfigOption,
+    SessionConfigSelectOption,
+    TerminalToolCallContent,
+    TextContentBlock,
+    TextResourceContents,
+    ToolCallLocation,
+    ToolCallProgress,
+    ToolCallStart,
+    UserMessageChunk,
+)
 from pydantic_ai import (
     AudioUrl,
     BinaryContent,
@@ -49,31 +73,7 @@ from pydantic_ai import (
     VideoUrl,
 )
 
-from acp.schema import (
-    AgentMessageChunk,
-    AgentPlanUpdate,
-    AgentThoughtChunk,
-    AudioContentBlock,
-    BlobResourceContents,
-    CompactionUpdate,
-    ContentToolCallContent,
-    EmbeddedResourceContentBlock,
-    FileEditToolCallContent,
-    ImageContentBlock,
-    Notice,
-    PromptSuggestionsUpdate,
-    ResourceContentBlock,
-    SelectSessionConfigOption,
-    SessionConfigSelectOption,
-    TerminalToolCallContent,
-    TextContentBlock,
-    TextResourceContents,
-    ToolCallLocation,
-    ToolCallProgress,
-    ToolCallStart,
-    UserMessageChunk,
-)
-from acp.utils import generate_tool_title, infer_tool_kind, to_acp_content_blocks
+from agentpool.acp_utils import generate_tool_title, infer_tool_kind, to_acp_content_blocks
 from agentpool.agents.events import (
     CompactionEvent,
     DiffContentItem,
@@ -93,9 +93,7 @@ from agentpool.utils.pydantic_ai_helpers import safe_args_as_dict
 if TYPE_CHECKING:
     from collections.abc import Iterable, Iterator, Sequence
 
-    from pydantic_ai import FinishReason, ModelMessage, ModelResponsePart, UserContent
-
-    from acp.schema import (
+    from aclientp.schema import (
         AuthStatusResponse,
         ContentBlock,
         HttpMcpServer,
@@ -108,6 +106,8 @@ if TYPE_CHECKING:
         StopReason,
         ToolCallContent,
     )
+    from pydantic_ai import FinishReason, ModelMessage, ModelResponsePart, UserContent
+
     from agentpool.agents.auth import AuthStatus
     from agentpool.agents.events import RichAgentStreamEvent, ToolCallContentItem
     from agentpool.agents.modes import ModeCategory, ModeInfo
@@ -615,8 +615,9 @@ def mcp_config_to_acp(config: MCPServerConfig) -> McpServer:
     Returns:
         ACP-compatible McpServer instance, or None if conversion not possible
     """
-    from acp.schema.common import EnvVariable
-    from acp.schema.mcp import HttpMcpServer, SseMcpServer, StdioMcpServer
+    from aclientp.schema.common import EnvVariable
+    from aclientp.schema.mcp import HttpMcpServer, SseMcpServer, StdioMcpServer
+
     from agentpool_config.mcp_server import (
         SSEMCPServerConfig,
         StdioMCPServerConfig,

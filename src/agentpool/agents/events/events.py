@@ -233,7 +233,7 @@ class ToolCallStartEvent:
 
     Used for undocumented conventions like display-only terminal lifecycle
     signals (``terminal_info``, ``terminal_output``, ``terminal_exit``).
-    See :mod:`acp.schema.field_meta` for known conventions.
+    See :mod:`aclientp.schema.field_meta` for known conventions.
     """
 
     event_kind: Literal["tool_call_start"] = "tool_call_start"
@@ -286,7 +286,7 @@ class ToolCallProgressEvent:
 
     Used for undocumented conventions like display-only terminal lifecycle
     signals (``terminal_info``, ``terminal_output``, ``terminal_exit``).
-    See :mod:`acp.schema.field_meta` for known conventions.
+    See :mod:`aclientp.schema.field_meta` for known conventions.
     """
 
     event_kind: Literal["tool_call_progress"] = "tool_call_progress"

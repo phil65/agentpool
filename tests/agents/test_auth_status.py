@@ -2,11 +2,11 @@
 
 from __future__ import annotations
 
+from aclientp.schema import AuthAccount as ACPAuthAccount, AuthStatusResponse
 from clawd_code_sdk.models.server_info import ClaudeCodeAccountInfo
 from codexed.models import GetAccountResponse
 from codexed.models.v2_protocol import ApiKeyAccount, ChatgptAccount
 
-from acp.schema import AuthAccount as ACPAuthAccount, AuthStatusResponse
 from agentpool.agents.acp_agent.acp_converters import acp_to_native_auth_status
 from agentpool.agents.auth import AuthAccount, AuthStatus
 from agentpool.agents.claude_code_agent.converters import to_auth_status as claude_auth

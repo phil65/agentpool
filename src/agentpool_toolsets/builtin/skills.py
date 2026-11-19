@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from acp.filesystem import ACPPath
+from aclientp.filesystem import ACPPath
+
 from agentpool.agents.context import AgentContext  # noqa: TC001
 from agentpool.resource_providers import StaticResourceProvider
 

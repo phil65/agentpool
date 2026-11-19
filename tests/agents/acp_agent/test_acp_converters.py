@@ -4,6 +4,14 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+from aclientp.schema import (
+    AgentMessageChunk,
+    AgentThoughtChunk,
+    SessionNotification,
+    ToolCallProgress,
+    ToolCallStart,
+    UserMessageChunk,
+)
 from pydantic_ai import (
     ModelRequest,
     ModelResponse,
@@ -14,14 +22,6 @@ from pydantic_ai import (
 )
 import pytest
 
-from acp.schema import (
-    AgentMessageChunk,
-    AgentThoughtChunk,
-    SessionNotification,
-    ToolCallProgress,
-    ToolCallStart,
-    UserMessageChunk,
-)
 from agentpool.agents.acp_agent.acp_converters import (
     ACPMessageAccumulator,
     acp_notifications_to_messages,
@@ -29,7 +29,7 @@ from agentpool.agents.acp_agent.acp_converters import (
 
 
 if TYPE_CHECKING:
-    from acp.schema import SessionUpdate
+    from aclientp.schema import SessionUpdate
 
 
 class TestACPMessageAccumulator:

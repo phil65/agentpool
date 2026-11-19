@@ -10,7 +10,8 @@ import asyncio
 import functools
 from typing import TYPE_CHECKING, Any, Self
 
-from acp import serve
+from aclientp import serve
+
 from agentpool import AgentPool
 from agentpool.log import get_logger
 from agentpool.models.manifest import AgentsManifest
@@ -19,9 +20,9 @@ from agentpool_server.acp_server.acp_agent import AgentPoolACPAgent
 
 
 if TYPE_CHECKING:
+    from aclientp import Transport
     from upathtools import JoinablePathLike
 
-    from acp import Transport
     from agentpool.agents.base_agent import BaseAgent
 
 

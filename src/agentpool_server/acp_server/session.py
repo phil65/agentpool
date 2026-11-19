@@ -12,6 +12,10 @@ from decimal import Decimal
 import re
 from typing import TYPE_CHECKING, Any, Literal, assert_never
 
+from aclientp.agent.acp_requests import ACPRequests
+from aclientp.agent.notifications import ACPNotifications
+from aclientp.filesystem import ACPFileSystem
+from aclientp.schema import AvailableCommand, ClientCapabilities, Notice
 import anyio
 from exxec.acp_provider import ACPExecutionEnvironment
 import logfire
@@ -19,10 +23,6 @@ from pydantic_ai import UsageLimitExceeded
 from slashed import CommandStore
 from tokonomics.model_discovery.model_info import ModelInfo
 
-from acp.agent.acp_requests import ACPRequests
-from acp.agent.notifications import ACPNotifications
-from acp.filesystem import ACPFileSystem
-from acp.schema import AvailableCommand, ClientCapabilities, Notice
 from agentpool import Agent, AgentPool
 from agentpool.agents.acp_agent import ACPAgent
 from agentpool.agents.modes import ConfigOptionChanged, ModeInfo
@@ -39,11 +39,8 @@ from agentpool_server.acp_server.input_provider import ACPInputProvider
 if TYPE_CHECKING:
     from collections.abc import Callable, Sequence
 
-    from pydantic_ai import UserContent
-    from slashed import BaseCommand
-
-    from acp import Client, RequestPermissionRequest, RequestPermissionResponse
-    from acp.schema import (
+    from aclientp import Client, RequestPermissionRequest, RequestPermissionResponse
+    from aclientp.schema import (
         AvailableCommandsUpdate,
         ContentBlock,
         Implementation,
@@ -52,6 +49,9 @@ if TYPE_CHECKING:
         StopReason,
         Usage,
     )
+    from pydantic_ai import UserContent
+    from slashed import BaseCommand
+
     from agentpool.agents.base_agent import BaseAgent
     from agentpool.common_types import PathReference
     from agentpool_server.acp_server.acp_agent import AgentPoolACPAgent
@@ -258,13 +258,14 @@ class ACPSession:
         self, state: ModeInfo | ModelInfo | AvailableCommandsUpdate | ConfigOptionChanged
     ) -> None:
         """Handle state update signal from agent - forward to ACP client."""
-        from acp.schema import (
+        from aclientp.schema import (
             AvailableCommandsUpdate,
             BooleanSessionConfigOption,
             ConfigOptionUpdate,
             CurrentModeUpdate,
             SelectSessionConfigOption,
         )
+
         from agentpool_server.acp_server.acp_agent import get_session_config_options
 
         update: CurrentModeUpdate | ConfigOptionUpdate

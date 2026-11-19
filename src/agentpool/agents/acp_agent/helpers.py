@@ -8,10 +8,9 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from collections.abc import Sequence
 
+    from aclientp.schema import AgentCapabilities
+    from aclientp.schema.mcp import McpServer
     import structlog
-
-    from acp.schema import AgentCapabilities
-    from acp.schema.mcp import McpServer
 
 
 def filter_servers_by_capabilities(
@@ -30,7 +29,7 @@ def filter_servers_by_capabilities(
     Returns:
         Servers compatible with the agent's capabilities
     """
-    from acp.schema.mcp import AcpMcpServer, HttpMcpServer, SseMcpServer
+    from aclientp.schema.mcp import AcpMcpServer, HttpMcpServer, SseMcpServer
 
     mcp_caps = i.mcp_capabilities if (i := agent_capabilities) else None
     # Check what transports are supported

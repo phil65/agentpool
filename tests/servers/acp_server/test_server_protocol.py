@@ -8,13 +8,8 @@ import time
 from typing import TYPE_CHECKING, Any
 from unittest.mock import AsyncMock, Mock
 
-from pydantic_ai import ModelRequest, ModelResponse, RequestUsage, RunUsage
-from pydantic_ai.messages import TextPart, UserPromptPart
-from pydantic_ai.models.function import AgentInfo, FunctionModel
-import pytest
-
-from acp import RequestError
-from acp.schema import (
+from aclientp import RequestError
+from aclientp.schema import (
     AgentMessageChunk,
     CancelNotification,
     Cost,
@@ -31,6 +26,11 @@ from acp.schema import (
     UsageUpdate,
     UserMessageChunk,
 )
+from pydantic_ai import ModelRequest, ModelResponse, RequestUsage, RunUsage
+from pydantic_ai.messages import TextPart, UserPromptPart
+from pydantic_ai.models.function import AgentInfo, FunctionModel
+import pytest
+
 from agentpool import Agent, AgentPool, AgentsManifest
 from agentpool.agents.events import StreamCompleteEvent
 from agentpool.messaging import ChatMessage
@@ -45,9 +45,8 @@ from agentpool_server.acp_server.input_provider import ACPInputProvider
 if TYPE_CHECKING:
     from collections.abc import AsyncIterator
 
+    from aclientp.schema import SessionNotification
     from pydantic_ai import ModelMessage
-
-    from acp.schema import SessionNotification
 
 
 RESOURCE_NOT_FOUND = -32002

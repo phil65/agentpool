@@ -6,9 +6,7 @@ from types import SimpleNamespace
 from typing import Any
 from unittest.mock import AsyncMock
 
-from mcp import types
-
-from acp.schema import (
+from aclientp.schema import (
     AllowedOutcome,
     ClientCapabilities,
     ElicitationCapabilities,
@@ -18,6 +16,8 @@ from acp.schema import (
     ElicitationUrlCapabilities,
     RequestPermissionResponse,
 )
+from mcp import types
+
 from agentpool_server.acp_server.input_provider import ACPInputProvider
 
 

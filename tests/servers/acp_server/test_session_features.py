@@ -5,11 +5,8 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Any
 from unittest.mock import AsyncMock
 
-from pydantic_ai import FunctionToolCallEvent, ToolCallPart
-import pytest
-
-from acp.exceptions import RequestError
-from acp.schema import (
+from aclientp.exceptions import RequestError
+from aclientp.schema import (
     AgentMessageChunk,
     AuthStatusRequest,
     ClientCapabilities,
@@ -29,6 +26,9 @@ from acp.schema import (
     TextContentBlock,
     ToolCallStart,
 )
+from pydantic_ai import FunctionToolCallEvent, ToolCallPart
+import pytest
+
 from agentpool.agents.events import (
     CompactionEvent,
     NoticeEvent,

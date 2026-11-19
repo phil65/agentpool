@@ -4,10 +4,10 @@ from __future__ import annotations
 
 from unittest.mock import Mock
 
+from aclientp import ClientCapabilities, DefaultACPClient, FileSystemCapabilities
+from aclientp.agent.implementations import TestAgent
 import pytest
 
-from acp import ClientCapabilities, DefaultACPClient, FileSystemCapabilities
-from acp.agent.implementations import TestAgent
 from agentpool import Agent
 from agentpool.delegation import AgentPool
 from agentpool_server.acp_server.acp_agent import AgentPoolACPAgent

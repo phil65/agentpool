@@ -5,7 +5,8 @@ from __future__ import annotations
 import asyncio
 from typing import TYPE_CHECKING, Any, Self
 
-from acp.schema import ClientCapabilities
+from aclientp.schema import ClientCapabilities
+
 from agentpool.log import get_logger
 from agentpool.sessions import SessionData
 from agentpool_server.acp_server.session import ACPSession
@@ -14,8 +15,9 @@ from agentpool_server.acp_server.session import ACPSession
 if TYPE_CHECKING:
     from collections.abc import Sequence
 
-    from acp import Client
-    from acp.schema import Implementation, McpServer
+    from aclientp import Client
+    from aclientp.schema import Implementation, McpServer
+
     from agentpool import AgentPool
     from agentpool.agents.base_agent import BaseAgent
     from agentpool.storage.manager import StorageManager

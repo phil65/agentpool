@@ -6,6 +6,7 @@ no mocks needed, just assert on the yielded ACP session updates.
 
 from __future__ import annotations
 
+from aclientp.schema import AgentMessageChunk, ToolCallProgress
 from pydantic_ai import (
     FunctionToolCallEvent,
     PartDeltaEvent,
@@ -16,7 +17,6 @@ from pydantic_ai import (
 )
 import pytest
 
-from acp.schema import AgentMessageChunk, ToolCallProgress
 from agentpool_server.acp_server.event_converter import ACPEventConverter
 
 

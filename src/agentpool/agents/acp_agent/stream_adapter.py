@@ -19,7 +19,8 @@ if TYPE_CHECKING:
     from collections.abc import AsyncIterator
     from datetime import datetime
 
-    from acp.schema import SessionUpdate
+    from aclientp.schema import SessionUpdate
+
     from agentpool.agents.acp_agent.client_handler import TimeoutableEvent
     from agentpool.agents.acp_agent.session_state import ACPSessionState
     from agentpool.agents.events import RichAgentStreamEvent
@@ -56,7 +57,8 @@ class AcpAgentStreamedResponse(StreamedResponse):
                 yield native_event
 
     def _convert(self, update: SessionUpdate) -> RichAgentStreamEvent[str] | None:
-        from acp.schema import CompactionUpdate
+        from aclientp.schema import CompactionUpdate
+
         from agentpool.agents.acp_agent.acp_converters import acp_to_native_event
 
         # Later in_progress updates only patch an already started compaction

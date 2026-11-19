@@ -6,6 +6,15 @@ import base64
 from collections.abc import Sequence
 from typing import TYPE_CHECKING, Any
 
+from aclientp.schema import (
+    AudioContentBlock,
+    BlobResourceContents,
+    EmbeddedResourceContentBlock,
+    ImageContentBlock,
+    PermissionOption,
+    ResourceContentBlock,
+    TextContentBlock,
+)
 from pydantic_ai import (
     AudioUrl,
     BinaryContent,
@@ -16,24 +25,13 @@ from pydantic_ai import (
     VideoUrl,
 )
 
-from acp.schema import (
-    AudioContentBlock,
-    BlobResourceContents,
-    EmbeddedResourceContentBlock,
-    ImageContentBlock,
-    PermissionOption,
-    ResourceContentBlock,
-    TextContentBlock,
-)
-
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
 
+    from aclientp.schema import ContentBlock, ToolCallKind
     from pydantic_ai import UserContent
     from pydantic_ai.messages import ToolReturnContent
-
-    from acp.schema import ContentBlock, ToolCallKind
 
 
 DEFAULT_PERMISSION_OPTIONS = [

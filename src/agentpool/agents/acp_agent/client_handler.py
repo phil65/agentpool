@@ -7,11 +7,8 @@ from asyncio import Event
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, assert_never
 
-import anyio
-from pydantic_ai import PartDeltaEvent, TextPartDelta
-
-from acp.client.protocol import Client
-from acp.schema import (
+from aclientp.client.protocol import Client
+from aclientp.schema import (
     CreateTerminalResponse,
     KillTerminalResponse,
     ReadTextFileResponse,
@@ -21,6 +18,9 @@ from acp.schema import (
     WaitForTerminalExitResponse,
     WriteTextFileResponse,
 )
+import anyio
+from pydantic_ai import PartDeltaEvent, TextPartDelta
+
 from agentpool.agents.exceptions import OperationNotAllowedError, ResourceNotFoundError
 from agentpool.log import get_logger
 
@@ -28,10 +28,7 @@ from agentpool.log import get_logger
 if TYPE_CHECKING:
     from collections.abc import Sequence
 
-    from exxec import ExecutionEnvironment
-    from slashed import Command
-
-    from acp.schema import (
+    from aclientp.schema import (
         AvailableCommand,
         CreateTerminalRequest,
         KillTerminalRequest,
@@ -43,11 +40,14 @@ if TYPE_CHECKING:
         WaitForTerminalExitRequest,
         WriteTextFileRequest,
     )
-    from acp.schema.elicitation import (
+    from aclientp.schema.elicitation import (
         ElicitationCompleteNotification,
         ElicitationRequest,
         ElicitationResponse,
     )
+    from exxec import ExecutionEnvironment
+    from slashed import Command
+
     from agentpool.agents.acp_agent import ACPAgent
     from agentpool.agents.acp_agent.session_state import ACPSessionState
     from agentpool.ui.base import InputProvider
@@ -127,11 +127,12 @@ class ACPClientHandler(Client):
         Raw updates are stored as the single source of truth. Conversion to
         native events happens lazily during streaming consumption.
         """
-        from acp.schema import (
+        from aclientp.schema import (
             AvailableCommandsUpdate,
             ConfigOptionUpdate,
             CurrentModeUpdate,
         )
+
         from agentpool.agents.modes import ModeInfo
 
         # Handle state updates - these modify session state, not stream data
@@ -388,7 +389,7 @@ class ACPClientHandler(Client):
 
     async def elicitation(self, params: ElicitationRequest) -> ElicitationResponse:
         """Decline elicitation by default."""
-        from acp.schema.elicitation import ElicitationResponse
+        from aclientp.schema.elicitation import ElicitationResponse
 
         return ElicitationResponse.decline()
 

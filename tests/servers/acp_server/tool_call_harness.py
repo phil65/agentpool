@@ -27,12 +27,12 @@ import tempfile
 from typing import TYPE_CHECKING, Any
 from unittest.mock import AsyncMock
 
+from aclientp import ClientCapabilities
+from aclientp.client.implementations import HeadlessACPClient
+from aclientp.schema import TextContentBlock
 from exxec import MockExecutionEnvironment
 from llmling_models_config import TestModelConfig
 
-from acp import ClientCapabilities
-from acp.client.implementations import HeadlessACPClient
-from acp.schema import TextContentBlock
 from agentpool import AgentsManifest
 from agentpool.delegation import AgentPool
 from agentpool.models.agents import NativeAgentConfig
@@ -43,7 +43,8 @@ from agentpool_server.acp_server.session import ACPSession
 if TYPE_CHECKING:
     from collections.abc import Sequence
 
-    from acp.schema import SessionNotification
+    from aclientp.schema import SessionNotification
+
     from agentpool_config import AnyToolConfig
     from agentpool_config.mcp_server import MCPServerConfig
 

@@ -36,11 +36,11 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any, ClassVar, Self
 import uuid
 
+from aclientp import InitializeRequest
+from aclientp.agent import ACPAgentAPI
 import anyio
 from pydantic import HttpUrl
 
-from acp import InitializeRequest
-from acp.agent import ACPAgentAPI
 from agentpool.agents.acp_agent.session_state import ACPSessionState
 from agentpool.agents.base_agent import BaseAgent
 from agentpool.agents.events import RunStartedEvent, StreamCompleteEvent
@@ -61,6 +61,15 @@ if TYPE_CHECKING:
     from collections.abc import AsyncIterator, Awaitable, Callable, Sequence
     from types import TracebackType
 
+    from aclientp.client.connection import ClientSideConnection
+    from aclientp.schema import (
+        Implementation,
+        RequestPermissionRequest,
+        RequestPermissionResponse,
+        SelectSessionConfigOption,
+    )
+    from aclientp.schema.capabilities import AgentCapabilities
+    from aclientp.schema.mcp import McpServer
     from anyio.abc import Process
     from evented_config import EventConfig
     from exxec import ExecutionEnvironment
@@ -68,15 +77,6 @@ if TYPE_CHECKING:
     from slashed import BaseCommand
     from tokonomics.model_discovery.model_info import ModelInfo
 
-    from acp.client.connection import ClientSideConnection
-    from acp.schema import (
-        Implementation,
-        RequestPermissionRequest,
-        RequestPermissionResponse,
-        SelectSessionConfigOption,
-    )
-    from acp.schema.capabilities import AgentCapabilities
-    from acp.schema.mcp import McpServer
     from agentpool.agents.acp_agent.client_handler import ACPClientHandler
     from agentpool.agents.auth import AuthStatus
     from agentpool.agents.events import RichAgentStreamEvent
@@ -271,7 +271,7 @@ class ACPAgent[TDeps = None](BaseAgent[TDeps, str]):
 
     async def _setup_toolsets(self) -> None:
         """Initialize toolsets and start bridge if needed."""
-        from acp.schema import HttpMcpServer
+        from aclientp.schema import HttpMcpServer
 
         if not self._tool_providers:
             return
@@ -328,7 +328,7 @@ class ACPAgent[TDeps = None](BaseAgent[TDeps, str]):
 
     async def _resolve_command(self) -> list[str]:
         """Resolve the command to run, either from explicit command or registry."""
-        from acp.registry import fetch_agent
+        from aclientp.registry import fetch_agent
 
         if self._command:
             return [self._command, *self._args]
@@ -354,7 +354,8 @@ class ACPAgent[TDeps = None](BaseAgent[TDeps, str]):
 
     async def _initialize(self) -> None:
         """Initialize the ACP connection."""
-        from acp.client.connection import ClientSideConnection
+        from aclientp.client.connection import ClientSideConnection
+
         from agentpool.agents.acp_agent.client_handler import ACPClientHandler
 
         if not self._process or not self._process.stdin or not self._process.stdout:
@@ -550,7 +551,7 @@ class ACPAgent[TDeps = None](BaseAgent[TDeps, str]):
 
     def _model_option(self) -> SelectSessionConfigOption | None:
         """Return the remote agent's model selector config option, if any."""
-        from acp.schema import SelectSessionConfigOption
+        from aclientp.schema import SelectSessionConfigOption
 
         if not self._state:
             return None
@@ -604,9 +605,8 @@ class ACPAgent[TDeps = None](BaseAgent[TDeps, str]):
 
     async def get_available_models(self) -> list[ModelInfo] | None:
         """Get available models from the ACP session state."""
+        from aclientp.schema import SessionConfigSelectOption
         from tokonomics.model_discovery.model_info import ModelInfo
-
-        from acp.schema import SessionConfigSelectOption
 
         if not (option := self._model_option()):
             return None
@@ -619,7 +619,8 @@ class ACPAgent[TDeps = None](BaseAgent[TDeps, str]):
 
     async def get_auth_status(self) -> AuthStatus:
         """Forward ``auth/status`` to the remote agent if it supports it."""
-        from acp.schema import AuthStatusRequest
+        from aclientp.schema import AuthStatusRequest
+
         from agentpool.agents.acp_agent.acp_converters import acp_to_native_auth_status
         from agentpool.agents.auth import AuthStatus
 

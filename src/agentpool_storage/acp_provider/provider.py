@@ -14,7 +14,8 @@ from agentpool_storage.models import ConversationData
 if TYPE_CHECKING:
     from datetime import datetime
 
-    from acp.client.connection import ClientSideConnection
+    from aclientp.client.connection import ClientSideConnection
+
     from agentpool_storage.models import QueryFilters
 
 
@@ -78,7 +79,7 @@ class ACPStorageProvider(StorageProvider):
         Args:
             filters: Query filters to apply
         """
-        from acp.schema import ListSessionsRequest
+        from aclientp.schema import ListSessionsRequest
 
         if not self._connection:
             return []

@@ -10,7 +10,7 @@ from agentpool.log import get_logger
 
 
 if TYPE_CHECKING:
-    from acp.schema import (
+    from aclientp.schema import (
         AvailableCommandsUpdate,
         SessionConfigOption,
         SessionModeState,

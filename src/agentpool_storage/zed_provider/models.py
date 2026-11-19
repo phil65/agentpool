@@ -6,11 +6,10 @@ import io
 import sys
 from typing import Annotated, Any, Literal
 
+from aclientp.schema.content_blocks import ContentBlock
 import anyenv
 from pydantic import AliasChoices, BaseModel, ConfigDict, Field
 from pydantic_ai import RunUsage
-
-from acp.schema.content_blocks import ContentBlock
 
 
 IS_DEV = "pytest" in sys.modules

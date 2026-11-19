@@ -2,9 +2,9 @@
 
 from __future__ import annotations
 
+from aclientp import RequestPermissionResponse
 from mcp import types
 
-from acp import RequestPermissionResponse
 from agentpool_server.acp_server.input_provider import _handle_enum_elicitation_response
 
 

@@ -9,11 +9,7 @@ from __future__ import annotations
 import base64
 from typing import TYPE_CHECKING, Any, assert_never, overload
 
-from pydantic import HttpUrl
-from pydantic_ai import BinaryContent, BinaryImage
-from pydantic_ai.messages import _document_format_lookup
-
-from acp.schema import (
+from aclientp.schema import (
     AcpMcpServer,
     AudioContentBlock,
     AuthAccount,
@@ -32,6 +28,10 @@ from acp.schema import (
     TextResourceContents,
     Usage,
 )
+from pydantic import HttpUrl
+from pydantic_ai import BinaryContent, BinaryImage
+from pydantic_ai.messages import _document_format_lookup
+
 from agentpool.log import get_logger
 from agentpool.utils.pydantic_ai_helpers import (
     format_uri_as_link,
@@ -46,12 +46,12 @@ from agentpool_config.mcp_server import (
 
 
 if TYPE_CHECKING:
+    from aclientp.schema import ContentBlock, McpServer, SelectSessionConfigOption, SystemPrompt
+    from aclientp.schema.content_blocks import ResourceContents
     from fsspec.asyn import AsyncFileSystem
     from pydantic_ai import UserContent
     from pydantic_ai.usage import UsageBase
 
-    from acp.schema import ContentBlock, McpServer, SelectSessionConfigOption, SystemPrompt
-    from acp.schema.content_blocks import ResourceContents
     from agentpool.agents.auth import AuthStatus
     from agentpool.agents.modes import ModeCategory, ModeInfo
     from agentpool.common_types import PathReference
@@ -185,7 +185,7 @@ def to_session_select_option(mode: ModeInfo) -> SessionConfigSelectOption:
 
 
 def to_session_config_option(category: ModeCategory) -> SelectSessionConfigOption:
-    from acp.schema import SelectSessionConfigOption
+    from aclientp.schema import SelectSessionConfigOption
 
     return SelectSessionConfigOption(
         id=category.id,

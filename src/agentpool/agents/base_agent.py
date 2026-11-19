@@ -34,6 +34,7 @@ if TYPE_CHECKING:
     from collections.abc import AsyncIterator, Sequence
     from datetime import datetime
 
+    from aclientp.schema import AvailableCommandsUpdate
     from evented_config import EventConfig
     from exxec import ExecutionEnvironment
     from fsspec import AbstractFileSystem
@@ -42,7 +43,6 @@ if TYPE_CHECKING:
     from tokonomics.model_discovery.model_info import ModelInfo
     from upathtools.filesystems import OverlayFileSystem
 
-    from acp.schema import AvailableCommandsUpdate
     from agentpool.agents.auth import AuthStatus
     from agentpool.agents.context import AgentContext
     from agentpool.agents.events import (

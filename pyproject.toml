@@ -41,7 +41,8 @@ dependencies = [
   "docstring-parser>=0.17.0",
   "epregistry",
   "evented>=1.0.5",
-  "exxec>=0.5.3",
+  "aclientp[bridge,tracing,websocket]>=0.1.0",
+  "exxec>=0.6.0",
   "fastapi",
   "fastmcp>=2.12.4",
   "fsspec",
@@ -91,18 +92,12 @@ Issues = "https://github.com/phil65/agentpool/issues"
 Source = "https://github.com/phil65/agentpool"
 
 [project.scripts]
-acp-bridge = "acp.bridge.__main__:main"
+acp-bridge = "aclientp.bridge.__main__:main"
 agentpool = "agentpool_cli.__main__:cli"
 agentpool-db = "agentpool_storage.sql_provider.cli:main"
 
-[project.entry-points."fsspec.specs"]
-acp = "acp.filesystem:ACPFileSystem"
-
 [project.entry-points."jinjarope.environment"]
 agentpool = "agentpool.utils:setup_env"
-
-[project.entry-points."universal_pathlib.implementations"]
-acp = "acp.filesystem:ACPPath"
 
 [project.optional-dependencies]
 a2a = ["fasta2a", "starlette"]  # A2A Server
@@ -392,7 +387,6 @@ runtime-evaluated-base-classes = [
   "pydantic.BaseModel",
   "sqlalchemy.orm.DeclarativeBase",
   "schemez.Schema",
-  "acp.base.Schema",
   "sqlmodel.SQLModel",
 ]
 runtime-evaluated-decorators = [
@@ -420,8 +414,6 @@ max-complexity = 15
 
 [tool.ruff.lint.per-file-ignores]
 "__init__.py" = ["E402", "I001"]
-# Open ACP enums: known `Literal` values documented, custom/future values accepted as `str`
-"src/acp/schema/*" = ["PYI051"]
 "scripts/*" = ["INP001"]
 "*tests/*" = ["D100", "PLR2004"]
 "docs/examples/**/*.py" = [
@@ -486,7 +478,6 @@ module-name = [
   "agentpool_prompts",
   "agentpool_server",
   "agentpool_toolsets",
-  "acp",
   "opencode_sdk",
   "pi_sdk",
 ]

@@ -11,6 +11,36 @@ resolution-markers = [
 constraints = [{ name = "extism-sys", specifier = "<1.13.0" }]
 
 [[package]]
+name = "aclientp"
+version = "0.1.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "anyenv" },
+    { name = "anyio" },
+    { name = "httpx" },
+    { name = "pydantic" },
+    { name = "structlog" },
+    { name = "upathtools" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/f6/6a/4e7c58cfcbc5a70434e6d0ce78740f376cb16098bb202284defdf0d2a26a/aclientp-0.1.0.tar.gz", hash = "sha256:8e4bc8d17b6bfbd67d490371c3850e28194573a08e1b95ef809bea47db6a47c9", size = 159415, upload-time = "2026-11-19T01:40:14.412Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/8a/ac/cf4f1cc6f32d1c5de78d6aa75dbe2876b7b393bd3e8d6031164f955a0719/aclientp-0.1.0-py3-none-any.whl", hash = "sha256:f48e2cc8308e4e98a054ff7fab0541f3f10d8c018de853923536a58a180f568f", size = 205973, upload-time = "2026-11-19T01:40:12.597Z" },
+]
+
+[package.optional-dependencies]
+bridge = [
+    { name = "starlette" },
+    { name = "uvicorn" },
+    { name = "websockets" },
+]
+tracing = [
+    { name = "logfire" },
+]
+websocket = [
+    { name = "websockets" },
+]
+
+[[package]]
 name = "ag-ui-protocol"
 version = "1.0.0"
 source = { registry = "https://pypi.org/simple" }
@@ -28,6 +58,7 @@ version = "2.9.22"
 source = { editable = "." }
 default-groups = ["dev", "docs", "lint"]
 dependencies = [
+    { name = "aclientp", extra = ["bridge", "tracing", "websocket"] },
     { name = "alembic" },
     { name = "anyenv", extra = ["httpx"] },
     { name = "bashkit" },
@@ -188,6 +219,7 @@ lint = [
 
 [package.metadata]
 requires-dist = [
+    { name = "aclientp", extras = ["bridge", "tracing", "websocket"], specifier = ">=0.1.0" },
     { name = "ag-ui-protocol", marker = "extra == 'ag-ui'", specifier = ">=0.1.10" },
     { name = "alembic", specifier = ">=1.16.5" },
     { name = "anyenv", extras = ["httpx"], specifier = ">=2.0.17" },
@@ -207,7 +239,7 @@ requires-dist = [
     { name = "epregistry" },
     { name = "evented", specifier = ">=1.0.5" },
     { name = "evented", extras = ["all"], marker = "extra == 'events'" },
-    { name = "exxec", specifier = ">=0.5.3" },
+    { name = "exxec", specifier = ">=0.6.0" },
     { name = "fasta2a", marker = "extra == 'a2a'" },
     { name = "fastapi" },
     { name = "fastembed", marker = "python_full_version < '3.14' and extra == 'mcp-discovery'", specifier = ">=0.7.4" },
@@ -1917,7 +1949,7 @@ wheels = [
 
 [[package]]
 name = "exxec"
-version = "0.5.3"
+version = "0.6.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "anyenv" },
@@ -1926,9 +1958,9 @@ dependencies = [
     { name = "schemez" },
     { name = "upathtools" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/b5/98/9b52d43644dcf492ae961615c57fe02364e83f08b38db9afed96f3b66c53/exxec-0.5.3.tar.gz", hash = "sha256:53a7d4dad4d7b46c92bbd088ae739efa4a81cc733de773d578ed15830685bc97", size = 106537, upload-time = "2026-11-19T00:24:17.523Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/8b/45/929bcf594e5fa92ee4e15ead0bac65da70ba1965c5bca2caf9deaf521d96/exxec-0.6.0.tar.gz", hash = "sha256:ca8ee98bd2151f090c153feb6d73bd6f080f70142265b6c7c1663bb712950590", size = 116756, upload-time = "2026-11-19T01:33:53.886Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/a5/bc/b5b1b7054fc583143e288b6b7b9ead4df9a19c5bd3c9c2af987276505f06/exxec-0.5.3-py3-none-any.whl", hash = "sha256:06666e81ca28cd01036ca710b169a31d2577307d3feaa66d87d6bd9f63f405ce", size = 136193, upload-time = "2026-11-19T00:24:16.313Z" },
+    { url = "https://files.pythonhosted.org/packages/83/49/53f6919b8536855ebfbf7a70fd3f00c5109f2dc1782a36ef200cec0d2917/exxec-0.6.0-py3-none-any.whl", hash = "sha256:26159bdffb3bb14285843443a911f0e33949a61076565c40624a5030e8c4edf0", size = 146742, upload-time = "2026-11-19T01:33:52.167Z" },
 ]
 
 [[package]]

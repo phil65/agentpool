@@ -18,10 +18,10 @@ from dataclasses import dataclass, field
 import shutil
 from typing import TYPE_CHECKING, Any
 
+from aclientp.schema import ToolCallStart
 from mcp.types import ElicitResult
 import pytest
 
-from acp.schema import ToolCallStart
 from agentpool.agents.claude_code_agent import ClaudeCodeAgent
 from agentpool.ui.base import InputProvider
 from agentpool_server.acp_server.event_converter import ACPEventConverter
