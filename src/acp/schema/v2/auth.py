@@ -11,7 +11,7 @@ from typing import Annotated, Literal
 
 from pydantic import MISSING, Discriminator, Field, Tag
 
-from acp.schema.v2.base import UNKNOWN_TAG, AnnotatedObject, Unknown, open_discriminator
+from acp.schema.v2.base import OTHER_TAG, AnnotatedObject, Unknown, open_discriminator
 from acp.schema.v2.common import AuthMethodId, EnvVariable  # noqa: TC001
 
 
@@ -74,7 +74,7 @@ class UnknownAuthMethod(Unknown):
 AuthMethod = Annotated[
     Annotated[AuthMethodTerminal, Tag("terminal")]
     | Annotated[AuthMethodAgent, Tag("agent")]
-    | Annotated[UnknownAuthMethod, Tag(UNKNOWN_TAG)],
+    | Annotated[UnknownAuthMethod, Tag(OTHER_TAG)],
     Discriminator(open_discriminator("type", frozenset({"terminal", "agent"}))),
 ]
 """An authentication method the agent offers, discriminated by ``type``."""

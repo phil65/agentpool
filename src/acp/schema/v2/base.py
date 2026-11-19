@@ -71,19 +71,23 @@ class Unknown(AnnotatedObject):
     model_config = ConfigDict(extra="allow")
 
 
-UNKNOWN_TAG = "unknown"
-"""``Tag`` of the fallback variant of an open union."""
+OTHER_TAG = "__other__"
+"""``Tag`` of the fallback variant of an open union.
+
+Not a possible protocol value, so it cannot clash with real tags such as the
+``unknown`` session state.
+"""
 
 
 def open_discriminator(prop: str, known: frozenset[str]) -> Callable[[Any], str]:
     """Discriminator of an open union tagged by ``prop``.
 
     Known values select their variant (a malformed payload is an error, it does not
-    fall back); any other value selects the variant tagged :data:`UNKNOWN_TAG`.
+    fall back); any other value selects the variant tagged :data:`OTHER_TAG`.
     """
 
     def discriminate(value: Any) -> str:
         tag = value.get(prop) if isinstance(value, dict) else getattr(value, prop, None)
-        return tag if isinstance(tag, str) and tag in known else UNKNOWN_TAG
+        return tag if isinstance(tag, str) and tag in known else OTHER_TAG
 
     return discriminate

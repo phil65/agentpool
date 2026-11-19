@@ -7,7 +7,7 @@ from typing import Annotated, Literal
 
 from pydantic import MISSING, Discriminator, Field, Tag
 
-from acp.schema.v2.base import UNKNOWN_TAG, AnnotatedObject, Unknown, open_discriminator
+from acp.schema.v2.base import OTHER_TAG, AnnotatedObject, Unknown, open_discriminator
 from acp.schema.v2.common import Annotations, Icon, MediaType  # noqa: TC001
 
 
@@ -158,7 +158,7 @@ ContentBlock = Annotated[
     | Annotated[ResourceLink, Tag("resource_link")]
     | Annotated[EmbeddedResource, Tag("resource")]
     | Annotated[SkillReference, Tag("skill")]
-    | Annotated[UnknownContent, Tag(UNKNOWN_TAG)],
+    | Annotated[UnknownContent, Tag(OTHER_TAG)],
     Discriminator(
         open_discriminator(
             "type",
