@@ -152,10 +152,10 @@ langfuse = [
     { name = "langfuse" },
 ]
 markitdown = [
-    { name = "markitdown" },
+    { name = "markitdown", marker = "python_full_version < '3.15'" },
 ]
 mcp-discovery = [
-    { name = "fastembed" },
+    { name = "fastembed", marker = "python_full_version < '3.15'" },
     { name = "lancedb" },
     { name = "pyarrow" },
 ]
@@ -185,7 +185,7 @@ benchmark = [
 dev = [
     { name = "check-jsonschema" },
     { name = "devtools" },
-    { name = "fastembed" },
+    { name = "fastembed", marker = "python_full_version < '3.15'" },
     { name = "lancedb" },
     { name = "openapi-spec-validator" },
     { name = "pyinstaller" },
@@ -239,7 +239,7 @@ requires-dist = [
     { name = "exxec", specifier = ">=0.6.0" },
     { name = "fasta2a", marker = "extra == 'a2a'" },
     { name = "fastapi" },
-    { name = "fastembed", marker = "extra == 'mcp-discovery'", specifier = ">=0.7.4" },
+    { name = "fastembed", marker = "python_full_version < '3.15' and extra == 'mcp-discovery'", specifier = ">=0.7.4" },
     { name = "fastmcp", specifier = ">=4.2.0" },
     { name = "fsspec" },
     { name = "grep-ast", marker = "extra == 'coding'" },
@@ -251,7 +251,7 @@ requires-dist = [
     { name = "langfuse", marker = "extra == 'langfuse'" },
     { name = "llmling-models", specifier = ">=1.7.2" },
     { name = "logfire", extras = ["fastapi"] },
-    { name = "markitdown", marker = "extra == 'markitdown'" },
+    { name = "markitdown", marker = "python_full_version < '3.15' and extra == 'markitdown'" },
     { name = "mcp", specifier = ">=1.2.0" },
     { name = "mcpx-py", marker = "extra == 'mcp-run'", specifier = ">=0.7.0" },
     { name = "pillow", specifier = ">=11.3.0" },
@@ -309,7 +309,7 @@ benchmark = [{ name = "pyinstrument" }]
 dev = [
     { name = "check-jsonschema", specifier = ">=0.35.0" },
     { name = "devtools" },
-    { name = "fastembed", specifier = ">=0.7.4" },
+    { name = "fastembed", marker = "python_full_version < '3.15'", specifier = ">=0.7.4" },
     { name = "lancedb", specifier = ">=0.30.0" },
     { name = "openapi-spec-validator" },
     { name = "pyinstaller", specifier = ">=6.17.0" },

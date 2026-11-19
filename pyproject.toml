@@ -132,10 +132,10 @@ events = ["evented[all]"]  # Event triggers for agents
 # git = ["fsspec[git]"]  # Git support (disabled: cffi doesn't support free-threaded 3.13)
 langfuse = ["langfuse"]  # Langfuse Prompt Hub
 markitdown = [
-  "markitdown"
+  "markitdown; python_version < '3.15'"
 ]  # MarkItDown Media Converter
 mcp-discovery = [
-  "fastembed>=0.7.4",
+  "fastembed>=0.7.4; python_version < '3.15'",
   "lancedb>=0.30.0",
   "pyarrow>=19.0.0",
 ]  # MCP Discovery Toolset with semantic search
@@ -152,7 +152,7 @@ zed = ["zstandard>=0.23.0"]  # Zed IDE storage provider
 dev = [
   "check-jsonschema>=0.35.0",
   "devtools",
-  "fastembed>=0.7.4",
+  "fastembed>=0.7.4; python_version < '3.15'",
   "lancedb>=0.30.0",
   "openapi_spec_validator",
   "pyinstaller>=6.17.0",
