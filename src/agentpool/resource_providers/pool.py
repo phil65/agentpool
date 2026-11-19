@@ -12,7 +12,6 @@ if TYPE_CHECKING:
     from collections.abc import Sequence
 
     from agentpool import AgentPool
-    from agentpool.prompts.prompts import BasePrompt
     from agentpool.resource_providers.resource_info import ResourceInfo
     from agentpool.tools import FunctionTool
 
@@ -28,7 +27,6 @@ class PoolResourceProvider(ResourceProvider):
         self,
         pool: AgentPool[Any],
         name: str | None = None,
-        zed_mode: bool = False,
         include_team_members: bool = False,
     ) -> None:
         """Initialize provider with agent pool.
@@ -36,13 +34,11 @@ class PoolResourceProvider(ResourceProvider):
         Args:
             pool: Agent pool to expose resources from
             name: Optional name override (defaults to pool name)
-            zed_mode: Whether to enable Zed mode
             include_team_members: Whether to include team members in the pool
                                   in addition to the team itself.
         """
         super().__init__(name=name or repr(pool))
         self.pool = pool
-        self.zed_mode = zed_mode
         self.include_team_members = include_team_members
 
     async def get_tools(self) -> Sequence[FunctionTool]:
@@ -55,17 +51,6 @@ class PoolResourceProvider(ResourceProvider):
         else:
             agent_tools = [agent.to_tool() for agent in agents if agent not in team_members]
         return team_tools + agent_tools
-
-    async def get_prompts(self) -> list[BasePrompt]:
-        """Get prompts from pool's manifest."""
-        prompts: list[Any] = []
-        # if self.pool.manifest.prompts:
-        #     prompts.extend(self.pool.manifest.prompts.system_prompts.values())
-
-        # if self.zed_mode:
-        #     prompts = prepare_prompts_for_zed(prompts)
-
-        return prompts
 
     async def get_resources(self) -> list[ResourceInfo]:
         """Get resources from pool's manifest."""

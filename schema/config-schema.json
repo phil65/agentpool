@@ -201,6 +201,7 @@
                 "env": null,
                 "headers": null,
                 "name": null,
+                "skills": true,
                 "timeout": 60.0,
                 "type": "streamable-http",
                 "url": "http://mcp.example.com/"
@@ -1131,6 +1132,7 @@
                 "env": null,
                 "headers": null,
                 "name": null,
+                "skills": true,
                 "timeout": 60.0,
                 "type": "streamable-http",
                 "url": "http://mcp.example.com/"
@@ -5438,6 +5440,7 @@
                 "env": null,
                 "headers": null,
                 "name": null,
+                "skills": true,
                 "timeout": 60.0,
                 "type": "streamable-http",
                 "url": "http://mcp.example.com/"
@@ -7373,6 +7376,7 @@
                 "env": null,
                 "headers": null,
                 "name": null,
+                "skills": true,
                 "timeout": 60.0,
                 "type": "streamable-http",
                 "url": "http://mcp.example.com/"
@@ -11587,22 +11591,6 @@
             "string",
             "null"
           ]
-        },
-        "completions": {
-          "anyOf": [
-            {
-              "additionalProperties": {
-                "type": "string"
-              },
-              "type": "object"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "description": "Optional mapping of argument names to completion functions.",
-          "title": "Completions"
         },
         "type": {
           "const": "function",
@@ -20220,6 +20208,12 @@
           ],
           "title": "Serve prompts"
         },
+        "serve_skills": {
+          "default": true,
+          "description": "Publish the pool's skills through the MCP Skills extension (SEP-2640).",
+          "title": "Serve skills",
+          "type": "boolean"
+        },
         "transport": {
           "default": "stdio",
           "description": "Transport type to use.",
@@ -20275,12 +20269,6 @@
           },
           "title": "CORS origins",
           "type": "array"
-        },
-        "zed_mode": {
-          "default": false,
-          "description": "Enable Zed editor compatibility mode.",
-          "title": "Zed editor mode",
-          "type": "boolean"
         }
       },
       "title": "MCPPoolServerConfig",
@@ -22257,6 +22245,7 @@
                 "env": null,
                 "headers": null,
                 "name": null,
+                "skills": true,
                 "timeout": 60.0,
                 "type": "streamable-http",
                 "url": "http://mcp.example.com/"
@@ -27822,6 +27811,7 @@
                 "env": null,
                 "headers": null,
                 "name": null,
+                "skills": true,
                 "timeout": 60.0,
                 "type": "streamable-http",
                 "url": "http://mcp.example.com/"
@@ -29620,6 +29610,12 @@
           "title": "Always load tools",
           "type": "boolean"
         },
+        "skills": {
+          "default": true,
+          "description": "Discover skills the server publishes through the MCP Skills extension (SEP-2640).\n\nWhen enabled, the client opts into the extension, and the server's skills\nbecome available to the agent owning this connection as ``<server>/<skill>``.",
+          "title": "Use server skills",
+          "type": "boolean"
+        },
         "url": {
           "description": "URL of the SSE server endpoint.",
           "examples": [
@@ -30654,7 +30650,7 @@
     },
     "SkillsToolsetConfig": {
       "additionalProperties": false,
-      "description": "Configuration for skills toolset.\n\nProvides tools to discover and load Claude Code Skills from the pool's\nskills registry. Skills are discovered from configured directories\n(e.g., ~/.claude/skills/, .claude/skills/).",
+      "description": "Configuration for skills toolset.\n\nProvides tools to list skills, load their instructions, and read their\nbundled files. Skills come from the pool's skills registry, discovered from\nconfigured directories (e.g., ~/.claude/skills/, .agents/skills/), and from\nthe agent's MCP servers that publish skills through the MCP Skills extension.",
       "properties": {
         "namespace": {
           "default": null,
@@ -30685,7 +30681,8 @@
               "propertyNames": {
                 "enum": [
                   "load_skill",
-                  "list_skills"
+                  "list_skills",
+                  "read_skill_file"
                 ]
               },
               "type": "object"
@@ -31462,6 +31459,12 @@
           "default": false,
           "description": "Load this server's tools up front instead of deferring them to tool search.\n\nOnly honored by agents with their own tool search (currently Claude Code),\nwhich otherwise may hide MCP tools until the model searches for them.",
           "title": "Always load tools",
+          "type": "boolean"
+        },
+        "skills": {
+          "default": true,
+          "description": "Discover skills the server publishes through the MCP Skills extension (SEP-2640).\n\nWhen enabled, the client opts into the extension, and the server's skills\nbecome available to the agent owning this connection as ``<server>/<skill>``.",
+          "title": "Use server skills",
           "type": "boolean"
         },
         "command": {
@@ -32569,6 +32572,12 @@
           "default": false,
           "description": "Load this server's tools up front instead of deferring them to tool search.\n\nOnly honored by agents with their own tool search (currently Claude Code),\nwhich otherwise may hide MCP tools until the model searches for them.",
           "title": "Always load tools",
+          "type": "boolean"
+        },
+        "skills": {
+          "default": true,
+          "description": "Discover skills the server publishes through the MCP Skills extension (SEP-2640).\n\nWhen enabled, the client opts into the extension, and the server's skills\nbecome available to the agent owning this connection as ``<server>/<skill>``.",
+          "title": "Use server skills",
           "type": "boolean"
         },
         "url": {
@@ -34326,6 +34335,7 @@
                 "env": null,
                 "headers": null,
                 "name": null,
+                "skills": true,
                 "timeout": 60.0,
                 "type": "streamable-http",
                 "url": "http://mcp.example.com/"
@@ -36194,44 +36204,32 @@
           "title": "Inherit Environment",
           "type": "boolean"
         },
-        "runtime": {
-          "anyOf": [
-            {
-              "enum": [
-                "node22",
-                "python3.13",
-                "v0-next-shadcn",
-                "cua-ubuntu-xfce",
-                "walleye-python"
-              ],
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ],
+        "image": {
           "default": null,
-          "description": "Vercel runtime to use.",
-          "title": "Runtime"
+          "description": "Vercel Container Registry image reference (uses Vercel default if None).",
+          "title": "Image",
+          "type": [
+            "string",
+            "null"
+          ]
         },
-        "resources": {
-          "anyOf": [
-            {
-              "additionalProperties": {
-                "type": [
-                  "integer",
-                  "string"
-                ]
-              },
-              "type": "object"
-            },
-            {
-              "type": "null"
-            }
-          ],
+        "vcpus": {
           "default": null,
-          "description": "Resource configuration for the sandbox.",
-          "title": "Resources"
+          "description": "Number of virtual CPUs for the sandbox.",
+          "title": "vCPUs",
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "memory": {
+          "default": null,
+          "description": "Memory in MB for the sandbox.",
+          "title": "Memory",
+          "type": [
+            "integer",
+            "null"
+          ]
         },
         "ports": {
           "default": [

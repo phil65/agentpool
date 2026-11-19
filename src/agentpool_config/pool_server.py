@@ -82,9 +82,6 @@ class MCPPoolServerConfig(BasePoolServerConfig):
     )
     """Allowed CORS origins (SSE / Streamable-HTTP only)."""
 
-    zed_mode: bool = Field(default=False, title="Zed editor mode")
-    """Enable Zed editor compatibility mode."""
-
     model_config = ConfigDict(frozen=True)
 
     def should_serve_node(self, name: str) -> bool:

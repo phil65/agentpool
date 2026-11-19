@@ -28,7 +28,6 @@ def serve_command(
         str, t.Option(help="Host to bind server to (sse/streamable-http only)")
     ] = "localhost",
     port: Annotated[int, t.Option(help="Port to listen on (sse/streamable-http only)")] = 3001,
-    zed_mode: Annotated[bool, t.Option(help="Enable Zed editor compatibility")] = False,
     show_messages: Annotated[
         bool, t.Option("--show-messages", help="Show message activity")
     ] = False,
@@ -58,7 +57,6 @@ def serve_command(
             transport=transport,
             host=host,
             port=port,
-            zed_mode=zed_mode,
         )
         server = MCPServer(pool, server_config)
         async with pool, server:

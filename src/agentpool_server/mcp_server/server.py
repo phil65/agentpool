@@ -18,7 +18,7 @@ from agentpool_server import BaseServer
 
 
 if TYPE_CHECKING:
-    from collections.abc import Awaitable, Callable
+    from collections.abc import Callable
     from contextlib import AbstractAsyncContextManager
 
     from fastmcp import FastMCP
@@ -26,7 +26,6 @@ if TYPE_CHECKING:
     from mcp.server.lowlevel.server import LifespanResultT
 
     from agentpool import AgentPool
-    from agentpool.prompts.prompts import BasePrompt
     from agentpool_config.pool_server import MCPPoolServerConfig
 
     LifespanHandler = Callable[
@@ -75,12 +74,11 @@ class MCPServer(BaseServer):
         from agentpool.resource_providers.pool import PoolResourceProvider
 
         super().__init__(pool, name=name, raise_exceptions=raise_exceptions)
-        self.provider = PoolResourceProvider(pool, zed_mode=config.zed_mode)
+        self.provider = PoolResourceProvider(pool)
         self.config = config
 
         self._subscriptions: defaultdict[str, set[mcp.ServerSession]] = defaultdict(set)
         self._tools_registered = False
-        self._prompts_registered = False
 
         # Create FastMCP instance
         self.fastmcp = FastMCP(
@@ -115,55 +113,6 @@ class MCPServer(BaseServer):
 
         self._tools_registered = True
         logger.info("Registered MCP tools", count=len(tools))
-
-    async def _register_pool_prompts(self) -> None:
-        """Register all pool prompts using FastMCP's @prompt decorator."""
-        if self._prompts_registered:
-            return
-
-        prompts = await self.provider.get_prompts()
-
-        for prompt in prompts:
-            # Create handler with closure to capture prompt instance
-            def make_handler(prompt_instance: BasePrompt) -> Callable[..., Awaitable[str]]:
-                async def handler(**kwargs: Any) -> str:
-                    """Dynamically generated prompt handler."""
-                    from agentpool.mcp_server import conversions
-
-                    try:
-                        assert prompt_instance.name
-                        parts = await self.provider.get_request_parts(
-                            prompt_instance.name, kwargs or {}
-                        )
-                        messages = [msg for p in parts for msg in conversions.to_mcp_messages(p)]
-
-                        # Format messages as text
-                        result_lines = []
-                        for msg in messages:
-                            if isinstance(msg.content, types.TextContent):
-                                result_lines.append(f"{msg.role}: {msg.content.text}")
-                            else:
-                                result_lines.append(f"{msg.role}: {msg.content}")
-
-                        return "\n".join(result_lines)
-                    except Exception as exc:
-                        logger.exception("Prompt execution failed", name=prompt_instance.name)
-                        return f"Prompt execution failed: {exc}"
-
-                # Set proper function metadata for FastMCP
-                assert prompt_instance.name
-                handler.__name__ = prompt_instance.name
-                handler.__doc__ = (
-                    prompt_instance.description or f"Get prompt {prompt_instance.name}"
-                )
-                return handler
-
-            # Register using FastMCP's prompt decorator
-            prompt_handler = make_handler(prompt)
-            self.fastmcp.prompt()(prompt_handler)
-
-        self._prompts_registered = True
-        logger.info("Registered MCP prompts", count=len(prompts))
 
     def _register_resource_handlers(self) -> None:
         """Register resource subscription handlers."""
@@ -241,9 +190,8 @@ class MCPServer(BaseServer):
 
     async def _start_async(self) -> None:
         """Start the server (blocking async - runs until stopped)."""
-        # Register pool tools and prompts before starting
+        # Register pool tools before starting
         await self._register_pool_tools()
-        await self._register_pool_prompts()
 
         # Start FastMCP server
         if self.config.transport == "stdio":
@@ -289,12 +237,3 @@ class MCPServer(BaseServer):
             self.log.debug("No active session for notification")
         except Exception:
             self.log.exception("Failed to send tool list change notification")
-
-    async def notify_prompt_list_changed(self) -> None:
-        """Notify clients about prompt list changes."""
-        try:
-            self.task_manager.create_task(self.current_session.send_prompt_list_changed())
-        except RuntimeError:
-            self.log.debug("No active session for notification")
-        except Exception:
-            self.log.exception("Failed to send prompt list change notification")

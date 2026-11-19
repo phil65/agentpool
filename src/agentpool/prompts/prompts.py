@@ -21,8 +21,6 @@ from agentpool.utils.inspection import execute
 
 
 if TYPE_CHECKING:
-    from collections.abc import Mapping
-
     from fastmcp.prompts import Prompt as FastMCPPrompt
     from fastmcp.prompts.function_prompt import FunctionPrompt
     from mcp.types import Prompt as MCPPrompt, PromptArgument
@@ -36,9 +34,6 @@ logger = get_logger(__name__)
 MessageContentType = Literal["text", "resource", "image_url", "image_base64"]
 # Our internal role type (could include more roles)
 MessageRole = Literal["system", "user", "assistant", "tool"]
-
-type CompletionFunction = Callable[[str], list[str]]
-"""Type for completion functions. Takes current value, returns possible completions."""
 
 
 class MessageContent(Schema):
@@ -254,9 +249,6 @@ class DynamicPrompt(BasePrompt):
     template: str | None = None
     """Optional template string for formatting the callable's output."""
 
-    completions: dict[str, str] | None = None
-    """Optional mapping of argument names to completion functions."""
-
     type: Literal["function"] = Field("function", init=False)
     """Discriminator field identifying this as a function-based prompt."""
 
@@ -286,20 +278,6 @@ class DynamicPrompt(BasePrompt):
             return importing.import_callable(self.import_path)
         return self.import_path
 
-    def get_completion_functions(self) -> dict[str, CompletionFunction]:
-        """Resolve completion function import paths and return a completion fn dict."""
-        completion_funcs: dict[str, CompletionFunction] = {}
-        if not self.completions:
-            return {}
-        for arg_name, import_path in self.completions.items():
-            try:
-                func = importing.import_callable(import_path)
-                completion_funcs[arg_name] = func
-            except ValueError:
-                msg = "Failed to import completion function for %s: %s"
-                logger.warning(msg, arg_name, import_path)
-        return completion_funcs
-
     async def format(self, arguments: dict[str, Any] | None = None) -> list[PromptMessage]:
         """Format this prompt with given arguments."""
         args = arguments or {}
@@ -325,7 +303,6 @@ class DynamicPrompt(BasePrompt):
         name_override: str | None = None,
         description_override: str | None = None,
         template_override: str | None = None,
-        completions: Mapping[str, CompletionFunction] | None = None,
     ) -> DynamicPrompt:
         """Create a prompt from a callable.
 
@@ -334,7 +311,6 @@ class DynamicPrompt(BasePrompt):
             name_override: Optional override for prompt name
             description_override: Optional override for prompt description
             template_override: Optional override for message template
-            completions: Optional dict mapping argument names to completion functions
 
         Returns:
             DynamicPrompt instance
@@ -344,7 +320,6 @@ class DynamicPrompt(BasePrompt):
         """
         from docstring_parser import parse as parse_docstring
 
-        completions = completions or {}
         if isinstance(fn, str):
             fn = importing.import_callable(fn)
 

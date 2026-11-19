@@ -6,7 +6,7 @@ icon: material/connection
 
 # MCP Server
 
-The MCP (Model Context Protocol) server exposes AgentPool tools, resources, and prompts to external MCP clients, enabling other agents and applications to use your capabilities.
+The MCP (Model Context Protocol) server exposes AgentPool tools and resources to external MCP clients, enabling other agents and applications to use your capabilities.
 
 ## What is MCP?
 
@@ -14,8 +14,7 @@ MCP is a standardized protocol for AI tool integration:
 
 - **Tools** - Functions that agents can call
 - **Resources** - Data and files agents can read
-- **Prompts** - Reusable prompt templates
-- **Sampling** - Request completions from the client
+- **Prompts** - Reusable prompt templates (not served by AgentPool)
 
 ## Quick Start
 
@@ -119,15 +118,6 @@ resources:
   - type: file
     path: /data
     pattern: "*.json"
-```
-
-### Prompts
-
-MCP prompts from connected MCP servers are re-exposed:
-
-```yaml
-mcp_servers:
-  - "uvx prompt-server"  # Prompts become available
 ```
 
 ## Architecture
