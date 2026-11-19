@@ -11,12 +11,15 @@ check_nullability = true
 # Numeric and length constraints (minimum, minItems, ...) must match too.
 check_constraints = true
 
-# The v2 models are being written module by module: accept upstream types that have
-# no model yet. Fields of existing models are still checked. Turn off when complete.
-allow_missing = true
 
 [renames]
 # Upstream definition name = our name (models, unions and Literal aliases).
 
 [known]
 # Finding id = reason.
+"extra-field:AgentNotification.jsonrpc" = "upstream adds jsonrpc at the top level of the schema, not per envelope"
+"extra-field:AgentRequest.jsonrpc" = "upstream adds jsonrpc at the top level of the schema, not per envelope"
+"extra-field:ClientNotification.jsonrpc" = "upstream adds jsonrpc at the top level of the schema, not per envelope"
+"extra-field:ClientRequest.jsonrpc" = "upstream adds jsonrpc at the top level of the schema, not per envelope"
+"extra-field:ProxyNotification.jsonrpc" = "upstream adds jsonrpc at the top level of the schema, not per envelope"
+"extra-field:ProxyRequest.jsonrpc" = "upstream adds jsonrpc at the top level of the schema, not per envelope"

@@ -287,18 +287,23 @@ def _constraints(schema: JSON) -> dict[str, float]:
     return found
 
 
+_TYPED_KEYWORDS = ("$ref", "anyOf", "oneOf", "allOf", "const", "enum", "properties")
+"""Keywords that constrain a schema without a ``type``."""
+
+
 def _accepts_null(schema: JSON, defs: Mapping[str, JSON], depth: int = 0) -> bool:
     """Whether a property schema accepts ``null``."""
     kind = schema.get("type")
     if kind == "null" or (isinstance(kind, list) and "null" in kind):
         return True
+    if kind is None and not any(k in schema for k in _TYPED_KEYWORDS):
+        return True  # no type constraint: any JSON value, including null
     if depth > 8:  # noqa: PLR2004
         return False
     if ref := schema.get("$ref"):
         return _accepts_null(defs[_ref_name(ref)], defs, depth + 1)
-    if any(_accepts_null(part, defs, depth + 1) for part in schema.get("anyOf", [])):
-        return True
-    if any(_accepts_null(part, defs, depth + 1) for part in schema.get("oneOf", [])):
+    branches = schema.get("anyOf", []) + schema.get("oneOf", [])
+    if any(_accepts_null(part, defs, depth + 1) for part in branches):
         return True
     parts = schema.get("allOf", [])
     return len(parts) == 1 and _accepts_null(parts[0], defs, depth + 1)
@@ -437,7 +442,7 @@ def wire_fields(model: type[BaseModel]) -> dict[str, FieldInfo]:
             omittable=not info.is_required()
             and (info.default is None or info.default is MISSING)
             and info.default_factory is None,
-            accepts_none=any(member is type(None) for member in _flatten(info.annotation)),
+            accepts_none=any(member in (type(None), Any) for member in _flatten(info.annotation)),
             constraints=_field_constraints(info),
         )
         for name, info in model.model_fields.items()
