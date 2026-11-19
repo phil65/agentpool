@@ -41,7 +41,7 @@ dependencies = [
   "docstring-parser>=0.17.0",
   "epregistry",
   "evented>=1.0.5",
-  "aclientp[bridge,tracing,websocket]>=0.1.0",
+  "aclientp[bridge,tracing,websocket]>=0.1.1",
   "exxec>=0.6.0",
   "fastapi",
   "fastmcp>=2.12.4",
