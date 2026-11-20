@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import asyncio
 import re
 from typing import TYPE_CHECKING, Any
 
@@ -21,17 +20,18 @@ from agentpool_toolsets.builtin.execution_environment import ProcessManagementTo
 if TYPE_CHECKING:
     from pathlib import Path
 
+    from agentpool.agents.base_agent import BaseAgent
     from agentpool.agents.events import RichAgentStreamEvent
 
 
+_captured: dict[int, list[RichAgentStreamEvent[Any]]] = {}
+"""Events each test agent emitted (tools run outside a run, so they arrive as background events)."""
+
+
 def drain_event_queue(agent: Agent) -> list[RichAgentStreamEvent[Any]]:
-    """Drain all events from the agent's event queue."""
-    events: list[RichAgentStreamEvent[Any]] = []
-    while not agent._event_queue.empty():
-        try:
-            events.append(agent._event_queue.get_nowait())
-        except asyncio.QueueEmpty:
-            break
+    """Take the events the agent emitted so far."""
+    events = _captured.get(id(agent), [])
+    _captured[id(agent)] = []
     return events
 
 
@@ -52,8 +52,15 @@ def extract_process_id(result: str) -> str:
 
 @pytest.fixture
 def test_agent() -> Agent[None]:
-    """Create a minimal agent for testing event emission."""
-    return Agent(name="test_agent", model="test")
+    """Create a minimal agent for testing event emission, capturing what it emits."""
+    agent = Agent[None](name="test_agent", model="test")
+    _captured[id(agent)] = []
+
+    async def capture(background: BaseAgent.BackgroundEvent) -> None:
+        _captured[id(agent)].append(background.event)
+
+    agent.background_event.connect(capture)
+    return agent
 
 
 @pytest.fixture

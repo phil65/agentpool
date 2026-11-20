@@ -347,4 +347,4 @@ class StreamEventEmitter:
 
     async def _emit(self, event: RichAgentStreamEvent[Any]) -> None:
         """Internal method to emit events to the agent's queue."""
-        await self._context.agent._event_queue.put(event)
+        await self._context.agent.emit_event(event)

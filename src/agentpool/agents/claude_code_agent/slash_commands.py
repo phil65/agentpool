@@ -6,6 +6,7 @@ from agentpool.agents.context import AgentContext  # noqa: TC001
 
 
 if TYPE_CHECKING:
+    from clawd_code_sdk import ClaudeSDKClient
     from clawd_code_sdk.models import ClaudeCodeCommandInfo
     from slashed import Command, CommandContext
 
@@ -19,14 +20,6 @@ def create_claude_code_command(cmd_info: ClaudeCodeCommandInfo) -> Command:
     Returns:
         A slashed Command that executes via Claude Code
     """
-    from clawd_code_sdk.models import (
-        AssistantMessage,
-        LocalCommandOutputMessage,
-        ResultErrorMessage,
-        ResultSuccessMessage,
-        TextBlock,
-        UserMessage,
-    )
     from slashed import Command
 
     name = cmd_info.name
@@ -52,27 +45,15 @@ def create_claude_code_command(cmd_info: ClaudeCodeCommandInfo) -> Command:
 
         agent = ctx.context.agent
         assert isinstance(agent, ClaudeCodeAgent)
-        if not agent._client:
+        client = agent._client
+        if not client:
             return
-        await agent._client.query(f"/{name} {args_str}".strip())
-        async for msg in agent._client.receive_response():
-            match msg:
-                case AssistantMessage():
-                    for block in msg.content:
-                        if isinstance(block, TextBlock):
-                            await ctx.print(block.text)
-                case LocalCommandOutputMessage(content=content):
-                    await ctx.print(content)
-                # Some commands (e.g. /compact) still use legacy XML-tagged
-                # output in UserMessage instead of LocalCommandOutputMessage.
-                case UserMessage() if parsed := msg.parse_command_output():
-                    await ctx.print(parsed)
-                case ResultSuccessMessage(result=result) if result:
-                    await ctx.print(result)
-                case ResultErrorMessage(subtype=subtype, errors=errors):
-                    await ctx.print(f"Error: {subtype}")
-                    if errors:
-                        await ctx.print(f"Errors: {errors}")
+        await agent._idle_watch.stop()  # Take over the CLI's message stream
+        try:
+            await client.query(f"/{name} {args_str}".strip())
+            await _print_response(ctx, client)
+        finally:
+            agent._idle_watch.start(client)
 
     return Command.from_raw(
         execute_command,
@@ -81,3 +62,34 @@ def create_claude_code_command(cmd_info: ClaudeCodeCommandInfo) -> Command:
         category=category,
         usage=cmd_info.argument_hint,
     )
+
+
+async def _print_response(ctx: CommandContext[AgentContext], client: ClaudeSDKClient) -> None:
+    """Print the output of a Claude Code slash command until its turn ends."""
+    from clawd_code_sdk.models import (
+        AssistantMessage,
+        LocalCommandOutputMessage,
+        ResultErrorMessage,
+        ResultSuccessMessage,
+        TextBlock,
+        UserMessage,
+    )
+
+    async for msg in client.receive_response():
+        match msg:
+            case AssistantMessage():
+                for block in msg.content:
+                    if isinstance(block, TextBlock):
+                        await ctx.print(block.text)
+            case LocalCommandOutputMessage(content=content):
+                await ctx.print(content)
+            # Some commands (e.g. /compact) still use legacy XML-tagged
+            # output in UserMessage instead of LocalCommandOutputMessage.
+            case UserMessage() if parsed := msg.parse_command_output():
+                await ctx.print(parsed)
+            case ResultSuccessMessage(result=result) if result:
+                await ctx.print(result)
+            case ResultErrorMessage(subtype=subtype, errors=errors):
+                await ctx.print(f"Error: {subtype}")
+                if errors:
+                    await ctx.print(f"Errors: {errors}")

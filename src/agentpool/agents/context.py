@@ -68,7 +68,7 @@ class AgentContext[TDeps = Any](NodeContext[TDeps]):
             tool_call_id=self.tool_call_id or "",
             tool_input=self.tool_input,
         )
-        await self.agent._event_queue.put(progress_event)
+        await self.agent.emit_event(progress_event)
 
     @property
     def events(self) -> StreamEventEmitter:

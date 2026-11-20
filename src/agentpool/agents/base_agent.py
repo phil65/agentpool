@@ -171,6 +171,22 @@ class BaseAgent[TDeps = None, TResult = str](MessageNode[TDeps, TResult]):
         agent_name: AgentName
         timestamp: datetime = field(default_factory=get_now)
 
+    @dataclass(frozen=True)
+    class BackgroundEvent:
+        """An event the agent produced while no run was streaming.
+
+        E.g. a background task finishing after the turn that started it, or work the
+        backend did on its own between turns (Claude Code reacting to a finished task).
+        """
+
+        agent_name: AgentName
+        session_id: str | None
+        """Session the agent was bound to (consumers route the event by it)."""
+        event: RichAgentStreamEvent[Any]
+        timestamp: datetime = field(default_factory=get_now)
+
+    # Signal emitted for events produced outside a run (see emit_event)
+    background_event: Signal[BackgroundEvent] = Signal()
     agent_reset = Signal[AgentReset]()
     # Signal emitted when agent execution fails
     run_failed: Signal[RunFailedEvent] = Signal()
@@ -239,6 +255,8 @@ class BaseAgent[TDeps = None, TResult = str](MessageNode[TDeps, TResult]):
         self.deps_type = deps_type  # or type(None)
         self._background_task: asyncio.Task[ChatMessage[Any]] | None = None
         self._event_queue: asyncio.Queue[RichAgentStreamEvent[Any]] = asyncio.Queue()
+        self._active_runs = 0
+        """Number of runs currently streaming (events go to their stream)."""
         self.conversation = MessageHistory(storage=self.storage)
         match env:
             case ExecutionEnvironment():
@@ -539,6 +557,21 @@ class BaseAgent[TDeps = None, TResult = str](MessageNode[TDeps, TResult]):
         """Check if agent is currently processing tasks."""
         return bool(self.task_manager._pending_tasks or self._background_task)
 
+    async def emit_event(self, event: RichAgentStreamEvent[Any]) -> None:
+        """Deliver an event produced by tools, subagents or the backend.
+
+        While a run is streaming, the event joins its stream. Otherwise (e.g. a background
+        task finishing after its turn) it is emitted as :attr:`background_event`, instead
+        of waiting for the next run.
+        """
+        if self._active_runs:
+            await self._event_queue.put(event)
+            return
+        background = BaseAgent.BackgroundEvent(
+            agent_name=self.name, session_id=self.session_id, event=event
+        )
+        await self.background_event.emit(background)
+
     async def wait(self) -> ChatMessage[TResult]:
         """Wait for background execution to complete."""
         if not self._background_task:
@@ -746,6 +779,7 @@ class BaseAgent[TDeps = None, TResult = str](MessageNode[TDeps, TResult]):
         final_message = None
         conversation = message_history if message_history is not None else self.conversation
         await self.message_received.emit(user_msg)
+        self._active_runs += 1
         try:
             # Execute pre-run hooks
             if self.hooks:
@@ -787,6 +821,8 @@ class BaseAgent[TDeps = None, TResult = str](MessageNode[TDeps, TResult]):
             )
             await self.run_failed.emit(failed_event)
             raise
+        finally:
+            self._active_runs -= 1
 
         # Post-processing after stream completes
         if final_message is not None:

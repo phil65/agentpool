@@ -21,6 +21,8 @@ if TYPE_CHECKING:
     from pydantic_ai import ModelMessage
     from pydantic_ai.models.function import DeltaToolCalls
 
+    from agentpool.agents.base_agent import BaseAgent
+
 
 def _lead_model(*, async_mode: bool) -> FunctionModel:
     async def stream(messages: list[ModelMessage], info: AgentInfo) -> AsyncIterator[Any]:
@@ -51,12 +53,37 @@ async def _run(*, async_mode: bool) -> list[Any]:
             toolsets=[SubagentToolsetConfig().get_provider()],
         )
         await pool.add_agent(lead)
-        events = [e async for e in lead.run_stream("go")]
+        events: list[Any] = []
+
+        async def on_background(background: BaseAgent.BackgroundEvent) -> None:
+            events.append(background.event)
+
+        # A background task ending after the run is reported as a background event
+        lead.background_event.connect(on_background)
+        events += [e async for e in lead.run_stream("go")]
         while subagent_tools._background_tasks:
             await asyncio.sleep(0.01)
-        # A background task's end reaches the stream of the agent's next run
-        events += [e async for e in lead.run_stream("next")]
         return [e for e in events if isinstance(e, TaskStartedEvent | TaskFinishedEvent)]
+
+
+async def test_background_task_ending_after_the_run_is_a_background_event() -> None:
+    """The finish of a task that outlives its run is not held back for the next run."""
+    async with AgentPool() as pool:
+        lead = Agent(name="lead", model=TestModel(custom_output_text="ok"))
+        await pool.add_agent(lead)
+        received: list[Any] = []
+
+        async def on_background(background: BaseAgent.BackgroundEvent) -> None:
+            received.append(background)
+
+        lead.background_event.connect(on_background)
+        _ = [e async for e in lead.run_stream("go")]
+        finished = TaskFinishedEvent(task_id="t1", status="completed")
+        await lead.emit_event(finished)
+        (background,) = received
+        assert (background.agent_name, background.event) == ("lead", finished)
+        assert background.session_id == lead.session_id
+        assert lead._event_queue.empty()
 
 
 async def test_sync_task_events() -> None:

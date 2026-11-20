@@ -26,6 +26,7 @@ from agentpool.agents.claude_code_agent.converters import (
     to_run_usage,
     to_thinking_config,
 )
+from agentpool.agents.claude_code_agent.idle_watch import IdleWatcher
 from agentpool.agents.claude_code_agent.slash_commands import create_claude_code_command
 from agentpool.agents.events import RunErrorEvent, RunStartedEvent, StreamCompleteEvent
 from agentpool.agents.events.reconstructor import MessageReconstructor
@@ -273,6 +274,8 @@ class ClaudeCodeAgent[TDeps = None, TResult = str](BaseAgent[TDeps, TResult]):
         # Client state
         self._client: ClaudeSDKClient | None = None
         self._connection_task: asyncio.Task[None] | None = None
+        self._idle_watch = IdleWatcher(self)
+        """Reads what the CLI sends between runs (see idle_watch)."""
         self._sdk_session_id: str | None = session_id
         # ToolBridge state for exposing toolsets via MCP
         self._tool_bridge = ToolManagerBridge(node=self, injection_manager=self._injection_manager)
@@ -560,6 +563,7 @@ class ClaudeCodeAgent[TDeps = None, TResult = str](BaseAgent[TDeps, TResult]):
         try:
             await self._client.connect()
             await self._populate_commands()
+            self._idle_watch.start(self._client)
             self.log.info("Claude Code client connected")
         except Exception:
             self.log.exception("Failed to connect Claude Code client")
@@ -584,6 +588,7 @@ class ClaudeCodeAgent[TDeps = None, TResult = str](BaseAgent[TDeps, TResult]):
             with contextlib.suppress(asyncio.CancelledError):
                 await self._connection_task
         self._connection_task = None
+        await self._idle_watch.stop()
         # # Clean up tool bridge
         # if self._tool_bridge._mcp is not None:
         #     await self._tool_bridge.stop()
@@ -639,6 +644,7 @@ class ClaudeCodeAgent[TDeps = None, TResult = str](BaseAgent[TDeps, TResult]):
         if self._tool_bridge._mcp is not None:
             await self._tool_bridge.stop()
         self._mcp_servers.clear()
+        await self._idle_watch.stop()
         if self._client:
             try:
                 await self._client.disconnect()
@@ -697,6 +703,8 @@ class ClaudeCodeAgent[TDeps = None, TResult = str](BaseAgent[TDeps, TResult]):
         run_context = self.get_context(data=deps, input_provider=effective_input_provider)
         if not self._client:
             raise AgentNotInitializedError
+        # Take over the CLI's message stream (after a turn it started on its own)
+        await self._idle_watch.stop()
         run_id = str(uuid.uuid4())
         assert self.session_id is not None  # Initialized by BaseAgent.run_stream()
         yield RunStartedEvent(session_id=self.session_id, run_id=run_id, agent_name=self.name)
@@ -772,6 +780,8 @@ class ClaudeCodeAgent[TDeps = None, TResult = str](BaseAgent[TDeps, TResult]):
                     await fork_client.disconnect()
                 except Exception as e:  # noqa: BLE001
                     self.log.warning("Error disconnecting fork client", error=e)
+            if self._client is not None:
+                self._idle_watch.start(self._client)
 
         reconstructor.flush()
 
