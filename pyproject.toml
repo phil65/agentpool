@@ -381,6 +381,7 @@ max-complexity = 15
 [tool.ruff.lint.per-file-ignores]
 "__init__.py" = ["E402", "I001"]
 "scripts/*" = ["INP001", "ANN"]
+"src/opencode_v2_sdk/models.py" = ["D", "E501", "PYI051", "PIE790", "I001"]  # generated
 "*tests/*" = ["D100", "PLR2004", "ANN"]  # tests need not be fully annotated
 "duties.py" = ["ANN"]  # tooling, not package code
 "examples/**/*.py" = ["ANN"]
@@ -448,6 +449,7 @@ module-name = [
   "agentpool_server",
   "agentpool_toolsets",
   "opencode_sdk",
+  "opencode_v2_sdk",
   "pi_sdk",
 ]
 wheel-exclude = [
