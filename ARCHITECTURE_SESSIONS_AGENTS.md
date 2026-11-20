@@ -598,8 +598,7 @@ and the migration step (§6) that should make the stopgap unnecessary.
   `FunctionToolResultEvent`s. ACP agents complete failed calls, Codex reports item errors, and
   AG-UI emits completions for remote and local tools. ACP, OpenCode V1/V2, the OpenAI-compatible
   server and the built-in print handlers consume only the canonical events. pydantic-ai part
-  events remain for argument streaming. `utils/streams/turn_manager.py` still emits
-  `FunctionToolResultEvent` from its (currently unused) tool helpers.
+  events remain for argument streaming.
 
 ### 10.7 Subagents aren't sessions
 
