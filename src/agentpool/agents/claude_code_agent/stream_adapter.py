@@ -81,6 +81,12 @@ from pydantic_ai import PartEndEvent, TextPart
 from pydantic_ai.usage import RequestUsage
 
 from agentpool.agents.claude_code_agent.converters import convert_to_opencode_metadata
+from agentpool.agents.claude_code_agent.notices import message_notice
+from agentpool.agents.claude_code_agent.server_blocks import (
+    REDACTED_THINKING,
+    server_block_events,
+    server_tool_start,
+)
 from agentpool.agents.events import (
     CompactionEvent,
     PartDeltaEvent,
@@ -88,6 +94,7 @@ from agentpool.agents.events import (
     PromptSuggestionEvent,
     StepCompletedEvent,
     StepStartedEvent,
+    SubAgentEvent,
     TerminalContentItem,
     ToolCallCompleteEvent,
     ToolCallProgressEvent,
@@ -103,7 +110,7 @@ if TYPE_CHECKING:
     from datetime import datetime
 
     from anthropic.types.beta import BetaRawContentBlockDelta
-    from clawd_code_sdk import Message, ResultMessage, ToolUseBlock
+    from clawd_code_sdk import AssistantMessage, Message, ResultMessage, ToolUseBlock, UserMessage
     from clawd_code_sdk.models import StopReason
     from pydantic_ai.messages import FinishReason
 
@@ -147,8 +154,85 @@ def _finish_reason(stop_reason: str | None) -> FinishReason | None:
 
 
 @dataclass(kw_only=True)
+class _Subagent:
+    """A Claude Code subagent, identified by the tool call that started it."""
+
+    name: str
+    depth: int = 1
+
+
+@dataclass(kw_only=True)
+class _StreamState:
+    """Per-stream bookkeeping."""
+
+    pending_tool_calls: dict[str, ToolUseBlock] = field(default_factory=dict)
+    """Main-conversation tool calls awaiting their result."""
+    streaming_tc_id: str | None = None
+    """Tool call whose arguments are currently streaming."""
+    step: _Step | None = None
+    server_started: set[str] = field(default_factory=set)
+    """Server tool calls whose start was emitted from the raw stream."""
+    server_calls: dict[str, ToolCallStartEvent] = field(default_factory=dict)
+    """Open server / MCP-connector tool calls (main conversation and subagents)."""
+    subagents: dict[str, _Subagent] = field(default_factory=dict)
+    """Subagents by the ID of the tool call that started them."""
+    subagent_calls: dict[str, ToolUseBlock] = field(default_factory=dict)
+    """Tool calls made by subagents, awaiting their result."""
+
+    def subagent(self, parent_tool_use_id: str, subagent_type: str | None) -> _Subagent:
+        """The subagent behind a frame (registered on first sight if task_started was missed)."""
+        if (known := self.subagents.get(parent_tool_use_id)) is not None:
+            return known
+        subagent = _Subagent(name=subagent_type or "subagent")
+        self.subagents[parent_tool_use_id] = subagent
+        return subagent
+
+
+def _tool_start(tc_id: str, raw_tool_name: str, input_: dict[str, Any]) -> ToolCallStartEvent:
+    """Start event for a Claude Code tool call.
+
+    Bash calls get a display-only terminal: Claude Code executes commands itself, so the
+    ``_meta`` virtual terminal convention is used instead of the ACP terminal/create RPC.
+    """
+    rich_info = derive_rich_tool_info(raw_tool_name, input_)
+    if raw_tool_name == "Bash":
+        tc_content: list[ToolCallContentItem] = [TerminalContentItem(terminal_id=tc_id)]
+        meta: dict[str, Any] | None = {"terminal_info": {"terminal_id": tc_id}}
+    else:
+        tc_content = rich_info.content
+        meta = None
+    return ToolCallStartEvent(
+        tool_call_id=tc_id,
+        tool_name=_strip_mcp_prefix(raw_tool_name),
+        title=rich_info.title,
+        kind=rich_info.kind,
+        locations=[],
+        content=tc_content,
+        raw_input=input_,
+        field_meta=meta,
+    )
+
+
+@dataclass(kw_only=True)
 class ClaudeCodeStreamedResponse(StreamedResponse):
-    """Streamed codex response."""
+    """Streamed Claude Code response.
+
+    Message types without a mapping are listed in the final ``case`` of the dispatch and
+    are deliberately not surfaced:
+
+    - ``thinking_tokens``: an estimate only; the real usage arrives with the step.
+    - ``session_state_changed``, ``files_persisted``, ``plugin_install``, ``hook_started`` /
+      ``hook_progress``, ``worker_shutting_down``, ``elicitation_complete``,
+      ``conversation_reset``, ``tool_use_summary``, ``auth_status``, ``init``,
+      ``memory_recall``, ``control_request_progress``: Claude Code internals.
+    - ``task_updated`` / ``task_notification`` / ``background_tasks_changed``: the task is
+      also reported through its tool call (start, ``task_progress``, result).
+    - ``local_command_output``: handled by the slash command runner (``slash_commands``).
+    - ``commands_changed``: the command list is refreshed by the agent itself.
+    - ``api_retry``: retries are transparent to the turn.
+    - Subagent ``stream_event`` frames: subagent activity is derived from its complete
+      messages (Claude Code does not stream subagents).
+    """
 
     stream: AsyncIterator[Message | RichAgentStreamEvent[Any]]
     tool_metadata: dict[str, dict[str, Any]]
@@ -161,12 +245,15 @@ class ClaudeCodeStreamedResponse(StreamedResponse):
 
     async def _get_event_iterator(self) -> AsyncIterator[RichAgentStreamEvent[Any]]:  # noqa: PLR0915
         from anthropic.types.beta import (
+            BetaMCPToolUseBlock,
             BetaRawContentBlockDeltaEvent as ContentBlockDeltaEvent,
             BetaRawContentBlockStartEvent as ContentBlockStartEvent,
             BetaRawContentBlockStopEvent as ContentBlockStopEvent,
             BetaRawMessageDeltaEvent as MessageDeltaEvent,
             BetaRawMessageStartEvent as MessageStartEvent,
             BetaRawMessageStopEvent as MessageStopEvent,
+            BetaRedactedThinkingBlock,
+            BetaServerToolUseBlock,
             BetaTextBlock as AnthTextBlock,
             BetaThinkingBlock as AnthThinkingBlock,
             BetaToolUseBlock as AnthToolUseBlock,
@@ -175,20 +262,13 @@ class ClaudeCodeStreamedResponse(StreamedResponse):
             APIRetrySystemMessage,
             AssistantMessage,
             CompactBoundarySystemMessage,
-            ImageBlock,
             MessageUnion,
             ResultMessage,
             StreamEvent,
-            TextBlock,
-            ThinkingBlock,
-            ToolResultBlock,
-            ToolUseBlock,
             UserMessage,
         )
 
-        pending_tool_calls: dict[str, ToolUseBlock] = {}
-        streaming_tc_id: str | None = None
-        step: _Step | None = None
+        state = _StreamState()
         # Note: message reconstruction (model_messages, response_parts, text accumulation)
         # is handled by the caller's MessageReconstructor, which observes the yielded events.
 
@@ -198,97 +278,25 @@ class ClaudeCodeStreamedResponse(StreamedResponse):
                 continue
             message = event_or_message
             match message:
-                case AssistantMessage(model=model, content=msg_content):
+                # Subagent frames: wrap their activity, keep it out of the main conversation
+                case AssistantMessage(parent_tool_use_id=str() as parent_id):
+                    for e in self._subagent_assistant(state, message, parent_id):
+                        yield e
+                case UserMessage(parent_tool_use_id=str() as parent_id):
+                    for e in self._subagent_user(state, message, parent_id):
+                        yield e
+                case StreamEvent(parent_tool_use_id=str()):
+                    pass
+
+                case AssistantMessage(model=model):
                     if model:
                         self._model_name = model
-                    for block in msg_content:
-                        match block:
-                            case ToolUseBlock(id=tc_id, name=name, input=input_data):
-                                pending_tool_calls[tc_id] = block
-                                # Emit progress update with complete args
-                                # (ToolCallStartEvent was already emitted via streaming
-                                # with empty args; now we have the full picture)
-                                rich_info = derive_rich_tool_info(name, input_data)
-                                yield ToolCallProgressEvent(
-                                    tool_call_id=tc_id,
-                                    tool_name=_strip_mcp_prefix(name),
-                                    title=rich_info.title,
-                                    tool_input=cast(dict[str, Any], input_data),
-                                )
-                            case ThinkingBlock() | TextBlock():
-                                pass  # Already handled via streaming deltas
-                            case _ as unknown_block:
-                                assert_never(unknown_block)
+                    for e in self._assistant_blocks(state, message):
+                        yield e
 
-                case UserMessage(content=list() as user_blocks):
-                    for user_block in user_blocks:
-                        match user_block:
-                            case ToolResultBlock(tool_use_id=tc_id, is_error=is_error):
-                                result_content = user_block.get_parsed_content()
-                                # Flush + tool return handled by reconstructor via
-                                # ToolCcleanupallCompleteEvent observation
-                                tool_use = pending_tool_calls.pop(tc_id)
-                                stripped = _strip_mcp_prefix(tool_use.name)
-                                # For Bash tools: stream output + exit to virtual terminal
-                                # before signaling completion. This matches the 3-step
-                                # display-only terminal lifecycle.
-                                if tool_use.name == "Bash":
-                                    output_str = str(result_content) if result_content else ""
-                                    yield ToolCallProgressEvent(
-                                        tool_call_id=tc_id,
-                                        tool_name=stripped,
-                                        field_meta={
-                                            "terminal_output": {
-                                                "terminal_id": tc_id,
-                                                "data": output_str,
-                                            },
-                                        },
-                                    )
-                                    yield ToolCallProgressEvent(
-                                        tool_call_id=tc_id,
-                                        tool_name=stripped,
-                                        field_meta={
-                                            "terminal_exit": {
-                                                "terminal_id": tc_id,
-                                                "exit_code": 1 if is_error else 0,
-                                                "signal": None,
-                                            },
-                                        },
-                                    )
-
-                                tool_input = (
-                                    cast(dict[str, Any], tool_use.input) if tool_use else {}
-                                )
-                                metadata: dict[str, Any] | None = self.tool_metadata.get(tc_id)
-                                if (
-                                    not metadata
-                                    and isinstance(message.tool_use_result, list)
-                                    and message.tool_use_result
-                                    and not isinstance(
-                                        first_result := message.tool_use_result[0], list
-                                    )
-                                ):
-                                    oc_metadata = convert_to_opencode_metadata(
-                                        tool_name=tool_use.name,
-                                        tool_use_result=first_result,
-                                        tool_input=tool_input,
-                                    )
-                                    metadata = cast(dict[str, Any] | None, oc_metadata)
-
-                                yield ToolCallCompleteEvent(
-                                    tool_name=stripped,
-                                    tool_call_id=tc_id,
-                                    tool_input=tool_input,
-                                    tool_result=result_content,
-                                    agent_name=self.agent_name,
-                                    message_id="",
-                                    metadata=metadata,
-                                    error=str(result_content) if is_error else None,
-                                )
-                            case ImageBlock() | TextBlock():
-                                pass
-                            case _ as unknown_user_block:
-                                assert_never(unknown_user_block)
+                case UserMessage():
+                    for e in self._tool_results(state, message):
+                        yield e
 
                 # Real-time streaming: content_block_start
                 case StreamEvent(
@@ -299,42 +307,24 @@ class ClaudeCodeStreamedResponse(StreamedResponse):
                             yield PartStartEvent.text(index=idx, content="")
                         case AnthThinkingBlock():
                             yield PartStartEvent.thinking(index=idx, content="")
+                        case BetaRedactedThinkingBlock():
+                            yield PartStartEvent.thinking(index=idx, content=REDACTED_THINKING)
                         case AnthToolUseBlock(id=tc_id, name=raw_tool_name, input=input_):
-                            tool_name = _strip_mcp_prefix(raw_tool_name)
-                            streaming_tc_id = tc_id
-                            rich_info = derive_rich_tool_info(raw_tool_name, input_)
-                            # For Bash tools: signal client to create a display-only
-                            # terminal. Claude Code executes commands server-side, so
-                            # we use the _meta virtual terminal convention instead of
-                            # the ACP terminal/create RPC.
-                            is_bash = raw_tool_name == "Bash"
-                            if is_bash:
-                                tc_content: list[ToolCallContentItem] = [
-                                    TerminalContentItem(terminal_id=tc_id),
-                                ]
-                                meta: dict[str, Any] | None = {
-                                    "terminal_info": {"terminal_id": tc_id},
-                                }
-                            else:
-                                tc_content = rich_info.content
-                                meta = None
-                            yield ToolCallStartEvent(
-                                tool_call_id=tc_id,
-                                tool_name=tool_name,
-                                title=rich_info.title,
-                                kind=rich_info.kind,
-                                locations=[],
-                                content=tc_content,
-                                raw_input=input_,
-                                field_meta=meta,
-                            )
+                            state.streaming_tc_id = tc_id
+                            yield _tool_start(tc_id, raw_tool_name, input_)
+                        case BetaServerToolUseBlock() | BetaMCPToolUseBlock():
+                            start = server_tool_start(content_block)
+                            state.streaming_tc_id = start.tool_call_id
+                            state.server_started.add(start.tool_call_id)
+                            yield start
+                        case _:
+                            # Results and other API blocks: from the complete message
+                            pass
 
                 # API message lifecycle of the main conversation = one step each
-                case StreamEvent(
-                    event=MessageStartEvent(message=api_message), parent_tool_use_id=None
-                ):
+                case StreamEvent(event=MessageStartEvent(message=api_message)):
                     usage = api_message.usage
-                    step = _Step(
+                    state.step = _Step(
                         step_id=api_message.id,
                         model_name=api_message.model,
                         usage=RequestUsage(
@@ -344,34 +334,34 @@ class ClaudeCodeStreamedResponse(StreamedResponse):
                             output_tokens=usage.output_tokens,
                         ),
                     )
-                    yield StepStartedEvent(step_id=step.step_id, model_name=step.model_name)
-                case StreamEvent(
-                    event=MessageDeltaEvent(delta=delta, usage=delta_usage), parent_tool_use_id=None
-                ):
-                    if step is not None:
+                    yield StepStartedEvent(
+                        step_id=state.step.step_id, model_name=state.step.model_name
+                    )
+                case StreamEvent(event=MessageDeltaEvent(delta=delta, usage=delta_usage)):
+                    if (step := state.step) is not None:
                         step.finish_reason = _finish_reason(delta.stop_reason)
                         step.usage.output_tokens = delta_usage.output_tokens
                         if delta_usage.input_tokens is not None:
                             step.usage.input_tokens = delta_usage.input_tokens
-                case StreamEvent(event=MessageStopEvent(), parent_tool_use_id=None):
-                    if step is not None:
+                case StreamEvent(event=MessageStopEvent()):
+                    if (step := state.step) is not None:
                         yield StepCompletedEvent(
                             step_id=step.step_id,
                             usage=step.usage,
                             finish_reason=step.finish_reason,
                             model_name=step.model_name,
                         )
-                        step = None
+                        state.step = None
 
                 # content_block_delta events
                 case StreamEvent(event=ContentBlockDeltaEvent(index=index, delta=delta)):
                     for e in handle_delta(
-                        index=index, delta=delta, streaming_tc_id=streaming_tc_id
+                        index=index, delta=delta, streaming_tc_id=state.streaming_tc_id
                     ):
                         yield e
                 # content_block_stop
                 case StreamEvent(event=ContentBlockStopEvent(index=index)):
-                    streaming_tc_id = None
+                    state.streaming_tc_id = None
                     yield PartEndEvent(index=index, part=TextPart(content=""))
 
                 case StatusSystemMessage(compact_result="failed", compact_error=error):
@@ -393,15 +383,42 @@ class ClaudeCodeStreamedResponse(StreamedResponse):
                 case PromptSuggestionMessage(suggestion=suggestion):
                     yield PromptSuggestionEvent(suggestions=[suggestion])
 
+                case TaskStartedSystemMessage(tool_use_id=str() as tc_id):
+                    state.subagents[tc_id] = _Subagent(
+                        name=message.subagent_type or message.task_type or "subagent",
+                        depth=message.spawn_depth or 1,
+                    )
+
+                case TaskProgressSystemMessage(tool_use_id=str() as tc_id, usage=task_usage):
+                    tool_use = state.pending_tool_calls.get(tc_id)
+                    last_tool = message.last_tool_name
+                    yield ToolCallProgressEvent(
+                        tool_call_id=tc_id,
+                        tool_name=_strip_mcp_prefix(tool_use.name) if tool_use else None,
+                        message=message.summary or (f"Running {last_tool}" if last_tool else None),
+                        field_meta={"task_usage": dict(task_usage)},
+                    )
+
+                case (
+                    ModelRefusalFallbackMessage()
+                    | ModelRefusalNoFallbackMessage()
+                    | PermissionDeniedSystemMessage()
+                    | NotificationSystemMessage()
+                    | InformationalSystemMessage()
+                    | SessionWritesLostMessage()
+                    | MirrorErrorSystemMessage()
+                    | HookResponseSystemMessage()
+                    | RateLimitMessage()
+                ):
+                    if (notice := message_notice(message)) is not None:
+                        yield notice
+
                 case (
                     StreamEvent()
-                    | UserMessage()
                     | ResultSuccessMessage()
                     | ResultErrorMessage()
                     | HookStartedSystemMessage()
                     | HookProgressSystemMessage()
-                    | HookResponseSystemMessage()
-                    | RateLimitMessage()
                     | AuthStatusMessage()
                     | ToolProgressMessage()
                     | ToolUseSummaryMessage()
@@ -415,20 +432,13 @@ class ClaudeCodeStreamedResponse(StreamedResponse):
                     | ElicitationCompleteMessage()
                     | LocalCommandOutputMessage()
                     | APIRetrySystemMessage()
-                    | MirrorErrorSystemMessage()
                     | PluginInstallSystemMessage()
-                    | NotificationSystemMessage()
                     | MemoryRecallSystemMessage()
                     | TaskUpdatedSystemMessage()
                     | BackgroundTasksChangedMessage()
                     | CommandsChangedMessage()
                     | ControlRequestProgressMessage()
                     | ConversationResetMessage()
-                    | InformationalSystemMessage()
-                    | ModelRefusalFallbackMessage()
-                    | ModelRefusalNoFallbackMessage()
-                    | PermissionDeniedSystemMessage()
-                    | SessionWritesLostMessage()
                     | ThinkingTokensMessage()
                     | WorkerShuttingDownMessage()
                 ):
@@ -439,6 +449,177 @@ class ClaudeCodeStreamedResponse(StreamedResponse):
             # Check for result (end of response)
             if isinstance(message, ResultMessage):
                 self._result_message = message
+
+    def _assistant_blocks(
+        self, state: _StreamState, message: AssistantMessage
+    ) -> Iterator[RichAgentStreamEvent[Any]]:
+        """Events for the complete blocks of a main-conversation assistant message.
+
+        Text and thinking were already streamed; tool calls get their final arguments.
+        """
+        from clawd_code_sdk.models import TextBlock, ThinkingBlock, ToolUseBlock
+
+        for block in message.content:
+            match block:
+                case ToolUseBlock(id=tc_id, name=name, input=input_data):
+                    state.pending_tool_calls[tc_id] = block
+                    # The start was emitted while streaming (with empty args)
+                    rich_info = derive_rich_tool_info(name, input_data)
+                    yield ToolCallProgressEvent(
+                        tool_call_id=tc_id,
+                        tool_name=_strip_mcp_prefix(name),
+                        title=rich_info.title,
+                        tool_input=cast(dict[str, Any], input_data),
+                    )
+                case ThinkingBlock() | TextBlock():
+                    pass  # Already handled via streaming deltas
+                case _:
+                    yield from server_block_events(
+                        block,
+                        started=state.server_started,
+                        calls=state.server_calls,
+                        agent_name=self.agent_name,
+                        session_id=self.session_id,
+                    )
+
+    def _tool_results(
+        self, state: _StreamState, message: UserMessage
+    ) -> Iterator[RichAgentStreamEvent[Any]]:
+        """Completion events for the tool results of a main-conversation user message."""
+        from clawd_code_sdk.models import DocumentBlock, ImageBlock, TextBlock, ToolResultBlock
+
+        if isinstance(message.content, str):
+            return
+        for user_block in message.content:
+            match user_block:
+                case ToolResultBlock(tool_use_id=tc_id, is_error=is_error):
+                    result_content = user_block.get_parsed_content()
+                    tool_use = state.pending_tool_calls.pop(tc_id)
+                    stripped = _strip_mcp_prefix(tool_use.name)
+                    # Bash: stream output + exit to the virtual terminal before completion
+                    # (display-only terminal lifecycle).
+                    if tool_use.name == "Bash":
+                        output_str = str(result_content) if result_content else ""
+                        yield ToolCallProgressEvent(
+                            tool_call_id=tc_id,
+                            tool_name=stripped,
+                            field_meta={
+                                "terminal_output": {"terminal_id": tc_id, "data": output_str},
+                            },
+                        )
+                        yield ToolCallProgressEvent(
+                            tool_call_id=tc_id,
+                            tool_name=stripped,
+                            field_meta={
+                                "terminal_exit": {
+                                    "terminal_id": tc_id,
+                                    "exit_code": 1 if is_error else 0,
+                                    "signal": None,
+                                },
+                            },
+                        )
+
+                    tool_input = cast(dict[str, Any], tool_use.input)
+                    metadata: dict[str, Any] | None = self.tool_metadata.get(tc_id)
+                    if (
+                        not metadata
+                        and isinstance(message.tool_use_result, list)
+                        and message.tool_use_result
+                        and not isinstance(first_result := message.tool_use_result[0], list)
+                    ):
+                        oc_metadata = convert_to_opencode_metadata(
+                            tool_name=tool_use.name,
+                            tool_use_result=first_result,
+                            tool_input=tool_input,
+                        )
+                        metadata = cast(dict[str, Any] | None, oc_metadata)
+
+                    yield ToolCallCompleteEvent(
+                        tool_name=stripped,
+                        tool_call_id=tc_id,
+                        tool_input=tool_input,
+                        tool_result=result_content,
+                        agent_name=self.agent_name,
+                        message_id="",
+                        metadata=metadata,
+                        error=str(result_content) if is_error else None,
+                    )
+                case ImageBlock() | TextBlock() | DocumentBlock():
+                    pass
+                case _ as unknown_user_block:
+                    assert_never(unknown_user_block)
+
+    def _subagent_assistant(
+        self, state: _StreamState, message: AssistantMessage, parent_id: str
+    ) -> Iterator[SubAgentEvent]:
+        """Wrap a subagent's assistant message: its text, thinking and tool calls.
+
+        Subagents are not streamed, so their complete messages are the only source.
+        """
+        from clawd_code_sdk.models import TextBlock, ThinkingBlock, ToolUseBlock
+
+        subagent = state.subagent(parent_id, message.subagent_type)
+        for index, block in enumerate(message.content):
+            inner: list[RichAgentStreamEvent[Any]]
+            match block:
+                case TextBlock(text=text):
+                    inner = [PartStartEvent.text(index=index, content=text)] if text else []
+                case ThinkingBlock(thinking=thinking):
+                    inner = [PartStartEvent.thinking(index=index, content=thinking)]
+                case ToolUseBlock(id=tc_id, name=name, input=input_):
+                    state.subagent_calls[tc_id] = block
+                    inner = [_tool_start(tc_id, name, cast(dict[str, Any], input_))]
+                case _:
+                    inner = server_block_events(
+                        block,
+                        started=state.server_started,
+                        calls=state.server_calls,
+                        agent_name=subagent.name,
+                        session_id=self.session_id,
+                    )
+            for event in inner:
+                yield self._wrap(subagent, parent_id, event)
+
+    def _subagent_user(
+        self, state: _StreamState, message: UserMessage, parent_id: str
+    ) -> Iterator[SubAgentEvent]:
+        """Wrap the tool results of a subagent (its prompt text is not repeated)."""
+        from clawd_code_sdk.models import DocumentBlock, ImageBlock, TextBlock, ToolResultBlock
+
+        if isinstance(message.content, str):
+            return
+        subagent = state.subagent(parent_id, message.subagent_type)
+        for block in message.content:
+            match block:
+                case ToolResultBlock(tool_use_id=tc_id, is_error=is_error):
+                    tool_use = state.subagent_calls.pop(tc_id, None)
+                    result = block.get_parsed_content()
+                    complete = ToolCallCompleteEvent(
+                        tool_name=_strip_mcp_prefix(tool_use.name) if tool_use else "unknown",
+                        tool_call_id=tc_id,
+                        tool_input=cast(dict[str, Any], tool_use.input) if tool_use else {},
+                        tool_result=result,
+                        agent_name=subagent.name,
+                        message_id="",
+                        error=str(result) if is_error else None,
+                    )
+                    yield self._wrap(subagent, parent_id, complete)
+                case ImageBlock() | TextBlock() | DocumentBlock():
+                    pass
+                case _ as unreachable:
+                    assert_never(unreachable)
+
+    @staticmethod
+    def _wrap(
+        subagent: _Subagent, parent_id: str, event: RichAgentStreamEvent[Any]
+    ) -> SubAgentEvent:
+        return SubAgentEvent(
+            source_name=subagent.name,
+            source_type="agent",
+            event=event,
+            depth=subagent.depth,
+            parent_tool_call_id=parent_id,
+        )
 
     @property
     def model_name(self) -> str:
