@@ -338,14 +338,6 @@ class RemoteACPAgentConfig(BaseACPAgentConfig):
         Raises:
             ValueError: A header references an unset environment variable.
         """
-        import os
-        import string
+        from agentpool.utils.env_refs import expand_env_refs
 
-        resolved: dict[str, str] = {}
-        for name, value in self.headers.items():
-            try:
-                resolved[name] = string.Template(value).substitute(os.environ)
-            except KeyError as exc:
-                msg = f"Header {name!r} references unset environment variable {exc.args[0]}"
-                raise ValueError(msg) from exc
-        return resolved
+        return expand_env_refs(self.headers)

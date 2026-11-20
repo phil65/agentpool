@@ -35,7 +35,7 @@ def test_unset_header_variable_is_an_error(monkeypatch: pytest.MonkeyPatch) -> N
     config = RemoteACPAgentConfig(
         url="https://agent.test/api/acp", headers={"K": "${TEST_ACP_KEY}"}
     )
-    with pytest.raises(ValueError, match="unset environment variable TEST_ACP_KEY"):
+    with pytest.raises(ValueError, match="'K' references unset environment variable TEST_ACP_KEY"):
         config.get_headers()
 
 

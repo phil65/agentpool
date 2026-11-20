@@ -70,6 +70,16 @@ class AGUIAgentConfig(BaseAgentConfig):
     Environment variables can be used: ${VAR_NAME}
     """
 
+    def get_headers(self) -> dict[str, str]:
+        """Get the HTTP headers, with ``${VAR}`` references resolved.
+
+        Raises:
+            ValueError: A header references an unset environment variable.
+        """
+        from agentpool.utils.env_refs import expand_env_refs
+
+        return expand_env_refs(self.headers)
+
     startup_command: str | None = Field(
         default=None,
         examples=[
