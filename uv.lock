@@ -229,8 +229,8 @@ requires-dist = [
     { name = "autoevals", marker = "extra == 'braintrust'" },
     { name = "bashkit", specifier = ">=0.1.11" },
     { name = "braintrust", marker = "extra == 'braintrust'" },
-    { name = "clawd-code-sdk", specifier = ">=1.2.4" },
-    { name = "codexed", specifier = ">=1.3.0" },
+    { name = "clawd-code-sdk", specifier = ">=1.2.5" },
+    { name = "codexed", specifier = ">=1.3.1" },
     { name = "composio", marker = "extra == 'composio'" },
     { name = "copykitten", marker = "extra == 'clipboard'" },
     { name = "croniter", marker = "extra == 'bot'", specifier = ">=2.0.0" },
@@ -1290,7 +1290,7 @@ wheels = [
 
 [[package]]
 name = "clawd-code-sdk"
-version = "1.2.4"
+version = "1.2.5"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "anthropic" },
@@ -1301,9 +1301,9 @@ dependencies = [
     { name = "mcp" },
     { name = "python-dotenv" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/51/e5/f321b628a6aca5ff6e85d132cc9a8f92c5a16114c6069a28de9926b0a22c/clawd_code_sdk-1.2.4.tar.gz", hash = "sha256:8e89b9445a1193e987e379c44511416d8a252c5941a00dbce59cb3f75f33d905", size = 256436, upload-time = "2026-11-20T08:29:37.075Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/51/49/05683766f8c2f28f775e5c5d3a8a21b89dcc440c075ed3f435be0e30ce7f/clawd_code_sdk-1.2.5.tar.gz", hash = "sha256:b0f4abe8e35e170dcbd2b63942a700766bde09c25838767d097af58489bfc745", size = 254968, upload-time = "2026-11-20T10:52:05.03Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/aa/60/f338bb7e8b0fa528330fc2e50b9cb10502298185445f88b111884ff1dfd9/clawd_code_sdk-1.2.4-py3-none-any.whl", hash = "sha256:1c1ff75331df2aa5102281926cdb4aff05a481e9ccd793ac7e90bfe7a82ad4c4", size = 213341, upload-time = "2026-11-20T08:29:35.643Z" },
+    { url = "https://files.pythonhosted.org/packages/fc/bd/50f2f43f256ebd03764fbb87448641ecec5b98f593b98e7b88e990ca6940/clawd_code_sdk-1.2.5-py3-none-any.whl", hash = "sha256:b56e425958d80ac384304b4db00993ffe241b25a0030467f20856ad51c217e9e", size = 211377, upload-time = "2026-11-20T10:52:03.548Z" },
 ]
 
 [[package]]
@@ -1339,7 +1339,7 @@ wheels = [
 
 [[package]]
 name = "codexed"
-version = "1.3.0"
+version = "1.3.1"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "anyenv" },
@@ -1347,9 +1347,9 @@ dependencies = [
     { name = "pydantic" },
     { name = "schemez" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/bc/5c/cabd7aa1f2373f490295e22f023f84f3b21393a175920df4a96eff65b007/codexed-1.3.0.tar.gz", hash = "sha256:af701c9d4a5c438cf43dc6f8856afe738812dbdd3d57432c6631120d2c7e6614", size = 118533, upload-time = "2026-11-16T23:44:09.515Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/91/7e/e5fa043544b6319dd62c5acee21f65812adec0009d09856e200acbe530e3/codexed-1.3.1.tar.gz", hash = "sha256:4e62ede13b7eac1966407af8303d3f90101303ae270ba6add5a10b447ca866e3", size = 119120, upload-time = "2026-11-20T10:52:10.491Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/a5/78/d41edcb9b918c38434b1d02af38570bae2b016c8310f156d85a4207133db/codexed-1.3.0-py3-none-any.whl", hash = "sha256:386ec339b7d30a84104ebd39da06eaa9d51a2f536a5363cca9b734b79729239b", size = 126506, upload-time = "2026-11-16T23:44:08.2Z" },
+    { url = "https://files.pythonhosted.org/packages/50/00/89e74210a7fc1b736545bd97096a42e852f6621becdd66dc521ff86fdb97/codexed-1.3.1-py3-none-any.whl", hash = "sha256:23cd8935c90f3734d08fdffcd8f1b112102bb5b36a5643442cc59f091ea066c2", size = 127125, upload-time = "2026-11-20T10:52:09.245Z" },
 ]
 
 [[package]]

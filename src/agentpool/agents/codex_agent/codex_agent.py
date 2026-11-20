@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from decimal import Decimal
 from pathlib import Path
+import time
 from typing import TYPE_CHECKING, Any, ClassVar, Literal, Self, assert_never
 from uuid import uuid4
 
@@ -60,6 +61,7 @@ if TYPE_CHECKING:
     from agentpool.agents.context import ConfirmationResult
     from agentpool.agents.events import RichAgentStreamEvent
     from agentpool.agents.modes import ConfigOption
+    from agentpool.agents.usage_limits import UsageLimits
     from agentpool.common_types import AnyEventHandlerType, MCPServerStatus, StrPath
     from agentpool.delegation import AgentPool
     from agentpool.hooks import AgentHooks
@@ -72,6 +74,9 @@ if TYPE_CHECKING:
 
 
 logger = get_logger(__name__)
+
+USAGE_LIMITS_TTL = 300.0
+"""Seconds a rate limits read is reused (notifications update it meanwhile)."""
 
 
 class CodexAgent[TDeps = None, OutputDataT = str](BaseAgent[TDeps, OutputDataT]):
@@ -156,6 +161,8 @@ class CodexAgent[TDeps = None, OutputDataT = str](BaseAgent[TDeps, OutputDataT])
         self._env_vars = env_vars or {}
         # Client state
         self._client: CodexClient | None = None
+        self._rate_limits_read_at = float("-inf")
+        """Monotonic time of the last account/rateLimits/read."""
         self._sdk_session_id: str | None = session_id
         self._sessions: dict[str, Session] = {}
         self._external_mcp_servers = [
@@ -647,6 +654,31 @@ class CodexAgent[TDeps = None, OutputDataT = str](BaseAgent[TDeps, OutputDataT])
             return None
         else:
             return models
+
+    async def get_usage_limits(self) -> UsageLimits | None:
+        """Get the ChatGPT plan's rate-limit windows (None when signed in with an API key).
+
+        Read from the app-server at most every ``USAGE_LIMITS_TTL`` seconds; in between,
+        its ``account/rateLimits/updated`` notifications keep the snapshot current.
+        """
+        from codexed.exceptions import CodexRequestError
+
+        from agentpool.agents.codex_agent.usage_limits import to_usage_limits
+
+        if not self._client:
+            return None
+        account = self._client.account
+        stale = time.monotonic() - self._rate_limits_read_at >= USAGE_LIMITS_TTL
+        if account.rate_limits is None or stale:
+            try:
+                await account.rate_limits_read()
+            except CodexRequestError as e:
+                # E.g. "chatgpt authentication required" for API keys: no plan limits
+                self.log.debug("Codex rate limits unavailable", error=str(e))
+                return None
+            self._rate_limits_read_at = time.monotonic()
+        snapshot = account.rate_limits
+        return to_usage_limits(snapshot) if snapshot is not None else None
 
     async def get_auth_status(self) -> AuthStatus:
         """Get the account the Codex app-server is using."""

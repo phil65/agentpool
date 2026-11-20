@@ -8,6 +8,7 @@ from dataclasses import replace
 from decimal import Decimal
 from pathlib import Path
 import re
+import time
 from typing import TYPE_CHECKING, Any, ClassVar, Literal, Self, assert_never, cast
 import uuid
 
@@ -61,6 +62,7 @@ if TYPE_CHECKING:
         StopReason,
         ToolInput,
     )
+    from clawd_code_sdk.models.messages import RateLimitInfo
     from evented_config import EventConfig
     from exxec import ExecutionEnvironment
     from mcp.types import ElicitResult
@@ -101,6 +103,9 @@ UNSUPPORTED_COMMANDS = frozenset({
     "todos",
 })
 
+
+USAGE_LIMITS_TTL = 300.0
+"""Seconds a get_usage result is reused (rate limit events update it meanwhile)."""
 
 THINKING_MODE_TOKENS: dict[ThinkingMode, int] = {
     "off": 0,
@@ -276,6 +281,8 @@ class ClaudeCodeAgent[TDeps = None, TResult = str](BaseAgent[TDeps, TResult]):
         self._connection_task: asyncio.Task[None] | None = None
         self._idle_watch = IdleWatcher(self)
         """Reads what the CLI sends between runs (see idle_watch)."""
+        self._usage_limits: tuple[float, UsageLimits | None] | None = None
+        """(monotonic time of the last get_usage, limits) cache."""
         self._sdk_session_id: str | None = session_id
         # ToolBridge state for exposing toolsets via MCP
         self._tool_bridge = ToolManagerBridge(node=self, injection_manager=self._injection_manager)
@@ -739,6 +746,7 @@ class ClaudeCodeAgent[TDeps = None, TResult = str](BaseAgent[TDeps, TResult]):
                 tool_metadata=self._tool_bridge.tool_metadata,
                 agent_name=self.name,
                 session_id=self.session_id,
+                on_rate_limit=self.record_rate_limit,
             )
             async with (
                 self._tool_bridge.set_run_context(run_context, prompt=prompts),
@@ -880,13 +888,29 @@ class ClaudeCodeAgent[TDeps = None, TResult = str](BaseAgent[TDeps, TResult]):
         return to_auth_status(server_info.account if server_info else None)
 
     async def get_usage_limits(self) -> UsageLimits | None:
-        """Get the Claude plan's rate-limit windows (None for API keys, Bedrock, Vertex)."""
+        """Get the Claude plan's rate-limit windows (None for API keys, Bedrock, Vertex).
+
+        Read with ``get_usage`` at most every ``USAGE_LIMITS_TTL`` seconds; in between,
+        the ``rate_limit_event`` messages of each turn keep the windows current.
+        """
         from agentpool.agents.claude_code_agent.usage_limits import to_usage_limits
 
+        cached = self._usage_limits
+        if cached is not None and time.monotonic() - cached[0] < USAGE_LIMITS_TTL:
+            return cached[1]
         await self.ensure_initialized()
         if self._client is None:
             return None
-        return to_usage_limits(await self._client.get_usage())
+        limits = to_usage_limits(await self._client.get_usage())
+        self._usage_limits = (time.monotonic(), limits)
+        return limits
+
+    def record_rate_limit(self, info: RateLimitInfo) -> None:
+        """Update the cached usage limits from a ``rate_limit_event`` of the stream."""
+        from agentpool.agents.claude_code_agent.usage_limits import apply_rate_limit_event
+
+        if self._usage_limits is not None and (limits := self._usage_limits[1]) is not None:
+            self._usage_limits = (self._usage_limits[0], apply_rate_limit_event(limits, info))
 
     @property
     def config_options(self) -> Sequence[ConfigOption[Self]]:

@@ -111,12 +111,13 @@ from agentpool.utils.time_utils import get_now
 
 
 if TYPE_CHECKING:
-    from collections.abc import AsyncIterator, Iterator
+    from collections.abc import AsyncIterator, Callable, Iterator
     from datetime import datetime
 
     from anthropic.types.beta import BetaRawContentBlockDelta
     from clawd_code_sdk import AssistantMessage, Message, ResultMessage, ToolUseBlock, UserMessage
     from clawd_code_sdk.models import StopReason
+    from clawd_code_sdk.models.messages import RateLimitInfo
     from pydantic_ai.messages import FinishReason
 
     from agentpool.agents.events import RichAgentStreamEvent
@@ -258,6 +259,8 @@ class ClaudeCodeStreamedResponse(StreamedResponse):
     _model_name: str | None = None
     _result_message: ResultMessage | None = None
     """The SDK ResultMessage captured at end of stream (contains usage, cost, etc.)."""
+    on_rate_limit: Callable[[RateLimitInfo], None] | None = None
+    """Receives the rate limit windows reported during the stream."""
 
     async def _get_event_iterator(self) -> AsyncIterator[RichAgentStreamEvent[Any]]:  # noqa: PLR0915
         from anthropic.types.beta import (
@@ -484,6 +487,8 @@ class ClaudeCodeStreamedResponse(StreamedResponse):
                     | HookResponseSystemMessage()
                     | RateLimitMessage()
                 ):
+                    if isinstance(message, RateLimitMessage) and self.on_rate_limit is not None:
+                        self.on_rate_limit(message.rate_limit_info)
                     if (notice := message_notice(message)) is not None:
                         yield notice
 
