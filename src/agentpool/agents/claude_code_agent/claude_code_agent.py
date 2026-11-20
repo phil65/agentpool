@@ -29,7 +29,7 @@ from agentpool.agents.claude_code_agent.converters import (
 )
 from agentpool.agents.claude_code_agent.idle_watch import IdleWatcher
 from agentpool.agents.claude_code_agent.slash_commands import create_claude_code_command
-from agentpool.agents.claude_code_agent.steering import RunSteering
+from agentpool.agents.claude_code_agent.steering import RunSteering, run_messages
 from agentpool.agents.events import RunErrorEvent, RunStartedEvent, StreamCompleteEvent
 from agentpool.agents.events.reconstructor import MessageReconstructor
 from agentpool.agents.exceptions import (
@@ -602,7 +602,7 @@ class ClaudeCodeAgent[TDeps = None, TResult = str](BaseAgent[TDeps, TResult]):
         run. While a permission request or question waits for the user, the message
         waits for its answer. Outside of a run, the base behavior applies.
         """
-        if (steering := self._steering) is None:
+        if (steering := self._steering) is None or steering.closed:
             await super().steer(message)
             return
         await steering.send(message, priority="later" if self._open_user_inputs else "now")
@@ -794,12 +794,14 @@ class ClaudeCodeAgent[TDeps = None, TResult = str](BaseAgent[TDeps, TResult]):
 
         reconstructor = MessageReconstructor(initial_prompts=prompts)
         claude_prompts = [*to_prompt_input(prompts)]
-        steering = RunSteering(client=client, reconstructor=reconstructor)
+        prompt_uuid = str(uuid.uuid4())
+        steering = RunSteering(client=client, reconstructor=reconstructor, unanswered={prompt_uuid})
         try:
-            await client.query(*claude_prompts)
+            await client.query(*claude_prompts, uuid=prompt_uuid)
             self._steering = steering
+            # Up to the result that answers the prompt (background work may run on)
+            stream = run_messages(client, steering)
             # Capture SDK session ID from init message
-            stream = client.receive_response()
             first_msg = await anext(stream)
             assert not isinstance(first_msg, AssistantMessage | UserMessage), (
                 f"invalid message type {type(first_msg)}"

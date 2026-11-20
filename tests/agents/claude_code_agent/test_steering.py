@@ -8,7 +8,7 @@ from clawd_code_sdk.models import message_adapter
 from pydantic_ai import ModelRequest, UserPromptPart
 
 from agentpool.agents.claude_code_agent import ClaudeCodeAgent
-from agentpool.agents.claude_code_agent.steering import RunSteering
+from agentpool.agents.claude_code_agent.steering import RunSteering, run_messages
 from agentpool.agents.claude_code_agent.stream_adapter import ClaudeCodeStreamedResponse
 from agentpool.agents.events import NoticeEvent
 from agentpool.agents.events.reconstructor import MessageReconstructor
@@ -21,10 +21,15 @@ if TYPE_CHECKING:
 
 
 class FakeClient:
-    """The steering part of ClaudeSDKClient."""
+    """The steering part of ClaudeSDKClient, replaying ``messages`` as the CLI's response."""
 
-    def __init__(self) -> None:
+    def __init__(self, messages: list[Any] | None = None) -> None:
         self.steered: list[tuple[str, MessagePriority]] = []
+        self.messages = messages or []
+
+    async def receive_response(self) -> AsyncIterator[Any]:
+        for message in self.messages:
+            yield message
 
     async def steer(self, message: str, *, priority: MessagePriority = "now") -> str:
         self.steered.append((message, priority))
@@ -110,3 +115,78 @@ async def test_adapter_reports_lifecycle_and_dropped_messages() -> None:
             description="Claude Code refused a message sent mid-run.",
         )
     ]
+
+
+def _result(text: str, *, uuids: list[str] | None = None, origin: str | None = None) -> Any:
+    return message_adapter.validate_python({
+        "type": "result",
+        "subtype": "success",
+        "uuid": f"r-{text}",
+        "session_id": "s",
+        "duration_ms": 1,
+        "duration_api_ms": 1,
+        "is_error": False,
+        "num_turns": 1,
+        "total_cost_usd": 0,
+        "usage": {"input_tokens": 1, "output_tokens": 1},
+        "stop_reason": "end_turn",
+        "result": text,
+        "user_message_uuids": uuids,
+        "origin": {"kind": origin} if origin else None,
+    })
+
+
+IDLE = message_adapter.validate_python({
+    "type": "system",
+    "subtype": "session_state_changed",
+    "state": "idle",
+    "uuid": "i",
+    "session_id": "s",
+})
+
+
+async def _read(client: FakeClient, steering: RunSteering) -> list[Any]:
+    return [message async for message in run_messages(client, steering)]  # type: ignore[arg-type]  # ty:ignore[invalid-argument-type]
+
+
+async def test_run_ends_at_the_result_that_answers_its_prompt() -> None:
+    # A background subagent keeps the CLI busy: its follow-up cycle is not part of the run
+    answer = _result("started", uuids=["p"])
+    follow_up = _result("The background agent finished", origin="task-notification")
+    client = FakeClient([_lifecycle("p", "started"), answer, follow_up, IDLE])
+    steering = RunSteering(client=client, reconstructor=MessageReconstructor(), unanswered={"p"})  # type: ignore[arg-type]  # ty:ignore[invalid-argument-type]
+
+    assert await _read(client, steering) == [_lifecycle("p", "started"), answer]
+    assert steering.closed
+
+
+async def test_steered_run_ends_at_the_answer_of_the_steer() -> None:
+    client = FakeClient()
+    steering = RunSteering(client=client, reconstructor=MessageReconstructor(), unanswered={"p"})  # type: ignore[arg-type]  # ty:ignore[invalid-argument-type]
+    await steering.send("stop and say BANANA", priority="now")  # uuid "u1"
+    # The cycle the steer interrupted answers the prompt; the steer is answered next
+    interrupted = _result("", uuids=["p"])
+    banana = _result("BANANA", uuids=["u1"])
+    client.messages = [interrupted, banana, IDLE]
+
+    assert await _read(client, steering) == [interrupted, banana]
+
+
+async def test_run_without_named_results_ends_at_idle() -> None:
+    messages = [_result("done"), IDLE]
+    client = FakeClient(messages)
+    steering = RunSteering(client=client, reconstructor=MessageReconstructor(), unanswered={"p"})  # type: ignore[arg-type]  # ty:ignore[invalid-argument-type]
+    assert await _read(client, steering) == messages
+    assert not steering.closed
+
+
+async def test_steer_after_the_answer_waits_for_the_next_run() -> None:
+    agent = ClaudeCodeAgent(name="cc")
+    steering, client, _ = _steering()
+    steering.closed = True
+    agent._steering = steering
+
+    await agent.steer("one more thing")
+
+    assert client.steered == []
+    assert agent.has_pending_injections()
