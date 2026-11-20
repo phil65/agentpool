@@ -108,6 +108,26 @@ This enables:
 - **AgentPool → External Agents**: Delegate to Claude Code, Codex, etc.
 - **Unified orchestration**: Mix internal and external agents
 
+## Remote Clients (Streamable HTTP, experimental)
+
+Besides stdio and WebSocket, `serve-acp` can serve ACP over HTTP, following ACP's
+"Streamable HTTP & WebSocket Transport" RFD (Streamable HTTP and WebSocket on one
+`/acp` endpoint, compatible with the TypeScript SDK's experimental clients):
+
+```bash
+# Local only (no token needed on a loopback host)
+agentpool serve-acp config.yml --transport http --port 8765
+
+# Reachable from other machines: clients must send "Authorization: Bearer <token>"
+AGENTPOOL_ACP_TOKEN=... agentpool serve-acp config.yml --transport http --host 0.0.0.0
+```
+
+Agents run their tools on the serving machine, so binding to a non-loopback host
+requires `--token` (or `AGENTPOOL_ACP_TOKEN`). Put TLS in front (reverse proxy) when
+exposing it. Editors that only launch local agents can connect through
+`uvx --from "aclientp[http2]" aclientp-connect <url> -H "Authorization: Bearer ${TOKEN}"`,
+and other AgentPool instances with a [remote ACP agent](../configuration/node-types/acp-agents.md).
+
 ## External ACP Agents
 
 Integrate external ACP agents into your pool:

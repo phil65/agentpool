@@ -26,10 +26,33 @@ from agentpool_cli import log
 
 
 if TYPE_CHECKING:
-    from aclientp import Transport
+    from aclientp import HttpTransport, Transport
 
 
 logger = log.get_logger(__name__)
+
+
+LOOPBACK_HOSTS = frozenset({"localhost", "127.0.0.1", "::1"})
+
+
+def _http_transport(
+    host: str, port: int, token: str | None, allow_origins: list[str]
+) -> HttpTransport:
+    """Streamable HTTP transport; refuses to expose the agents without a token.
+
+    Agents run tools (shell, files) on this machine, so an unauthenticated endpoint is
+    only allowed on a loopback host.
+    """
+    from aclientp import HttpTransport
+    from aclientp.http_server import bearer_token_auth
+
+    if token is None and host not in LOOPBACK_HOSTS:
+        msg = f"Serving on {host!r} requires --token (or AGENTPOOL_ACP_TOKEN)"
+        raise t.BadParameter(msg)
+    authenticate = bearer_token_auth(token) if token else None
+    return HttpTransport(
+        host=host, port=port, authenticate=authenticate, allow_origins=allow_origins
+    )
 
 
 def acp_command(  # noqa: PLR0915
@@ -70,25 +93,51 @@ def acp_command(  # noqa: PLR0915
         ),
     ] = True,
     transport: Annotated[
-        Literal["stdio", "websocket"],
+        Literal["stdio", "websocket", "http"],
         t.Option(
             "--transport",
             "-t",
-            help="Transport type: stdio (default) or websocket",
+            help=(
+                "Transport type: stdio (default), websocket, or http (Streamable HTTP and "
+                "WebSocket on one endpoint, experimental)"
+            ),
         ),
     ] = "stdio",
+    host: Annotated[
+        str | None,
+        t.Option("--host", help="Host to bind (websocket/http; default: localhost)"),
+    ] = None,
+    port: Annotated[
+        int | None,
+        t.Option("--port", help="Port to listen on (websocket/http; default: 8765)"),
+    ] = None,
+    token: Annotated[
+        str | None,
+        t.Option(
+            "--token",
+            envvar="AGENTPOOL_ACP_TOKEN",
+            help=(
+                "Bearer token clients must send (http). Required when binding to a "
+                "non-loopback host"
+            ),
+        ),
+    ] = None,
+    allow_origin: Annotated[
+        list[str] | None,
+        t.Option("--allow-origin", help="CORS origin for browser clients (http); repeatable"),
+    ] = None,
     ws_host: Annotated[
         str,
         t.Option(
             "--ws-host",
-            help="WebSocket host (only used with --transport websocket)",
+            help="Deprecated alias of --host",
         ),
     ] = "localhost",
     ws_port: Annotated[
         int,
         t.Option(
             "--ws-port",
-            help="WebSocket port (only used with --transport websocket)",
+            help="Deprecated alias of --port",
         ),
     ] = 8765,
     mcp_config: Annotated[
@@ -127,12 +176,15 @@ def acp_command(  # noqa: PLR0915
     from agentpool_server.acp_server import ACPServer
 
     # Build transport config
-    if transport == "websocket":
-        transport_config: Transport = WebSocketTransport(host=ws_host, port=ws_port)
-    elif transport == "stdio":
-        transport_config = StdioTransport()
-    else:
-        raise t.BadParameter(f"Unknown transport: {transport}. Use 'stdio' or 'websocket'.")
+    bind_host = host or ws_host
+    bind_port = port or ws_port
+    match transport:
+        case "websocket":
+            transport_config: Transport = WebSocketTransport(host=bind_host, port=bind_port)
+        case "http":
+            transport_config = _http_transport(bind_host, bind_port, token, allow_origin or [])
+        case "stdio":
+            transport_config = StdioTransport()
 
     # Always log to file with rollover
     log_dir = user_log_path("agentpool", appauthor=False)
