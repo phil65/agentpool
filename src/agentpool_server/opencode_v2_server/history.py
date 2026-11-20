@@ -10,7 +10,6 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 
-from pydantic_ai import FunctionToolCallEvent
 from pydantic_ai.messages import (
     BaseToolCallPart,
     BaseToolReturnPart,
@@ -25,7 +24,11 @@ from pydantic_ai.messages import (
     UserPromptPart,
 )
 
-from agentpool.agents.events import StreamCompleteEvent, ToolCallCompleteEvent
+from agentpool.agents.events import (
+    StreamCompleteEvent,
+    ToolCallCompleteEvent,
+    ToolCallStartEvent,
+)
 from agentpool.utils.pydantic_ai_helpers import safe_args_as_dict
 from agentpool_server.opencode_v2_server.events import new_message_id
 from agentpool_server.opencode_v2_server.run_converter import RunEventConverter
@@ -88,6 +91,12 @@ def _v2_message_id(message_id: str) -> str:
     return message_id if message_id.startswith("msg_") else new_message_id()
 
 
+def _return_error(part: ToolReturnPart | BaseToolReturnPart) -> str | None:
+    if isinstance(part, ToolReturnPart) and part.outcome != "success":
+        return f"{part.outcome}: {part.model_response_str()}"
+    return None
+
+
 def _replay_assistant(
     converter: RunEventConverter,
     message: ChatMessage[Any],
@@ -108,7 +117,14 @@ def _replay_assistant(
                             tool_calls[part.tool_call_id] = part
                             converter.handle(PartStartEvent(index=index, part=part))
                             converter.handle(PartEndEvent(index=index, part=part))
-                            converter.handle(FunctionToolCallEvent(part=part))
+                            converter.handle(
+                                ToolCallStartEvent(
+                                    tool_call_id=part.tool_call_id,
+                                    tool_name=part.tool_name,
+                                    title=part.tool_name,
+                                    raw_input=safe_args_as_dict(part),
+                                )
+                            )
                         case _:
                             pass
             case ModelRequest(parts=parts):
@@ -125,6 +141,7 @@ def _replay_assistant(
                             tool_result=request_part.content,
                             agent_name=agent_name,
                             message_id=message.message_id,
+                            error=_return_error(request_part),
                         )
                     )
     converter.handle(StreamCompleteEvent(message=message))

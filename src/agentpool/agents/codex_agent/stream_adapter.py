@@ -20,6 +20,7 @@ from pydantic_ai import PartEndEvent, TextPart, ThinkingPart
 from agentpool.agents.codex_agent.codex_converters import (
     _format_tool_result,
     _thread_item_to_tool_call_part,
+    item_error,
 )
 from agentpool.agents.events import (
     CompactionEvent,
@@ -190,6 +191,7 @@ class CodexStreamedResponse(StreamedResponse):
                             tool_result=await _format_tool_result(item),
                             agent_name="codex",  # Will be overridden by agent
                             message_id=data.turn_id,
+                            error=item_error(item),
                         )
 
                 # === Stateless: MCP tool call progress ===

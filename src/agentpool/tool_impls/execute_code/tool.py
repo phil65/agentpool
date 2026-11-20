@@ -91,7 +91,7 @@ class ExecuteCodeTool(Tool[str]):
 
                     case ProcessCompletedEvent(exit_code=code_):
                         exit_code = code_
-                        # Skip exit event for ACP - completion handled by FunctionToolResultEvent
+                        # Skip exit event for ACP - completion handled by ToolCallCompleteEvent
                         if process_id and not is_acp:
                             out = "".join(output_parts)
                             await ctx.events.process_exit(process_id, exit_code, final_output=out)
@@ -99,7 +99,7 @@ class ExecuteCodeTool(Tool[str]):
                     case ProcessErrorEvent(error=err, exit_code=code_):
                         error_msg = err
                         exit_code = code_
-                        # Skip exit event for ACP - completion handled by FunctionToolResultEvent
+                        # Skip exit event for ACP - completion handled by ToolCallCompleteEvent
                         if process_id and not is_acp:
                             await ctx.events.process_exit(
                                 process_id, exit_code or 1, final_output=err

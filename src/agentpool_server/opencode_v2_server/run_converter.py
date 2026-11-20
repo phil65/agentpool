@@ -1,14 +1,15 @@
-"""Translation of AgentPool ``run_stream`` events into OpenCode V2 session events.
+r"""Translation of AgentPool ``run_stream`` events into OpenCode V2 session events.
 
 OpenCode V2 models one agent turn as an *execution* made of *steps*. Each step is one
 model request and becomes its own assistant message. Within a step, text, reasoning and
 tool calls are streamed as ``started`` / ``delta`` / ``ended`` triples, and tool calls then
 move through ``called`` -> ``progress`` -> ``success`` / ``failed``.
 
-AgentPool streams pydantic-ai part events (native agents) as well as the richer
-``ToolCallStartEvent`` / ``ToolCallProgressEvent`` / ``ToolCallCompleteEvent`` (toolsets and
-external agents). The converter accepts both and derives step boundaries: a new step starts
-when model output arrives after tools of the current step were called.
+Tool calls follow the canonical lifecycle of all agent types (``ToolCallStartEvent`` ->
+``ToolCallProgressEvent``\* -> ``ToolCallCompleteEvent``); pydantic-ai part events only stream
+the tool arguments. Steps come from ``StepStartedEvent`` / ``StepCompletedEvent`` when the
+agent reports them, otherwise they are inferred: a new step starts when model output arrives
+after tools of the current step were called.
 """
 
 from __future__ import annotations
@@ -17,7 +18,6 @@ from dataclasses import dataclass, field
 import json
 from typing import TYPE_CHECKING, Any, Literal, Protocol
 
-from pydantic_ai import FunctionToolCallEvent, FunctionToolResultEvent, ToolReturnPart
 from pydantic_ai.messages import (
     BaseToolCallPart,
     PartDeltaEvent,
@@ -51,7 +51,6 @@ from agentpool.agents.events import (
     ToolCallStartEvent,
 )
 from agentpool.log import get_logger
-from agentpool.utils.pydantic_ai_helpers import safe_args_as_dict
 from agentpool.utils.time_utils import now_ms
 from agentpool_server.opencode_v2_server.events import new_message_id
 from opencode_v2_sdk.models import (
@@ -632,16 +631,6 @@ class RunEventConverter:
     def _handle_rich_event(self, event: StreamWithCommandsEvent[Any]) -> None:
         """Translate tool execution, lifecycle and AgentPool-specific events."""
         match event:
-            case FunctionToolCallEvent(part=call_part):
-                tool = self._start_tool(call_part.tool_call_id, call_part.tool_name)
-                self._call_tool(tool, safe_args_as_dict(call_part))
-            case FunctionToolResultEvent(
-                part=ToolReturnPart(tool_call_id=call_id, outcome=outcome) as return_part
-            ) if outcome != "success":
-                if (tool := self.tools.get(call_id)) is not None:
-                    self._finish_tool(tool, None, f"{outcome}: {return_part.model_response_str()}")
-            case FunctionToolResultEvent():
-                pass  # Successful completion is reported through ToolCallCompleteEvent.
             case ToolCallStartEvent(
                 tool_call_id=call_id, tool_name=name, title=title, raw_input=raw_input
             ):
@@ -653,14 +642,17 @@ class RunEventConverter:
             case ToolCallProgressEvent(tool_call_id=call_id) if call_id:
                 self._on_tool_progress(event)
             case ToolCallCompleteEvent(
-                tool_call_id=call_id, tool_name=name, tool_input=tool_input, tool_result=result
+                tool_call_id=call_id,
+                tool_name=name,
+                tool_input=tool_input,
+                tool_result=result,
+                error=error,
             ):
                 tool = self.tools.get(call_id)
                 if tool is None:
                     tool = self._start_tool(call_id, name)
                     self._call_tool(tool, tool_input)
-                error = _result_error(result)
-                self._finish_tool(tool, result, error)
+                self._finish_tool(tool, result, error or _result_error(result))
             case StreamCompleteEvent(message=message):
                 self.final_message = message
             case StepStartedEvent():

@@ -101,6 +101,15 @@ async def test_history_replay_without_log(client: AsyncClient, state: ServerStat
     assert types[0] == "user"
     assert "assistant" in types
     assert types[-1] == "idle"
+    tools = [
+        part
+        for m in rebuilt.projection.messages
+        if m.type == "assistant"
+        for part in m.content
+        if part.type == "tool"
+    ]
+    assert [t.name for t in tools] == ["add"]
+    assert tools[0].state.status == "completed"
 
 
 async def test_message_pagination(client: AsyncClient) -> None:

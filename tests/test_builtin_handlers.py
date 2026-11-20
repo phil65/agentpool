@@ -4,20 +4,15 @@ from __future__ import annotations
 
 from io import StringIO
 import sys
+from typing import Any
 
-from pydantic_ai import (
-    FunctionToolCallEvent,
-    FunctionToolResultEvent,
-    PartStartEvent,
-    TextPart,
-    ToolCallPart,
-    ToolReturnPart,
-)
+from pydantic_ai import PartStartEvent, TextPart
 import pytest
 
 from agentpool.agents.events import (
     RunErrorEvent,
     StreamCompleteEvent,
+    ToolCallCompleteEvent,
     ToolCallStartEvent,
     detailed_print_handler,
     simple_print_handler,
@@ -50,15 +45,27 @@ async def test_simple_print_handler_text(mock_run_context):
         sys.stderr = sys.__stderr__
 
 
+def _complete(
+    tool_name: str, result: Any, *, tool_input: dict[str, Any] | None = None
+) -> ToolCallCompleteEvent:
+    return ToolCallCompleteEvent(
+        tool_name=tool_name,
+        tool_call_id="call_123",
+        tool_input=tool_input or {},
+        tool_result=result,
+        agent_name="test",
+        message_id="m1",
+    )
+
+
 async def test_simple_print_handler_tool_call(mock_run_context):
     """Test simple handler prints tool call."""
     output = StringIO()
     sys.stderr = output
-    part = ToolCallPart(tool_name="test_tool", args={"param": "value"}, tool_call_id="call_123")
-    event = FunctionToolCallEvent(part=part)
+    event = _complete("test_tool", "done", tool_input={"param": "value"})
     try:
         await simple_print_handler(mock_run_context, event)
-        assert "🔧 test_tool" in output.getvalue()
+        assert "🔧 test_tool(param='value')" in output.getvalue()
     finally:
         sys.stderr = sys.__stderr__
 
@@ -98,10 +105,7 @@ async def test_detailed_print_handler_tool_result(mock_run_context):
     """Test detailed handler prints tool results."""
     output = StringIO()
     sys.stderr = output
-    result_part = ToolReturnPart(
-        tool_name="test_tool", content="Op successful", tool_call_id="call_123"
-    )
-    event = FunctionToolResultEvent(result_part)
+    event = _complete("test_tool", "Op successful")
     try:
         await detailed_print_handler(mock_run_context, event)
         result = output.getvalue()
@@ -117,10 +121,7 @@ async def test_detailed_print_handler_truncates_long_output(mock_run_context):
     output = StringIO()
     sys.stderr = output
     long_content = "x" * 200
-    result_part = ToolReturnPart(
-        tool_name="test_tool", content=long_content, tool_call_id="call_123"
-    )
-    event = FunctionToolResultEvent(result_part)
+    event = _complete("test_tool", long_content)
     try:
         await detailed_print_handler(mock_run_context, event)
         result = output.getvalue()

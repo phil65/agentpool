@@ -8,15 +8,14 @@ from __future__ import annotations
 
 from aclientp.schema import AgentMessageChunk, ToolCallProgress
 from pydantic_ai import (
-    FunctionToolCallEvent,
     PartDeltaEvent,
     PartStartEvent,
     TextPart,
     TextPartDelta,
-    ToolCallPart,
 )
 import pytest
 
+from agentpool.agents.events import ToolCallStartEvent
 from agentpool_server.acp_server.event_converter import ACPEventConverter
 
 
@@ -104,19 +103,14 @@ class TestACPEventConverter:
         converter = ACPEventConverter()
 
         # Start two tool calls
-        tool_event_1 = FunctionToolCallEvent(
-            part=ToolCallPart(
-                tool_call_id="tool-1",
-                tool_name="test_tool",
-                args={"arg": "value"},
-            ),
+        tool_event_1 = ToolCallStartEvent(
+            tool_call_id="tool-1",
+            tool_name="test_tool",
+            title="test_tool",
+            raw_input={"arg": "value"},
         )
-        tool_event_2 = FunctionToolCallEvent(
-            part=ToolCallPart(
-                tool_call_id="tool-2",
-                tool_name="another_tool",
-                args={},
-            ),
+        tool_event_2 = ToolCallStartEvent(
+            tool_call_id="tool-2", tool_name="another_tool", title="another_tool"
         )
 
         # Process tool call starts

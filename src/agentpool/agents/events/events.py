@@ -216,7 +216,21 @@ class StreamCompleteEvent[TContent]:
 
 @dataclass(kw_only=True)
 class ToolCallStartEvent:
-    """Event indicating a tool call has started with rich ACP metadata."""
+    r"""Event indicating a tool call has started with rich ACP metadata.
+
+    Tool lifecycle contract (all agent types):
+
+    - Every tool call is announced with a ``ToolCallStartEvent`` by the agent when the call
+      is issued. Further ``ToolCallStartEvent``\s for the same ``tool_call_id`` (e.g. emitted
+      by the tool itself via ``ctx.events.tool_call_start``) update title, kind, locations
+      and content of the already started call.
+    - ``ToolCallProgressEvent``\s report progress while it runs.
+    - Every call ends with exactly one :class:`ToolCallCompleteEvent` (``error`` set on failure).
+
+    pydantic-ai part events (``PartStartEvent`` / ``PartDeltaEvent`` with tool call parts) may
+    additionally stream the arguments; consumers don't need ``FunctionToolCallEvent`` /
+    ``FunctionToolResultEvent`` to follow the lifecycle.
+    """
 
     tool_call_id: str
     """The ID of the tool call."""
@@ -572,7 +586,11 @@ class CommandCompleteEvent:
 
 @dataclass(kw_only=True)
 class ToolCallCompleteEvent:
-    """Event indicating tool call is complete with both input and output."""
+    """Event indicating tool call is complete with both input and output.
+
+    Emitted exactly once per tool call, for successful and failed calls alike
+    (see :class:`ToolCallStartEvent` for the lifecycle contract).
+    """
 
     tool_name: str
     """The name of the tool that was called."""
@@ -588,6 +606,8 @@ class ToolCallCompleteEvent:
     """The message ID associated with this tool call."""
     metadata: dict[str, Any] | None = None
     """Optional metadata for UI/client use (diffs, diagnostics, etc.)."""
+    error: str | None = None
+    """Error message if the call failed (None for successful calls)."""
     event_kind: Literal["tool_call_complete"] = "tool_call_complete"
     """Event type identifier."""
 

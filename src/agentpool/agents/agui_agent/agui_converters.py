@@ -151,13 +151,10 @@ def agui_to_native_event(event: Event) -> Iterator[RichAgentStreamEvent[Any]]:
         case ToolCallArgsEvent(tool_call_id=tc_id, delta=_):
             yield ToolCallProgressEvent(tool_call_id=tc_id, status="in_progress")
 
-        case ToolCallResultEvent(tool_call_id=tc_id, content=content):
-            yield ToolCallProgressEvent(
-                tool_call_id=tc_id, status="completed", message=_tool_result_text(content)
-            )
-
-        case ToolCallEndEvent(tool_call_id=tc_id):
-            yield ToolCallProgressEvent(tool_call_id=tc_id, status="completed")
+        case ToolCallResultEvent() | ToolCallEndEvent():
+            # Completion (ToolCallCompleteEvent) is emitted by the agent, which knows the
+            # tool name and arguments; ToolCallEnd only ends argument streaming.
+            pass
 
         # === Activity Events -> PlanUpdateEvent ===
 
@@ -226,7 +223,7 @@ def agui_to_native_event(event: Event) -> Iterator[RichAgentStreamEvent[Any]]:
             assert_never(unreachable)
 
 
-def _tool_result_text(content: str | Sequence[ContentPart]) -> str:
+def tool_result_text(content: str | Sequence[ContentPart]) -> str:
     """Extract the text from AG-UI tool result content."""
     from ag_ui.core import TextPart
 

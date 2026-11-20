@@ -2,7 +2,7 @@
 
 Iterates over an AgentRun's graph nodes, streaming events from each
 ModelRequestNode/CallToolsNode and converting tool call/result pairs
-into ToolCallCompleteEvents.
+into the canonical ToolCallStartEvent / ToolCallCompleteEvent lifecycle.
 """
 
 from __future__ import annotations
@@ -13,7 +13,7 @@ from typing import TYPE_CHECKING, Any
 from pydantic_ai import CallToolsNode, ModelRequestNode
 from pydantic_graph import End
 
-from agentpool.agents.native_agent.helpers import forward_supported_events, process_tool_event
+from agentpool.agents.native_agent.helpers import ToolEventTracker, forward_supported_events
 from agentpool.utils.streams import merge_queue_into_iterator
 from agentpool.utils.streams.streamed_response import StreamedResponse
 from agentpool.utils.time_utils import get_now
@@ -24,7 +24,7 @@ if TYPE_CHECKING:
     from collections.abc import AsyncIterator
     from datetime import datetime
 
-    from pydantic_ai import AgentRun, BaseToolCallPart
+    from pydantic_ai import AgentRun
 
     from agentpool.agents.events import RichAgentStreamEvent
 
@@ -42,7 +42,7 @@ class PydanticAiStreamedResponse(StreamedResponse):
     _event_queue: Queue[RichAgentStreamEvent[Any]]
 
     async def _get_event_iterator(self) -> AsyncIterator[RichAgentStreamEvent[Any]]:
-        pending_tcs: dict[str, BaseToolCallPart] = {}
+        tool_events = ToolEventTracker(agent_name=self.agent_name, message_id=self.message_id)
         async for node in self.stream:
             match node:
                 case End():
@@ -56,13 +56,8 @@ class PydanticAiStreamedResponse(StreamedResponse):
                     ):
                         async for event in merged:
                             yield event
-                            if combined := process_tool_event(
-                                self.agent_name,
-                                event,
-                                pending_tcs,
-                                self.message_id,
-                            ):
-                                yield combined
+                            for tool_event in tool_events.process(event):
+                                yield tool_event
 
     @property
     def model_name(self) -> str:

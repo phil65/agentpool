@@ -33,20 +33,14 @@ from openai.types.responses import (
 from openai.types.responses.mcp_tool_call_error import McpToolExecutionError
 from openai.types.responses.response_output_item import McpCall
 from pydantic_ai import (
-    FunctionToolCallEvent,
-    FunctionToolResultEvent,
     PartDeltaEvent,
     PartStartEvent,
     TextPart,
     TextPartDelta,
-    ToolCallPart,
-    ToolReturnPart,
 )
-from pydantic_ai.messages import NativeToolCallPart, NativeToolReturnPart
 
-from agentpool.agents.events import CompactionEvent
+from agentpool.agents.events import CompactionEvent, ToolCallCompleteEvent, ToolCallStartEvent
 from agentpool.log import get_logger
-from agentpool.utils.pydantic_ai_helpers import safe_args_as_dict
 
 
 if TYPE_CHECKING:
@@ -258,26 +252,16 @@ class ResponsesStreamAdapter:
                     )
                 )
 
-            case FunctionToolCallEvent(part=ToolCallPart() as part):
-                lines.extend(self._start_tool_call(part.tool_call_id, part.tool_name, part))
-
-            case PartStartEvent(part=NativeToolCallPart() as part):
-                lines.extend(self._start_tool_call(part.tool_call_id, part.tool_name, part))
-
-            case FunctionToolResultEvent(
-                part=ToolReturnPart(outcome="failed" | "retried", tool_call_id=tc_id) as result,
+            # Canonical tool lifecycle (all agent types); repeated starts only update a call
+            case ToolCallStartEvent(tool_call_id=tc_id, tool_name=name, raw_input=raw_input) if (
+                tc_id not in self._tool_items
             ):
-                error_msg = result.model_response_str(wrap_if_error=False)
+                lines.extend(self._start_tool_call(tc_id, name, raw_input))
+
+            case ToolCallCompleteEvent(tool_call_id=tc_id, error=str() as error_msg):
                 lines.extend(self._fail_tool_call(tc_id, error_msg))
 
-            case FunctionToolResultEvent(
-                part=ToolReturnPart(content=out, tool_name=name, tool_call_id=tc_id),
-            ):
-                lines.extend(self._complete_tool_call(tc_id, name, str(out)))
-
-            case PartStartEvent(
-                part=NativeToolReturnPart(content=out, tool_name=name, tool_call_id=tc_id),
-            ):
+            case ToolCallCompleteEvent(tool_call_id=tc_id, tool_name=name, tool_result=out):
                 lines.extend(self._complete_tool_call(tc_id, name, str(out)))
 
             case CompactionEvent(phase="starting"):
@@ -300,9 +284,10 @@ class ResponsesStreamAdapter:
 
         return lines
 
-    def _start_tool_call(self, tool_call_id: str, tool_name: str, part: Any) -> list[str]:
+    def _start_tool_call(
+        self, tool_call_id: str, tool_name: str, args: dict[str, Any]
+    ) -> list[str]:
         """Emit events for a new MCP tool call."""
-        args = safe_args_as_dict(part, default={})
         args_json = anyenv.dump_json(args)
         output_idx = self._output_index
         self._output_index += 1

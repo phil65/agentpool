@@ -30,8 +30,8 @@ from agentpool.agents.events import (
     StreamCompleteEvent,
 )
 from agentpool.agents.native_agent.helpers import (
+    ToolEventTracker,
     forward_supported_events,
-    process_tool_event,
     response_cost,
 )
 from agentpool.log import get_logger
@@ -60,7 +60,6 @@ if TYPE_CHECKING:
     from pydantic_ai import (
         AgentRetries,
         AgentRun,
-        BaseToolCallPart,
         EndStrategy,
         ModelSettings,
         UsageLimits,
@@ -719,7 +718,7 @@ class Agent[TDeps = None, OutputDataT = str](BaseAgent[TDeps, OutputDataT]):
             message_history=[m for run in history_list for m in run.to_pydantic_ai()],
             usage_limits=self._default_usage_limits,
         ) as agent_run:
-            pending_tcs: dict[str, BaseToolCallPart] = {}
+            tool_events = ToolEventTracker(agent_name=self.name, message_id=message_id)
             try:
                 async for node in agent_run:
                     if self._cancelled:
@@ -732,9 +731,7 @@ class Agent[TDeps = None, OutputDataT = str](BaseAgent[TDeps, OutputDataT]):
                         case ModelRequestNode():
                             step_id = str(uuid4())
                             yield StepStartedEvent(step_id=step_id, model_name=self.model_name)
-                            async for event in self._stream_node(
-                                node, agent_run, pending_tcs, message_id
-                            ):
+                            async for event in self._stream_node(node, agent_run, tool_events):
                                 yield event
                             history = agent_run.ctx.state.message_history
                             if not self._cancelled and isinstance(history[-1], ModelResponse):
@@ -748,9 +745,7 @@ class Agent[TDeps = None, OutputDataT = str](BaseAgent[TDeps, OutputDataT]):
                                 )
                         # Stream events from tool call nodes
                         case CallToolsNode():
-                            async for event in self._stream_node(
-                                node, agent_run, pending_tcs, message_id
-                            ):
+                            async for event in self._stream_node(node, agent_run, tool_events):
                                 yield event
             except asyncio.CancelledError:
                 self.log.info("Stream cancelled via task cancellation")
@@ -794,8 +789,7 @@ class Agent[TDeps = None, OutputDataT = str](BaseAgent[TDeps, OutputDataT]):
         self,
         node: ModelRequestNode[Any, Any] | CallToolsNode[Any, Any],
         agent_run: AgentRun[Any, Any],
-        pending_tcs: dict[str, BaseToolCallPart],
-        message_id: str,
+        tool_events: ToolEventTracker,
     ) -> AsyncIterator[RichAgentStreamEvent[Any]]:
         """Stream a graph node's events, merged with events queued by tools."""
         async with (
@@ -808,8 +802,8 @@ class Agent[TDeps = None, OutputDataT = str](BaseAgent[TDeps, OutputDataT]):
                 if self._cancelled:
                     break
                 yield event
-                if combined := process_tool_event(self.name, event, pending_tcs, message_id):
-                    yield combined
+                for tool_event in tool_events.process(event):
+                    yield tool_event
 
     def register_worker(
         self,

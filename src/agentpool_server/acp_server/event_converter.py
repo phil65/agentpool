@@ -36,8 +36,6 @@ from pydantic_ai import (
     FunctionToolCallEvent,
     FunctionToolResultEvent,
     ModelResponse,
-    NativeToolCallPart,
-    NativeToolReturnPart,
     PartDeltaEvent,
     PartEndEvent,
     PartStartEvent,
@@ -45,9 +43,7 @@ from pydantic_ai import (
     TextPartDelta,
     ThinkingPart,
     ThinkingPartDelta,
-    ToolCallPart,
     ToolCallPartDelta,
-    ToolReturnPart,
 )
 
 from agentpool.acp_utils import generate_tool_title, infer_tool_kind, to_acp_content_blocks
@@ -73,7 +69,6 @@ from agentpool.agents.events import (
     ToolCallStartEvent,
 )
 from agentpool.log import get_logger
-from agentpool.utils.pydantic_ai_helpers import safe_args_as_dict
 from agentpool_server.acp_server.converters import to_usage
 
 
@@ -170,6 +165,9 @@ class ACPEventConverter:
     _subagent_content: dict[str, list[str]] = field(default_factory=dict)
     """Accumulated content per subagent (for tool_box mode)."""
 
+    _subagent_tool_calls: set[str] = field(default_factory=set)
+    """Subagent tool calls already announced (repeated start events only update a call)."""
+
     _current_message_id: str = field(default_factory=lambda: str(uuid.uuid4()))
     """Message ID for the current agent response."""
 
@@ -222,6 +220,13 @@ class ACPEventConverter:
             )
         return self._tool_states[tool_call_id]
 
+    def _first_subagent_start(self, tool_call_id: str) -> bool:
+        """Whether this is the first start event of a subagent tool call."""
+        if tool_call_id in self._subagent_tool_calls:
+            return False
+        self._subagent_tool_calls.add(tool_call_id)
+        return True
+
     def _cleanup_tool_state(self, tool_call_id: str) -> None:
         """Remove tool state after completion."""
         self._tool_states.pop(tool_call_id, None)
@@ -254,38 +259,6 @@ class ACPEventConverter:
             ):
                 yield AgentThoughtChunk.text(delta or "\n", message_id=self._current_message_id)
 
-            # Builtin tool call started (e.g., WebSearchTool, CodeExecutionTool)
-            case PartStartEvent(part=NativeToolCallPart() as part):
-                tool_call_id = part.tool_call_id
-                tool_input = safe_args_as_dict(part, default={})
-                self._current_tool_inputs[tool_call_id] = tool_input
-                state = self._get_or_create_tool_state(tool_call_id, part.tool_name, tool_input)
-                if not state.started:
-                    state.started = True
-                    yield ToolCallStart(
-                        tool_call_id=tool_call_id,
-                        title=state.title,
-                        name=state.tool_name,
-                        kind=state.kind,
-                        raw_input=state.raw_input,
-                        status="pending",
-                    )
-
-            # Builtin tool completed
-            case PartStartEvent(part=NativeToolReturnPart(content=out, tool_call_id=tc_id)):
-                tool_state = self._tool_states.get(tc_id)
-                if tool_state and tool_state.has_content:
-                    yield ToolCallProgress(tool_call_id=tc_id, status="completed", raw_output=out)
-                else:
-                    converted = to_acp_content_blocks(out)
-                    yield ToolCallProgress(
-                        tool_call_id=tc_id,
-                        status="completed",
-                        raw_output=out,
-                        content=[ContentToolCallContent(content=block) for block in converted],
-                    )
-                self._cleanup_tool_state(tc_id)
-
             case PartStartEvent(part=part):
                 logger.debug("Received unhandled PartStartEvent", part=part)
 
@@ -313,46 +286,12 @@ class ACPEventConverter:
                                 status="pending",
                             )
 
-            # Function tool call started
-            case (
-                FunctionToolCallEvent(part=ToolCallPart() as call_part)  # type: ignore[misc]
-                | PartStartEvent(part=NativeToolCallPart() as call_part)
-            ):
-                tool_call_id = call_part.tool_call_id
-                tool_input = safe_args_as_dict(call_part, default={})
-                self._current_tool_inputs[tool_call_id] = tool_input
-                state = self._get_or_create_tool_state(
-                    tool_call_id,
-                    call_part.tool_name,
-                    tool_input,
-                )
-                if not state.started:
-                    state.started = True
-                    yield ToolCallStart(
-                        tool_call_id=tool_call_id,
-                        title=state.title,
-                        name=state.tool_name,
-                        kind=state.kind,
-                        raw_input=state.raw_input,
-                        status="pending",
-                    )
-
-            # Tool failed with retry
-            case FunctionToolResultEvent(
-                part=ToolReturnPart(outcome="failed" | "retried", tool_call_id=tc_id) as result
-            ):
-                error_message = result.model_response_str(wrap_if_error=False)
-                content = ContentToolCallContent.text(f"Error: {error_message}")
-                yield ToolCallProgress(tool_call_id=tc_id, status="failed", content=[content])
-                self._cleanup_tool_state(tc_id)
-
-            # Tool completed successfully
-            case (
-                FunctionToolResultEvent(part=ToolReturnPart(content=out, tool_call_id=tc_id))  # type: ignore[misc]
-                | PartStartEvent(part=NativeToolReturnPart(content=out, tool_call_id=tc_id))
-            ):
-                # Handle async generator content
-                if (tool_state := self._tool_states.get(tc_id)) and tool_state.has_content:
+            # Tool call finished (canonical lifecycle end for all agent types)
+            case ToolCallCompleteEvent(tool_call_id=tc_id, tool_result=out, error=error):
+                if error is not None:
+                    content = ContentToolCallContent.text(f"Error: {error}")
+                    yield ToolCallProgress(tool_call_id=tc_id, status="failed", content=[content])
+                elif (tool_state := self._tool_states.get(tc_id)) and tool_state.has_content:
                     yield ToolCallProgress(tool_call_id=tc_id, status="completed", raw_output=out)
                 else:
                     converted = to_acp_content_blocks(out)
@@ -364,7 +303,7 @@ class ACPEventConverter:
                     )
                 self._cleanup_tool_state(tc_id)
 
-            # Tool emits its own start event
+            # Tool call started; repeated starts (e.g. from the tool itself) update it
             case ToolCallStartEvent(
                 tool_call_id=tc_id,
                 tool_name=tool_name,
@@ -464,7 +403,7 @@ class ACPEventConverter:
 
                 # TODO: Progress events shouldn't control completion status.
                 # The file_operation helper sets status="completed" on success, but that's
-                # emitted mid-operation (before content display). Only FunctionToolResultEvent
+                # emitted mid-operation (before content display). Only ToolCallCompleteEvent
                 # should mark a tool as completed. For now, hardcode in_progress.
                 yield ToolCallProgress(
                     tool_call_id=tool_call_id,
@@ -594,23 +533,17 @@ class ACPEventConverter:
                     f"{indent}[{source_name}] {delta or ''}", message_id=self._current_message_id
                 )
 
-            case (
-                FunctionToolCallEvent(part=part) | PartStartEvent(part=NativeToolCallPart() as part)
+            case ToolCallStartEvent(tool_call_id=tc_id, tool_name=tool_name) if (
+                self._first_subagent_start(tc_id)
             ):
-                text = f"\n{indent}🔧 [{source_name}] Using tool: {part.tool_name}\n"
+                text = f"\n{indent}🔧 [{source_name}] Using tool: {tool_name}\n"
                 yield AgentMessageChunk.text(text, message_id=self._current_message_id)
 
-            case FunctionToolResultEvent(
-                part=ToolReturnPart(outcome="failed" | "retried", tool_name=tool_name) as result
-            ):
-                error_msg = result.model_response_str(wrap_if_error=False)
+            case ToolCallCompleteEvent(tool_name=tool_name, error=str() as error_msg):
                 text = f"{indent}❌ [{source_name}] {tool_name}: {error_msg}\n"
                 yield AgentMessageChunk.text(text, message_id=self._current_message_id)
 
-            case (
-                FunctionToolResultEvent(part=ToolReturnPart(content=content, tool_name=tool_name))
-                | PartStartEvent(part=NativeToolReturnPart(content=content, tool_name=tool_name))
-            ):
+            case ToolCallCompleteEvent(tool_result=content, tool_name=tool_name):
                 result_str = str(content)
                 if len(result_str) > 200:  # noqa: PLR2004
                     result_str = result_str[:200] + "..."
@@ -627,6 +560,7 @@ class ACPEventConverter:
             case (
                 CompactionEvent()
                 | FinalResultEvent()
+                | FunctionToolCallEvent()
                 | FunctionToolResultEvent()
                 | PartDeltaEvent()
                 | PartEndEvent()
@@ -683,25 +617,19 @@ class ACPEventConverter:
                     async for n in self._emit_subagent_progress(state_key, f"{icon} {source_name}"):
                         yield n
 
-            case (
-                FunctionToolCallEvent(part=part) | PartStartEvent(part=NativeToolCallPart() as part)
+            case ToolCallStartEvent(tool_call_id=tc_id, tool_name=tool_name) if (
+                self._first_subagent_start(tc_id)
             ):
-                accumulated.append(f"\n🔧 Using tool: {part.tool_name}\n")
+                accumulated.append(f"\n🔧 Using tool: {tool_name}\n")
                 async for n in self._emit_subagent_progress(state_key, f"{icon} {source_name}"):
                     yield n
 
-            case FunctionToolResultEvent(
-                part=ToolReturnPart(outcome="failed" | "retried", tool_name=tool_name) as result
-            ):
-                error_msg = result.model_response_str(wrap_if_error=False)
+            case ToolCallCompleteEvent(tool_name=tool_name, error=str() as error_msg):
                 accumulated.append(f"❌ {tool_name}: {error_msg}\n")
                 async for n in self._emit_subagent_progress(state_key, f"{icon} {source_name}"):
                     yield n
 
-            case (
-                FunctionToolResultEvent(part=ToolReturnPart(content=content, tool_name=tool_name))
-                | PartStartEvent(part=NativeToolReturnPart(content=content, tool_name=tool_name))
-            ):
+            case ToolCallCompleteEvent(tool_result=content, tool_name=tool_name):
                 result_str = str(content)
                 if len(result_str) > 200:  # noqa: PLR2004
                     result_str = result_str[:200] + "..."
@@ -719,6 +647,7 @@ class ACPEventConverter:
             case (
                 CompactionEvent()
                 | FinalResultEvent()
+                | FunctionToolCallEvent()
                 | FunctionToolResultEvent()
                 | PartDeltaEvent()
                 | PartEndEvent()

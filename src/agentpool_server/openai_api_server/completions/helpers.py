@@ -7,20 +7,14 @@ from typing import TYPE_CHECKING, Any
 
 import anyenv
 from pydantic_ai import (
-    FunctionToolCallEvent,
-    FunctionToolResultEvent,
     PartDeltaEvent,
     PartStartEvent,
     TextPart,
     TextPartDelta,
-    ToolCallPart,
-    ToolReturnPart,
 )
-from pydantic_ai.messages import NativeToolCallPart, NativeToolReturnPart
 
-from agentpool.agents.events import CompactionEvent, ToolCallStartEvent
+from agentpool.agents.events import CompactionEvent, ToolCallCompleteEvent, ToolCallStartEvent
 from agentpool.log import get_logger
-from agentpool.utils.pydantic_ai_helpers import safe_args_as_dict
 
 
 if TYPE_CHECKING:
@@ -77,6 +71,7 @@ async def stream_response(
         }
         yield f"data: {anyenv.dump_json(first_chunk)}\n\n"
 
+        announced: set[str] = set()
         async for event in agent.run_stream(content):
             match event:
                 # Text output
@@ -85,36 +80,17 @@ async def stream_response(
                 case PartDeltaEvent(delta=TextPartDelta(content_delta=delta)) if delta:
                     yield _make_chunk(delta)
 
-                # Tool call started (pydantic-ai function tools)
-                case FunctionToolCallEvent(part=ToolCallPart() as part):
-                    args = safe_args_as_dict(part, default={})
-                    yield _make_chunk(_format_tool_call(part.tool_name, args))
-
-                # Tool call started (builtin tools)
-                case PartStartEvent(part=NativeToolCallPart() as part):
-                    args = safe_args_as_dict(part, default={})
-                    yield _make_chunk(_format_tool_call(part.tool_name, args))
-
-                # Rich tool call start (custom events from our agents)
-                case ToolCallStartEvent(tool_name=name, title=title):
-                    label = title or name
-                    yield _make_chunk(f"\n🔧 **{label}**\n")
-
-                # Tool failed with retry
-                case FunctionToolResultEvent(
-                    part=ToolReturnPart(outcome="failed" | "retried", tool_name=name) as result
+                # Canonical tool lifecycle (all agent types); repeated starts only update
+                case ToolCallStartEvent(tool_call_id=tc_id, tool_name=name, raw_input=args) if (
+                    tc_id not in announced
                 ):
-                    error_msg = result.model_response_str(wrap_if_error=False)
+                    announced.add(tc_id)
+                    yield _make_chunk(_format_tool_call(name, args))
+
+                case ToolCallCompleteEvent(tool_name=name, error=str() as error_msg):
                     yield _make_chunk(_format_tool_result(name, error_msg, is_error=True))
 
-                # Tool completed successfully
-                case FunctionToolResultEvent(part=ToolReturnPart(content=out, tool_name=name)):
-                    yield _make_chunk(_format_tool_result(name, out))
-
-                # Builtin tool completed
-                case PartStartEvent(
-                    part=NativeToolReturnPart(content=out, tool_name=name),
-                ):
+                case ToolCallCompleteEvent(tool_name=name, tool_result=out):
                     yield _make_chunk(_format_tool_result(name, out))
 
                 # Compaction

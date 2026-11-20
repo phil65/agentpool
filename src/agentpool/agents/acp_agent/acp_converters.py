@@ -527,16 +527,18 @@ def acp_to_native_event(  # noqa: PLR0911
             content=content,
             raw_output=raw_output,
         ):
-            # If completed, return ToolCallCompleteEvent for metadata injection
-            if status == "completed":
+            # Terminal states end the tool call (ToolCallCompleteEvent, also for metadata)
+            if status in {"completed", "failed"}:
+                output = str(raw_output) if raw_output else ""
                 return ToolCallCompleteEvent(
                     tool_call_id=tool_call_id,
                     tool_name=title or "unknown",
                     tool_input={},  # ACP doesn't provide input in progress updates
-                    tool_result=str(raw_output) if raw_output else "",
+                    tool_result=output,
                     agent_name="",  # Will be set by agent
                     message_id="",
                     metadata=None,  # Will be injected by agent from metadata accumulator
+                    error=(output or "Tool call failed") if status == "failed" else None,
                 )
             # Otherwise return progress event
             return ToolCallProgressEvent(

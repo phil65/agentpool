@@ -25,7 +25,6 @@ from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
 from pydantic_ai import (
-    FunctionToolResultEvent,
     ModelRequest,
     ModelResponse,
     PartDeltaEvent,
@@ -132,8 +131,11 @@ class MessageReconstructor:
                 self.current_response_parts.append(TextPart(content=text))
                 self._text_chunks.append(text)
 
-            case PartStartEvent(part=ThinkingPart() | ToolCallPart() as part):
+            case PartStartEvent(part=ThinkingPart() as part):
                 self.current_response_parts.append(part)
+
+            case PartStartEvent(part=ToolCallPart() as part):
+                self._upsert_tool_call(part)
 
             # --- Deltas (streaming increments) ---
             case PartDeltaEvent(delta=TextPartDelta(content_delta=delta)):
@@ -148,9 +150,11 @@ class MessageReconstructor:
                 self._merge_tool_call_delta(args, tc_id)
 
             # --- Tool call start (from external agents) ---
+            # Repeated starts for the same call update it (see ToolCallStartEvent contract).
             case ToolCallStartEvent(tool_call_id=tc_id, tool_name=name, raw_input=raw_input):
-                part = ToolCallPart(tool_name=name, args=raw_input, tool_call_id=tc_id)
-                self.current_response_parts.append(part)
+                self._upsert_tool_call(
+                    ToolCallPart(tool_name=name, args=raw_input, tool_call_id=tc_id)
+                )
 
             # --- Tool call complete → flush response, add return ---
             case ToolCallCompleteEvent(tool_name=name, tool_call_id=tc_id, tool_result=result):
@@ -159,13 +163,21 @@ class MessageReconstructor:
                 return_part = ToolReturnPart(tool_name=name, content=content, tool_call_id=tc_id)
                 self.model_messages.append(ModelRequest(parts=[return_part]))
 
-            # --- pydantic-ai native tool result events ---
-            case FunctionToolResultEvent(part=ToolReturnPart() as return_part):
-                self._flush_response()
-                self.model_messages.append(ModelRequest(parts=[return_part]))
-
             case _:
                 pass  # Ignore events not relevant to message reconstruction
+
+    def _upsert_tool_call(self, part: ToolCallPart) -> None:
+        """Add a tool call part, or update the pending part with the same call ID."""
+        for index, existing in enumerate(self.current_response_parts):
+            if isinstance(existing, ToolCallPart) and existing.tool_call_id == part.tool_call_id:
+                args = part.args if part.args else existing.args
+                self.current_response_parts[index] = ToolCallPart(
+                    tool_name=part.tool_name or existing.tool_name,
+                    args=args,
+                    tool_call_id=part.tool_call_id,
+                )
+                return
+        self.current_response_parts.append(part)
 
     def flush(self, *, finish_reason: FinishReason | None = None) -> list[ModelMessage]:
         """Flush remaining response parts into a final ``ModelResponse``.

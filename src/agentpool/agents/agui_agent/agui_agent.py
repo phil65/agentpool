@@ -22,7 +22,12 @@ from pydantic_ai import ModelRequest, ToolReturnPart
 
 from agentpool.agents.agui_agent.helpers import execute_tool_call, parse_sse_stream
 from agentpool.agents.base_agent import BaseAgent
-from agentpool.agents.events import PartStartEvent, RunStartedEvent, StreamCompleteEvent
+from agentpool.agents.events import (
+    PartStartEvent,
+    RunStartedEvent,
+    StreamCompleteEvent,
+    ToolCallCompleteEvent,
+)
 from agentpool.agents.events.reconstructor import MessageReconstructor
 from agentpool.agents.exceptions import (
     AgentNotInitializedError,
@@ -373,6 +378,15 @@ class AGUIAgent[TDeps = None](BaseAgent[TDeps, str]):
                         confirmation_mode=self.tool_confirmation_mode,
                     )
                     pending_tool_results.append(result)
+                    yield ToolCallCompleteEvent(
+                        tool_name=tool_name,
+                        tool_call_id=tc_id,
+                        tool_input=args,
+                        tool_result=result.content,
+                        agent_name=self.name,
+                        message_id=message_id or "",
+                        error=result.error,
+                    )
                 # If no results (all tools were server-side), we're done
                 if not pending_tool_results:
                     break
@@ -449,10 +463,14 @@ class AGUIAgent[TDeps = None](BaseAgent[TDeps, str]):
         from ag_ui.core import (
             ToolCallArgsEvent as AGUIToolCallArgsEvent,
             ToolCallEndEvent as AGUIToolCallEndEvent,
+            ToolCallResultEvent as AGUIToolCallResultEvent,
             ToolCallStartEvent as AGUIToolCallStartEvent,
         )
 
-        from agentpool.agents.agui_agent.agui_converters import agui_to_native_event
+        from agentpool.agents.agui_agent.agui_converters import (
+            agui_to_native_event,
+            tool_result_text,
+        )
         from agentpool.agents.agui_agent.chunk_transformer import ChunkTransformer
         from agentpool.agents.tool_call_accumulator import ToolCallAccumulator
 
@@ -481,6 +499,17 @@ class AGUIAgent[TDeps = None](BaseAgent[TDeps, str]):
                             tool_name=tool_name,
                             args=args,
                             tool_call_id=tc_id,
+                        )
+                    # Server-side tools: the remote agent reports the result.
+                    case AGUIToolCallResultEvent(tool_call_id=tc_id, content=content):
+                        tool_name, args = tool_calls_pending.pop(tc_id, ("unknown", {}))
+                        yield ToolCallCompleteEvent(
+                            tool_name=tool_name,
+                            tool_call_id=tc_id,
+                            tool_input=args,
+                            tool_result=tool_result_text(content),
+                            agent_name=self.name,
+                            message_id=event.message_id,
                         )
 
                 # Convert to native event and distribute to handlers

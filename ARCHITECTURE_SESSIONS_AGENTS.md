@@ -577,6 +577,10 @@ and the migration step (§6) that should make the stopgap unnecessary.
 - **Fix:** add `StepStartedEvent` / `StepCompletedEvent(usage, finish_reason)` to the event union
   (one per `ModelResponse`), emitted by all agent types. This is independent of the session
   refactor and useful for ACP and AG-UI too.
+- **Status (2026-11-20): done** for native and Claude Code agents (`StepStartedEvent` /
+  `StepCompletedEvent` with per-request usage, finish reason and, for native agents, cost). Codex,
+  ACP and AG-UI agents don't expose individual model requests, so the V2 converter still infers
+  steps for them.
 
 ### 10.6 Two overlapping tool event vocabularies
 
@@ -587,6 +591,15 @@ and the migration step (§6) that should make the stopgap unnecessary.
 - **Stopgap:** the converter accepts both and deduplicates by `tool_call_id`.
 - **Fix:** define one canonical tool lifecycle in `RichAgentStreamEvent`. Native agents translate
   pydantic-ai events into it at the source, like external agents already do.
+- **Status (2026-11-20): done.** Contract (documented on `ToolCallStartEvent`): one
+  `ToolCallStartEvent` per call (repeated starts update), `ToolCallProgressEvent`s, exactly one
+  `ToolCallCompleteEvent` with a new `error` field. Native agents translate via
+  `native_agent/helpers.py` `ToolEventTracker`. Claude Code no longer emits duplicate
+  `FunctionToolResultEvent`s. ACP agents complete failed calls, Codex reports item errors, and
+  AG-UI emits completions for remote and local tools. ACP, OpenCode V1/V2, the OpenAI-compatible
+  server and the built-in print handlers consume only the canonical events. pydantic-ai part
+  events remain for argument streaming. `utils/streams/turn_manager.py` still emits
+  `FunctionToolResultEvent` from its (currently unused) tool helpers.
 
 ### 10.7 Subagents aren't sessions
 
@@ -667,7 +680,7 @@ and the migration step (§6) that should make the stopgap unnecessary.
 | User prompt extraction from `ModelRequest` | `opencode_v2_server/history.py` | step 1 |
 | Turn-counting history cut for fork/revert | `opencode_v2_server/session_ops.py` | stable message IDs (10.4) |
 | Timestamp-based file change selection | `opencode_v2_server/session_ops.py` | stable message IDs (10.4) |
-| Step-boundary inference, end-of-run usage | `opencode_v2_server/run_converter.py` | step events (10.5) |
+| Step-boundary inference, end-of-run usage | `opencode_v2_server/run_converter.py` | step events (10.5): done for native/Claude Code, inference kept for Codex/ACP/AG-UI |
 | Subagents as tool progress | `opencode_v2_server/run_converter.py` | step 3 |
 | `pending_context` for skills and instructions | `opencode_v2_server/runner.py` | runtime instructions (10.9) |
 | Manual compaction flow | `opencode_v2_server/runner.py` | `compact()` on runtimes (10.9) |

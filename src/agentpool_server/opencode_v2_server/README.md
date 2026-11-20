@@ -49,7 +49,9 @@ HTTP route ──► V2Session.emit(EventClass, data)
   `execution.succeeded|failed|interrupted`. `delivery: "steer"` injects into a running turn
   (`agent.inject_prompt`), `"queue"` waits for the next one.
 - `RunEventConverter` turns `run_stream` events into V2 step/text/reasoning/tool events. Each model
-  request becomes one step (one assistant message).
+  request becomes one step (one assistant message). Tools follow the canonical lifecycle
+  (`ToolCallStartEvent` → `ToolCallProgressEvent`* → `ToolCallCompleteEvent`) that every agent
+  type emits.
 - Event logs live in `DATA_DIR/opencode-v2/sessions/<id>.jsonl`. Sessions without a log (created
   through another protocol, or older ones) are rebuilt from AgentPool's stored conversation
   (`history.py`, which uses the same converter). Session summaries are also written to the pool's
@@ -101,8 +103,9 @@ These come from the interim session/agent model. They are tracked, with the code
 
 - Pool agents are shared instances. `AgentBinder` serializes turns per agent and re-binds the
   instance to the session of each turn (`load_session` / `BaseAgent.start_new_session`).
-- Step boundaries are inferred from the event stream. Token usage arrives at the end of a run, so
-  it's attributed to the last step.
+- Native and Claude Code agents report steps (`StepStartedEvent` / `StepCompletedEvent`) with
+  per-request usage. For Codex, ACP and AG-UI agents, step boundaries are inferred and the run's
+  usage goes to the last step.
 - Subagent activity is shown as progress of the delegating tool call, not as V2 child sessions.
 - Fork and revert rewrite AgentPool storage only, not Claude Code's or Codex's native transcripts.
 - Our tool names (`bash`, `read`, …) use OpenCode's generic tool renderer.

@@ -6,26 +6,22 @@ import sys
 from typing import TYPE_CHECKING, Any
 
 from pydantic_ai import (
-    FunctionToolCallEvent,
-    FunctionToolResultEvent,
     PartDeltaEvent,
     PartStartEvent,
     TextPart,
     TextPartDelta,
     ThinkingPart,
     ThinkingPartDelta,
-    ToolCallPart,
-    ToolReturnPart,
 )
 
 from agentpool.agents.events import (
     NoticeEvent,
     RunErrorEvent,
     StreamCompleteEvent,
+    ToolCallCompleteEvent,
     ToolCallProgressEvent,
     ToolCallStartEvent,
 )
-from agentpool.utils.pydantic_ai_helpers import safe_args_as_dict
 
 
 if TYPE_CHECKING:
@@ -52,12 +48,12 @@ async def simple_print_handler(ctx: AgentContext[Any], event: RichAgentStreamEve
         ):
             print(delta, end="", flush=True, file=sys.stderr)
 
-        case FunctionToolCallEvent(part=ToolCallPart() as part):
-            kwargs_str = ", ".join(f"{k}={v!r}" for k, v in safe_args_as_dict(part).items())
-            print(f"\n🔧 {part.tool_name}({kwargs_str})", flush=True, file=sys.stderr)
-
-        case FunctionToolResultEvent(part=ToolReturnPart() as return_part):
-            print(f"Result: {return_part.content}", file=sys.stderr)
+        case ToolCallCompleteEvent(
+            tool_name=tool_name, tool_input=tool_input, tool_result=result, error=error
+        ):
+            kwargs_str = ", ".join(f"{k}={v!r}" for k, v in tool_input.items())
+            print(f"\n🔧 {tool_name}({kwargs_str})", flush=True, file=sys.stderr)
+            print(f"Error: {error}" if error else f"Result: {result}", file=sys.stderr)
 
         case RunErrorEvent(message=message):
             print(f"\n❌ Error: {message}", flush=True, file=sys.stderr)
@@ -96,17 +92,18 @@ async def detailed_print_handler(ctx: AgentContext[Any], event: RichAgentStreamE
         case ToolCallStartEvent(tool_name=tool_name, title=title, tool_call_id=call_id):
             print(f"\n🔧 {tool_name}: {title} (#{call_id[:8]})", flush=True, file=sys.stderr)
 
-        case FunctionToolCallEvent(part=ToolCallPart(tool_name=tool_name, args=args)):
-            args_str = str(args)
+        case ToolCallCompleteEvent(
+            tool_name=tool_name, tool_input=tool_input, tool_result=content, error=error
+        ):
+            args_str = str(tool_input)
             if len(args_str) > 100:  # noqa: PLR2004
                 args_str = args_str[:97] + "..."
             print(f"  📝 Input: {args_str}", flush=True, file=sys.stderr)
-
-        case FunctionToolResultEvent(part=ToolReturnPart(content=content, tool_name=tool_name)):
-            result_str = str(content)
+            result_str = str(error if error else content)
             if len(result_str) > 150:  # noqa: PLR2004
                 result_str = result_str[:147] + "..."
-            print(f"  ✅ {tool_name}: {result_str}", flush=True, file=sys.stderr)
+            icon = "❌" if error else "✅"
+            print(f"  {icon} {tool_name}: {result_str}", flush=True, file=sys.stderr)
 
         case ToolCallProgressEvent(title=title, status=status):
             if title:
@@ -167,15 +164,13 @@ def create_file_stream_handler(
                     file_handle.write(f"\n[thinking] {delta}")
                     file_handle.flush()
 
-            case FunctionToolCallEvent(part=ToolCallPart() as part):
+            case ToolCallCompleteEvent(
+                tool_name=tool_name, tool_input=tool_input, tool_result=result, error=error
+            ):
                 if include_tools:
-                    kwargs_str = ", ".join(f"{k}={v!r}" for k, v in safe_args_as_dict(part).items())
-                    file_handle.write(f"\n[tool] {part.tool_name}({kwargs_str})\n")
-                    file_handle.flush()
-
-            case FunctionToolResultEvent(part=ToolReturnPart() as return_part):
-                if include_tools:
-                    file_handle.write(f"[result] {return_part.content}\n")
+                    kwargs_str = ", ".join(f"{k}={v!r}" for k, v in tool_input.items())
+                    file_handle.write(f"\n[tool] {tool_name}({kwargs_str})\n")
+                    file_handle.write(f"[error] {error}\n" if error else f"[result] {result}\n")
                     file_handle.flush()
 
             case RunErrorEvent(message=message):

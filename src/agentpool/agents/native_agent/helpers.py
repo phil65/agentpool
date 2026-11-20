@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass, field
 from decimal import Decimal
 from typing import TYPE_CHECKING, Any
 
@@ -12,6 +13,7 @@ from pydantic_ai import (
     FunctionToolCallEvent,
     FunctionToolResultEvent,
     ModelResponse,
+    NativeToolCallPart,
     PartDeltaEvent,
     PartEndEvent,
     PartStartEvent,
@@ -20,7 +22,8 @@ from pydantic_ai import (
 )
 
 from agentpool import log
-from agentpool.agents.events import ToolCallCompleteEvent
+from agentpool.acp_utils import generate_tool_title, infer_tool_kind
+from agentpool.agents.events import ToolCallCompleteEvent, ToolCallStartEvent
 from agentpool.utils.pydantic_ai_helpers import safe_args_as_dict
 
 
@@ -86,44 +89,76 @@ async def forward_supported_events(
                 pass
 
 
-def process_tool_event(
-    agent_name: str,
-    event: RichAgentStreamEvent[Any],
-    pending_tool_calls: dict[str, BaseToolCallPart],
-    message_id: str,
-) -> ToolCallCompleteEvent | None:
-    """Process tool-related events and return combined event when complete.
+@dataclass
+class ToolEventTracker:
+    """Translates pydantic-ai tool events into the canonical tool lifecycle events.
 
-    Args:
-        agent_name: Name of the agent
-        event: The streaming event to process
-        pending_tool_calls: Dict tracking in-progress tool calls by ID
-        message_id: Message ID for the combined event
-
-    Returns:
-        ToolCallCompleteEvent if a tool call completed, None otherwise
+    Emits one ``ToolCallStartEvent`` when a call is issued and one ``ToolCallCompleteEvent``
+    (with ``error`` for failed, retried, denied or interrupted calls) when it ends.
     """
-    # Both function and native tools use PartStartEvent with BaseToolCallPart/BaseToolReturnPart.
-    match event:
-        case (
-            PartStartEvent(part=BaseToolCallPart() as tool_part)
-            | FunctionToolCallEvent(part=tool_part)
-        ):
-            pending_tool_calls[tool_part.tool_call_id] = tool_part
-        case (
-            PartStartEvent(part=BaseToolReturnPart(tool_call_id=call_id, content=content))
-            | FunctionToolResultEvent(part=ToolReturnPart(tool_call_id=call_id, content=content))
-        ):
-            if call_info := pending_tool_calls.pop(call_id, None):
-                return ToolCallCompleteEvent(
-                    tool_name=call_info.tool_name,
-                    tool_call_id=call_id,
-                    tool_input=safe_args_as_dict(call_info),
-                    tool_result=content,
-                    agent_name=agent_name,
-                    message_id=message_id,
+
+    agent_name: str
+    message_id: str
+    pending: dict[str, BaseToolCallPart] = field(default_factory=dict)
+    started: set[str] = field(default_factory=set)
+
+    def process(
+        self, event: RichAgentStreamEvent[Any]
+    ) -> list[ToolCallStartEvent | ToolCallCompleteEvent]:
+        """Canonical events derived from a pydantic-ai stream event."""
+        match event:
+            case (
+                PartStartEvent(part=NativeToolCallPart() as call_part)
+                | FunctionToolCallEvent(part=call_part)
+            ):
+                # Native (provider-executed) tools start with their part, function tools
+                # once their arguments are complete and execution begins.
+                self.pending[call_part.tool_call_id] = call_part
+                return (
+                    [self._start(call_part)] if call_part.tool_call_id not in self.started else []
                 )
-    return None
+            case PartStartEvent(part=BaseToolCallPart() as call_part):
+                self.pending[call_part.tool_call_id] = call_part  # Arguments still streaming
+            case PartStartEvent(part=BaseToolReturnPart(tool_call_id=call_id, content=content)):
+                return self._complete(call_id, content, None)
+            case FunctionToolResultEvent(part=ToolReturnPart(tool_call_id=call_id) as result):
+                error = None
+                if result.outcome != "success":
+                    error = f"{result.outcome}: {result.model_response_str()}"
+                return self._complete(call_id, result.content, error)
+            case _:
+                pass
+        return []
+
+    def _start(self, part: BaseToolCallPart) -> ToolCallStartEvent:
+        self.started.add(part.tool_call_id)
+        args = safe_args_as_dict(part)
+        return ToolCallStartEvent(
+            tool_call_id=part.tool_call_id,
+            tool_name=part.tool_name,
+            title=generate_tool_title(part.tool_name, args),
+            kind=infer_tool_kind(part.tool_name),
+            raw_input=args,
+        )
+
+    def _complete(
+        self, call_id: str, content: Any, error: str | None
+    ) -> list[ToolCallStartEvent | ToolCallCompleteEvent]:
+        call_info = self.pending.pop(call_id, None)
+        if call_info is None:
+            return []
+        self.started.discard(call_id)
+        return [
+            ToolCallCompleteEvent(
+                tool_name=call_info.tool_name,
+                tool_call_id=call_id,
+                tool_input=safe_args_as_dict(call_info),
+                tool_result=content,
+                agent_name=self.agent_name,
+                message_id=self.message_id,
+                error=error,
+            )
+        ]
 
 
 def extract_text_from_messages(

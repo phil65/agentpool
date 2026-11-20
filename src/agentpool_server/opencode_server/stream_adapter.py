@@ -10,7 +10,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, assert_never
 
-from pydantic_ai import FunctionToolCallEvent, RunUsage
+from pydantic_ai import RunUsage
 from pydantic_ai.messages import (
     PartDeltaEvent,
     PartStartEvent,
@@ -225,10 +225,10 @@ class OpenCodeStreamAdapter:
             ):
                 yield from self._on_tool_call_start(tool_name, tool_call_id, raw_input, title)
 
-            case (
-                FunctionToolCallEvent(part=tc_part)
-                | PartStartEvent(part=PydanticToolCallPart() as tc_part)
-            ) if tc_part.tool_call_id not in self._tool_parts:
+            # Tool arguments start streaming (shown before the canonical start event)
+            case PartStartEvent(part=PydanticToolCallPart() as tc_part) if (
+                tc_part.tool_call_id not in self._tool_parts
+            ):
                 yield from self._on_pydantic_tool_call(tc_part)
 
             case ToolCallProgressEvent(
@@ -246,8 +246,9 @@ class OpenCodeStreamAdapter:
                 tool_call_id=tool_call_id,
                 tool_result=result,
                 metadata=event_metadata,
+                error=error,
             ) if tool_call_id in self._tool_parts:
-                yield from self._on_tool_complete(tool_call_id, result, event_metadata)
+                yield from self._on_tool_complete(tool_call_id, result, event_metadata, error)
 
             case StreamCompleteEvent(message=msg) if msg:
                 self._usage = msg.usage
@@ -494,14 +495,16 @@ class OpenCodeStreamAdapter:
         tool_call_id: str,
         result: Any,
         event_metadata: dict[str, Any] | None,
+        error: str | None = None,
     ) -> Iterator[Event]:
         existing = self._tool_parts[tool_call_id]
         tool_input = self._tool_inputs.get(tool_call_id, {})
         new_state: ToolStateCompleted | ToolStateError
-        if isinstance(result, dict) and result.get("error"):
+        if error is None and isinstance(result, dict) and result.get("error"):
+            error = str(result["error"])
+        if error is not None:
             t = TimeStartEnd(start=self._stream_start_ms, end=now_ms())
-            error_string = str(result.get("error", "Unknown error"))
-            new_state = ToolStateError(error=error_string, input=tool_input, time=t)
+            new_state = ToolStateError(error=error, input=tool_input, time=t)
         else:
             new_state = ToolStateCompleted(
                 title=f"Completed {existing.tool}",

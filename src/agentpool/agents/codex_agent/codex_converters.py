@@ -251,6 +251,35 @@ def user_content_to_codex(content: Sequence[UserContent]) -> Iterator[UserInput]
                 assert_never(unreachable)
 
 
+def item_error(item: ThreadItem) -> str | None:  # noqa: PLR0911
+    """Error message of a completed tool-like thread item (None if it succeeded)."""
+    from codexed.models import (
+        ThreadItemCommandExecution,
+        ThreadItemFileChange,
+        ThreadItemMcpToolCall,
+    )
+
+    match item:
+        case ThreadItemCommandExecution(status="declined"):
+            return "Command was declined"
+        case ThreadItemCommandExecution(status="failed", exit_code=exit_code):
+            return f"Command failed (exit code {exit_code})"
+        case ThreadItemFileChange(status="declined"):
+            return "File change was declined"
+        case ThreadItemFileChange(status="failed"):
+            return "File change failed"
+        case ThreadItemMcpToolCall(error=error) if error is not None:
+            return error.message
+        case ThreadItemMcpToolCall(status="failed"):
+            return "MCP tool call failed"
+        case ThreadItemDynamicToolCall(success=False):
+            return "Tool call failed"
+        case ThreadItemCollabAgentToolCall(status="failed"):
+            return "Subagent call failed"
+        case _:
+            return None
+
+
 async def _format_tool_result(item: ThreadItem) -> str | list[str | BinaryContent]:
     """Format tool result from a completed ThreadItem.
 

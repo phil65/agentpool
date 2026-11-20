@@ -115,7 +115,7 @@ class BashTool(Tool[ToolResult]):
                             await ctx.events.process_output(pid, data)
                     case ProcessCompletedEvent(process_id=pid, exit_code=code_):
                         exit_code = code_
-                        # Skip exit event for ACP - completion handled by FunctionToolResultEvent
+                        # Skip exit event for ACP - completion handled by ToolCallCompleteEvent
                         if not is_acp:
                             combined = "".join(stdout_parts) + "".join(stderr_parts)
                             await ctx.events.process_exit(pid, exit_code, final_output=combined)

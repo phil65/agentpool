@@ -26,7 +26,6 @@ from aclientp.schema import (
     TextContentBlock,
     ToolCallStart,
 )
-from pydantic_ai import FunctionToolCallEvent, ToolCallPart
 import pytest
 
 from agentpool.agents.events import (
@@ -34,6 +33,7 @@ from agentpool.agents.events import (
     NoticeEvent,
     PromptSuggestionEvent,
     RunErrorEvent,
+    ToolCallStartEvent,
 )
 from agentpool_server.acp_server.event_converter import ACPEventConverter
 
@@ -47,7 +47,7 @@ async def _collect(converter: ACPEventConverter, event: Any) -> list[Any]:
 
 
 async def test_tool_call_start_carries_tool_name() -> None:
-    event = FunctionToolCallEvent(part=ToolCallPart(tool_name="bash", args={}, tool_call_id="t1"))
+    event = ToolCallStartEvent(tool_call_id="t1", tool_name="bash", title="bash")
     updates = await _collect(ACPEventConverter(), event)
     assert isinstance(updates[0], ToolCallStart)
     assert updates[0].name == "bash"

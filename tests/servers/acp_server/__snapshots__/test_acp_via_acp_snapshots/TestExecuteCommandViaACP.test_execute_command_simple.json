@@ -79,6 +79,7 @@
   },
   {
     "agent_name": "test_client",
+    "error": null,
     "event_kind": "tool_call_complete",
     "message_id": "",
     "metadata": {

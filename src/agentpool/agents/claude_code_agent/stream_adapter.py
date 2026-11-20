@@ -77,7 +77,7 @@ from clawd_code_sdk.models import (
     ToolUseSummaryMessage,
     WorkerShuttingDownMessage,
 )
-from pydantic_ai import FunctionToolResultEvent, PartEndEvent, TextPart, ToolReturnPart
+from pydantic_ai import PartEndEvent, TextPart
 from pydantic_ai.usage import RequestUsage
 
 from agentpool.agents.claude_code_agent.converters import convert_to_opencode_metadata
@@ -256,12 +256,6 @@ class ClaudeCodeStreamedResponse(StreamedResponse):
                                         },
                                     )
 
-                                return_part = ToolReturnPart(
-                                    tool_name=stripped,
-                                    content=result_content,
-                                    tool_call_id=tc_id,
-                                )
-                                yield FunctionToolResultEvent(return_part)
                                 tool_input = (
                                     cast(dict[str, Any], tool_use.input) if tool_use else {}
                                 )
@@ -289,6 +283,7 @@ class ClaudeCodeStreamedResponse(StreamedResponse):
                                     agent_name=self.agent_name,
                                     message_id="",
                                     metadata=metadata,
+                                    error=str(result_content) if is_error else None,
                                 )
                             case ImageBlock() | TextBlock():
                                 pass
