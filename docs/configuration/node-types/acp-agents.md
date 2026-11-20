@@ -48,9 +48,10 @@ These agents can be configured to work alongside AgentPool agents, enabling hybr
 
 ## Remote Agents (experimental)
 
-With `provider: remote`, AgentPool connects to an ACP agent served over HTTP instead of
-starting a process. It uses the client side of ACP's Streamable HTTP transport (an RFD,
-supported by the TypeScript SDK's experimental server):
+With `provider: remote`, AgentPool connects to an ACP agent served over the network instead
+of starting a process. It uses the client side of ACP's Streamable HTTP & WebSocket transport
+(an RFD, supported by the TypeScript SDK's experimental server): `http(s)://` URLs use
+Streamable HTTP, `ws(s)://` URLs WebSocket.
 
 ```yaml
 agents:

@@ -2,7 +2,7 @@
 
 This module provides an agent implementation that communicates with external
 ACP (Agent Client Protocol) servers via stdio, or with remote ones over Streamable
-HTTP (experimental), enabling integration of any ACP-compatible agent into the pool.
+HTTP or WebSocket (experimental), enabling integration of any ACP-compatible agent.
 
 The ACPAgent class acts as an ACP client, spawning an ACP server subprocess
 and communicating with it via JSON-RPC over stdio. This allows:
@@ -375,13 +375,13 @@ class ACPAgent[TDeps = None](BaseAgent[TDeps, str]):
         return self._process
 
     async def _connect_remote(self, url: str) -> tuple[ByteReceiveStream, ByteSendStream]:
-        """Connect to a remote agent over Streamable HTTP."""
-        from aclientp import connect_http_transport
+        """Connect to a remote agent (WebSocket for ws(s)://, else Streamable HTTP)."""
+        from aclientp import connect_remote_transport
 
         self.log.info("Connecting to remote ACP agent", url=url)
         stack = contextlib.AsyncExitStack()
         try:
-            transport = connect_http_transport(url, headers=self._headers)
+            transport = connect_remote_transport(url, headers=self._headers)
             reader, writer = await stack.enter_async_context(transport)
         except BaseException:
             await stack.aclose()

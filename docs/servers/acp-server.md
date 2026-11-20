@@ -125,7 +125,8 @@ AGENTPOOL_ACP_TOKEN=... agentpool serve-acp config.yml --transport http --host 0
 Agents run their tools on the serving machine, so binding to a non-loopback host
 requires `--token` (or `AGENTPOOL_ACP_TOKEN`). Put TLS in front (reverse proxy) when
 exposing it. Editors that only launch local agents can connect through
-`uvx --from "aclientp[http2]" aclientp-connect <url> -H "Authorization: Bearer ${TOKEN}"`,
+`uvx --from "aclientp[http2,websocket]" aclientp-connect <url> -H "Authorization: Bearer ${TOKEN}"`
+(`http://…/acp` or `ws://…/acp`),
 and other AgentPool instances with a [remote ACP agent](../configuration/node-types/acp-agents.md).
 
 ## External ACP Agents

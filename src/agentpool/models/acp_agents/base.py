@@ -288,10 +288,11 @@ class RegistryACPAgentConfig(BaseACPAgentConfig):
 
 
 class RemoteACPAgentConfig(BaseACPAgentConfig):
-    """Configuration for a remote ACP agent reached over Streamable HTTP (experimental).
+    """Configuration for a remote ACP agent (experimental).
 
-    Uses the client side of ACP's Streamable HTTP transport RFD, compatible with the
-    TypeScript SDK's experimental server. Nothing is spawned locally; file and terminal
+    Uses the client side of ACP's Streamable HTTP & WebSocket transport RFD, compatible
+    with the TypeScript SDK's experimental server: ``http(s)://`` URLs use Streamable
+    HTTP, ``ws(s)://`` URLs WebSocket. Nothing is spawned locally; file and terminal
     requests of the remote agent are still served by this client.
 
     Example:
@@ -314,9 +315,10 @@ class RemoteACPAgentConfig(BaseACPAgentConfig):
     url: str = Field(
         ...,
         title="Endpoint URL",
-        examples=["https://example.com/api/acp", "http://localhost:3000/api/acp"],
+        examples=["https://example.com/api/acp", "wss://example.com/acp"],
+        pattern=r"^(?i:https?|wss?)://",
     )
-    """The agent's ``/acp`` endpoint."""
+    """The agent's ``/acp`` endpoint (``http(s)://`` or ``ws(s)://``)."""
 
     headers: dict[str, str] = Field(
         default_factory=dict,

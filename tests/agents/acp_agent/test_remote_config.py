@@ -50,3 +50,9 @@ def test_exactly_one_source() -> None:
         ACPAgent(command="x", url="https://agent.test/api/acp")
     with pytest.raises(ValueError, match="Exactly one"):
         ACPAgent()
+
+
+def test_url_scheme_is_validated() -> None:
+    assert RemoteACPAgentConfig(url="wss://agent.test/acp").get_url() == "wss://agent.test/acp"
+    with pytest.raises(ValueError, match="should match pattern"):
+        RemoteACPAgentConfig(url="ftp://agent.test/acp")
