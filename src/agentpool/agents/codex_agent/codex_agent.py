@@ -58,7 +58,6 @@ if TYPE_CHECKING:
     from tokonomics.model_discovery.model_info import ModelInfo
 
     from agentpool.agents.auth import AuthStatus
-    from agentpool.agents.context import ConfirmationResult
     from agentpool.agents.events import RichAgentStreamEvent
     from agentpool.agents.modes import ConfigOption
     from agentpool.agents.usage_limits import UsageLimits
@@ -337,14 +336,14 @@ class CodexAgent[TDeps = None, OutputDataT = str](BaseAgent[TDeps, OutputDataT])
             raise RuntimeError("Permission callback invoked outside of an active run")
         input_provider = ctx.get_input_provider()
         result = await input_provider.get_tool_confirmation(ctx)
-        mapping: dict[ConfirmationResult, Literal["allow"]] = {
-            "allow": "allow",
-            "skip": "allow",
-            "abort_run": "allow",
-            "abort_chain": "allow",
-        }
-        approval_decision = mapping[result]
-        # Auto-grant if bypassPermissions mode is active
+        approval_decision: Literal["allow", "deny"]
+        match result:
+            case "allow":
+                approval_decision = "allow"
+            case "skip" | "abort_run" | "abort_chain":
+                approval_decision = "deny"
+            case _ as unreachable_result:
+                assert_never(unreachable_result)
         match data:
             case CommandExecutionRequestApprovalParams():
                 return CommandExecutionRequestApprovalResponse(decision=approval_decision)
