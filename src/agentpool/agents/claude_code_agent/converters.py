@@ -7,7 +7,9 @@ event types as native agents.
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from pathlib import Path
+import re
 from typing import TYPE_CHECKING, Any, Literal, assert_never, cast
 
 from clawd_code_sdk.models import (
@@ -18,6 +20,8 @@ from clawd_code_sdk.models import (
     McpSSEServerConfig,
     McpStdioServerConfig,
     ReadOutput,
+    ResultErrorMessage,
+    ResultSuccessMessage,
     TodoWriteOutput,
     UserDocumentPrompt,
     UserDocumentURLPrompt,
@@ -66,40 +70,25 @@ if TYPE_CHECKING:
         PermissionResult,
         PostToolUseHookInput,
         PreToolUseHookInput,
+        ResultMessage,
         StopReason,
         StructuredPatchHunk,
         SyncHookJSONOutput,
-        ThinkingConfig,
         ToolInput,
         ToolUseResult,
         Usage,
         UserPrompt,
     )
-    from clawd_code_sdk.models.server_info import ClaudeCodeAccountInfo
+    from clawd_code_sdk.models.server_info import ClaudeCodeAccountInfo, ClaudeCodeModelInfo
     from exxec import ExecutionEnvironment
     from pydantic_ai import FinishReason, UserContent
+    from tokonomics.model_discovery.model_info import ModelInfo
 
     from agentpool.agents.auth import AuthStatus
     from agentpool.agents.context import ConfirmationResult
     from agentpool.hooks import AgentHooks
     from agentpool_config.mcp_server import MCPServerConfig as NativeMCPServerConfig
     from opencode_sdk.models.tool_metadata import ToolMetadata
-
-
-def to_thinking_config(
-    max_thinking_tokens: int | Literal["adaptive"] | None,
-) -> ThinkingConfig | None:
-    from clawd_code_sdk import ThinkingConfigAdaptive, ThinkingConfigDisabled, ThinkingConfigEnabled
-
-    match max_thinking_tokens:
-        case "adaptive":
-            return ThinkingConfigAdaptive()
-        case 0:
-            return ThinkingConfigDisabled()
-        case int(tokens):
-            return ThinkingConfigEnabled(budget_tokens=tokens)
-        case None:
-            return None
 
 
 def to_auth_status(account: ClaudeCodeAccountInfo | None) -> AuthStatus:
@@ -128,6 +117,30 @@ def to_auth_status(account: ClaudeCodeAccountInfo | None) -> AuthStatus:
     return AuthStatus(state="authenticated", accounts=[auth_account])
 
 
+LONG_CONTEXT_WINDOW = 1_000_000
+DEFAULT_CONTEXT_WINDOW = 200_000
+
+
+def to_model_info(model: ClaudeCodeModelInfo) -> ModelInfo:
+    """A model the CLI offers, with its ID as the CLI takes it (``opus``, ``sonnet[1m]``).
+
+    The context window is not reported: the ``[1m]`` variants get 1M tokens, others 200k.
+    """
+    from tokonomics.model_discovery.model_info import ModelInfo
+
+    spellings = (model.value, model.resolved_model or "")
+    long_context = any(spelling.endswith("[1m]") for spelling in spellings)
+    return ModelInfo(
+        id=model.value,
+        name=model.display_name,
+        provider="anthropic",
+        description=model.description,
+        context_window=LONG_CONTEXT_WINDOW if long_context else DEFAULT_CONTEXT_WINDOW,
+        input_modalities={"text", "image"},
+        id_override=model.value,
+    )
+
+
 def to_mcp_server_status(server: McpServerStatusEntry) -> MCPServerStatus:
     return MCPServerStatus(
         name=server.name,
@@ -148,6 +161,9 @@ def to_prompt_input(content: Sequence[UserContent]) -> Iterator[UserPrompt]:
                 yield UserImagePrompt(image_data=b64, media_type=mime)
             case BinaryContent(media_type="application/pdf", base64=b64):
                 yield UserDocumentPrompt(document_data=b64, media_type="application/pdf")
+            case BinaryContent(media_type=str() as mime, data=data) if mime.startswith("text/"):
+                text = data.decode(errors="replace")
+                yield UserTextPrompt(text=f'<context ref="{item.identifier}">\n{text}\n</context>')
             case BinaryContent(media_type=mime) if item.is_image or item.is_document:
                 raise ValueError(f"Unsupported media type for Claude Code prompt: {mime}")
             case ImageUrl(url=url):
@@ -219,6 +235,44 @@ FINISH_REASON_MAP: dict[StopReason, FinishReason] = {
 
 def to_finish_reason(reason: StopReason) -> FinishReason:
     return FINISH_REASON_MAP[reason]
+
+
+_LOGIN_REQUIRED = re.compile(r"\brun /login\b", re.IGNORECASE)
+"""How the CLI asks to sign in ("Not logged in · Run /login", "Login expired · Run /login ...")."""
+
+
+@dataclass(frozen=True, slots=True)
+class TurnError:
+    """A turn that Claude Code's result reports as failed."""
+
+    message: str
+    """Claude Code's error text."""
+    code: str
+    """``login_required``, ``error`` or the result's error subtype (e.g. ``error_max_turns``)."""
+
+
+def to_turn_error(result: ResultMessage) -> TurnError | None:
+    """The failure a result reports, or None for a turn that ended normally.
+
+    A refusal and a ``max_tokens`` stop end the turn without failing it, also on an
+    error result: their stop reason says why the turn ended. An interrupt is a
+    cancellation, not a failure.
+    """
+    if (
+        not result.is_error
+        or result.stop_reason in ("refusal", "max_tokens")
+        or result.terminal_reason in ("aborted_streaming", "aborted_tools")
+    ):
+        return None
+    match result:
+        case ResultSuccessMessage(result=str() as text) if _LOGIN_REQUIRED.search(text):
+            return TurnError(message=text, code="login_required")
+        case ResultSuccessMessage(result=text):
+            return TurnError(message=text or "Claude Code reported an error", code="error")
+        case ResultErrorMessage(subtype=subtype, errors=errors):
+            return TurnError(message=", ".join(errors or []) or subtype, code=subtype)
+        case _ as unreachable:
+            assert_never(unreachable)
 
 
 def convert_mcp_servers_to_sdk_format(

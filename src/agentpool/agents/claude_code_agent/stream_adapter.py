@@ -106,6 +106,7 @@ from agentpool.agents.events import (
     ToolCallStartEvent,
 )
 from agentpool.agents.events.infer_info import derive_rich_tool_info
+from agentpool.log import get_logger
 from agentpool.utils.streams.streamed_response import StreamedResponse
 from agentpool.utils.time_utils import get_now
 
@@ -122,6 +123,8 @@ if TYPE_CHECKING:
 
     from agentpool.agents.events import RichAgentStreamEvent
     from agentpool.agents.events.events import TaskKind, ToolCallContentItem
+
+logger = get_logger(__name__)
 
 _MCP_TOOL_PATTERN = re.compile(r"^mcp__agentpool-(.+)-tools__(.+)$")
 """Pattern to detect CC-provided tool names."""
@@ -571,8 +574,13 @@ class ClaudeCodeStreamedResponse(StreamedResponse):
         for user_block in message.content:
             match user_block:
                 case ToolResultBlock(tool_use_id=tc_id, is_error=is_error):
+                    tool_use = state.pending_tool_calls.pop(tc_id, None)
+                    if tool_use is None:
+                        # A result for a call this run never started (e.g. one the CLI
+                        # closes after an interrupted earlier run): nothing to complete.
+                        logger.debug("Tool result without tool call", tool_call_id=tc_id)
+                        continue
                     result_content = user_block.get_parsed_content()
-                    tool_use = state.pending_tool_calls.pop(tc_id)
                     stripped = _strip_mcp_prefix(tool_use.name)
                     # Bash: stream output + exit to the virtual terminal before completion
                     # (display-only terminal lifecycle).

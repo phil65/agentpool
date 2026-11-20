@@ -54,12 +54,10 @@ async def test_native_model_option_accepts_models_outside_the_list(
 async def test_claude_code_options_without_client():
     agent = ClaudeCodeAgent(name="c")
     await agent.set_mode("plan", category_id="mode")
-    await agent.set_mode("8k", category_id="thought_level")
-    await agent.set_mode("xhigh", category_id="effort")
+    await agent.set_mode("xhigh", category_id="thought_level")
     modes = {m.id: m.current_mode_id for m in await agent.get_modes()}
     assert modes["mode"] == "plan"
-    assert modes["thought_level"] == "8k"
-    assert modes["effort"] == "xhigh"
+    assert modes["thought_level"] == "xhigh"
     with pytest.raises(UnknownModeError):
         await agent.set_mode("gpt-5", category_id="model")
 

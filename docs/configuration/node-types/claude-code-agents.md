@@ -25,7 +25,7 @@ Claude Code agents are ideal for:
 - Complex coding tasks requiring file system access
 - Terminal operations and shell command execution
 - Multi-file refactoring and code generation
-- Tasks benefiting from Claude's extended thinking
+- Tasks that need deep reasoning
 
 ## Configuration Reference
 
@@ -43,7 +43,7 @@ A minimal Claude Code agent for coding tasks:
 agents:
   coder:
     type: claude_code
-    model: claude-sonnet-4-5
+    model: sonnet
 ```
 
 ### Custom System Prompt
@@ -54,7 +54,7 @@ Add custom instructions while keeping Claude Code's built-in system prompt:
 agents:
   python_dev:
     type: claude_code
-    model: claude-sonnet-4-5
+    model: sonnet
     system_prompt:
       - "You are a Python expert focused on clean, maintainable code."
       - "Always include type hints and docstrings."
@@ -89,18 +89,20 @@ agents:
       - Edit
 ```
 
-### Extended Thinking
+### Reasoning Effort
 
-Enable extended thinking for complex reasoning:
+Claude thinks adaptively; the effort sets how deeply (`low`, `medium`, `high`, `xhigh`, `max`):
 
 ```yaml
 agents:
   architect:
     type: claude_code
-    model: claude-sonnet-4-5
-    max_thinking_tokens: 10000
+    model: opus
+    reasoning_effort: max
     system_prompt: "You are a software architect. Think deeply about design decisions."
 ```
+
+Clients can change the effort (and fast mode, on models that have it) while the agent runs.
 
 ### Toolset Integration
 

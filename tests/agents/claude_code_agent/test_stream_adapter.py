@@ -321,3 +321,9 @@ async def test_api_retry() -> None:
             attempt=2, max_retries=10, delay_ms=1500.0, error="server error", status_code=529
         )
     ]
+
+
+async def test_tool_result_without_tool_call_is_skipped() -> None:
+    # A result for a call this run never started (e.g. after an interrupted run)
+    events = await _stream(_user(_tool_result("unknown", "interrupted", is_error=True)))
+    assert events == []

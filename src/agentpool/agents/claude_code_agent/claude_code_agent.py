@@ -25,7 +25,7 @@ from agentpool.agents.claude_code_agent.converters import (
     to_mcp_server_status,
     to_prompt_input,
     to_run_usage,
-    to_thinking_config,
+    to_turn_error,
 )
 from agentpool.agents.claude_code_agent.idle_watch import IdleWatcher
 from agentpool.agents.claude_code_agent.slash_commands import create_claude_code_command
@@ -63,10 +63,11 @@ if TYPE_CHECKING:
         ToolInput,
     )
     from clawd_code_sdk.models.messages import RateLimitInfo
+    from clawd_code_sdk.models.server_info import ClaudeCodeModelInfo, ClaudeCodeServerInfo
     from evented_config import EventConfig
     from exxec import ExecutionEnvironment
     from mcp.types import ElicitResult
-    from pydantic_ai import UserContent
+    from pydantic_ai import FinishReason, UserContent
     from slashed import BaseCommand
     from tokonomics.model_discovery.model_info import ModelInfo
     from tokonomics.model_names import AnthropicMaxModelName
@@ -87,8 +88,6 @@ if TYPE_CHECKING:
 
 logger = get_logger(__name__)
 
-ThinkingMode = Literal["off", "4k", "8k", "16k", "32k"]
-
 _MCP_TOOL_PATTERN = re.compile(r"^mcp__agentpool-(.+)-tools__(.+)$")
 """Pattern to detect CC-provided tool names ( mcp__agentpool-{agent_name}-tools__{tool_name} )."""
 
@@ -104,17 +103,19 @@ UNSUPPORTED_COMMANDS = frozenset({
 })
 
 
+_EDIT_TOOLS = frozenset({
+    "Edit",
+    "Write",
+    "NotebookEdit",
+    "edit",
+    "write",
+    "edit_file",
+    "write_file",
+})
+"""Tools that ``acceptEdits`` allows without asking (Claude Code's and agentpool's own)."""
+
 USAGE_LIMITS_TTL = 300.0
 """Seconds a get_usage result is reused (rate limit events update it meanwhile)."""
-
-THINKING_MODE_TOKENS: dict[ThinkingMode, int] = {
-    "off": 0,
-    "4k": 4000,
-    "8k": 8000,
-    "16k": 16000,
-    "32k": 32000,
-}
-"""Token limit for each thinking mode."""
 
 
 def _strip_mcp_prefix(tool_name: str) -> str:
@@ -143,7 +144,7 @@ class ClaudeCodeAgent[TDeps = None, TResult = str](BaseAgent[TDeps, TResult]):
 
     AGENT_TYPE: ClassVar = "claude"
 
-    def __init__(
+    def __init__(  # noqa: PLR0915
         self,
         *,
         name: str | None = None,
@@ -157,7 +158,6 @@ class ClaudeCodeAgent[TDeps = None, TResult = str](BaseAgent[TDeps, TResult]):
         model: AnthropicMaxModelName | str | None = "opus",
         max_turns: int | None = None,
         max_budget_usd: float | None = None,
-        max_thinking_tokens: int | Literal["adaptive"] | None = None,
         reasoning_effort: ReasoningEffort | None = None,
         permission_mode: PermissionMode | None = None,
         mcp_servers: Sequence[MCPServerConfig] | None = None,
@@ -193,11 +193,10 @@ class ClaudeCodeAgent[TDeps = None, TResult = str](BaseAgent[TDeps, TResult]):
             disallowed_tools: List of disallowed tool names
             system_prompt: System prompt - string or list (appended to builtin by default)
             include_builtin_system_prompt: If True, the builtin system prompt is included.
-            model: Model to use (e.g., "claude-sonnet-4-5")
+            model: Model to use (e.g., "opus", "sonnet", "claude-opus-5-5")
             max_turns: Maximum conversation turns
             max_budget_usd: Maximum budget to consume in dollars
-            max_thinking_tokens: Max tokens for extended thinking
-            reasoning_effort: Reasoning effort level
+            reasoning_effort: Reasoning effort level (adaptive thinking depth)
             permission_mode: Permission mode ("default", "acceptEdits", "plan", "bypassPermissions")
             mcp_servers: External MCP servers to connect to (internal format, converted at runtime)
             env_vars: Environment variables for the agent process
@@ -262,10 +261,10 @@ class ClaudeCodeAgent[TDeps = None, TResult = str](BaseAgent[TDeps, TResult]):
         self._model = model
         self._max_turns = max_turns
         self._max_budget_usd = max_budget_usd
-        self._max_thinking_tokens: int | Literal["adaptive"] | None = max_thinking_tokens
         self._effort: ReasoningEffort | None = reasoning_effort
         self._permission_mode: PermissionMode = permission_mode or "default"
-        self._thinking_mode: ThinkingMode = "32k"
+        self._pre_plan_mode: PermissionMode = "default"
+        """The mode that approving a plan (ExitPlanMode) returns to."""
         self._external_mcp_servers = list(mcp_servers) if mcp_servers else []
         self._env_vars = env_vars
         self._add_dir = add_dir
@@ -282,6 +281,10 @@ class ClaudeCodeAgent[TDeps = None, TResult = str](BaseAgent[TDeps, TResult]):
         self._idle_watch = IdleWatcher(self)
         """Reads what the CLI sends between runs (see idle_watch)."""
         self._usage_limits: tuple[float, UsageLimits | None] | None = None
+        self._server_info: ClaudeCodeServerInfo | None = None
+        """What the CLI reported at connect: models, commands, account, fast mode state."""
+        self._fast_mode: bool | None = None
+        """Fast mode as chosen (``None``: as the CLI's settings have it)."""
         """(monotonic time of the last get_usage, limits) cache."""
         self._sdk_session_id: str | None = session_id
         # ToolBridge state for exposing toolsets via MCP
@@ -335,7 +338,7 @@ class ClaudeCodeAgent[TDeps = None, TResult = str](BaseAgent[TDeps, TResult]):
             model=config.model,
             max_turns=config.max_turns,
             max_budget_usd=config.max_budget_usd,
-            max_thinking_tokens=config.max_thinking_tokens,
+            reasoning_effort=config.reasoning_effort,
             permission_mode=config.permission_mode,
             mcp_servers=config.get_mcp_servers(),
             env_vars=config.env_vars,
@@ -454,7 +457,6 @@ class ClaudeCodeAgent[TDeps = None, TResult = str](BaseAgent[TDeps, TResult]):
             model=self._model,
             max_turns=self._max_turns,
             max_budget_usd=self._max_budget_usd,
-            thinking=to_thinking_config(self._max_thinking_tokens),
             effort=self._effort,
             permission_mode=self._permission_mode,
             env=env,
@@ -486,6 +488,7 @@ class ClaudeCodeAgent[TDeps = None, TResult = str](BaseAgent[TDeps, TResult]):
     ) -> PermissionResult:
         """Handle tool permission requests."""
         from clawd_code_sdk import PermissionResultAllow, PermissionResultDeny
+        from clawd_code_sdk.models.permissions import ModePermissionUpdate
 
         input_dict = cast(dict[str, Any], input_data)
         tc_id = context.tool_use_id
@@ -499,24 +502,42 @@ class ClaudeCodeAgent[TDeps = None, TResult = str](BaseAgent[TDeps, TResult]):
             tool_input=input_dict,
             tool_name=display_name,
         )
-        input_provider = ctx.get_input_provider()
-        # Auto-grant if bypassPermissions mode is active
+        # The CLI applies the permission mode itself and only asks for what the mode
+        # leaves open (in plan mode: ExitPlanMode), so most requests go to the user.
         match self._permission_mode:
             case "bypassPermissions":
                 return PermissionResultAllow()
-            case "plan":
-                return PermissionResultDeny(message="Plan mode active - tool execution disabled")
-            case "acceptEdits":
-                # Auto-allow file editing tools
-                if display_name.lower() in ("edit", "write", "edit_file", "write_file"):
-                    return PermissionResultAllow()
-                result = await input_provider.get_tool_confirmation(context=ctx)
-                return confirmation_result_to_native(result)
-            case "default" | "plan" | "delegate" | "dontAsk" | "auto":
-                result = await input_provider.get_tool_confirmation(context=ctx)
-                return confirmation_result_to_native(result)
+            case "acceptEdits" if display_name in _EDIT_TOOLS:
+                return PermissionResultAllow()
+            case "default" | "acceptEdits" | "plan" | "delegate" | "dontAsk" | "auto":
+                pass
             case _ as unreachable:
                 assert_never(unreachable)
+        result = await ctx.get_input_provider().get_tool_confirmation(context=ctx)
+        permission = confirmation_result_to_native(result)
+        if isinstance(permission, PermissionResultDeny):
+            return permission
+        # Plan mode tools change the CLI's mode once allowed: follow it.
+        match display_name:
+            case "ExitPlanMode":
+                mode = self._pre_plan_mode
+                update = ModePermissionUpdate(type="setMode", mode=mode, destination="session")
+                permission = PermissionResultAllow(updated_permissions=[update])
+                await self._follow_permission_mode(mode)
+            case "EnterPlanMode":
+                await self._follow_permission_mode("plan")
+        return permission
+
+    def _remember_permission_mode(self, mode: PermissionMode) -> None:
+        """Store ``mode``, and the mode to return to when it enters plan mode."""
+        if mode == "plan" and self._permission_mode != "plan":
+            self._pre_plan_mode = self._permission_mode
+        self._permission_mode = mode
+
+    async def _follow_permission_mode(self, mode: PermissionMode) -> None:
+        """Adopt a mode the CLI switched to by itself and announce it."""
+        self._remember_permission_mode(mode)
+        await self.update_state(config_id="mode", value_id=mode)
 
     async def _on_user_question(
         self,
@@ -569,9 +590,19 @@ class ClaudeCodeAgent[TDeps = None, TResult = str](BaseAgent[TDeps, TResult]):
 
         try:
             await self._client.connect()
+            server_info = await self._client.get_server_info()
+            assert server_info, "No server info returned (streaming mode should always provide it)"
+            self._server_info = server_info
+            if self._fast_mode is None:
+                self._fast_mode = server_info.fast_mode_state not in (None, "off")
+            elif self._fast_mode:  # Turned on before the CLI ran
+                await self._apply_fast_mode(enabled=True)
             await self._populate_commands()
             self._idle_watch.start(self._client)
             self.log.info("Claude Code client connected")
+            # The options so far came from static lists: announce the CLI's own.
+            if (model := self._current_model_info()) is not None:
+                await self.update_state(config_id="model", value_id=self._model or model.value)
         except Exception:
             self.log.exception("Failed to connect Claude Code client")
             raise
@@ -672,9 +703,8 @@ class ClaudeCodeAgent[TDeps = None, TResult = str](BaseAgent[TDeps, TResult]):
         are filtered out (e.g., login, logout, context, cost).
         """
         await self.ensure_initialized()
-        assert self._client, "Client not connected after ensure_initialized"
-        server_info = await self._client.get_server_info()
-        assert server_info, "No server info returned (streaming mode should always provide it)"
+        server_info = self._server_info
+        assert server_info, "No server info after ensure_initialized"
         # Commands to skip - not useful or problematic in this context
         commands = [
             create_claude_code_command(cmd_info)
@@ -824,9 +854,24 @@ class ClaudeCodeAgent[TDeps = None, TResult = str](BaseAgent[TDeps, TResult]):
         final_metadata: SimpleJsonType = {}
         if self._sdk_session_id:
             final_metadata["sdk_session_id"] = self._sdk_session_id
-        finish_reason = (
-            "stop" if self._cancelled or not stop_reason else to_finish_reason(stop_reason)
-        )
+        # The CLI stops fast mode by itself (e.g. at a model switch): follow it.
+        if result_message and (fast_state := result_message.fast_mode_state) is not None:
+            await self._follow_fast_mode(enabled=fast_state != "off")
+        turn_error = to_turn_error(result_message) if result_message else None
+        finish_reason: FinishReason
+        if self._cancelled:
+            finish_reason = "stop"
+        elif turn_error is not None:
+            finish_reason = "error"
+            final_metadata["error_code"] = turn_error.code
+            yield RunErrorEvent(
+                message=turn_error.message,
+                code=turn_error.code,
+                run_id=run_id,
+                agent_name=self.name,
+            )
+        else:
+            finish_reason = to_finish_reason(stop_reason) if stop_reason else "stop"
         chat_message = ChatMessage[TResult](
             content=final_content,
             role="assistant",
@@ -860,25 +905,70 @@ class ClaudeCodeAgent[TDeps = None, TResult = str](BaseAgent[TDeps, TResult]):
         await self._set_mode(model, "model")
 
     async def set_effort(self, effort: ReasoningEffort) -> None:
-        """Set reasoning effort level.
-
-        This requires a session reconnect since effort is a CLI startup flag.
-        The current session is preserved via session resumption.
+        """Set reasoning effort level (applied to the running CLI, no reconnect).
 
         Args:
             effort: Reasoning effort level
         """
-        await self._set_mode(effort, "effort")
+        await self._set_mode(effort, "thought_level")
 
     async def set_permission_mode(self, mode: PermissionMode) -> None:
         """Set permission mode."""
         await self._set_mode(mode, "mode")
 
     async def get_available_models(self) -> list[ModelInfo]:
-        """Get available models for Claude Code agent (defined as static list)."""
+        """The models the CLI offers this account (a static list until it is connected)."""
+        from agentpool.agents.claude_code_agent.converters import to_model_info
         from agentpool.agents.claude_code_agent.static_info import MODELS
 
-        return MODELS
+        if self._server_info is None:
+            return MODELS
+        return [to_model_info(model) for model in self._server_info.models]
+
+    def _current_model_info(self) -> ClaudeCodeModelInfo | None:
+        """The CLI's entry for the selected model (None before connecting or if unlisted)."""
+        if (server_info := self._server_info) is None:
+            return None
+        model = self._model or server_info.current_model or "default"
+        return next(
+            (info for info in server_info.models if model in (info.value, info.resolved_model)),
+            None,
+        )
+
+    def _effort_levels(self) -> list[ReasoningEffort] | None:
+        """Effort levels of the selected model (None: not known before connecting)."""
+        if (model := self._current_model_info()) is None:
+            return None
+        return list(model.supported_effort_levels or []) if model.supports_effort else []
+
+    async def _apply_effort(self, effort: ReasoningEffort) -> None:
+        """Set the effort of the running CLI (flag settings: no restart)."""
+        from clawd_code_sdk.models.settings import ClaudeCodeSettings
+
+        self._effort = effort
+        if self._client:
+            await self.ensure_initialized()
+            await self._client.apply_flag_settings(ClaudeCodeSettings(effort_level=effort))
+
+    async def _follow_fast_mode(self, *, enabled: bool) -> None:
+        """Adopt the fast mode state the CLI reports and announce a change."""
+        if self._fast_mode != enabled:
+            self._fast_mode = enabled
+            await self.update_state(config_id="fast", value_id="on" if enabled else "off")
+
+    async def _apply_fast_mode(self, *, enabled: bool) -> None:
+        """Turn fast mode on or off in the running CLI.
+
+        Turning it on sends ``fastMode: false`` first: the CLI ignores ``true`` while its
+        flag already holds ``true``, which it keeps after it stopped serving fast mode
+        (e.g. at a model switch).
+        """
+        from clawd_code_sdk.models.settings import ClaudeCodeSettings
+
+        assert self._client
+        if enabled:
+            await self._client.apply_flag_settings(ClaudeCodeSettings(fast_mode=False))
+        await self._client.apply_flag_settings(ClaudeCodeSettings(fast_mode=enabled))
 
     async def get_auth_status(self) -> AuthStatus:
         """Get the Claude account the CLI is using."""
@@ -914,7 +1004,7 @@ class ClaudeCodeAgent[TDeps = None, TResult = str](BaseAgent[TDeps, TResult]):
 
     @property
     def config_options(self) -> Sequence[ConfigOption[Self]]:
-        """Permission mode, model, thinking level and reasoning effort."""
+        """Permission mode, model, reasoning effort and fast mode."""
         from agentpool.agents.claude_code_agent.config_options import CONFIG_OPTIONS
 
         return CONFIG_OPTIONS

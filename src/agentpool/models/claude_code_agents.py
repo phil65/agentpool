@@ -158,7 +158,7 @@ class ClaudeCodeAgentConfig(BaseAgentConfig):
 
           planner:
             permission_mode: plan
-            max_thinking_tokens: 10000
+            reasoning_effort: max
             include_builtin_system_prompt: false
             system_prompt:
               - "You are a planning-only assistant."
@@ -179,7 +179,7 @@ class ClaudeCodeAgentConfig(BaseAgentConfig):
     model: AnthropicMaxModelName | str | None = Field(
         default="opus",
         title="Model",
-        examples=["claude-sonnet-4-6", "claude-opus-4-6", "claude-haiku-4-5"],
+        examples=["opus", "sonnet", "haiku", "claude-opus-5-5"],
     )
     """Model to use for this agent. Defaults to Claude's default model."""
 
@@ -234,16 +234,14 @@ class ClaudeCodeAgentConfig(BaseAgentConfig):
     When set, the agent will stop once the estimated cost exceeds this limit.
     """
 
-    max_thinking_tokens: int | Literal["adaptive"] | None = Field(
+    reasoning_effort: Literal["low", "medium", "high", "xhigh", "max"] | None = Field(
         default=None,
-        title="Max Thinking Tokens",
-        ge=1000,
-        examples=[5000, 10000, "adaptive"],
+        title="Reasoning Effort",
+        examples=["high", "max"],
     )
-    """Maximum tokens for extended thinking mode.
+    """How much the model thinks (Claude's adaptive thinking). Defaults to the CLI's setting.
 
-    When set, enables Claude's extended thinking capability for more
-    complex reasoning tasks.
+    Can be changed while the agent runs; models offer the levels they support.
     """
 
     permission_mode: PermissionMode | None = Field(
@@ -307,7 +305,7 @@ class ClaudeCodeAgentConfig(BaseAgentConfig):
     fallback_model: AnthropicMaxModelName | str | None = Field(
         default=None,
         title="Fallback Model",
-        examples=["claude-sonnet-4-5", "claude-haiku-3-5"],
+        examples=["sonnet", "haiku"],
     )
     """Fallback model when default is overloaded."""
 

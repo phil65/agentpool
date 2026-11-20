@@ -10,10 +10,7 @@ from agentpool.agents.modes import ConfigOption, ModelOption
 if TYPE_CHECKING:
     from clawd_code_sdk.models import PermissionMode, ReasoningEffort
 
-    from agentpool.agents.claude_code_agent.claude_code_agent import (
-        ClaudeCodeAgent,
-        ThinkingMode,
-    )
+    from agentpool.agents.claude_code_agent.claude_code_agent import ClaudeCodeAgent
 
     type AnyClaudeCodeAgent = ClaudeCodeAgent[Any, Any]
 
@@ -36,7 +33,7 @@ class PermissionModeOption(ConfigOption["AnyClaudeCodeAgent"]):
         return agent._permission_mode or "default"
 
     async def _apply(self, agent: AnyClaudeCodeAgent, value: str) -> None:
-        agent._permission_mode = cast("PermissionMode", value)
+        agent._remember_permission_mode(cast("PermissionMode", value))
         if agent._client:
             await agent.ensure_initialized()
             await agent._client.set_permission_mode(agent._permission_mode)
@@ -52,57 +49,75 @@ class ClaudeModelOption(ModelOption["AnyClaudeCodeAgent"]):
         if agent._client:
             await agent.ensure_initialized()
             await agent._client.set_model(value)
+        # An effort the new model lacks would keep running unseen: move to one it has.
+        levels = agent._effort_levels()
+        if agent._effort and levels and agent._effort not in levels:
+            await agent._apply_effort(closest_effort(agent._effort, levels))
 
 
-class ThinkingLevelOption(ConfigOption["AnyClaudeCodeAgent"]):
-    """Budget of thinking tokens."""
+EFFORT_ORDER: tuple[ReasoningEffort, ...] = ("low", "medium", "high", "xhigh", "max")
+DEFAULT_EFFORT: ReasoningEffort = "high"
 
-    id = "thought_level"
-    name = "Thinking Level"
-    category = "thought_level"
 
-    async def choices(self, agent: AnyClaudeCodeAgent) -> list[ModeInfo]:
-        from agentpool.agents.claude_code_agent.static_info import THINKING_MODES
-
-        return THINKING_MODES
-
-    def current(self, agent: AnyClaudeCodeAgent) -> str:
-        return agent._thinking_mode
-
-    async def _apply(self, agent: AnyClaudeCodeAgent, value: str) -> None:
-        from agentpool.agents.claude_code_agent.claude_code_agent import THINKING_MODE_TOKENS
-
-        agent._thinking_mode = cast("ThinkingMode", value)
-        if agent._client:
-            await agent.ensure_initialized()
-            await agent._client.set_max_thinking_tokens(THINKING_MODE_TOKENS[agent._thinking_mode])
+def closest_effort(effort: ReasoningEffort, levels: list[ReasoningEffort]) -> ReasoningEffort:
+    """The highest of ``levels`` up to ``effort``, else the lowest of them."""
+    rank = EFFORT_ORDER.index
+    below = [level for level in levels if rank(level) <= rank(effort)]
+    return max(below, key=rank) if below else min(levels, key=rank)
 
 
 class EffortOption(ConfigOption["AnyClaudeCodeAgent"]):
-    """Reasoning effort; a CLI startup flag, so changing it reconnects the session."""
+    """Reasoning effort (depth of adaptive thinking), with the levels of the selected model."""
 
-    id = "effort"
+    id = "thought_level"
     name = "Reasoning Effort"
-    category = "other"
+    category = "thought_level"
 
     async def choices(self, agent: AnyClaudeCodeAgent) -> list[ModeInfo]:
         from agentpool.agents.claude_code_agent.static_info import EFFORT_MODES
 
-        return EFFORT_MODES
+        if (levels := agent._effort_levels()) is None:
+            return EFFORT_MODES
+        return [mode for mode in EFFORT_MODES if mode.value in levels]
 
     def current(self, agent: AnyClaudeCodeAgent) -> str:
-        return agent._effort or "high"
+        levels = agent._effort_levels()
+        effort = agent._effort or DEFAULT_EFFORT
+        if levels is None or effort in levels:
+            return effort
+        return closest_effort(effort, levels) if levels else ""
 
     async def _apply(self, agent: AnyClaudeCodeAgent, value: str) -> None:
-        agent._effort = cast("ReasoningEffort", value)
+        await agent._apply_effort(cast("ReasoningEffort", value))
+
+
+class FastModeOption(ConfigOption["AnyClaudeCodeAgent"]):
+    """Fast mode, offered for the models that have it."""
+
+    id = "fast"
+    name = "Fast Mode"
+    category = "other"
+
+    async def choices(self, agent: AnyClaudeCodeAgent) -> list[ModeInfo]:
+        from agentpool.agents.claude_code_agent.static_info import FAST_MODES
+
+        model = agent._current_model_info()
+        return FAST_MODES if model is not None and model.supports_fast_mode else []
+
+    def current(self, agent: AnyClaudeCodeAgent) -> str:
+        return "on" if agent._fast_mode else "off"
+
+    async def _apply(self, agent: AnyClaudeCodeAgent, value: str) -> None:
+        agent._fast_mode = value == "on"
         if agent._client:
-            await agent.reconnect(resume_session=True)
+            await agent.ensure_initialized()
+            await agent._apply_fast_mode(enabled=agent._fast_mode)
 
 
 CONFIG_OPTIONS: tuple[ConfigOption[AnyClaudeCodeAgent], ...] = (
     PermissionModeOption(),
     ClaudeModelOption(),
-    ThinkingLevelOption(),
     EffortOption(),
+    FastModeOption(),
 )
 """Options of every Claude Code agent, in display order."""

@@ -1,62 +1,32 @@
-"""Static model information."""
+"""Static info of the Claude Code agent: model aliases and option choices."""
 
 from __future__ import annotations
 
-from tokonomics.model_discovery.model_info import ModelInfo, ModelPricing
+from tokonomics.model_discovery.model_info import ModelInfo
 
+from agentpool.agents.claude_code_agent.converters import DEFAULT_CONTEXT_WINDOW
 from agentpool.agents.modes import ModeInfo
 
 
-# Static Claude Code models - these are the simple IDs the SDK accepts
-# Use id_override to ensure pydantic_ai_id returns simple names like "opus"
+def _alias(alias: str, name: str, description: str) -> ModelInfo:
+    return ModelInfo(
+        id=alias,
+        name=name,
+        provider="anthropic",
+        description=description,
+        context_window=DEFAULT_CONTEXT_WINDOW,
+        input_modalities={"text", "image"},
+        id_override=alias,
+    )
 
-OPUS = ModelInfo(
-    id="claude-opus-4-5",
-    name="Claude Opus",
-    provider="anthropic",
-    description="Claude Opus - most capable model",
-    context_window=200000,
-    max_output_tokens=32000,
-    input_modalities={"text", "image"},
-    output_modalities={"text"},
-    pricing=ModelPricing(
-        prompt=0.000005,  # $5 per 1M tokens
-        completion=0.000025,  # $25 per 1M tokens
-    ),
-    id_override="opus",  # Claude Code SDK uses simple names
-)
-SONNET = ModelInfo(
-    id="claude-sonnet-4-5",
-    name="Claude Sonnet",
-    provider="anthropic",
-    description="Claude Sonnet - balanced performance and speed",
-    context_window=200000,
-    max_output_tokens=16000,
-    input_modalities={"text", "image"},
-    output_modalities={"text"},
-    pricing=ModelPricing(
-        prompt=0.000003,  # $3 per 1M tokens
-        completion=0.000015,  # $15 per 1M tokens
-    ),
-    id_override="sonnet",  # Claude Code SDK uses simple names
-)
-HAIKU = ModelInfo(
-    id="claude-haiku-4-5",
-    name="Claude Haiku",
-    provider="anthropic",
-    description="Claude Haiku - fast and cost-effective",
-    context_window=200000,
-    max_output_tokens=8000,
-    input_modalities={"text", "image"},
-    output_modalities={"text"},
-    pricing=ModelPricing(
-        prompt=0.000001,  # $1.00 per 1M tokens
-        completion=0.000005,  # $5 per 1M tokens
-    ),
-    id_override="haiku",  # Claude Code SDK uses simple names
-)
 
-MODELS = [OPUS, SONNET, HAIKU]
+MODELS = [
+    _alias("default", "Default (recommended)", "The model Claude Code recommends"),
+    _alias("opus", "Opus", "Most capable for complex work"),
+    _alias("sonnet", "Sonnet", "Balanced performance and speed"),
+    _alias("haiku", "Haiku", "Fastest for quick answers"),
+]
+"""The CLI's model aliases, offered until it is connected and lists the account's models."""
 
 
 MODES = [
@@ -103,63 +73,40 @@ EFFORT_MODES = [
         value="low",
         name="Low",
         description="Faster, cheaper responses for straightforward tasks",
-        category_id="effort",
+        category_id="thought_level",
     ),
     ModeInfo(
         value="medium",
         name="Medium",
         description="Balanced reasoning effort",
-        category_id="effort",
+        category_id="thought_level",
     ),
     ModeInfo(
         value="high",
         name="High",
         description="Deeper reasoning for complex tasks",
-        category_id="effort",
+        category_id="thought_level",
     ),
     ModeInfo(
         value="xhigh",
         name="Extra High",
         description="Very deep reasoning for hard problems",
-        category_id="effort",
+        category_id="thought_level",
     ),
     ModeInfo(
         value="max",
         name="Max",
         description="Maximum reasoning depth",
-        category_id="effort",
+        category_id="thought_level",
     ),
 ]
 
-THINKING_MODES = [
+FAST_MODES = [
+    ModeInfo(value="off", name="Off", description="Standard speed", category_id="fast"),
     ModeInfo(
-        value="off",
-        name="Off",
-        description="No extended thinking",
-        category_id="thought_level",
-    ),
-    ModeInfo(
-        value="4k",
-        name="4K tokens",
-        description="Light reasoning (4,096 tokens)",
-        category_id="thought_level",
-    ),
-    ModeInfo(
-        value="8k",
-        name="8K tokens",
-        description="Moderate reasoning (8,192 tokens)",
-        category_id="thought_level",
-    ),
-    ModeInfo(
-        value="16k",
-        name="16K tokens",
-        description="Deep reasoning (16,384 tokens)",
-        category_id="thought_level",
-    ),
-    ModeInfo(
-        value="32k",
-        name="32K tokens",
-        description="Maximum reasoning (32,768 tokens)",
-        category_id="thought_level",
+        value="on",
+        name="On",
+        description="Faster responses at a higher price",
+        category_id="fast",
     ),
 ]

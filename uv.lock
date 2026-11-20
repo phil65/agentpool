@@ -229,7 +229,7 @@ requires-dist = [
     { name = "autoevals", marker = "extra == 'braintrust'" },
     { name = "bashkit", specifier = ">=0.1.11" },
     { name = "braintrust", marker = "extra == 'braintrust'" },
-    { name = "clawd-code-sdk", specifier = ">=1.2.5" },
+    { name = "clawd-code-sdk", specifier = ">=1.2.6" },
     { name = "codexed", specifier = ">=1.3.1" },
     { name = "composio", marker = "extra == 'composio'" },
     { name = "copykitten", marker = "extra == 'clipboard'" },
@@ -1290,7 +1290,7 @@ wheels = [
 
 [[package]]
 name = "clawd-code-sdk"
-version = "1.2.5"
+version = "1.2.6"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "anthropic" },
@@ -1301,9 +1301,9 @@ dependencies = [
     { name = "mcp" },
     { name = "python-dotenv" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/51/49/05683766f8c2f28f775e5c5d3a8a21b89dcc440c075ed3f435be0e30ce7f/clawd_code_sdk-1.2.5.tar.gz", hash = "sha256:b0f4abe8e35e170dcbd2b63942a700766bde09c25838767d097af58489bfc745", size = 254968, upload-time = "2026-11-20T10:52:05.03Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/48/f4/cd110f457fa58960a63e75fa442d491953734900e59747099ec10d313bf1/clawd_code_sdk-1.2.6.tar.gz", hash = "sha256:be89386cd5f4774e6539832b809d96a87559e32ef850d7b479e5543856268a08", size = 255311, upload-time = "2026-11-20T21:45:20.651Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/fc/bd/50f2f43f256ebd03764fbb87448641ecec5b98f593b98e7b88e990ca6940/clawd_code_sdk-1.2.5-py3-none-any.whl", hash = "sha256:b56e425958d80ac384304b4db00993ffe241b25a0030467f20856ad51c217e9e", size = 211377, upload-time = "2026-11-20T10:52:03.548Z" },
+    { url = "https://files.pythonhosted.org/packages/a1/5d/0d25d30740bcbb169b872191a9e70bdb5817d534eacdcdf2a9479b9d8e13/clawd_code_sdk-1.2.6-py3-none-any.whl", hash = "sha256:e5db16baf64b17bd6de2892396089a03c650e52b8056848d3ab5036b92ed4475", size = 211426, upload-time = "2026-11-20T21:45:18.785Z" },
 ]
 
 [[package]]
