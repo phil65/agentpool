@@ -379,6 +379,16 @@ class BaseAgent[TDeps = None, TResult = str](MessageNode[TDeps, TResult]):
         event = self.AgentReset(agent_name=self.name)
         await self.agent_reset.emit(event)
 
+    async def start_new_session(self) -> None:
+        """Detach from the current session so the next run starts a fresh conversation.
+
+        Clears the conversation history and the active session ID. Agents backed by an
+        external runtime with its own native session (Claude Code, Codex, ACP, ...) override
+        this to also start a fresh native session instead of resuming the previous one.
+        """
+        await self.reset()
+        self.session_id = None
+
     def get_context(
         self,
         data: Any = None,

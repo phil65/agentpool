@@ -713,6 +713,14 @@ class ACPAgent[TDeps = None](BaseAgent[TDeps, str]):
                 result = result[:limit]
             return result
 
+    async def start_new_session(self) -> None:
+        """Start a fresh session on the remote ACP server."""
+        await super().start_new_session()
+        if self._api is None:
+            self._sdk_session_id = None
+        else:
+            await self._create_session()
+
     async def load_session(self, session_id: str) -> SessionData | None:
         """Load and restore a session from the remote ACP server."""
         from agentpool.agents.acp_agent.acp_converters import (

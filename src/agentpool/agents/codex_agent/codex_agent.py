@@ -276,20 +276,34 @@ class CodexAgent[TDeps = None, OutputDataT = str](BaseAgent[TDeps, OutputDataT])
             self.conversation.chat_messages.extend(chat_messages)
             self.log.info("Restored conversation history", turn_count=len(thread.turns))
         else:
-            # Start a new thread
-            session = await self._client.thread_start(
-                cwd=cwd,
-                model=self._current_model,
-                base_instructions=self._base_instructions,
-                developer_instructions=self._developer_instructions,
-                sandbox=self._current_sandbox,
-                approval_policy=self._approval_policy,
-                personality=self._current_personality,
-            )
-            self._sdk_session_id = session.thread_id
-            self._sessions[self._sdk_session_id] = session
-            self.log.info("Codex thread started", sdk_session_id=self._sdk_session_id, cwd=cwd)
+            await self._start_thread()
         return self
+
+    async def _start_thread(self) -> None:
+        """Start a new Codex thread and make it the active one."""
+        if self._client is None:
+            raise AgentNotInitializedError
+        cwd = str(self.env.cwd or Path.cwd())
+        session = await self._client.thread_start(
+            cwd=cwd,
+            model=self._current_model,
+            base_instructions=self._base_instructions,
+            developer_instructions=self._developer_instructions,
+            sandbox=self._current_sandbox,
+            approval_policy=self._approval_policy,
+            personality=self._current_personality,
+        )
+        self._sdk_session_id = session.thread_id
+        self._sessions[self._sdk_session_id] = session
+        self.log.info("Codex thread started", sdk_session_id=self._sdk_session_id, cwd=cwd)
+
+    async def start_new_session(self) -> None:
+        """Start a fresh Codex thread instead of continuing the current one."""
+        await super().start_new_session()
+        if self._client is None:
+            self._sdk_session_id = None
+        else:
+            await self._start_thread()
 
     async def __aexit__(
         self,

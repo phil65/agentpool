@@ -899,6 +899,14 @@ class ClaudeCodeAgent[TDeps = None, TResult = str](BaseAgent[TDeps, TResult]):
         result.sort(key=lambda s: s.updated_at or "", reverse=True)
         return result
 
+    async def start_new_session(self) -> None:
+        """Start a fresh Claude Code session instead of resuming the current one."""
+        await super().start_new_session()
+        if self._client is None:
+            self._sdk_session_id = None
+        else:
+            await self.reconnect(resume_session=False)
+
     async def load_session(self, session_id: str) -> SessionData | None:
         """Load and restore a session from Claude storage (requires reconnect)."""
         storage = self.storage

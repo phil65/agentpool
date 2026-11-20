@@ -540,6 +540,11 @@ class AGUIAgent[TDeps = None](BaseAgent[TDeps, str]):
         """List sessions for AG-UI agent (not supported)."""
         return []
 
+    async def start_new_session(self) -> None:
+        """Start a fresh AG-UI thread (derived from the next session ID)."""
+        await super().start_new_session()
+        self._sdk_session_id = None
+
     async def load_session(self, session_id: str) -> SessionData | None:
         """Load a session for AG-UI agent. (not supported)."""
         self.log.warning("AG-UI agents do not support session loading", session_id=session_id)
