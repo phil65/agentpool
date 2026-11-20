@@ -32,7 +32,8 @@ from pydantic_ai.models.function import AgentInfo, FunctionModel
 import pytest
 
 from agentpool import Agent, AgentPool, AgentsManifest
-from agentpool.agents.events import StreamCompleteEvent
+from agentpool.agents.base_agent import BaseAgent
+from agentpool.agents.events import NoticeEvent, StreamCompleteEvent
 from agentpool.messaging import ChatMessage
 from agentpool.messaging.messages import TokenCost
 from agentpool.sessions import SessionData
@@ -300,3 +301,22 @@ async def test_no_usage_update_without_known_context_window() -> None:
     updates = [u async for u in converter.convert(_completed_run("0.25"))]
     assert updates == []
     assert converter.session_cost == Decimal("0.25")
+
+
+async def test_background_events_are_sent_to_their_session(server: AgentPoolACPAgent) -> None:
+    session_id = await _new_session(server)
+    session = server.session_manager.get_session(session_id)
+    assert session is not None
+    agent = session.agent
+    server.client.session_update.reset_mock()  # type: ignore[attr-defined]
+    notice = NoticeEvent(title="Background task finished", description="3 files")
+    background = BaseAgent.BackgroundEvent(
+        agent_name=agent.name, session_id=session_id, event=notice
+    )
+    await agent.background_event.emit(background)
+    other = BaseAgent.BackgroundEvent(agent_name=agent.name, session_id="other", event=notice)
+    await agent.background_event.emit(other)
+    calls = server.client.session_update.call_args_list  # type: ignore[attr-defined]
+    notifications: list[SessionNotification] = [call.args[0] for call in calls]
+    assert [n.session_id for n in notifications] == [session_id]
+    assert "Background task finished" in str(notifications[0].update)

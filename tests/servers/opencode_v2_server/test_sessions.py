@@ -8,9 +8,20 @@ from typing import TYPE_CHECKING, Any
 
 import pytest
 
+from agentpool.agents.base_agent import BaseAgent
+from agentpool.agents.events import (
+    NoticeEvent,
+    PartStartEvent,
+    RunStartedEvent,
+    StreamCompleteEvent,
+    TaskFinishedEvent,
+    TaskStartedEvent,
+)
 from agentpool.agents.usage_limits import UsageLimits, UsageWindow
+from agentpool.messaging import ChatMessage
 from agentpool_server.opencode_v2_server.event_store import EventStore
 from agentpool_server.opencode_v2_server.session import V2Session
+from opencode_v2_sdk.models import TuiToastShow
 
 from .conftest import create_session, messages, prompt_and_wait, wait_for
 
@@ -370,3 +381,62 @@ async def test_usage_limits(
     assert data["go"]["weekly"]["resetsAt"] == round(reset.timestamp() * 1000)
     assert data["go"]["monthly"]["percent"] == 0
     assert data["budgets"] == []
+
+
+async def test_background_events_reach_the_bound_session(
+    client: AsyncClient, state: ServerState, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    sid = await create_session(client)
+    await prompt_and_wait(client, sid, "hi")  # Creates the session's runner
+    runner = state.runners[sid]
+    agent = state.pool.main_agent
+    started = TaskStartedEvent(task_id="bg1", kind="agent", description="Scan", background=True)
+    runner.tasks.observe(started)
+    emitted: list[tuple[type[Any], Any]] = []
+    monkeypatch.setattr(runner.session, "emit_sink", lambda cls, data: emitted.append((cls, data)))
+    for event in (
+        TaskFinishedEvent(task_id="bg1", status="completed"),
+        NoticeEvent(title="Scan finished"),
+    ):
+        background = BaseAgent.BackgroundEvent(agent_name=agent.name, session_id=sid, event=event)
+        await agent.background_event.emit(background)
+    jobs = (await client.get("/api/experimental/job", params={"sessionID": sid})).json()["data"]
+    # Listed (finished) until an execution consumes it
+    assert [(job["id"], job["status"]) for job in jobs] == [("bg1", "completed")]
+    ((toast_cls, toast),) = emitted
+    assert toast_cls is TuiToastShow
+    assert toast.message == "Scan finished"
+    # Events of other sessions are not routed here
+    other = BaseAgent.BackgroundEvent(
+        agent_name=agent.name, session_id="ses_other", event=NoticeEvent(title="elsewhere")
+    )
+    await agent.background_event.emit(other)
+    assert len(emitted) == 1
+
+
+async def test_turn_the_agent_took_on_its_own_is_an_execution(
+    client: AsyncClient, state: ServerState
+) -> None:
+    sid = await create_session(client)
+    await prompt_and_wait(client, sid, "hi")
+    agent = state.pool.main_agent
+    reply = ChatMessage[str](content="The scan found 3 issues.", role="assistant", name=agent.name)
+    for event in (
+        RunStartedEvent(session_id=sid, run_id="r1", agent_name=agent.name),
+        PartStartEvent.text(index=0, content="The scan found 3 issues."),
+        StreamCompleteEvent(message=reply),
+    ):
+        background = BaseAgent.BackgroundEvent(agent_name=agent.name, session_id=sid, event=event)
+        await agent.background_event.emit(background)
+    msgs = await messages(client, sid)
+    texts = [
+        part["text"]
+        for m in msgs
+        if m["type"] == "assistant"
+        for part in m["content"]
+        if part["type"] == "text"
+    ]
+    assert texts[-1] == "The scan found 3 issues."
+    assert not state.runners[sid].running
+    # A new prompt still works afterwards
+    await prompt_and_wait(client, sid, "again")

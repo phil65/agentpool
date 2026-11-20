@@ -7,6 +7,7 @@ between agents and ACP clients through the JSON-RPC protocol.
 from __future__ import annotations
 
 import asyncio
+import contextlib
 from dataclasses import dataclass, field
 from decimal import Decimal
 import re
@@ -253,7 +254,30 @@ class ACPSession:
 
             # Subscribe to state change signal for all agents
             agent.state_updated.connect(self._on_state_updated)
+            agent.background_event.connect(self._on_background_event)
         self.log.info("Created ACP session", current_agent=self.agent.name)
+
+    async def _on_background_event(self, background: BaseAgent.BackgroundEvent) -> None:
+        """Forward an agent event produced between turns (e.g. a task finishing).
+
+        ACP allows session updates outside a prompt turn; only this session's events count.
+        """
+        from agentpool_server.acp_server.event_converter import ACPEventConverter
+
+        if background.session_id != self.session_id:
+            return
+        converter = ACPEventConverter(
+            subagent_display_mode=self.subagent_display_mode,
+            use_notices=self.supports_notices,
+            use_compaction_updates=self.supports_compaction,
+            use_prompt_suggestions=self.supports_prompt_suggestions,
+            background_tasks=self.background_tasks,
+        )
+        try:
+            async for update in converter.convert(background.event):
+                await self.notifications.send_update(update)
+        except Exception:
+            self.log.exception("Failed to forward background event")
 
     async def _on_state_updated(
         self, state: ModeInfo | ModelInfo | AvailableCommandsUpdate | ConfigOptionChanged
@@ -575,6 +599,9 @@ class ACPSession:
         """Close the session and cleanup resources."""
         try:
             await self.acp_env.__aexit__(None, None, None)
+            for pool_agent in self.agent_pool.all_agents.values():
+                with contextlib.suppress(ValueError):  # Agents added after this session
+                    pool_agent.background_event.disconnect(self._on_background_event)
             # Remove cwd context callable from all agents
             for agent in self.agent_pool.get_agents(Agent).values():
                 if self.get_cwd_context in agent.sys_prompts.prompts:

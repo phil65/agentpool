@@ -170,7 +170,7 @@ def test_retry_is_shown_on_the_retried_step() -> None:
     assert (retry.attempt, retry.at, retry.error.message) == (1, 1500, "overloaded")
 
 
-def test_tasks_are_listed_as_jobs_until_the_turn_ends() -> None:
+def test_tasks_are_listed_as_jobs() -> None:
     tracker = TaskTracker(session_id="ses_1")
     tracker.observe(
         TaskStartedEvent(task_id="t1", kind="agent", description="Count", agent_type="Explore")
@@ -190,5 +190,9 @@ def test_tasks_are_listed_as_jobs_until_the_turn_ends() -> None:
     assert isinstance(shell, models.JobShell)
     assert (shell.command, shell.status) == ("npm test", "error")
     assert running.status == "running"
-    tracker.end_turn()
-    assert [job.id for job in tracker.jobs()] == ["t1", "t2"]
+    # Once an execution has seen the results, finished tasks are no longer listed
+    tracker.consume_finished()
+    assert [job.id for job in tracker.jobs()] == ["t3"]
+    tracker.observe(TaskFinishedEvent(task_id="t3", status="completed"))
+    tracker.consume_finished()
+    assert tracker.jobs() == []

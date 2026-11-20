@@ -5,9 +5,13 @@ session; AgentPool shows subagent activity inside the parent session (on the del
 tool call), so the job's ``childSessionID`` is the session itself: interrupting it stops
 the subagent along with the turn.
 
-Claude Code reports the end of a background task in a later turn, which this server cannot
-observe in between. Tasks still running when a turn ends are therefore dropped, so clients
-that wait for running jobs (``opencode run``) do not wait forever.
+A background task can end after its turn: the agent then reports it as a background event
+(``BaseAgent.background_event``), which the server routes to the session's tracker.
+
+Like OpenCode's own jobs, a task is listed until its result has been consumed: until the
+end of the execution it finished in, or of the turn the agent takes to react to it
+(Claude Code does so on its own). Clients such as ``opencode run`` wait for every listed
+job, so finished tasks must not linger.
 """
 
 from __future__ import annotations
@@ -67,9 +71,9 @@ class TaskTracker:
             case _:
                 pass
 
-    def end_turn(self) -> None:
-        """Forget tasks whose end this server will not see (see module docstring)."""
-        self.tasks = {k: t for k, t in self.tasks.items() if t.status != "running"}
+    def consume_finished(self) -> None:
+        """Drop finished tasks: an execution of the session has seen their results."""
+        self.tasks = {k: task for k, task in self.tasks.items() if task.status == "running"}
 
     def jobs(self) -> list[JobShell | JobSubagent]:
         """The tasks as OpenCode jobs."""

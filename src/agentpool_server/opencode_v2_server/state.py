@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 from dataclasses import dataclass, field
 import time
 from typing import TYPE_CHECKING, Any
@@ -49,6 +50,7 @@ if TYPE_CHECKING:
     from fsspec.asyn import AsyncFileSystem
     from pydantic import BaseModel
 
+    from agentpool.agents.base_agent import BaseAgent
     from agentpool.delegation import AgentPool
     from agentpool.storage import StorageManager
     from agentpool.storage.manager import SessionMetadataGeneratedEvent
@@ -130,12 +132,22 @@ class ServerState:
         return event
 
     def connect_signals(self) -> None:
-        """Connect storage signals (title generation)."""
+        """Connect storage (title generation) and agent signals (events between turns)."""
         self.storage.metadata_generated.connect(self._on_metadata_generated)
+        for agent in self.pool.all_agents.values():
+            agent.background_event.connect(self._on_background_event)
 
     def disconnect_signals(self) -> None:
-        """Disconnect storage signals."""
+        """Disconnect storage and agent signals."""
         self.storage.metadata_generated.disconnect(self._on_metadata_generated)
+        for agent in self.pool.all_agents.values():
+            with contextlib.suppress(ValueError):  # Agents added after startup
+                agent.background_event.disconnect(self._on_background_event)
+
+    async def _on_background_event(self, background: BaseAgent.BackgroundEvent) -> None:
+        """An agent event outside a turn goes to the session the agent is bound to."""
+        if background.session_id and (runner := self.runners.get(background.session_id)):
+            await runner.on_background_event(background.event)
 
     async def _on_metadata_generated(self, event: SessionMetadataGeneratedEvent) -> None:
         session = self.sessions.get(event.session_id)

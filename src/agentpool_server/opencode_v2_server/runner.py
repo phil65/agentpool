@@ -16,7 +16,7 @@ from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, Literal
 
 from agentpool.agents.base_agent import BaseAgent
-from agentpool.agents.events import StreamCompleteEvent
+from agentpool.agents.events import NoticeEvent, RunStartedEvent, StreamCompleteEvent
 from agentpool.delegation.team import Team
 from agentpool.delegation.teamrun import TeamRun
 from agentpool.log import get_logger
@@ -56,6 +56,8 @@ from opencode_v2_sdk.models import (
     SessionStatusIdle,
     SessionStatusUpdated,
     SessionStatusUpdatedData,
+    TuiToastShow,
+    TuiToastShowData,
 )
 
 
@@ -64,7 +66,7 @@ if TYPE_CHECKING:
 
     from pydantic_ai import UserContent
 
-    from agentpool.agents.events import StreamWithCommandsEvent
+    from agentpool.agents.events import RichAgentStreamEvent, StreamWithCommandsEvent
     from agentpool.messaging import MessageNode
     from agentpool.messaging.compaction import CompactionPipeline
     from agentpool.skills.manager import SkillsManager
@@ -171,6 +173,73 @@ class SessionRunner:
 
     def __post_init__(self) -> None:
         self.tasks = TaskTracker(session_id=self.session.id)
+        self._background: RunEventConverter | None = None
+        """Converter of a turn the agent took on its own, while it runs."""
+        self._background_done = asyncio.Event()
+        self._background_done.set()
+
+    async def on_background_event(self, event: RichAgentStreamEvent[Any]) -> None:
+        """An event the session's agent produced between turns.
+
+        A turn the agent took on its own (Claude Code reacting to a finished background
+        task) is framed by ``RunStartedEvent`` / ``StreamCompleteEvent`` and becomes an
+        execution of the session, like an OpenCode wake. Other events update the session's
+        tasks; notices are shown as toasts.
+        """
+        self.tasks.observe(event)
+        match event:
+            case RunStartedEvent(agent_name=agent_name):
+                await self._begin_background_turn(agent_name)
+            case StreamCompleteEvent() if (converter := self._background) is not None:
+                converter.handle(event)
+                self._end_background_turn(converter)
+            case _ if (converter := self._background) is not None:
+                converter.handle(event)
+            case NoticeEvent(title=title, description=description, severity=severity):
+                data = TuiToastShowData(
+                    title=title if description else None,
+                    message=description or title,
+                    variant=severity,
+                )
+                self.session.emit_sink(TuiToastShow, data)
+            case _:
+                pass
+
+    async def _begin_background_turn(self, agent_name: str | None) -> None:
+        if self._background is not None or self.running:
+            return
+        node = self.catalog.get_node(agent_name) if agent_name else self._current_node()
+        if node is None:
+            return
+        session = self.session
+        model_ref = session.info.model or await self.catalog.current_model_ref(node)
+        self._background_done.clear()
+        session.emit(SessionExecutionStarted, SessionExecutionStartedData(session_id=session.id))
+        self._status(busy=True)
+        self._background = RunEventConverter(
+            session_id=session.id,
+            agent_id=node.name,
+            model_ref=model_ref,
+            emit=session.emit_sink,
+        )
+
+    def _end_background_turn(self, converter: RunEventConverter) -> None:
+        session = self.session
+        converter.finish()
+        if converter.errors:
+            error = structured_error("; ".join(converter.errors))
+            session.emit(
+                SessionExecutionFailed,
+                SessionExecutionFailedData(session_id=session.id, error=error),
+            )
+        else:
+            session.emit(
+                SessionExecutionSucceeded, SessionExecutionSucceededData(session_id=session.id)
+            )
+        self._background = None
+        self.tasks.consume_finished()
+        self._status(busy=False)
+        self._background_done.set()
 
     @property
     def running(self) -> bool:
@@ -179,8 +248,9 @@ class SessionRunner:
 
     @property
     def active(self) -> bool:
-        """Whether the runner is draining (running or about to run)."""
-        return self._drain_task is not None and not self._drain_task.done()
+        """Whether the session is busy: draining its inbox, or in a turn the agent took itself."""
+        draining = self._drain_task is not None and not self._drain_task.done()
+        return draining or self._background is not None
 
     def tool_message_id(self, call_id: str) -> str | None:
         """Assistant message ID of a tool call of the current turn."""
@@ -302,6 +372,8 @@ class SessionRunner:
 
     async def _execute(self, item: SessionInboxUser | SessionInboxSynthetic) -> None:
         session = self.session
+        # A turn the agent took on its own finishes first (the agent waits for it anyway)
+        await self._background_done.wait()
         has_history = any(isinstance(m, SessionMessageUser) for m in session.projection.messages)
         session.emit(SessionExecutionStarted, SessionExecutionStartedData(session_id=session.id))
         self._status(busy=True)
@@ -362,7 +434,7 @@ class SessionRunner:
             )
         finally:
             self.converter = None
-            self.tasks.end_turn()
+            self.tasks.consume_finished()
             self._status(busy=False)
 
     async def _compact(self, item: SessionInboxCompaction) -> None:
