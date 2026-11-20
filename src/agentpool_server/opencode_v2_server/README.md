@@ -49,7 +49,10 @@ HTTP route ──► V2Session.emit(EventClass, data)
   `execution.succeeded|failed|interrupted`. `delivery: "steer"` injects into a running turn
   (`agent.inject_prompt`), `"queue"` waits for the next one.
 - `RunEventConverter` turns `run_stream` events into V2 step/text/reasoning/tool events. Each model
-  request becomes one step (one assistant message). Tools follow the canonical lifecycle
+  request becomes one step (one assistant message). Tool calls are shown under OpenCode's tool
+  names and argument names (`tool_display.py`), so the clients use their shell, read, edit, grep,
+  … renderers. The original tool name is kept in the tool metadata (`agentpoolTool`). Tools follow
+  the canonical lifecycle
   (`ToolCallStartEvent` → `ToolCallProgressEvent`* → `ToolCallCompleteEvent`) that every agent
   type emits.
 - Event logs live in `DATA_DIR/opencode-v2/sessions/<id>.jsonl`. Sessions without a log (created
@@ -74,6 +77,7 @@ HTTP route ──► V2Session.emit(EventClass, data)
 | `catalog.py` | Pool nodes → `Agent.Info`; models, providers, `ModelRef` resolution |
 | `interactions.py` | Permissions (tool confirmation, saved rules) and forms (elicitation) |
 | `prompt_input.py` | Prompt admission (attachments, skills, agent mentions) |
+| `tool_display.py` | Maps tool names/arguments onto OpenCode's renderers (`bash` → `shell`, …) |
 | `session_ops.py` | Fork, revert, diffs, import, stats, instruction entries |
 | `shells.py`, `ptys.py` | Background shell commands; PTYs with the OpenCode websocket protocol |
 | `location.py` | Locations and projects (git root commit = project ID, else `global`) |
@@ -108,7 +112,8 @@ These come from the interim session/agent model. They are tracked, with the code
   usage goes to the last step.
 - Subagent activity is shown as progress of the delegating tool call, not as V2 child sessions.
 - Fork and revert rewrite AgentPool storage only, not Claude Code's or Codex's native transcripts.
-- Our tool names (`bash`, `read`, …) use OpenCode's generic tool renderer.
+- Tool display mapping (`tool_display.py`) covers AgentPool's built-in tools and Claude Code's
+  and Codex's common ones. Other tools use OpenCode's generic renderer.
 
 ## Upgrading to a new OpenCode version
 

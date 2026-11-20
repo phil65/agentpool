@@ -670,6 +670,8 @@ and the migration step (§6) that should make the stopgap unnecessary.
   `session.reasoning.*` and `session.tool.*`.
 - Slash commands (`command_store`), `SkillsManager`, MCP status, exxec PTYs, `SessionData` storage.
 - Agent modes (`thought_level` / `effort`) → V2 model variants.
+- Tool calls → OpenCode renderers via a display-only name/argument mapping
+  (`opencode_v2_server/tool_display.py`).
 
 ### 10.13 Stopgap inventory (code to delete after the refactor)
 

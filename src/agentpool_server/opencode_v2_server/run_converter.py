@@ -53,6 +53,11 @@ from agentpool.agents.events import (
 from agentpool.log import get_logger
 from agentpool.utils.time_utils import now_ms
 from agentpool_server.opencode_v2_server.events import new_message_id
+from agentpool_server.opencode_v2_server.tool_display import (
+    ORIGINAL_TOOL_KEY,
+    display_input,
+    display_name,
+)
 from opencode_v2_sdk.models import (
     SessionCompactionEnded,
     SessionCompactionEndedData,
@@ -463,7 +468,7 @@ class RunEventConverter:
                 session_id=self.session_id,
                 assistant_message_id=step.message_id,
                 id=call_id,
-                name=name,
+                name=display_name(name),
             ),
         )
         if index is not None:
@@ -488,7 +493,7 @@ class RunEventConverter:
         if tool.input_ended:
             return
         if not tool.input_text and args:
-            tool.input_text = json.dumps(args)
+            tool.input_text = json.dumps(display_input(tool.name, args))
         tool.input_ended = True
         self.emit(
             SessionToolInputEnded,
@@ -516,13 +521,15 @@ class RunEventConverter:
                 session_id=self.session_id,
                 assistant_message_id=tool.message_id,
                 id=tool.call_id,
-                input=args,
+                input=display_input(tool.name, args),
                 executed=True,
             ),
         )
 
     def _tool_metadata(self, tool: _ToolState) -> dict[str, Any]:
         metadata: dict[str, Any] = {}
+        if display_name(tool.name) != tool.name:
+            metadata[ORIGINAL_TOOL_KEY] = tool.name
         if tool.title:
             metadata["title"] = tool.title
         if tool.output:
