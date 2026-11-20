@@ -12,13 +12,28 @@ from typing import TYPE_CHECKING, Any, ClassVar, Self, TypedDict, TypeVar, cast,
 from uuid import uuid4
 
 import logfire
-from pydantic_ai import Agent as PydanticAgent, CallToolsNode, ModelRequestNode, RunContext
+from pydantic_ai import (
+    Agent as PydanticAgent,
+    CallToolsNode,
+    ModelRequestNode,
+    ModelResponse,
+    RunContext,
+)
 from pydantic_ai.capabilities import NativeTool, ProcessHistory
 from pydantic_ai.tools import ToolDefinition
 
 from agentpool.agents.base_agent import BaseAgent
-from agentpool.agents.events import RunStartedEvent, StreamCompleteEvent
-from agentpool.agents.native_agent.helpers import forward_supported_events, process_tool_event
+from agentpool.agents.events import (
+    RunStartedEvent,
+    StepCompletedEvent,
+    StepStartedEvent,
+    StreamCompleteEvent,
+)
+from agentpool.agents.native_agent.helpers import (
+    forward_supported_events,
+    process_tool_event,
+    response_cost,
+)
 from agentpool.log import get_logger
 from agentpool.messaging import ChatMessage, MessageHistory
 from agentpool.storage import StorageManager
@@ -44,6 +59,7 @@ if TYPE_CHECKING:
     from exxec import ExecutionEnvironment
     from pydantic_ai import (
         AgentRetries,
+        AgentRun,
         BaseToolCallPart,
         EndStrategy,
         ModelSettings,
@@ -712,25 +728,30 @@ class Agent[TDeps = None, OutputDataT = str](BaseAgent[TDeps, OutputDataT]):
                     match node:
                         case End():
                             break
-                        # Stream events from model request or tool call nodes
-                        case ModelRequestNode() | CallToolsNode():
-                            async with (
-                                node.stream(agent_run.ctx) as stream,
-                                merge_queue_into_iterator(
-                                    forward_supported_events(stream), self._event_queue
-                                ) as merged,
+                        # A model request is one step: bracket it with step events
+                        case ModelRequestNode():
+                            step_id = str(uuid4())
+                            yield StepStartedEvent(step_id=step_id, model_name=self.model_name)
+                            async for event in self._stream_node(
+                                node, agent_run, pending_tcs, message_id
                             ):
-                                async for event in merged:
-                                    if self._cancelled:
-                                        break
-                                    yield event
-                                    if combined := process_tool_event(
-                                        self.name,
-                                        event,
-                                        pending_tcs,
-                                        message_id,
-                                    ):
-                                        yield combined
+                                yield event
+                            history = agent_run.ctx.state.message_history
+                            if not self._cancelled and isinstance(history[-1], ModelResponse):
+                                last = history[-1]
+                                yield StepCompletedEvent(
+                                    step_id=step_id,
+                                    usage=last.usage,
+                                    finish_reason=last.finish_reason,
+                                    cost=await response_cost(last),
+                                    model_name=last.model_name,
+                                )
+                        # Stream events from tool call nodes
+                        case CallToolsNode():
+                            async for event in self._stream_node(
+                                node, agent_run, pending_tcs, message_id
+                            ):
+                                yield event
             except asyncio.CancelledError:
                 self.log.info("Stream cancelled via task cancellation")
                 self._cancelled = True
@@ -768,6 +789,27 @@ class Agent[TDeps = None, OutputDataT = str](BaseAgent[TDeps, OutputDataT]):
 
         # Send additional enriched completion event
         yield StreamCompleteEvent(message=response_msg)
+
+    async def _stream_node(
+        self,
+        node: ModelRequestNode[Any, Any] | CallToolsNode[Any, Any],
+        agent_run: AgentRun[Any, Any],
+        pending_tcs: dict[str, BaseToolCallPart],
+        message_id: str,
+    ) -> AsyncIterator[RichAgentStreamEvent[Any]]:
+        """Stream a graph node's events, merged with events queued by tools."""
+        async with (
+            node.stream(agent_run.ctx) as stream,
+            merge_queue_into_iterator(
+                forward_supported_events(stream), self._event_queue
+            ) as merged,
+        ):
+            async for event in merged:
+                if self._cancelled:
+                    break
+                yield event
+                if combined := process_tool_event(self.name, event, pending_tcs, message_id):
+                    yield combined
 
     def register_worker(
         self,

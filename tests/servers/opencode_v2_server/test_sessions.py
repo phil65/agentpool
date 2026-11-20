@@ -50,6 +50,10 @@ async def test_prompt_creates_tool_and_text_steps(client: AsyncClient) -> None:
     assert msgs[2]["content"][0]["type"] == "text"
     assert msgs[2]["finish"] == "stop"
     assert msgs[3]["outcome"] == "succeeded"
+    # Each step carries the usage of its own model request.
+    assert msgs[1]["finish"] == "tool-calls"
+    assert msgs[1]["tokens"]["input"] > 0
+    assert msgs[2]["tokens"]["output"] > 0
     session = (await client.get(f"/api/session/{sid}")).json()["data"]
     assert session["tokens"]["input"] > 0
     assert session["outcome"] == "succeeded"

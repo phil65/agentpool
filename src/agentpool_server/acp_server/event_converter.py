@@ -62,6 +62,8 @@ from agentpool.agents.events import (
     PromptSuggestionEvent,
     RunErrorEvent,
     RunStartedEvent,
+    StepCompletedEvent,
+    StepStartedEvent,
     StreamCompleteEvent,
     SubAgentEvent,
     TerminalContentItem,
@@ -634,6 +636,8 @@ class ACPEventConverter:
                 | NoticeEvent()
                 | RunErrorEvent()
                 | RunStartedEvent()
+                | StepStartedEvent()
+                | StepCompletedEvent()
                 | SubAgentEvent()
                 | ToolCallCompleteEvent()
                 | ToolCallProgressEvent()
@@ -724,6 +728,8 @@ class ACPEventConverter:
                 | NoticeEvent()
                 | RunErrorEvent()
                 | RunStartedEvent()
+                | StepStartedEvent()
+                | StepCompletedEvent()
                 | SubAgentEvent()
                 | ToolCallCompleteEvent()
                 | ToolCallProgressEvent()

@@ -35,10 +35,14 @@ from pydantic_ai import (
     ToolCallPart,
     ToolCallPartDelta,
 )
+from pydantic_ai.usage import RequestUsage
 
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
+    from decimal import Decimal
+
+    from pydantic_ai.messages import FinishReason
 
     from agentpool.messaging import ChatMessage
     from agentpool.tools.base import ToolKind
@@ -666,6 +670,42 @@ class SubAgentEvent:
 
 
 @dataclass(kw_only=True)
+class StepStartedEvent:
+    """A model request (one step of an agent turn) started.
+
+    Emitted by agents that can observe individual model requests (native agents per
+    pydantic-ai ``ModelRequestNode``, Claude Code per API message). Every step is closed
+    by a :class:`StepCompletedEvent` with the same ``step_id`` unless the run fails or is
+    interrupted.
+    """
+
+    step_id: str
+    """Identifier of the step (unique within the run)."""
+    model_name: str | None = None
+    """Model serving the request, if known."""
+    event_kind: Literal["step_started"] = "step_started"
+    """Event type identifier."""
+
+
+@dataclass(kw_only=True)
+class StepCompletedEvent:
+    """A model request finished, with the usage of this request alone."""
+
+    step_id: str
+    """Identifier of the step (matches :class:`StepStartedEvent`)."""
+    usage: RequestUsage = field(default_factory=RequestUsage)
+    """Token usage of this request."""
+    finish_reason: FinishReason | None = None
+    """Why the model stopped (normalized like pydantic-ai's ``FinishReason``)."""
+    cost: Decimal | None = None
+    """Cost of this request in USD, if known."""
+    model_name: str | None = None
+    """Model that served the request, if known."""
+    event_kind: Literal["step_completed"] = "step_completed"
+    """Event type identifier."""
+
+
+@dataclass(kw_only=True)
 class CompactionEvent:
     """Event indicating context compaction is starting, completed or failed.
 
@@ -720,6 +760,8 @@ type RichAgentStreamEvent[OutputDataT] = (
     | StreamCompleteEvent[OutputDataT]
     | RunStartedEvent
     | RunErrorEvent
+    | StepStartedEvent
+    | StepCompletedEvent
     | ToolCallStartEvent
     | ToolCallProgressEvent
     | ToolCallCompleteEvent

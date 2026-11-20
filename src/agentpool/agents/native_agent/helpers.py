@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from decimal import Decimal
 from typing import TYPE_CHECKING, Any
 
 from pydantic_ai import (
@@ -150,3 +151,20 @@ def extract_text_from_messages(
             content += "\n\n"
         content += "[Request interrupted by user]"
     return content
+
+
+async def response_cost(response: ModelResponse) -> Decimal | None:
+    """Cost of a single model response (provider-reported cost, else calculated)."""
+    from pydantic_ai.usage import RunUsage
+
+    from agentpool.messaging.messages import TokenCost
+
+    provider_cost = (response.provider_details or {}).get("cost")
+    if provider_cost is not None:
+        return Decimal(str(provider_cost))
+    usage = RunUsage(requests=1)
+    usage.incr(response.usage)
+    cost = await TokenCost.from_usage(
+        model=response.model_name or "", usage=usage, provider=response.provider_name
+    )
+    return cost.total_cost if cost is not None else None

@@ -40,6 +40,8 @@ from agentpool.agents.events import (
     NoticeEvent,
     PlanUpdateEvent,
     RunErrorEvent,
+    StepCompletedEvent,
+    StepStartedEvent,
     StreamCompleteEvent,
     SubAgentEvent,
     TerminalContentItem,
@@ -111,6 +113,7 @@ if TYPE_CHECKING:
 
     from pydantic import BaseModel
     from pydantic_ai import RunUsage
+    from pydantic_ai.usage import RequestUsage
 
     from agentpool.agents.events import (
         RichAgentStreamEvent,
@@ -135,7 +138,7 @@ class EventSink(Protocol):
     def __call__(self, event_cls: type[BaseModel], data: BaseModel) -> None: ...
 
 
-def usage_to_tokens(usage: RunUsage | None) -> TokenUsageInfo:
+def usage_to_tokens(usage: RunUsage | RequestUsage | None) -> TokenUsageInfo:
     """Convert pydantic-ai usage into V2 token usage."""
     if usage is None:
         return zero_tokens()
@@ -213,6 +216,10 @@ class _Step:
     text_ordinal: int = 0
     reasoning_ordinal: int = 0
     tools_called: bool = False
+    tokens: TokenUsageInfo | None = None
+    """Usage reported by ``StepCompletedEvent`` (explicit steps only)."""
+    cost: float | None = None
+    finish: FinishReason | None = None
 
 
 @dataclass
@@ -237,6 +244,10 @@ class RunEventConverter:
     tools: dict[str, _ToolState] = field(default_factory=dict)
     open_parts: dict[int, _OpenPart] = field(default_factory=dict)
     """Currently streaming parts, keyed by the pydantic-ai part index."""
+    explicit_steps: bool = False
+    """Whether the agent reports steps itself (``StepStartedEvent`` / ``StepCompletedEvent``)."""
+    reported_cost: float = 0.0
+    """Sum of step costs reported by explicit step events."""
     final_message: ChatMessage[Any] | None = None
     errors: list[str] = field(default_factory=list)
     response_text: str = ""
@@ -244,7 +255,14 @@ class RunEventConverter:
     # --- steps ---------------------------------------------------------------------------
 
     def _ensure_step(self) -> _Step:
-        if self.step is not None and self.step.tools_called and not self._has_running_tools():
+        # Without explicit step events, a step ends once its tools ran and new output arrives.
+        inferred_boundary = (
+            not self.explicit_steps
+            and self.step is not None
+            and self.step.tools_called
+            and not self._has_running_tools()
+        )
+        if inferred_boundary:
             self._end_step("tool-calls")
         if self.step is None:
             self.step = _Step(message_id=new_message_id())
@@ -645,6 +663,10 @@ class RunEventConverter:
                 self._finish_tool(tool, result, error)
             case StreamCompleteEvent(message=message):
                 self.final_message = message
+            case StepStartedEvent():
+                self._on_step_started()
+            case StepCompletedEvent():
+                self._on_step_completed(event)
             case RunErrorEvent(message=message, agent_name=agent_name):
                 prefix = f"[{agent_name}] " if agent_name else ""
                 self.errors.append(f"{prefix}{message}")
@@ -674,6 +696,30 @@ class RunEventConverter:
                 self._on_subagent(source_name, inner, parent_call_id)
             case _:
                 pass
+
+    def _on_step_started(self) -> None:
+        """An explicit step begins: close the previous one with its reported usage."""
+        self.explicit_steps = True
+        if (previous := self.step) is not None:
+            self._end_step(
+                previous.finish or "tool-calls",
+                tokens=previous.tokens,
+                cost=previous.cost or 0.0,
+            )
+        self._ensure_step()
+
+    def _on_step_completed(self, event: StepCompletedEvent) -> None:
+        """Record the usage of the current step; it ends when the next one starts.
+
+        Tool results still belong to the step that requested them, so the step stays open.
+        """
+        if (step := self.step) is None:
+            return
+        step.tokens = usage_to_tokens(event.usage)
+        step.finish = map_finish_reason(event.finish_reason) if event.finish_reason else None
+        if event.cost is not None:
+            step.cost = float(event.cost)
+            self.reported_cost += step.cost
 
     def _on_command_event(self, event: CommandOutputEvent | CommandCompleteEvent) -> None:
         """Render slash command output as text of the current step."""
@@ -779,8 +825,18 @@ class RunEventConverter:
             if text:
                 part = self._start_text(None, text)
                 self._close_part(part)
-        if self.step is not None:
-            self._end_step(finish, tokens=tokens, cost=cost)
+        if (step := self.step) is not None:
+            if self.explicit_steps:
+                # Steps carry their own usage; only cost the agent didn't report per step
+                # (e.g. Claude Code) is attributed to the last step.
+                remainder = max(cost - self.reported_cost, 0.0)
+                self._end_step(
+                    step.finish or finish,
+                    tokens=step.tokens,
+                    cost=(step.cost or 0.0) + remainder,
+                )
+            else:
+                self._end_step(finish, tokens=tokens, cost=cost)
         self.emit(
             SessionUsageUpdated,
             SessionUsageUpdatedData(session_id=self.session_id, cost=cost, tokens=tokens),

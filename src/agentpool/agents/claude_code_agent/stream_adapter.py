@@ -78,6 +78,7 @@ from clawd_code_sdk.models import (
     WorkerShuttingDownMessage,
 )
 from pydantic_ai import FunctionToolResultEvent, PartEndEvent, TextPart, ToolReturnPart
+from pydantic_ai.usage import RequestUsage
 
 from agentpool.agents.claude_code_agent.converters import convert_to_opencode_metadata
 from agentpool.agents.events import (
@@ -85,6 +86,8 @@ from agentpool.agents.events import (
     PartDeltaEvent,
     PartStartEvent,
     PromptSuggestionEvent,
+    StepCompletedEvent,
+    StepStartedEvent,
     TerminalContentItem,
     ToolCallCompleteEvent,
     ToolCallProgressEvent,
@@ -102,6 +105,7 @@ if TYPE_CHECKING:
     from anthropic.types.beta import BetaRawContentBlockDelta
     from clawd_code_sdk import Message, ResultMessage, ToolUseBlock
     from clawd_code_sdk.models import StopReason
+    from pydantic_ai.messages import FinishReason
 
     from agentpool.agents.events import RichAgentStreamEvent
     from agentpool.agents.events.events import ToolCallContentItem
@@ -115,6 +119,31 @@ def _strip_mcp_prefix(tool_name: str) -> str:
     if match := _MCP_TOOL_PATTERN.match(tool_name):
         return match.group(2)
     return tool_name
+
+
+@dataclass(kw_only=True)
+class _Step:
+    """The API message (model request) currently streaming."""
+
+    step_id: str
+    model_name: str
+    usage: RequestUsage
+    finish_reason: FinishReason | None = None
+
+
+def _finish_reason(stop_reason: str | None) -> FinishReason | None:
+    """Map an Anthropic stop reason onto pydantic-ai's finish reasons."""
+    match stop_reason:
+        case "end_turn" | "stop_sequence" | "pause_turn":
+            return "stop"
+        case "max_tokens" | "model_context_window_exceeded":
+            return "length"
+        case "tool_use":
+            return "tool_call"
+        case "refusal":
+            return "content_filter"
+        case _:
+            return None
 
 
 @dataclass(kw_only=True)
@@ -135,6 +164,9 @@ class ClaudeCodeStreamedResponse(StreamedResponse):
             BetaRawContentBlockDeltaEvent as ContentBlockDeltaEvent,
             BetaRawContentBlockStartEvent as ContentBlockStartEvent,
             BetaRawContentBlockStopEvent as ContentBlockStopEvent,
+            BetaRawMessageDeltaEvent as MessageDeltaEvent,
+            BetaRawMessageStartEvent as MessageStartEvent,
+            BetaRawMessageStopEvent as MessageStopEvent,
             BetaTextBlock as AnthTextBlock,
             BetaThinkingBlock as AnthThinkingBlock,
             BetaToolUseBlock as AnthToolUseBlock,
@@ -156,6 +188,7 @@ class ClaudeCodeStreamedResponse(StreamedResponse):
 
         pending_tool_calls: dict[str, ToolUseBlock] = {}
         streaming_tc_id: str | None = None
+        step: _Step | None = None
         # Note: message reconstruction (model_messages, response_parts, text accumulation)
         # is handled by the caller's MessageReconstructor, which observes the yielded events.
 
@@ -300,6 +333,40 @@ class ClaudeCodeStreamedResponse(StreamedResponse):
                                 raw_input=input_,
                                 field_meta=meta,
                             )
+
+                # API message lifecycle of the main conversation = one step each
+                case StreamEvent(
+                    event=MessageStartEvent(message=api_message), parent_tool_use_id=None
+                ):
+                    usage = api_message.usage
+                    step = _Step(
+                        step_id=api_message.id,
+                        model_name=api_message.model,
+                        usage=RequestUsage(
+                            input_tokens=usage.input_tokens,
+                            cache_read_tokens=usage.cache_read_input_tokens or 0,
+                            cache_write_tokens=usage.cache_creation_input_tokens or 0,
+                            output_tokens=usage.output_tokens,
+                        ),
+                    )
+                    yield StepStartedEvent(step_id=step.step_id, model_name=step.model_name)
+                case StreamEvent(
+                    event=MessageDeltaEvent(delta=delta, usage=delta_usage), parent_tool_use_id=None
+                ):
+                    if step is not None:
+                        step.finish_reason = _finish_reason(delta.stop_reason)
+                        step.usage.output_tokens = delta_usage.output_tokens
+                        if delta_usage.input_tokens is not None:
+                            step.usage.input_tokens = delta_usage.input_tokens
+                case StreamEvent(event=MessageStopEvent(), parent_tool_use_id=None):
+                    if step is not None:
+                        yield StepCompletedEvent(
+                            step_id=step.step_id,
+                            usage=step.usage,
+                            finish_reason=step.finish_reason,
+                            model_name=step.model_name,
+                        )
+                        step = None
 
                 # content_block_delta events
                 case StreamEvent(event=ContentBlockDeltaEvent(index=index, delta=delta)):
