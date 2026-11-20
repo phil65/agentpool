@@ -72,6 +72,7 @@ if TYPE_CHECKING:
     from agentpool.agents.auth import AuthStatus
     from agentpool.agents.events import RichAgentStreamEvent
     from agentpool.agents.modes import ConfigOption
+    from agentpool.agents.usage_limits import UsageLimits
     from agentpool.common_types import AnyEventHandlerType, SimpleJsonType, StrPath
     from agentpool.delegation import AgentPool
     from agentpool.hooks import AgentHooks
@@ -867,6 +868,15 @@ class ClaudeCodeAgent[TDeps = None, TResult = str](BaseAgent[TDeps, TResult]):
         await self.ensure_initialized()
         server_info = await self._client.get_server_info() if self._client else None
         return to_auth_status(server_info.account if server_info else None)
+
+    async def get_usage_limits(self) -> UsageLimits | None:
+        """Get the Claude plan's rate-limit windows (None for API keys, Bedrock, Vertex)."""
+        from agentpool.agents.claude_code_agent.usage_limits import to_usage_limits
+
+        await self.ensure_initialized()
+        if self._client is None:
+            return None
+        return to_usage_limits(await self._client.get_usage())
 
     @property
     def config_options(self) -> Sequence[ConfigOption[Self]]:

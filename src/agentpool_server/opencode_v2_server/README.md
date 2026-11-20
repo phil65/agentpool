@@ -93,11 +93,12 @@ All 173 operations of the pinned spec have a route (guarded by
   messages, context, durable log, fork, move, compact, revert, diff, generate, environment,
   instructions, stats, export/import), permissions + saved rules, forms, fs, vcs (git), worktrees,
   commands (slash commands), skills, MCP status/resources, shells, jobs (session shells and agent
-  tasks such as subagent runs; see `tasks.py`), retries (`session.retry.scheduled`), PTYs.
+  tasks such as subagent runs; see `tasks.py`), retries (`session.retry.scheduled`), usage limits
+  (the main agent's plan windows as OpenCode Go meters; see `usage_limits.py`), PTYs.
 - **Answered with empty lists / typed `ServiceUnavailableError` (503)**, because AgentPool has no
   counterpart: plugins and plugin RPC (`RpcError`), integrations, credentials, text/image/video/
   decision generation, voice, client MCP, MCP add/remove, persistent PTYs, media/blobs,
-  automations, artifacts, references, web search, usage limits, pairing, fs watch, heap dumps.
+  automations, artifacts, references, web search, pairing, fs watch, heap dumps.
 - Unknown routes answer `404` **without a JSON body**, like OpenCode. Clients use that to detect
   older servers.
 

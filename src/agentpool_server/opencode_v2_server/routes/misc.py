@@ -75,9 +75,13 @@ async def websearch_providers(directory: DirectoryDep) -> Response:
 
 
 @router.get("/api/experimental/usage/limits")
-async def usage_limits(directory: DirectoryDep) -> Response:
-    """Subscription usage limits (not tracked)."""
-    return ok(ExperimentalUsageLimitsResponse(location=public_ref(directory), data=None))
+async def usage_limits(state: StateDep, directory: DirectoryDep) -> Response:
+    """Plan usage limits of the main agent (e.g. Claude Code's rate-limit windows)."""
+    from agentpool_server.opencode_v2_server.usage_limits import usage_info
+
+    node = state.catalog.get_node(state.catalog.default_agent_name())
+    data = await usage_info(node)
+    return ok(ExperimentalUsageLimitsResponse(location=public_ref(directory), data=data))
 
 
 @router.get("/api/experimental/automation")

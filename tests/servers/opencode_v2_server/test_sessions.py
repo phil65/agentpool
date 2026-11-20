@@ -2,11 +2,13 @@
 
 from __future__ import annotations
 
+from datetime import UTC, datetime
 import json
 from typing import TYPE_CHECKING, Any
 
 import pytest
 
+from agentpool.agents.usage_limits import UsageLimits, UsageWindow
 from agentpool_server.opencode_v2_server.event_store import EventStore
 from agentpool_server.opencode_v2_server.session import V2Session
 
@@ -335,3 +337,36 @@ def test_session_from_events_requires_created() -> None:
 
     with pytest.raises(ValueError, match=r"session\.created"):
         V2Session.from_events([], bus=EventBus(), store=EventStore("/nonexistent"))
+
+
+async def test_usage_limits(
+    client: AsyncClient, state: ServerState, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    response = await client.get("/api/experimental/usage/limits")
+    assert response.json().get("data") is None  # Native agents have no plan limits
+
+    reset = datetime(2026, 11, 22, 13, tzinfo=UTC)
+    limits = UsageLimits(
+        windows=[
+            UsageWindow(id="session", label="Session", period="session", percent=66),
+            UsageWindow(id="weekly", label="Weekly", period="weekly", percent=35, resets_at=reset),
+        ],
+        plan="pro",
+        usage_url="https://claude.ai/settings/usage",
+    )
+    agent = state.pool.main_agent
+
+    async def get_usage_limits() -> UsageLimits:
+        return limits
+
+    monkeypatch.setattr(agent, "get_usage_limits", get_usage_limits)
+    data = (await client.get("/api/experimental/usage/limits")).json()["data"]
+    assert data["workspace"] == {
+        "id": agent.name,
+        "name": f"{agent.name} (pro)",
+        "usageURL": "https://claude.ai/settings/usage",
+    }
+    assert data["go"]["rolling"] == {"percent": 66, "limited": False, "resetsAt": 0}
+    assert data["go"]["weekly"]["resetsAt"] == round(reset.timestamp() * 1000)
+    assert data["go"]["monthly"]["percent"] == 0
+    assert data["budgets"] == []

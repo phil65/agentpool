@@ -57,6 +57,7 @@ if TYPE_CHECKING:
         ModeCategory,
         ModeCategoryId,
     )
+    from agentpool.agents.usage_limits import UsageLimits
     from agentpool.common_types import (
         AgentName,
         AnyEventHandlerType,
@@ -1155,6 +1156,15 @@ class BaseAgent[TDeps = None, TResult = str](MessageNode[TDeps, TResult]):
         from agentpool.agents.auth import AuthStatus
 
         return AuthStatus(state="not_required")
+
+    async def get_usage_limits(self) -> UsageLimits | None:
+        """Get the usage limits of the plan the backend runs on.
+
+        Returns:
+            The plan's windows, or None if the backend has no plan limits (API keys,
+            local models) or cannot report them.
+        """
+        return None
 
     @overload
     async def set_mode(self, mode: ModeInfo) -> None: ...
