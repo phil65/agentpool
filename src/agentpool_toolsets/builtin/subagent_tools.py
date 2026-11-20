@@ -11,7 +11,13 @@ from pydantic_ai import ModelRetry, TextPartDelta, ThinkingPartDelta
 from upathtools.filesystems.base import WrapperFileSystem
 
 from agentpool.agents.context import AgentContext  # noqa: TC001
-from agentpool.agents.events import PartDeltaEvent, StreamCompleteEvent, SubAgentEvent
+from agentpool.agents.events import (
+    PartDeltaEvent,
+    StreamCompleteEvent,
+    SubAgentEvent,
+    TaskFinishedEvent,
+    TaskStartedEvent,
+)
 from agentpool.agents.events.processors import batch_stream_deltas
 from agentpool.log import get_logger
 from agentpool.resource_providers import StaticResourceProvider
@@ -107,6 +113,7 @@ async def _stream_task(
 
 
 async def _stream_task_to_fs(
+    ctx: AgentContext,
     fs: AsyncFileSystem,
     task_id: str,
     source_name: str,
@@ -114,10 +121,12 @@ async def _stream_task_to_fs(
 ) -> None:
     """Stream a task's output to internal filesystem.
 
-    Writes streaming output to /tasks/{task_id}/output.md as content arrives.
-    Does not emit any events - runs silently in background.
+    Writes streaming output to /tasks/{task_id}/output.md as content arrives. The
+    task's activity is not streamed; its end is reported with a ``TaskFinishedEvent``
+    (which reaches the parent's stream in its current or a later run).
 
     Args:
+        ctx: Context of the agent that started the task
         fs: The internal filesystem to write to
         task_id: Unique identifier for this task
         source_name: Name of the agent/team executing the task
@@ -125,6 +134,7 @@ async def _stream_task_to_fs(
     """
     output_path = f"/tasks/{task_id}/output.md"
     content_parts: list[str] = []
+    final_output: str | None = None
 
     try:
         async for event in stream:
@@ -140,7 +150,8 @@ async def _stream_task_to_fs(
                     # Write incrementally (overwrite with accumulated content)
                     await fs._pipe(output_path, "".join(content_parts).encode("utf-8"))
                 case StreamCompleteEvent(message=msg) if msg.content:
-                    await fs._pipe(output_path, str(msg.content).encode("utf-8"))
+                    final_output = str(msg.content)
+                    await fs._pipe(output_path, final_output.encode("utf-8"))
 
         logger.info(
             "Async task completed",
@@ -148,11 +159,28 @@ async def _stream_task_to_fs(
             source_name=source_name,
             output_path=output_path,
         )
-    except Exception:
+    except asyncio.CancelledError:
+        await ctx.events.emit_event(
+            TaskFinishedEvent(task_id=task_id, status="cancelled", output_ref=output_path)
+        )
+        raise
+    except Exception as e:
         logger.exception("Async task failed", task_id=task_id, source_name=source_name)
         # Write error to output file
         error_content = f"# Task Failed\n\nTask {task_id} ({source_name}) failed with an error."
-        fs.pipe(output_path, error_content.encode("utf-8"))
+        await fs._pipe(output_path, error_content.encode("utf-8"))
+        await ctx.events.emit_event(
+            TaskFinishedEvent(
+                task_id=task_id, status="failed", summary=str(e), output_ref=output_path
+            )
+        )
+    else:
+        summary = (final_output or "".join(content_parts))[:500] or None
+        await ctx.events.emit_event(
+            TaskFinishedEvent(
+                task_id=task_id, status="completed", summary=summary, output_ref=output_path
+            )
+        )
 
 
 class SubagentTools(StaticResourceProvider):
@@ -251,8 +279,6 @@ class SubagentTools(StaticResourceProvider):
         from agentpool.agents.base_agent import BaseAgent
         from agentpool.common_types import SupportsRunStream
 
-        _ = description  # Used for logging/tracking in future
-
         if ctx.pool is None:
             msg = "Agent needs to be in a pool to execute tasks"
             raise ToolError(msg)
@@ -298,8 +324,19 @@ class SubagentTools(StaticResourceProvider):
             fs = WrapperFileSystem(fs)
             # Start streaming to filesystem in background
             # Store task reference to prevent garbage collection
+            await ctx.events.emit_event(
+                TaskStartedEvent(
+                    task_id=task_id,
+                    kind="agent",
+                    description=description,
+                    tool_call_id=ctx.tool_call_id,
+                    background=True,
+                    agent_type=agent_or_team,
+                )
+            )
             task = asyncio.create_task(
                 _stream_task_to_fs(
+                    ctx=ctx,
                     fs=fs,
                     task_id=task_id,
                     source_name=agent_or_team,
@@ -319,11 +356,31 @@ class SubagentTools(StaticResourceProvider):
             )
 
         # Synchronous mode - stream with SubAgentEvent wrapping
-        return await _stream_task(
-            ctx,
-            source_name=agent_or_team,
-            source_type=source_type,
-            stream=node.run_stream(prompt),
-            batch_deltas=self._batch_stream_deltas,
-            parent_tool_call_id=ctx.tool_call_id,
+        task_id = ctx.tool_call_id or _generate_task_id(description)
+        await ctx.events.emit_event(
+            TaskStartedEvent(
+                task_id=task_id,
+                kind="agent",
+                description=description,
+                tool_call_id=ctx.tool_call_id,
+                agent_type=agent_or_team,
+            )
         )
+        try:
+            result = await _stream_task(
+                ctx,
+                source_name=agent_or_team,
+                source_type=source_type,
+                stream=node.run_stream(prompt),
+                batch_deltas=self._batch_stream_deltas,
+                parent_tool_call_id=ctx.tool_call_id,
+            )
+        except asyncio.CancelledError:
+            await ctx.events.emit_event(TaskFinishedEvent(task_id=task_id, status="cancelled"))
+            raise
+        except Exception as e:
+            finished = TaskFinishedEvent(task_id=task_id, status="failed", summary=str(e))
+            await ctx.events.emit_event(finished)
+            raise
+        await ctx.events.emit_event(TaskFinishedEvent(task_id=task_id, status="completed"))
+        return result
