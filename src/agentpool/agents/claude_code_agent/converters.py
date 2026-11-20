@@ -117,25 +117,23 @@ def to_auth_status(account: ClaudeCodeAccountInfo | None) -> AuthStatus:
     return AuthStatus(state="authenticated", accounts=[auth_account])
 
 
-LONG_CONTEXT_WINDOW = 1_000_000
-DEFAULT_CONTEXT_WINDOW = 200_000
+DEFAULT_CONTEXT_WINDOW = 1_000_000
+"""Context window of a model until the CLI reports it (what current Claude models have)."""
 
 
-def to_model_info(model: ClaudeCodeModelInfo) -> ModelInfo:
+def to_model_info(model: ClaudeCodeModelInfo, *, context_window: int) -> ModelInfo:
     """A model the CLI offers, with its ID as the CLI takes it (``opus``, ``sonnet[1m]``).
 
-    The context window is not reported: the ``[1m]`` variants get 1M tokens, others 200k.
+    The model list does not report context windows: the caller passes what it knows.
     """
     from tokonomics.model_discovery.model_info import ModelInfo
 
-    spellings = (model.value, model.resolved_model or "")
-    long_context = any(spelling.endswith("[1m]") for spelling in spellings)
     return ModelInfo(
         id=model.value,
         name=model.display_name,
         provider="anthropic",
         description=model.description,
-        context_window=LONG_CONTEXT_WINDOW if long_context else DEFAULT_CONTEXT_WINDOW,
+        context_window=context_window,
         input_modalities={"text", "image"},
         id_override=model.value,
     )

@@ -49,6 +49,7 @@ class ClaudeModelOption(ModelOption["AnyClaudeCodeAgent"]):
         if agent._client:
             await agent.ensure_initialized()
             await agent._client.set_model(value)
+            await agent._refresh_context_window()
         # An effort the new model lacks would keep running unseen: move to one it has.
         levels = agent._effort_levels()
         if agent._effort and levels and agent._effort not in levels:

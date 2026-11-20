@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 
+from clawd_code_sdk.models import SDKControlGetContextUsageResponse, message_adapter
 from clawd_code_sdk.models.server_info import ClaudeCodeServerInfo
 import pytest
 
@@ -74,6 +75,7 @@ class FakeClient:
 
     def __init__(self) -> None:
         self.requests: list[tuple[str, Any]] = []
+        self.context_usage = {"model": "claude-opus-5-5", "raw_max_tokens": 1_000_000}
 
     async def apply_flag_settings(self, settings: ClaudeCodeSettings) -> None:
         flags = settings.model_dump(by_alias=True, exclude_unset=True, exclude_none=True)
@@ -81,6 +83,20 @@ class FakeClient:
 
     async def set_model(self, model: str) -> None:
         self.requests.append(("model", model))
+
+    async def get_context_usage(self) -> SDKControlGetContextUsageResponse:
+        return SDKControlGetContextUsageResponse.model_validate({
+            "categories": [],
+            "total_tokens": 21_476,
+            "max_tokens": self.context_usage["raw_max_tokens"],
+            "percentage": 2.1,
+            "grid_rows": [],
+            "memory_files": [],
+            "mcp_tools": [],
+            "agents": [],
+            "is_auto_compact_enabled": True,
+            **self.context_usage,
+        })
 
     async def disconnect(self) -> None:
         raise AssertionError("options must not reconnect the CLI")
@@ -113,7 +129,8 @@ async def test_models_come_from_the_cli() -> None:
         ("sonnet", "Sonnet"),
         ("haiku", "Haiku"),
     ]
-    assert [m.context_window for m in models] == [200_000, 200_000, 1_000_000, 200_000, 200_000]
+    # Until the CLI reports a window: the default (what current models have)
+    assert {m.context_window for m in models} == {1_000_000}
 
 
 async def test_effort_follows_the_model_and_applies_live() -> None:
@@ -179,3 +196,56 @@ async def test_static_lists_before_connecting() -> None:
 )
 def test_closest_effort(effort: Any, levels: Any, expected: str) -> None:
     assert closest_effort(effort, levels) == expected
+
+
+def _result(**windows: int) -> Any:
+    """A result whose ``model_usage`` reports ``windows`` (model ID → context window)."""
+    usage = {
+        "inputTokens": 1,
+        "outputTokens": 1,
+        "cacheReadInputTokens": 0,
+        "cacheCreationInputTokens": 0,
+        "webSearchRequests": 0,
+        "costUSD": 0.0,
+        "maxOutputTokens": 64_000,
+    }
+    return message_adapter.validate_python({
+        "type": "result",
+        "subtype": "success",
+        "uuid": "r",
+        "session_id": "s",
+        "duration_ms": 1,
+        "duration_api_ms": 1,
+        "is_error": False,
+        "num_turns": 1,
+        "total_cost_usd": 0,
+        "usage": {"input_tokens": 1, "output_tokens": 1},
+        "stop_reason": "end_turn",
+        "modelUsage": {
+            model_id.replace("_", "-"): {**usage, "contextWindow": window}
+            for model_id, window in windows.items()
+        },
+    })
+
+
+async def _windows(agent: ClaudeCodeAgent[Any, Any]) -> dict[str, int | None]:
+    return {m.id: m.context_window for m in await agent.get_available_models()}
+
+
+async def test_context_windows_come_from_the_cli() -> None:
+    agent, client = _agent()
+    # At connect: the current model's window, before any turn
+    client.context_usage = {"model": "claude-opus-5-5", "raw_max_tokens": 967_000}
+    await agent._refresh_context_window()
+    windows = await _windows(agent)
+    assert windows["default"] == windows["opus"] == 967_000  # both resolve to claude-opus-5-5
+    assert windows["sonnet"] == 1_000_000  # not reported yet: the default
+
+    # A turn's result is authoritative, for every model it used
+    agent._learn_context_windows(_result(claude_opus_5_5=1_000_000, claude_sonnet_5_5=200_000))
+    windows = await _windows(agent)
+    assert (windows["opus"], windows["sonnet"]) == (1_000_000, 200_000)
+
+    # A later refresh does not override what a result reported
+    await agent._refresh_context_window()
+    assert (await _windows(agent))["opus"] == 1_000_000

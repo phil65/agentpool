@@ -13,7 +13,7 @@ from typing import TYPE_CHECKING, Any, ClassVar, Literal, Self, assert_never, ca
 import uuid
 
 import anyio
-from pydantic import TypeAdapter
+from pydantic import TypeAdapter, ValidationError
 from pydantic_ai import RunUsage
 
 from agentpool.agents.base_agent import BaseAgent
@@ -63,7 +63,7 @@ if TYPE_CHECKING:
         StopReason,
         ToolInput,
     )
-    from clawd_code_sdk.models.messages import RateLimitInfo
+    from clawd_code_sdk.models.messages import RateLimitInfo, ResultMessage
     from clawd_code_sdk.models.server_info import ClaudeCodeModelInfo, ClaudeCodeServerInfo
     from evented_config import EventConfig
     from exxec import ExecutionEnvironment
@@ -294,6 +294,8 @@ class ClaudeCodeAgent[TDeps = None, TResult = str](BaseAgent[TDeps, TResult]):
         """What the CLI reported at connect: models, commands, account, fast mode state."""
         self._fast_mode: bool | None = None
         """Fast mode as chosen (``None``: as the CLI's settings have it)."""
+        self._context_windows: dict[str, int] = {}
+        """Context window per concrete model ID (``claude-opus-5-5``), as the CLI reported it."""
         """(monotonic time of the last get_usage, limits) cache."""
         self._sdk_session_id: str | None = session_id
         # ToolBridge state for exposing toolsets via MCP
@@ -631,6 +633,7 @@ class ClaudeCodeAgent[TDeps = None, TResult = str](BaseAgent[TDeps, TResult]):
             elif self._fast_mode:  # Turned on before the CLI ran
                 await self._apply_fast_mode(enabled=True)
             await self._populate_commands()
+            await self._refresh_context_window()
             self._idle_watch.start(self._client)
             self.log.info("Claude Code client connected")
             # The options so far came from static lists: announce the CLI's own.
@@ -883,6 +886,7 @@ class ClaudeCodeAgent[TDeps = None, TResult = str](BaseAgent[TDeps, TResult]):
         run_usage: RunUsage = RunUsage()
         stop_reason: StopReason | None = "end_turn"
         if result_message:
+            self._learn_context_windows(result_message)
             run_usage = to_run_usage(client.query_usage)
             total_cost = Decimal(str(client.query_cost))
             cost_info = TokenCost(total_cost=total_cost)
@@ -960,7 +964,41 @@ class ClaudeCodeAgent[TDeps = None, TResult = str](BaseAgent[TDeps, TResult]):
 
         if self._server_info is None:
             return MODELS
-        return [to_model_info(model) for model in self._server_info.models]
+        return [
+            to_model_info(model, context_window=self._context_window_of(model))
+            for model in self._server_info.models
+        ]
+
+    def _context_window_of(self, model: ClaudeCodeModelInfo) -> int:
+        """The window the CLI reported for ``model``, else the default."""
+        from agentpool.agents.claude_code_agent.converters import DEFAULT_CONTEXT_WINDOW
+
+        for model_id in (model.resolved_model, model.value):
+            if model_id and (window := self._context_windows.get(model_id)):
+                return window
+        return DEFAULT_CONTEXT_WINDOW
+
+    def _learn_context_windows(self, result: ResultMessage) -> None:
+        """Remember the context windows a result reports, per model it used."""
+        for model_id, usage in result.model_usage.items():
+            if usage.context_window > 0:
+                self._context_windows[model_id] = usage.context_window
+
+    async def _refresh_context_window(self) -> None:
+        """Ask the CLI for the current model's window, unless a result reported it already.
+
+        Lets the first prompt show the right size; results stay authoritative.
+        """
+        from clawd_code_sdk import ClaudeSDKError
+
+        assert self._client
+        try:
+            usage = await self._client.get_context_usage()
+        except (ClaudeSDKError, ValidationError) as e:
+            self.log.debug("Context usage unavailable", error=str(e))
+            return
+        if usage.raw_max_tokens > 0:
+            self._context_windows.setdefault(usage.model, usage.raw_max_tokens)
 
     def _current_model_info(self) -> ClaudeCodeModelInfo | None:
         """The CLI's entry for the selected model (None before connecting or if unlisted)."""
