@@ -16,12 +16,15 @@ from agentpool.agents.events import (
     RetryEvent,
     StepCompletedEvent,
     StepStartedEvent,
+    TaskFinishedEvent,
+    TaskStartedEvent,
 )
 from agentpool_server.opencode_v2_server.errors import ApiError
 from agentpool_server.opencode_v2_server.events import build_event, new_session_id
 from agentpool_server.opencode_v2_server.pagination import paginate
 from agentpool_server.opencode_v2_server.projector import SessionProjection
 from agentpool_server.opencode_v2_server.run_converter import RunEventConverter
+from agentpool_server.opencode_v2_server.tasks import TaskTracker
 from opencode_v2_sdk import models
 from opencode_v2_sdk._version import OPENCODE_VERSION
 
@@ -165,3 +168,27 @@ def test_retry_is_shown_on_the_retried_step() -> None:
     (started,) = [data for cls, data in emitted if cls is models.SessionStepStarted]
     assert retry.assistant_message_id == started.assistant_message_id
     assert (retry.attempt, retry.at, retry.error.message) == (1, 1500, "overloaded")
+
+
+def test_tasks_are_listed_as_jobs_until_the_turn_ends() -> None:
+    tracker = TaskTracker(session_id="ses_1")
+    tracker.observe(
+        TaskStartedEvent(task_id="t1", kind="agent", description="Count", agent_type="Explore")
+    )
+    tracker.observe(TaskStartedEvent(task_id="t2", kind="shell", description="npm test"))
+    tracker.observe(TaskStartedEvent(task_id="t3", kind="agent", description="Scan"))
+    tracker.observe(TaskFinishedEvent(task_id="t1", status="completed"))
+    tracker.observe(TaskFinishedEvent(task_id="t2", status="failed"))
+    subagent, shell, running = tracker.jobs()
+    assert isinstance(subagent, models.JobSubagent)
+    assert (subagent.agent, subagent.status, subagent.child_session_id) == (
+        "Explore",
+        "completed",
+        "ses_1",
+    )
+    assert subagent.time.completed is not None
+    assert isinstance(shell, models.JobShell)
+    assert (shell.command, shell.status) == ("npm test", "error")
+    assert running.status == "running"
+    tracker.end_turn()
+    assert [job.id for job in tracker.jobs()] == ["t1", "t2"]

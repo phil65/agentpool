@@ -96,6 +96,10 @@ from agentpool.agents.events import (
     StepCompletedEvent,
     StepStartedEvent,
     SubAgentEvent,
+    TaskFinishedEvent,
+    TaskStartedEvent,
+    TaskUpdatedEvent,
+    TaskUsage,
     TerminalContentItem,
     ToolCallCompleteEvent,
     ToolCallProgressEvent,
@@ -116,7 +120,7 @@ if TYPE_CHECKING:
     from pydantic_ai.messages import FinishReason
 
     from agentpool.agents.events import RichAgentStreamEvent
-    from agentpool.agents.events.events import ToolCallContentItem
+    from agentpool.agents.events.events import TaskKind, ToolCallContentItem
 
 _MCP_TOOL_PATTERN = re.compile(r"^mcp__agentpool-(.+)-tools__(.+)$")
 """Pattern to detect CC-provided tool names."""
@@ -189,6 +193,17 @@ class _StreamState:
         return subagent
 
 
+def _task_kind(task_type: str | None, agent_type: str | None) -> TaskKind:
+    """Kind of a Claude Code task (``task_type``: local_agent, local_bash, mcp_task, ...)."""
+    match task_type:
+        case "local_agent" | "remote_agent":
+            return "agent"
+        case "local_bash":
+            return "shell"
+        case _:
+            return "agent" if agent_type else "other"
+
+
 def _tool_start(tc_id: str, raw_tool_name: str, input_: dict[str, Any]) -> ToolCallStartEvent:
     """Start event for a Claude Code tool call.
 
@@ -226,8 +241,9 @@ class ClaudeCodeStreamedResponse(StreamedResponse):
       ``hook_progress``, ``worker_shutting_down``, ``elicitation_complete``,
       ``conversation_reset``, ``tool_use_summary``, ``auth_status``, ``init``,
       ``memory_recall``, ``control_request_progress`` (except retries): Claude Code internals.
-    - ``task_updated`` / ``task_notification`` / ``background_tasks_changed``: the task is
-      also reported through its tool call (start, ``task_progress``, result).
+    - ``task_updated`` status patches: the end of a task is reported by
+      ``task_notification``. ``background_tasks_changed``: a snapshot of what the task
+      events already describe.
     - ``local_command_output``: handled by the slash command runner (``slash_commands``).
     - ``commands_changed``: the command list is refreshed by the agent itself.
     - Subagent ``stream_event`` frames: subagent activity is derived from its complete
@@ -383,20 +399,58 @@ class ClaudeCodeStreamedResponse(StreamedResponse):
                 case PromptSuggestionMessage(suggestion=suggestion):
                     yield PromptSuggestionEvent(suggestions=[suggestion])
 
-                case TaskStartedSystemMessage(tool_use_id=str() as tc_id):
-                    state.subagents[tc_id] = _Subagent(
-                        name=message.subagent_type or message.task_type or "subagent",
-                        depth=message.spawn_depth or 1,
+                case TaskStartedSystemMessage(task_id=task_id, tool_use_id=tc_id):
+                    agent_type = message.subagent_type
+                    depth = message.spawn_depth or 1
+                    if tc_id is not None:
+                        name = agent_type or message.task_type or "subagent"
+                        state.subagents[tc_id] = _Subagent(name=name, depth=depth)
+                    yield TaskStartedEvent(
+                        task_id=task_id,
+                        kind=_task_kind(message.task_type, agent_type),
+                        description=message.description,
+                        tool_call_id=tc_id,
+                        background=bool(message.is_backgrounded),
+                        agent_type=agent_type,
+                        parent_task_id=message.parent_task_id,
+                        depth=depth,
                     )
 
-                case TaskProgressSystemMessage(tool_use_id=str() as tc_id, usage=task_usage):
-                    tool_use = state.pending_tool_calls.get(tc_id)
+                case TaskProgressSystemMessage(task_id=task_id, usage=task_usage):
                     last_tool = message.last_tool_name
-                    yield ToolCallProgressEvent(
-                        tool_call_id=tc_id,
-                        tool_name=_strip_mcp_prefix(tool_use.name) if tool_use else None,
-                        message=message.summary or (f"Running {last_tool}" if last_tool else None),
-                        field_meta={"task_usage": dict(task_usage)},
+                    summary = message.summary or (f"Running {last_tool}" if last_tool else None)
+                    yield TaskUpdatedEvent(
+                        task_id=task_id,
+                        message=summary,
+                        last_tool=last_tool,
+                        usage=TaskUsage(**task_usage),
+                    )
+                    if (tc_id := message.tool_use_id) is not None:
+                        tool_use = state.pending_tool_calls.get(tc_id)
+                        yield ToolCallProgressEvent(
+                            tool_call_id=tc_id,
+                            tool_name=_strip_mcp_prefix(tool_use.name) if tool_use else None,
+                            message=summary,
+                            field_meta={"task_usage": dict(task_usage)},
+                        )
+
+                case TaskUpdatedSystemMessage(task_id=task_id, patch=patch) if (
+                    patch.description is not None or patch.is_backgrounded is not None
+                ):
+                    yield TaskUpdatedEvent(
+                        task_id=task_id,
+                        description=patch.description,
+                        background=patch.is_backgrounded,
+                    )
+
+                case TaskNotificationSystemMessage(task_id=task_id, status=task_status):
+                    task_usage = message.usage
+                    yield TaskFinishedEvent(
+                        task_id=task_id,
+                        status="cancelled" if task_status == "stopped" else task_status,
+                        summary=message.summary or None,
+                        output_ref=message.output_file or None,
+                        usage=TaskUsage(**task_usage) if task_usage is not None else None,
                     )
 
                 case APIRetrySystemMessage(attempt=attempt, error=error):

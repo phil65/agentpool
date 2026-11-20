@@ -33,6 +33,7 @@ from opencode_v2_sdk.models import (
     ExperimentalJobListResponse,
     ExperimentalSessionSkillBody,
     JobShell,
+    JobSubagent,
     JobTime,
     McpListResponse,
     McpResource,
@@ -362,14 +363,17 @@ async def job_list(
     status: str | None = None,
     descendants: Literal["true", "false"] | None = None,
 ) -> Response:
-    """Background jobs (shell commands started in sessions)."""
+    """Background jobs: shell commands started in sessions and agent tasks."""
     if session_id is None:
         sessions = set(state.sessions)
     elif descendants == "true":
         sessions = await _descendants(state, session_id)
     else:
         sessions = {session_id}
-    jobs = _shell_jobs(state, sessions)
+    jobs: list[JobShell | JobSubagent] = [*_shell_jobs(state, sessions)]
+    for sid in sessions:
+        if (runner := state.runners.get(sid)) is not None:
+            jobs.extend(runner.tasks.jobs())
     if kind is not None:
         jobs = [j for j in jobs if j.kind == kind]
     if status is not None:

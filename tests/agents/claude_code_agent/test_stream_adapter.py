@@ -16,6 +16,10 @@ from agentpool.agents.events import (
     PromptSuggestionEvent,
     RetryEvent,
     SubAgentEvent,
+    TaskFinishedEvent,
+    TaskStartedEvent,
+    TaskUpdatedEvent,
+    TaskUsage,
     ToolCallCompleteEvent,
     ToolCallProgressEvent,
     ToolCallStartEvent,
@@ -127,7 +131,41 @@ async def test_subagent_frames_are_wrapped() -> None:
         ),
         _user(_tool_result("call_sub", "3"), parent="call_agent"),
         _user(_tool_result("call_agent", "There are 3 files.")),
+        _system(
+            "task_notification",
+            task_id="t1",
+            tool_use_id="call_agent",
+            status="completed",
+            output_file="/tmp/t1.output",
+            summary="3 files",
+            usage={"total_tokens": 20, "tool_uses": 1, "duration_ms": 9},
+        ),
     )
+    task_events = [
+        e for e in events if isinstance(e, TaskStartedEvent | TaskUpdatedEvent | TaskFinishedEvent)
+    ]
+    assert task_events == [
+        TaskStartedEvent(
+            task_id="t1",
+            kind="agent",
+            description="Count files",
+            tool_call_id="call_agent",
+            agent_type="Explore",
+        ),
+        TaskUpdatedEvent(
+            task_id="t1",
+            message="Running Bash",
+            last_tool="Bash",
+            usage=TaskUsage(total_tokens=10, tool_uses=1, duration_ms=5),
+        ),
+        TaskFinishedEvent(
+            task_id="t1",
+            status="completed",
+            summary="3 files",
+            output_ref="/tmp/t1.output",
+            usage=TaskUsage(total_tokens=20, tool_uses=1, duration_ms=9),
+        ),
+    ]
     sub_events = [e for e in events if isinstance(e, SubAgentEvent)]
     assert {(e.source_name, e.depth, e.parent_tool_call_id) for e in sub_events} == {
         ("Explore", 1, "call_agent")

@@ -33,6 +33,8 @@ from agentpool.agents.events import (
     NoticeEvent,
     PromptSuggestionEvent,
     RunErrorEvent,
+    TaskFinishedEvent,
+    TaskStartedEvent,
     ToolCallStartEvent,
 )
 from agentpool_server.acp_server.event_converter import ACPEventConverter
@@ -169,3 +171,20 @@ async def test_session_lifecycle(initialized_agent: AgentPoolACPAgent) -> None:
     assert agent.session_manager.get_session(session_id) is None
     with pytest.raises(RequestError):
         await agent.session_status(SessionStatusRequest(session_id=session_id))
+
+
+async def test_background_task_completion_in_a_later_turn_is_a_notice() -> None:
+    registry: dict[str, str] = {}
+    started = TaskStartedEvent(task_id="t1", kind="agent", description="Scan", background=True)
+    foreground = TaskStartedEvent(task_id="t2", kind="agent", description="Count")
+    first_turn = ACPEventConverter(use_notices=True, background_tasks=registry)
+    assert await _collect(first_turn, started) == []
+    assert await _collect(first_turn, foreground) == []
+    second_turn = ACPEventConverter(use_notices=True, background_tasks=registry)
+    finished = TaskFinishedEvent(task_id="t1", status="completed", summary="3 issues")
+    [notice] = await _collect(second_turn, finished)
+    assert notice == Notice(
+        severity="info", title="Background task completed: Scan", description="3 issues"
+    )
+    assert await _collect(second_turn, TaskFinishedEvent(task_id="t2", status="completed")) == []
+    assert registry == {}

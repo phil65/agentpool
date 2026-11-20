@@ -667,6 +667,74 @@ class NoticeEvent:
         return f"\n\n{icon} **{self.title}**{detail}\n\n"
 
 
+TaskKind = Literal["agent", "shell", "other"]
+TaskOutcome = Literal["completed", "failed", "cancelled"]
+
+
+@dataclass(kw_only=True)
+class TaskUsage:
+    """Cumulative resource usage of a task."""
+
+    total_tokens: int = 0
+    tool_uses: int = 0
+    duration_ms: int = 0
+
+
+@dataclass(kw_only=True)
+class TaskStartedEvent:
+    """A unit of work started that may outlive the tool call that started it.
+
+    Tasks are subagent runs and background commands. Every task is reported (foreground
+    ones too); ``background`` says whether the turn waits for it. A task ends with exactly
+    one :class:`TaskFinishedEvent`, which for background tasks may arrive in a later turn.
+    """
+
+    task_id: str
+    kind: TaskKind
+    description: str
+    tool_call_id: str | None = None
+    """Tool call that started the task."""
+    background: bool = False
+    agent_type: str | None = None
+    """Subagent type (``kind="agent"``)."""
+    parent_task_id: str | None = None
+    depth: int = 1
+    """Nesting depth (1 = started by the main agent)."""
+    event_kind: Literal["task_started"] = "task_started"
+    """Event type identifier."""
+
+
+@dataclass(kw_only=True)
+class TaskUpdatedEvent:
+    """Progress or changed attributes of a running task (unset fields are unchanged)."""
+
+    task_id: str
+    description: str | None = None
+    message: str | None = None
+    """Latest progress summary."""
+    last_tool: str | None = None
+    """Tool the task used most recently."""
+    usage: TaskUsage | None = None
+    background: bool | None = None
+    """Set when the task moved to (or out of) the background."""
+    event_kind: Literal["task_updated"] = "task_updated"
+    """Event type identifier."""
+
+
+@dataclass(kw_only=True)
+class TaskFinishedEvent:
+    """A task ended."""
+
+    task_id: str
+    status: TaskOutcome
+    summary: str | None = None
+    output_ref: str | None = None
+    """Where the full output can be read (e.g. Claude Code's output file)."""
+    usage: TaskUsage | None = None
+    event_kind: Literal["task_finished"] = "task_finished"
+    """Event type identifier."""
+
+
 @dataclass(kw_only=True)
 class RetryEvent:
     """A failed model request will be retried after a delay.
@@ -818,6 +886,9 @@ type RichAgentStreamEvent[OutputDataT] = (
     | NoticeEvent
     | CompactionEvent
     | RetryEvent
+    | TaskStartedEvent
+    | TaskUpdatedEvent
+    | TaskFinishedEvent
     | SubAgentEvent
     | CustomEvent[Any]
 )

@@ -92,7 +92,8 @@ All 173 operations of the pinned spec have a route (guarded by
 - **Implemented:** sessions (CRUD, agent/model switch, prompt, synthetic, interrupt, inbox,
   messages, context, durable log, fork, move, compact, revert, diff, generate, environment,
   instructions, stats, export/import), permissions + saved rules, forms, fs, vcs (git), worktrees,
-  commands (slash commands), skills, MCP status/resources, shells, jobs (session shells), PTYs.
+  commands (slash commands), skills, MCP status/resources, shells, jobs (session shells and agent
+  tasks such as subagent runs; see `tasks.py`), retries (`session.retry.scheduled`), PTYs.
 - **Answered with empty lists / typed `ServiceUnavailableError` (503)**, because AgentPool has no
   counterpart: plugins and plugin RPC (`RpcError`), integrations, credentials, text/image/video/
   decision generation, voice, client MCP, MCP add/remove, persistent PTYs, media/blobs,

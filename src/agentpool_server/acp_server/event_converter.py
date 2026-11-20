@@ -63,6 +63,9 @@ from agentpool.agents.events import (
     StepStartedEvent,
     StreamCompleteEvent,
     SubAgentEvent,
+    TaskFinishedEvent,
+    TaskStartedEvent,
+    TaskUpdatedEvent,
     TerminalContentItem,
     TextContentItem,
     ToolCallCompleteEvent,
@@ -80,7 +83,7 @@ if TYPE_CHECKING:
     from aclientp.schema.tool_call import ToolCallContent, ToolCallKind
 
     from agentpool.agents.events import RichAgentStreamEvent
-    from agentpool.agents.events.events import SubAgentType
+    from agentpool.agents.events.events import NoticeSeverity, SubAgentType
     from agentpool.messaging import ChatMessage
 
 logger = get_logger(__name__)
@@ -168,6 +171,13 @@ class ACPEventConverter:
 
     _subagent_tool_calls: set[str] = field(default_factory=set)
     """Subagent tool calls already announced (repeated start events only update a call)."""
+
+    background_tasks: dict[str, str] = field(default_factory=dict)
+    """Descriptions of running background tasks by task ID.
+
+    Background tasks outlive the run (and the converter): pass the session's registry so
+    a completion reported in a later turn is recognized. ``reset()`` keeps it.
+    """
 
     _current_message_id: str = field(default_factory=lambda: str(uuid.uuid4()))
     """Message ID for the current agent response."""
@@ -473,6 +483,27 @@ class ACPEventConverter:
                 # Client lacks notice support: rendering inline beats dropping user-facing info
                 yield AgentMessageChunk.text(event.format(), message_id=self._current_message_id)
 
+            case TaskStartedEvent(task_id=task_id, description=description, background=True):
+                self.background_tasks[task_id] = description
+
+            case TaskUpdatedEvent(task_id=task_id, background=True):
+                self.background_tasks.setdefault(task_id, event.description or "Background task")
+
+            case TaskFinishedEvent(task_id=task_id, status=status, summary=summary) if (
+                task_id in self.background_tasks
+            ):
+                description = self.background_tasks.pop(task_id)
+                title = f"Background task {status}: {description}"
+                if self.use_notices:
+                    severity: NoticeSeverity = "info" if status == "completed" else "warning"
+                    yield Notice(severity=severity, title=title, description=summary)
+                else:
+                    text = f"\n\n{title}{f': {summary}' if summary else ''}\n\n"
+                    yield AgentMessageChunk.text(text, message_id=self._current_message_id)
+
+            case TaskStartedEvent() | TaskUpdatedEvent() | TaskFinishedEvent():
+                pass  # Foreground tasks are shown through the tool call that runs them
+
             case RetryEvent() if self.use_notices:
                 yield Notice(
                     severity="warning", title="Retrying request", description=event.format()
@@ -579,6 +610,9 @@ class ACPEventConverter:
                 | PromptSuggestionEvent()
                 | NoticeEvent()
                 | RetryEvent()
+                | TaskStartedEvent()
+                | TaskUpdatedEvent()
+                | TaskFinishedEvent()
                 | RunErrorEvent()
                 | RunStartedEvent()
                 | StepStartedEvent()
@@ -667,6 +701,9 @@ class ACPEventConverter:
                 | PromptSuggestionEvent()
                 | NoticeEvent()
                 | RetryEvent()
+                | TaskStartedEvent()
+                | TaskUpdatedEvent()
+                | TaskFinishedEvent()
                 | RunErrorEvent()
                 | RunStartedEvent()
                 | StepStartedEvent()

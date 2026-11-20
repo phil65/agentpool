@@ -211,6 +211,7 @@ class ACPSession:
         self._cancelled = False
         self.last_usage: Usage | None = None
         self.total_cost = Decimal(0)  # Cumulative cost of this session's turns
+        self.background_tasks: dict[str, str] = {}  # Running background tasks (ID -> description)
         self.fs = ACPFileSystem(self.client, session_id=self.session_id)
         self.command_store = CommandStore(commands=get_all_commands())
         self.command_store._initialize_sync()
@@ -495,6 +496,7 @@ class ACPSession:
                 use_prompt_suggestions=self.supports_prompt_suggestions,
                 context_window=await self._get_context_window(),
                 session_cost=self.total_cost,
+                background_tasks=self.background_tasks,
             )
 
             try:  # Use the session's persistent input provider

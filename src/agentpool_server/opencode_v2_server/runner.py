@@ -28,6 +28,7 @@ from agentpool_server.opencode_v2_server.run_converter import (
     structured_error,
     usage_to_tokens,
 )
+from agentpool_server.opencode_v2_server.tasks import TaskTracker
 from opencode_v2_sdk.models import (
     SessionCompactionEnded,
     SessionCompactionEndedData,
@@ -165,6 +166,11 @@ class SessionRunner:
     """Environment variables for the session's shell commands."""
     pending_context: list[str] = field(default_factory=list)
     """Context (e.g. activated skills) prepended to the next turn's prompt."""
+    tasks: TaskTracker = field(init=False)
+    """Subagent runs and background commands started by the agent (listed as jobs)."""
+
+    def __post_init__(self) -> None:
+        self.tasks = TaskTracker(session_id=self.session.id)
 
     @property
     def running(self) -> bool:
@@ -319,6 +325,7 @@ class SessionRunner:
             prompts = await self._prompts(item)
             async with self.binder.hold(node, session, model, has_history=has_history):
                 async for event in self._stream(node, prompts):
+                    self.tasks.observe(event)
                     self.converter.handle(event)
             self.converter.finish()
             if self.converter.errors:
@@ -355,6 +362,7 @@ class SessionRunner:
             )
         finally:
             self.converter = None
+            self.tasks.end_turn()
             self._status(busy=False)
 
     async def _compact(self, item: SessionInboxCompaction) -> None:
