@@ -120,6 +120,14 @@ class BaseACPAgentConfig(BaseAgentConfig):
         """Get the ACP registry agent ID, if this is a registry-based agent."""
         return None
 
+    def get_url(self) -> str | None:
+        """Get the endpoint of a remote agent (None for agents run as a subprocess)."""
+        return None
+
+    def get_headers(self) -> dict[str, str]:
+        """Get the HTTP headers for a remote agent."""
+        return {}
+
     def get_tool_providers(self) -> list[ResourceProvider]:
         """Get all resource providers for this agent's tools."""
         from agentpool.resource_providers import StaticResourceProvider
@@ -277,3 +285,67 @@ class RegistryACPAgentConfig(BaseACPAgentConfig):
     def get_args(self) -> list[str]:
         """Get extra arguments for the registry agent."""
         return self.extra_args
+
+
+class RemoteACPAgentConfig(BaseACPAgentConfig):
+    """Configuration for a remote ACP agent reached over Streamable HTTP (experimental).
+
+    Uses the client side of ACP's Streamable HTTP transport RFD, compatible with the
+    TypeScript SDK's experimental server. Nothing is spawned locally; file and terminal
+    requests of the remote agent are still served by this client.
+
+    Example:
+        ```yaml
+        agents:
+          contexter:
+            type: acp
+            provider: remote
+            url: https://contexter.net/api/acp
+            headers:
+              X-API-Key: ${CONTEXTER_API_KEY}
+        ```
+    """
+
+    model_config = ConfigDict(json_schema_extra={"title": "Remote ACP Agent Configuration"})
+
+    provider: Literal["remote"] = Field("remote", init=False)
+    """Discriminator for remote ACP agent."""
+
+    url: str = Field(
+        ...,
+        title="Endpoint URL",
+        examples=["https://example.com/api/acp", "http://localhost:3000/api/acp"],
+    )
+    """The agent's ``/acp`` endpoint."""
+
+    headers: dict[str, str] = Field(
+        default_factory=dict,
+        title="HTTP Headers",
+        examples=[{"X-API-Key": "${MY_API_KEY}"}, {"Authorization": "Bearer ${MY_TOKEN}"}],
+    )
+    """Headers sent with every request (e.g. authentication).
+
+    ``${VAR}`` in values is replaced by the environment variable when the agent starts.
+    """
+
+    def get_url(self) -> str:
+        """Get the remote endpoint."""
+        return self.url
+
+    def get_headers(self) -> dict[str, str]:
+        """Get the HTTP headers, with ``${VAR}`` references resolved.
+
+        Raises:
+            ValueError: A header references an unset environment variable.
+        """
+        import os
+        import string
+
+        resolved: dict[str, str] = {}
+        for name, value in self.headers.items():
+            try:
+                resolved[name] = string.Template(value).substitute(os.environ)
+            except KeyError as exc:
+                msg = f"Header {name!r} references unset environment variable {exc.args[0]}"
+                raise ValueError(msg) from exc
+        return resolved

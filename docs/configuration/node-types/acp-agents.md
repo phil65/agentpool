@@ -45,3 +45,25 @@ These agents can be configured to work alongside AgentPool agents, enabling hybr
 - MCP servers can be attached to capable agents for extended functionality
 - Environment variables can be used for API keys and secrets
 - Agents are started on-demand and terminated when the pool closes
+
+## Remote Agents (experimental)
+
+With `provider: remote`, AgentPool connects to an ACP agent served over HTTP instead of
+starting a process. It uses the client side of ACP's Streamable HTTP transport (an RFD,
+supported by the TypeScript SDK's experimental server):
+
+```yaml
+agents:
+  contexter:
+    type: acp
+    provider: remote
+    url: https://contexter.net/api/acp
+    headers:
+      X-API-Key: ${CONTEXTER_API_KEY}
+```
+
+- `${VAR}` in header values is replaced by the environment variable when the agent starts
+- The remote agent's file and terminal requests are served by AgentPool, as for local agents
+- Tools exposed via `tools` are served on localhost, so only agents on the same machine can
+  reach them
+- Messages sent while the connection is down are not replayed (ACP v1)

@@ -1,8 +1,8 @@
-"""ACP Agent - MessageNode wrapping an external ACP subprocess.
+"""ACP Agent - MessageNode wrapping an external ACP agent.
 
 This module provides an agent implementation that communicates with external
-ACP (Agent Client Protocol) servers via stdio, enabling integration of any
-ACP-compatible agent into the agentpool pool.
+ACP (Agent Client Protocol) servers via stdio, or with remote ones over Streamable
+HTTP (experimental), enabling integration of any ACP-compatible agent into the pool.
 
 The ACPAgent class acts as an ACP client, spawning an ACP server subprocess
 and communicating with it via JSON-RPC over stdio. This allows:
@@ -58,7 +58,7 @@ from agentpool.utils.token_breakdown import calculate_usage_from_parts
 
 
 if TYPE_CHECKING:
-    from collections.abc import AsyncIterator, Awaitable, Callable, Sequence
+    from collections.abc import AsyncIterator, Awaitable, Callable, Coroutine, Sequence
     from types import TracebackType
 
     from aclientp.client.connection import ClientSideConnection
@@ -70,7 +70,7 @@ if TYPE_CHECKING:
     )
     from aclientp.schema.capabilities import AgentCapabilities
     from aclientp.schema.mcp import McpServer
-    from anyio.abc import Process
+    from anyio.abc import ByteReceiveStream, ByteSendStream, Process
     from evented_config import EventConfig
     from exxec import ExecutionEnvironment
     from pydantic_ai import UserContent
@@ -107,6 +107,18 @@ def get_updated_at(date_str: str | None) -> datetime:
     return updated_at
 
 
+class _Monitor:
+    """Runs startup steps, failing early if the agent's subprocess exits (if there is one)."""
+
+    def __init__(self, process: Process | None) -> None:
+        self._process = process
+
+    async def run[T](self, coro: Callable[[], Coroutine[Any, Any, T]], context: str) -> T:
+        if self._process is None:
+            return await coro()
+        return await run_with_process_monitor(self._process, coro, context=context)
+
+
 class ACPAgent[TDeps = None](BaseAgent[TDeps, str]):
     """MessageNode that wraps an external ACP agent subprocess.
 
@@ -119,10 +131,12 @@ class ACPAgent[TDeps = None](BaseAgent[TDeps, str]):
     def __init__(
         self,
         *,
-        # Command (exactly one of command or registry_id must be set)
+        # Source (exactly one of command, registry_id or url must be set)
         command: str | None = None,
         args: list[str] | None = None,
         registry_id: str | None = None,
+        url: str | None = None,
+        headers: dict[str, str] | None = None,
         # Identity
         name: str | None = None,
         description: str | None = None,
@@ -152,11 +166,11 @@ class ACPAgent[TDeps = None](BaseAgent[TDeps, str]):
     ) -> None:
         from agentpool.mcp_server.tool_bridge import ToolManagerBridge
 
-        source = command or registry_id
-        if not source:
-            raise ValueError("Exactly one of 'command' or 'registry_id' must be provided")
-        if command and registry_id:
-            raise ValueError("Exactly one of 'command' or 'registry_id' must be provided, not both")
+        sources = [s for s in (command, registry_id, url) if s]
+        if len(sources) != 1:
+            msg = "Exactly one of 'command', 'registry_id' or 'url' must be provided"
+            raise ValueError(msg)
+        source = sources[0]
 
         super().__init__(
             name=name or source,
@@ -179,6 +193,10 @@ class ACPAgent[TDeps = None](BaseAgent[TDeps, str]):
         self._command = command
         self._args = args or []
         self._registry_id = registry_id
+        # Remote agent (Streamable HTTP)
+        self._url = url
+        self._headers = headers or {}
+        self._transport_stack: contextlib.AsyncExitStack | None = None
         # Environment
         self._cwd = cwd
         self._env_vars = env_vars or {}
@@ -228,6 +246,8 @@ class ACPAgent[TDeps = None](BaseAgent[TDeps, str]):
             command=config.get_command(),
             args=config.get_args(),
             registry_id=config.get_registry_id(),
+            url=config.get_url(),
+            headers=config.get_headers(),
             # Identity
             name=config.name,
             description=config.description,
@@ -285,32 +305,34 @@ class ACPAgent[TDeps = None](BaseAgent[TDeps, str]):
         self._extra_mcp_servers.append(mcp_config)
 
     async def __aenter__(self) -> Self:
-        """Start subprocess and initialize ACP connection."""
+        """Start the subprocess (or connect to the remote agent) and initialize ACP."""
         await super().__aenter__()
         await self._setup_toolsets()
-        process = await self._start_process()
         try:
-            await run_with_process_monitor(process, self._initialize, context="ACP initialization")
+            if self._url is not None:
+                reader, writer = await self._connect_remote(self._url)
+                process: Process | None = None
+            else:
+                process = await self._start_process()
+                assert process.stdout is not None
+                assert process.stdin is not None
+                reader, writer = process.stdout, process.stdin
+            monitor = _Monitor(process)
+            await monitor.run(lambda: self._initialize(reader, writer), "ACP initialization")
             # Load existing session or create new one
             if session_to_load := self._sdk_session_id:
                 self._sdk_session_id = None
-                result = await run_with_process_monitor(
-                    process,
-                    lambda: self.load_session(session_to_load),
-                    context="ACP session load",
+                result = await monitor.run(
+                    lambda: self.load_session(session_to_load), "ACP session load"
                 )
                 if result is None:
                     self.log.warning(
                         "Failed to load session, creating new one",
                         session_id=session_to_load,
                     )
-                    await run_with_process_monitor(
-                        process, self._create_session, context="ACP session creation"
-                    )
+                    await monitor.run(self._create_session, "ACP session creation")
             else:
-                await run_with_process_monitor(
-                    process, self._create_session, context="ACP session creation"
-                )
+                await monitor.run(self._create_session, "ACP session creation")
         except SubprocessError as e:
             raise RuntimeError(str(e)) from e
         await anyio.sleep(0.3)
@@ -352,21 +374,33 @@ class ACPAgent[TDeps = None](BaseAgent[TDeps, str]):
             raise RuntimeError("Failed to create subprocess pipes")
         return self._process
 
-    async def _initialize(self) -> None:
+    async def _connect_remote(self, url: str) -> tuple[ByteReceiveStream, ByteSendStream]:
+        """Connect to a remote agent over Streamable HTTP."""
+        from aclientp import connect_http_transport
+
+        self.log.info("Connecting to remote ACP agent", url=url)
+        stack = contextlib.AsyncExitStack()
+        try:
+            transport = connect_http_transport(url, headers=self._headers)
+            reader, writer = await stack.enter_async_context(transport)
+        except BaseException:
+            await stack.aclose()
+            raise
+        self._transport_stack = stack
+        return reader, writer
+
+    async def _initialize(self, reader: ByteReceiveStream, writer: ByteSendStream) -> None:
         """Initialize the ACP connection."""
         from aclientp.client.connection import ClientSideConnection
 
         from agentpool.agents.acp_agent.client_handler import ACPClientHandler
 
-        if not self._process or not self._process.stdin or not self._process.stdout:
-            raise RuntimeError("Process not started")
-
         self._state = ACPSessionState(session_id="")
         self._client_handler = ACPClientHandler(self, self._state, self._input_provider)
         self._connection = ClientSideConnection(
             to_client=self._client_handler,
-            input_stream=self._process.stdin,
-            output_stream=self._process.stdout,
+            input_stream=writer,
+            output_stream=reader,
         )
         self._api = ACPAgentAPI(self._connection)
         init_response = await self._connection.initialize(self._init_request)
@@ -412,6 +446,12 @@ class ACPAgent[TDeps = None](BaseAgent[TDeps, str]):
                 self.log.exception("Error closing ACP connection")
             self._connection = None
             self._api = None
+        if self._transport_stack is not None:
+            try:
+                await self._transport_stack.aclose()
+            except Exception:
+                self.log.exception("Error closing remote ACP transport")
+            self._transport_stack = None
 
         if self._process:
             try:

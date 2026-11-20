@@ -10,11 +10,12 @@ from agentpool.models.acp_agents.base import (
     ACPAgentConfig,
     BaseACPAgentConfig,
     RegistryACPAgentConfig,
+    RemoteACPAgentConfig,
 )
 
 # Union of all ACP agent config types (discriminated by 'provider')
 ACPAgentConfigTypes = Annotated[
-    ACPAgentConfig | RegistryACPAgentConfig,
+    ACPAgentConfig | RegistryACPAgentConfig | RemoteACPAgentConfig,
     Field(discriminator="provider"),
 ]
 
@@ -23,4 +24,5 @@ __all__ = [
     "ACPAgentConfigTypes",
     "BaseACPAgentConfig",
     "RegistryACPAgentConfig",
+    "RemoteACPAgentConfig",
 ]

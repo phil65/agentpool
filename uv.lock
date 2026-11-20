@@ -9,7 +9,7 @@ resolution-markers = [
 
 [[package]]
 name = "aclientp"
-version = "0.1.1"
+version = "0.1.2"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "anyenv" },
@@ -19,9 +19,9 @@ dependencies = [
     { name = "structlog" },
     { name = "upathtools" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/cc/01/e16f68121495bacf1b081036feb987c5330da2772f6be67bc4b0c5e8cfbe/aclientp-0.1.1.tar.gz", hash = "sha256:5b0ea4825d65da9dda5a668da4dbb1d0bea44dfdb4781e805e4908ee87035b7d", size = 159645, upload-time = "2026-11-19T02:02:21.852Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/69/8e/e0a6448853878fdbca7e96fffc35eccc909c73baf4dd84c87ceab6586a34/aclientp-0.1.2.tar.gz", hash = "sha256:45dde762f62bc1a5122382334d24c2e4a74ac210d160a028c1f1193b18675f69", size = 168477, upload-time = "2026-11-20T09:16:50.601Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/14/2a/dfba078edabd04c1b3a5c78cb708cb25192f6e737e790cb825358248218e/aclientp-0.1.1-py3-none-any.whl", hash = "sha256:42ed5b4c73f6f288201dea80c05bcba1a8e69ebe84c1ba063b4795ad86c971e2", size = 206187, upload-time = "2026-11-19T02:02:20.08Z" },
+    { url = "https://files.pythonhosted.org/packages/78/d0/0fff0e065d2d6fc31599659489294b723ecae570e628e5918026d7f1d9bd/aclientp-0.1.2-py3-none-any.whl", hash = "sha256:58e58d4443b5c781c8b26a6d9f8888f158adda220ee621900640b1faadf8ce7b", size = 213967, upload-time = "2026-11-20T09:16:48.869Z" },
 ]
 
 [package.optional-dependencies]
@@ -29,6 +29,9 @@ bridge = [
     { name = "starlette" },
     { name = "uvicorn" },
     { name = "websockets" },
+]
+http2 = [
+    { name = "httpx", extra = ["http2"] },
 ]
 tracing = [
     { name = "logfire" },
@@ -55,7 +58,7 @@ version = "2.10.0"
 source = { editable = "." }
 default-groups = ["dev", "docs", "lint"]
 dependencies = [
-    { name = "aclientp", extra = ["bridge", "tracing", "websocket"] },
+    { name = "aclientp", extra = ["bridge", "http2", "tracing", "websocket"] },
     { name = "alembic" },
     { name = "anyenv", extra = ["httpx"] },
     { name = "bashkit" },
@@ -216,7 +219,7 @@ lint = [
 
 [package.metadata]
 requires-dist = [
-    { name = "aclientp", extras = ["bridge", "tracing", "websocket"], specifier = ">=0.1.1" },
+    { name = "aclientp", extras = ["bridge", "http2", "tracing", "websocket"], specifier = ">=0.1.2" },
     { name = "ag-ui-protocol", marker = "extra == 'ag-ui'", specifier = ">=0.1.10" },
     { name = "alembic", specifier = ">=1.16.5" },
     { name = "anyenv", extras = ["httpx"], specifier = ">=2.0.17" },
@@ -2354,6 +2357,19 @@ wheels = [
 ]
 
 [[package]]
+name = "h2"
+version = "4.4.1"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "hpack" },
+    { name = "hyperframe" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/e7/85/7c366e69d84c17bb778fe41419e1fbcce3033d5b7ce29bbffff0a98b859f/h2-4.4.1.tar.gz", hash = "sha256:4e866ffb1a869ae14dd9b5e6beb5c24a13da0495ad72b65925ded182521c1516", size = 2157281, upload-time = "2026-08-03T11:45:09.509Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/7e/22/e85faf23bd72a92d1921e37d674ca56eb298a3c8be31fdecef0ff2b3aaac/h2-4.4.1-py3-none-any.whl", hash = "sha256:0e25f1462b23c9cb82d9eb02e28bc706dac2a68cb457c6a0d74d63c8a2a5d0e6", size = 62636, upload-time = "2026-08-03T11:44:59.164Z" },
+]
+
+[[package]]
 name = "hf-xet"
 version = "1.8.0"
 source = { registry = "https://pypi.org/simple" }
@@ -2394,6 +2410,15 @@ wheels = [
 async = [
     { name = "anyio" },
     { name = "anysqlite" },
+]
+
+[[package]]
+name = "hpack"
+version = "4.2.0"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/26/5b/fcabf6028144a8723726318b07a32c2f3314acdff6265743cf08a344b18e/hpack-4.2.0.tar.gz", hash = "sha256:0895cfa3b5531fc65fe439c05eb65144f123bf7a394fcaa56aa423548d8e45c0", size = 51300, upload-time = "2026-06-23T18:34:46.667Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/71/b4/4a9fcfb2aef6ba44d9073ecd301443aa00b3dac95de5619f2a7de7ec8a91/hpack-4.2.0-py3-none-any.whl", hash = "sha256:858ac0b02280fa582b5080d68db0899c62a80375e0e5413a74970c5e518b6986", size = 34246, upload-time = "2026-06-23T18:34:45.472Z" },
 ]
 
 [[package]]
@@ -2511,6 +2536,9 @@ wheels = [
 ]
 
 [package.optional-dependencies]
+http2 = [
+    { name = "h2" },
+]
 socks = [
     { name = "socksio" },
 ]
@@ -2558,6 +2586,15 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/25/2a/484d112c0d8fc5f665d7b65137ac9cdb2953c982391598c3597968a12ee7/huggingface_hub-1.33.0.tar.gz", hash = "sha256:367be21a201db9523eddf8aeac7048f2602c1b308691c97640d5e72ed188007e", size = 1043548, upload-time = "2026-09-24T09:49:29.971Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/fc/16/963096d224b80909432dc16561a615fd33d2d13beef3ce4c63fa25e40867/huggingface_hub-1.33.0-py3-none-any.whl", hash = "sha256:04e434b06e100eddbce9a6e817d72693a7884b10a79bd67ab48080d5c07eb899", size = 846435, upload-time = "2026-09-24T09:49:28.059Z" },
+]
+
+[[package]]
+name = "hyperframe"
+version = "6.1.0"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/02/e7/94f8232d4a74cc99514c13a9f995811485a6903d48e5d952771ef6322e30/hyperframe-6.1.0.tar.gz", hash = "sha256:f630908a00854a7adeabd6382b43923a4c4cd4b821fcb527e6ab9e15382a3b08", size = 26566, upload-time = "2025-01-22T21:41:49.302Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/48/30/47d0bf6072f7252e6521f3447ccfa40b421b6824517f82854703d0f5a98b/hyperframe-6.1.0-py3-none-any.whl", hash = "sha256:b03380493a519fce58ea5af42e4a42317bf9bd425596f7a0835ffce80f1a42e5", size = 13007, upload-time = "2025-01-22T21:41:47.295Z" },
 ]
 
 [[package]]
