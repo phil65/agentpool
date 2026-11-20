@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from pydantic import BaseModel
+import pytest
 
 from agentpool import AgentPool, AgentsManifest
 
@@ -19,6 +20,7 @@ agents:
 """
 
 
+@pytest.mark.integration
 async def test_structured_response(default_model: str):
     manifest = AgentsManifest.from_yaml(AGENT_CONFIG.format(default_model=default_model))
     async with AgentPool(manifest) as pool:

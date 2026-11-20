@@ -6,6 +6,7 @@ import pytest
 from agentpool import Agent
 
 
+@pytest.mark.integration
 @pytest.mark.flaky(reruns=2)
 async def test_vision(vision_model: str):
     """Test basic vision capability with a small, public image."""

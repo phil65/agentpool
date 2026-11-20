@@ -39,7 +39,7 @@ on:
       test_command:
         description: "Pytest command (empty to skip tests)"
         required: false
-        default: "pytest --tb=short"
+        default: 'pytest --tb=short -m "not slow and not acp_snapshot"'
         type: string
 
 env:

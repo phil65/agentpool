@@ -56,7 +56,8 @@ jobs:
         env:
           OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
-        run: uv run --no-group docs pytest --cov-report=xml --cov=src/agentpool/ --cov-report=term-missing
+        # -m includes the integration tests that local runs leave out (see pyproject.toml)
+        run: uv run --no-group docs pytest -m "not slow and not acp_snapshot" --cov-report=xml --cov=src/agentpool/ --cov-report=term-missing
 
       - name: Upload test results to Codecov
         uses: codecov/codecov-action@v5

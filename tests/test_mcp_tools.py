@@ -8,6 +8,7 @@ import pytest
 from agentpool import Agent
 
 
+@pytest.mark.integration
 @pytest.mark.flaky(reruns=2)
 async def test_mcp_tool_call(default_model: str):
     """Test basic MCP tool functionality with context7 server."""

@@ -24,10 +24,8 @@ if TYPE_CHECKING:
     from agentpool.agents.events import RichAgentStreamEvent
 
 
-# Mark all tests in this module as slow/integration
 # Skip on Windows due to subprocess/asyncio compatibility issues
 pytestmark = [
-    pytest.mark.integration,
     pytest.mark.skipif(sys.platform == "win32", reason="ACP subprocess tests hang on Windows"),
 ]
 

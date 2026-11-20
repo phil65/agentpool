@@ -5,6 +5,7 @@ import pytest
 from agentpool import Agent
 
 
+@pytest.mark.integration
 async def test_pick_from_options(default_model: str):
     """Test picking from a list of options."""
     # Create agent for making decisions
@@ -16,6 +17,7 @@ async def test_pick_from_options(default_model: str):
     assert len(decision.reason) > 0
 
 
+@pytest.mark.integration
 @pytest.mark.flaky(reruns=2)
 async def test_pick_from_agents(default_model: str):
     """Test picking from a team of agents."""
@@ -35,6 +37,7 @@ async def test_pick_from_agents(default_model: str):
     assert "security" in decision.reason.lower()
 
 
+@pytest.mark.integration
 async def test_pick_multiple(default_model: str):
     """Test picking multiple options with constraints."""
     decider = Agent(model=default_model)

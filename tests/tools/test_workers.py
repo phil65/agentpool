@@ -115,6 +115,7 @@ async def test_basic_worker_setup(tmp_path: Path):
         assert "ask_specialist" in tool_names
 
 
+@pytest.mark.integration
 async def test_history_sharing(tmp_path: Path):
     """Test history sharing between agents."""
     config_path = write_config(WORKERS_WITH_SHARING, tmp_path)
@@ -202,6 +203,7 @@ async def test_multiple_workers_same_prompt(tmp_path: Path):
         assert any("helpful worker" in r.lower() for r in responses)
 
 
+@pytest.mark.integration
 async def test_structured_worker_output(default_model: str):
     """Test that agents with BaseModel output    convert correctly when used as tools."""
     # Create structured agent and main agent that will use him as a tool

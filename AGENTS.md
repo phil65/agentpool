@@ -17,15 +17,20 @@ uv sync --extra coding --extra server
 
 ### Testing
 ```bash
-# Run all tests (excludes slow and acp_snapshot by default)
+# Run all tests (excludes slow, acp_snapshot and integration by default)
 uv run pytest
+
+# Integration tests: need external services (model APIs, Claude/Codex logins, npx/uvx)
+uv run pytest -m integration
+
+# What CI runs (everything but slow and acp_snapshot)
+uv run pytest -m "not slow and not acp_snapshot"
 
 # Run with coverage
 uv run pytest --cov-report=xml --cov=src/agentpool/ --cov-report=term-missing
 
 # Run specific test markers
 uv run pytest -m unit          # Unit tests only
-uv run pytest -m integration   # Integration tests only
 uv run pytest -m slow          # Include slow tests
 uv run pytest -m acp_snapshot  # ACP snapshot tests
 

@@ -224,6 +224,7 @@ async def test_claude_code_passes_tool_use_id_in_meta():
     # Placeholder - see test below
 
 
+@pytest.mark.integration
 @requires_claude_code
 async def test_claude_code_mcp_bridge_integration():
     """Integration test using our MCP bridge with Claude Code.
