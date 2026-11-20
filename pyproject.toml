@@ -31,7 +31,7 @@ classifiers = [
   "Typing :: Typed",
 ]
 dependencies = [
-  "aclientp[bridge,http2,tracing,websocket]>=0.1.6",
+  "aclientp[bridge,http2,tracing,websocket]>=0.1.7",
   "alembic>=1.16.5",
   "anyenv[httpx]>=2.0.17",
   "bashkit>=0.1.11",
