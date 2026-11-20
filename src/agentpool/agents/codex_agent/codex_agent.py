@@ -79,7 +79,11 @@ USAGE_LIMITS_TTL = 300.0
 
 
 class CodexAgent[TDeps = None, OutputDataT = str](BaseAgent[TDeps, OutputDataT]):
-    """MessageNode that wraps a Codex app-server instance."""
+    """Agent running a Codex app-server (through codexed's CodexClient).
+
+    Turns run on a Codex thread (the agent's session); agentpool toolsets are exposed
+    to Codex through an MCP bridge.
+    """
 
     AGENT_TYPE: ClassVar = "codex"
 
@@ -116,8 +120,8 @@ class CodexAgent[TDeps = None, OutputDataT = str](BaseAgent[TDeps, OutputDataT])
             deps_type: Type of dependencies for the agent
             description: Agent description
             display_name: Human-readable display name
-            model: Model to use (e.g., "claude-3-5-sonnet-20241022")
-            reasoning_effort: Reasoning effort level ("low", "medium", "high")
+            model: Model to use, as the app-server lists it (e.g., "gpt-6.2-sol")
+            reasoning_effort: Reasoning effort level ("low", "medium", "high", "xhigh")
             base_instructions: Base system instructions for the session
             developer_instructions: Developer-provided instructions
             agent_pool: Agent pool for coordination
@@ -131,8 +135,8 @@ class CodexAgent[TDeps = None, OutputDataT = str](BaseAgent[TDeps, OutputDataT])
             hooks: Agent hooks for pre/post tool execution
             session_id: Session/thread ID to resume on connect (avoids reconnect overhead)
             toolsets: Resource providers for tools to expose via MCP bridge
-            approval_policy: Approval policy for tool execution
-            sandbox: Sandbox mode for execution
+            approval_policy: Approval policy ("never", "on-request", "untrusted")
+            sandbox: Sandbox mode ("read-only", "workspace-write", "danger-full-access")
             personality: Personality preset (none, friendly, pragmatic)
         """
         from agentpool.mcp_server.tool_bridge import ToolManagerBridge
@@ -322,6 +326,7 @@ class CodexAgent[TDeps = None, OutputDataT = str](BaseAgent[TDeps, OutputDataT])
         await super().__aexit__(exc_type, exc_val, exc_tb)
 
     async def _on_approval(self, data: ApprovalParams) -> ApprovalResponse:
+        """Ask the user to approve a command or file change of Codex."""
         from codexed.models import (
             CommandExecutionRequestApprovalParams,
             FileChangeRequestApprovalParams,
@@ -357,6 +362,7 @@ class CodexAgent[TDeps = None, OutputDataT = str](BaseAgent[TDeps, OutputDataT])
     async def _on_mcp_elicitation(
         self, data: McpServerElicitationRequestParams
     ) -> McpServerElicitationResponse:
+        """Ask the user for what an MCP server of Codex requests."""
         from mcp.types import ErrorData
 
         ctx = self._tool_bridge._current_context
@@ -640,6 +646,7 @@ class CodexAgent[TDeps = None, OutputDataT = str](BaseAgent[TDeps, OutputDataT])
 
         Returns:
             List of tokonomics ModelInfo for available models, or None if not connected
+            or the request failed
         """
         if not self._client:
             self.log.warning("Cannot get models: client not connected")

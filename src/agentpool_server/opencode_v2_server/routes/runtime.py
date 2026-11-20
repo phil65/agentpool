@@ -123,7 +123,7 @@ async def session_command(
     except AttachmentError as e:
         raise invalid_request(str(e), field="files") from None
     item = SessionInboxItemUser(payload=payload, delivery=body.delivery or "queue")
-    enqueue(state, session, new_message_id(), item, resume=True)
+    await enqueue(state, session, new_message_id(), item, resume=True)
     return Response(status_code=204)
 
 

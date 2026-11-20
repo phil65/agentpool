@@ -75,7 +75,7 @@ def get_client(headers: dict[str, str], timeout: float) -> httpx.AsyncClient:
 
 
 class AGUIAgent[TDeps = None](BaseAgent[TDeps, str]):
-    """MessageNode that wraps a remote AG-UI protocol server.
+    """Agent backed by a remote AG-UI protocol server.
 
     Connects to AG-UI compatible endpoints via HTTP/SSE and provides the same
     interface as native agents, enabling composition with other nodes via
@@ -87,7 +87,6 @@ class AGUIAgent[TDeps = None](BaseAgent[TDeps, str]):
     - Event conversion to native agentpool events
     - Message accumulation and final response generation
     - Client-side tool execution (tools defined locally, executed when requested)
-    - Subscriber system for event hooks
     - Chunk transformation for compatibility with different server modes
 
     Client-Side Tools:
@@ -95,7 +94,6 @@ class AGUIAgent[TDeps = None](BaseAgent[TDeps, str]):
         When the server requests a tool call, the tool is executed locally and the
         result is sent back. This enables human-in-the-loop workflows and local
         capability exposure to remote agents.
-        ```
     """
 
     AGENT_TYPE: ClassVar = "agui"
@@ -136,7 +134,7 @@ class AGUIAgent[TDeps = None](BaseAgent[TDeps, str]):
             headers: Additional HTTP headers
             startup_command: Optional shell command to start server automatically.
                            Useful for testing - server lifecycle is managed by the agent.
-                           Example: "ag ui agent config.yml"
+                           Example: "agentpool serve-agui config.yml"
             startup_delay: Seconds to wait after starting server before connecting (default: 2.0)
             tools: Tools to expose to the remote agent (executed locally when called)
             mcp_servers: MCP servers to connect

@@ -135,7 +135,7 @@ class AgentKwargs(TypedDict, total=False):
 
 
 class Agent[TDeps = None, OutputDataT = str](BaseAgent[TDeps, OutputDataT]):
-    """The main agent class.
+    """Native agent: runs a pydantic-ai agent with agentpool's tools, history and hooks.
 
     Generically typed with: Agent[Type of Dependencies, Type of Result]
     """
@@ -186,17 +186,14 @@ class Agent[TDeps = None, OutputDataT = str](BaseAgent[TDeps, OutputDataT]):
         Args:
             name: Identifier for the agent (used for logging and lookups)
             deps_type: Type of dependencies to use
-            model: The default model to use (defaults to GPT-5)
+            model: The model to use (model string like "openai:gpt-5", or a Model)
             output_type: The default output type to use (defaults to str)
-            context: Agent context with configuration
             session: Memory configuration.
-                - None: Default memory config
-                - False: Disable message history (max_messages=0)
-                - int: Max tokens for memory
-                - str/UUID: Session identifier
-                - MemoryConfig: Full memory configuration
-                - MemoryProvider: Custom memory provider
+                - None / True: Default memory config
+                - False: Disable message history
+                - str/UUID: Name of the session to recover
                 - SessionQuery: Session query
+                - MemoryConfig: Full memory configuration
 
             system_prompt: System prompts for the agent
             description: Description of the Agent ("what it can do")
@@ -335,7 +332,6 @@ class Agent[TDeps = None, OutputDataT = str](BaseAgent[TDeps, OutputDataT]):
 
         Args:
             config: Native agent configuration
-            name: Optional name override (used for manifest lookups, defaults to config.name)
             event_handlers: Optional event handlers (merged with config handlers)
             input_provider: Optional input provider for user interactions
             agent_pool: Optional agent pool for coordination
@@ -501,7 +497,7 @@ class Agent[TDeps = None, OutputDataT = str](BaseAgent[TDeps, OutputDataT]):
                 - with or without context
                 - must return str for pipeline compatibility
             name: Optional name for the agent
-            kwargs: Additional arguments for agent
+            **kwargs: Additional arguments for agent
         """
         from llmling_models import function_to_model
 

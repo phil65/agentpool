@@ -43,6 +43,7 @@ from typing import TYPE_CHECKING, Any, assert_never, cast
 from clawd_code_sdk.models import (
     AuthStatusMessage,
     BackgroundTasksChangedMessage,
+    CommandLifecycleMessage,
     CommandsChangedMessage,
     ControlRequestProgressMessage,
     ConversationResetMessage,
@@ -89,6 +90,7 @@ from agentpool.agents.claude_code_agent.server_blocks import (
 )
 from agentpool.agents.events import (
     CompactionEvent,
+    NoticeEvent,
     PartDeltaEvent,
     PartStartEvent,
     PromptSuggestionEvent,
@@ -263,6 +265,8 @@ class ClaudeCodeStreamedResponse(StreamedResponse):
     _result_message: ResultMessage | None = None
     """The SDK ResultMessage captured at end of stream (contains usage, cost, etc.)."""
     on_rate_limit: Callable[[RateLimitInfo], None] | None = None
+    on_command_lifecycle: Callable[[CommandLifecycleMessage], None] | None = None
+    """Called with the queue progress of the messages steered into the run."""
     """Receives the rate limit windows reported during the stream."""
 
     async def _get_event_iterator(self) -> AsyncIterator[RichAgentStreamEvent[Any]]:  # noqa: PLR0915
@@ -401,6 +405,17 @@ class ClaudeCodeStreamedResponse(StreamedResponse):
                         phase="completed",
                         pre_tokens=compact_metadata["pre_tokens"],
                     )
+
+                # Messages steered into the run (see ClaudeCodeAgent.steer)
+                case CommandLifecycleMessage(state=lifecycle_state):
+                    if self.on_command_lifecycle is not None:
+                        self.on_command_lifecycle(message)
+                    if lifecycle_state in ("discarded", "refused"):
+                        yield NoticeEvent(
+                            title="Message not delivered",
+                            severity="warning",
+                            description=f"Claude Code {lifecycle_state} a message sent mid-run.",
+                        )
 
                 case PromptSuggestionMessage(suggestion=suggestion):
                     yield PromptSuggestionEvent(suggestions=[suggestion])

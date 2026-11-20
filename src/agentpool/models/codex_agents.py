@@ -46,7 +46,7 @@ class CodexAgentConfig(BaseAgentConfig):
     model: str | None = Field(
         default=None,
         title="Model",
-        examples=["gpt-5.1-codex-max", "gpt-5.1-codex-mini", "gpt-5.2"],
+        examples=["gpt-6.2-sol", "gpt-6.1-terra", "gpt-5.5"],
     )
     """Model to use for the Codex session.
 

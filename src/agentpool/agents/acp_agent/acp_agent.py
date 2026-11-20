@@ -120,10 +120,12 @@ class _Monitor:
 
 
 class ACPAgent[TDeps = None](BaseAgent[TDeps, str]):
-    """MessageNode that wraps an external ACP agent subprocess.
+    """Agent backed by an external ACP agent: a subprocess, or a remote agent over the network.
 
-    This allows integrating any ACP-compatible agent into the agentpool
-    pool, enabling composition with native agents via connections, teams, etc.
+    The subprocess is started from a command or resolved from the ACP registry; a remote
+    agent is reached by URL (WebSocket for ``ws(s)://``, Streamable HTTP otherwise).
+    This allows integrating any ACP-compatible agent into the agentpool pool, enabling
+    composition with native agents via connections, teams, etc.
     """
 
     AGENT_TYPE: ClassVar = "acp"
@@ -164,6 +166,39 @@ class ACPAgent[TDeps = None](BaseAgent[TDeps, str]):
         hooks: AgentHooks | None = None,
         session_id: str | None = None,
     ) -> None:
+        """Initialize ACP agent (exactly one of ``command``, ``registry_id`` or ``url``).
+
+        Args:
+            command: Executable of the agent subprocess
+            args: Arguments for the command (or for the registry agent)
+            registry_id: ID of an agent in the ACP registry (e.g. "goose"), whose
+                distribution provides the command and its env vars
+            url: URL of a remote agent (``ws(s)://`` for WebSocket, else Streamable HTTP)
+            headers: HTTP headers for the remote agent (e.g. authorization)
+            name: Agent name (defaults to the command, registry ID or URL)
+            description: Agent description
+            display_name: Human-readable display name
+            provider_type: Provider name recorded on the agent's model responses
+            cwd: Working directory of the subprocess and its sessions
+            env_vars: Environment variables for the subprocess
+            execution_env: Execution environment of the agent
+            client_execution_env: Environment for the file and terminal requests of the
+                remote agent (defaults to ``execution_env``)
+            init_request: ACP initialize request (defaults to agentpool's capabilities)
+            tool_providers: Resource providers whose tools are exposed to the agent
+                through an MCP bridge
+            mcp_servers: MCP servers to pass to the agent's sessions
+            deps_type: Type of dependencies for the agent
+            input_provider: Provider for user input and permission requests
+            agent_pool: Agent pool for coordination
+            enable_logging: Whether to enable database logging
+            event_configs: Event trigger configurations
+            event_handlers: Event handlers for this agent
+            auto_approve: Approve all permission requests of the agent without asking
+            commands: Slash commands to register with this agent
+            hooks: Agent hooks for intercepting agent behavior
+            session_id: Session to load on connect instead of creating a new one
+        """
         from agentpool.mcp_server.tool_bridge import ToolManagerBridge
 
         sources = [s for s in (command, registry_id, url) if s]
@@ -193,7 +228,7 @@ class ACPAgent[TDeps = None](BaseAgent[TDeps, str]):
         self._command = command
         self._args = args or []
         self._registry_id = registry_id
-        # Remote agent (Streamable HTTP)
+        # Remote agent (WebSocket or Streamable HTTP)
         self._url = url
         self._headers = headers or {}
         self._transport_stack: contextlib.AsyncExitStack | None = None

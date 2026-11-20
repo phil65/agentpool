@@ -29,6 +29,7 @@ from agentpool.agents.claude_code_agent.converters import (
 )
 from agentpool.agents.claude_code_agent.idle_watch import IdleWatcher
 from agentpool.agents.claude_code_agent.slash_commands import create_claude_code_command
+from agentpool.agents.claude_code_agent.steering import RunSteering
 from agentpool.agents.events import RunErrorEvent, RunStartedEvent, StreamCompleteEvent
 from agentpool.agents.events.reconstructor import MessageReconstructor
 from agentpool.agents.exceptions import (
@@ -44,7 +45,7 @@ from agentpool.utils.time_utils import get_now
 
 
 if TYPE_CHECKING:
-    from collections.abc import AsyncIterator, Sequence
+    from collections.abc import AsyncIterator, Generator, Sequence
     from types import TracebackType
 
     from clawd_code_sdk import (
@@ -91,7 +92,8 @@ logger = get_logger(__name__)
 _MCP_TOOL_PATTERN = re.compile(r"^mcp__agentpool-(.+)-tools__(.+)$")
 """Pattern to detect CC-provided tool names ( mcp__agentpool-{agent_name}-tools__{tool_name} )."""
 
-# see https://github.com/agentclientprotocol/claude-agent-acp/blob/main/src/acp-agent.ts for a list
+# Commands that do not work through the SDK, as Zed's adapter filters them
+# (https://github.com/agentclientprotocol/claude-agent-acp/blob/main/src/slash-commands.ts)
 UNSUPPORTED_COMMANDS = frozenset({
     # "cost",
     "keybindings-help",
@@ -129,17 +131,20 @@ def _strip_mcp_prefix(tool_name: str) -> str:
 
 
 class ClaudeCodeAgent[TDeps = None, TResult = str](BaseAgent[TDeps, TResult]):
-    """Agent wrapping Claude Agent SDK's ClaudeSDKClient.
+    """Agent running the Claude Code CLI through clawd-code-sdk's ClaudeSDKClient.
 
     This provides native integration with Claude Code, enabling:
     - Bidirectional streaming for interactive conversations
     - Tool permission handling via can_use_tool callback
     - Full access to Claude Code's capabilities (file ops, terminals, etc.)
+    - Steering user messages into a running turn (:meth:`steer`)
 
     The agent manages:
-    - ClaudeSDKClient lifecycle (connect on enter, disconnect on exit)
+    - ClaudeSDKClient lifecycle (connects in the background on enter, disconnects on exit)
     - Event conversion from Claude SDK to agentpool events
     - Tool confirmation via input provider
+    - agentpool toolsets, exposed to the CLI through an MCP bridge
+    - The CLI's models, permission mode, effort and fast mode as config options
     """
 
     AGENT_TYPE: ClassVar = "claude"
@@ -215,7 +220,7 @@ class ClaudeCodeAgent[TDeps = None, TResult = str](BaseAgent[TDeps, TResult]):
             event_configs: Event configuration
             event_handlers: Event handlers for streaming events
             output_type: Type for structured output (uses JSON schema)
-            builtin_subagents: builtin Subagents configuration
+            builtin_subagents: Subagent definitions for Claude Code's Agent tool
             commands: Slash commands
             hooks: Lifecycle hooks for intercepting agent behavior
             session_id: Session ID to resume on connect (avoids reconnect overhead)
@@ -281,6 +286,10 @@ class ClaudeCodeAgent[TDeps = None, TResult = str](BaseAgent[TDeps, TResult]):
         self._idle_watch = IdleWatcher(self)
         """Reads what the CLI sends between runs (see idle_watch)."""
         self._usage_limits: tuple[float, UsageLimits | None] | None = None
+        self._steering: RunSteering | None = None
+        """Messages steered into the running turn (None outside of runs)."""
+        self._open_user_inputs = 0
+        """Permission requests and questions waiting for the user."""
         self._server_info: ClaudeCodeServerInfo | None = None
         """What the CLI reported at connect: models, commands, account, fast mode state."""
         self._fast_mode: bool | None = None
@@ -424,7 +433,7 @@ class ClaudeCodeAgent[TDeps = None, TResult = str](BaseAgent[TDeps, TResult]):
         system_prompt: str | None = None,
         fork_session: bool = False,
     ) -> ClaudeSDKClient:
-        """Build ClaudeAgentOptions from runtime state.
+        """Build the SDK client with options from the runtime state.
 
         Args:
             system_prompt: Pre-formatted system prompt from SystemPrompts manager
@@ -486,7 +495,7 @@ class ClaudeCodeAgent[TDeps = None, TResult = str](BaseAgent[TDeps, TResult]):
         input_data: ToolInput | dict[str, Any],
         context: ToolPermissionContext,
     ) -> PermissionResult:
-        """Handle tool permission requests."""
+        """Handle the CLI's permission requests (what its permission mode leaves open)."""
         from clawd_code_sdk import PermissionResultAllow, PermissionResultDeny
         from clawd_code_sdk.models.permissions import ModePermissionUpdate
 
@@ -513,7 +522,8 @@ class ClaudeCodeAgent[TDeps = None, TResult = str](BaseAgent[TDeps, TResult]):
                 pass
             case _ as unreachable:
                 assert_never(unreachable)
-        result = await ctx.get_input_provider().get_tool_confirmation(context=ctx)
+        with self._awaiting_user():
+            result = await ctx.get_input_provider().get_tool_confirmation(context=ctx)
         permission = confirmation_result_to_native(result)
         if isinstance(permission, PermissionResultDeny):
             return permission
@@ -550,11 +560,10 @@ class ClaudeCodeAgent[TDeps = None, TResult = str](BaseAgent[TDeps, TResult]):
         ctx = self._tool_bridge._current_context
         if ctx is None:
             raise RuntimeError("User question callback invoked outside of an active run")
-        return await handle_clarifying_questions(
-            agent_ctx=ctx,
-            input_data=input_data,
-            context=context,
-        )
+        with self._awaiting_user():
+            return await handle_clarifying_questions(
+                agent_ctx=ctx, input_data=input_data, context=context
+            )
 
     async def _on_elicitation(self, request: SDKControlElicitationRequest) -> ElicitResult:
         """Handle MCP elicitation requests."""
@@ -564,13 +573,37 @@ class ClaudeCodeAgent[TDeps = None, TResult = str](BaseAgent[TDeps, TResult]):
             raise RuntimeError("Elicitation callback invoked outside of an active run")
         input_provider = self._tool_bridge._current_context.get_input_provider()
         params = request.to_mcp()
-        match await input_provider.get_elicitation(params=params):
+        with self._awaiting_user():
+            response = await input_provider.get_elicitation(params=params)
+        match response:
             case ElicitResult() as result:
                 return result
             case ErrorData():
                 return ElicitResult(action="decline")
             case _ as unreachable_:
                 assert_never(unreachable_)
+
+    @contextlib.contextmanager
+    def _awaiting_user(self) -> Generator[None]:
+        """Count a request that waits for the user (steering then waits for it too)."""
+        self._open_user_inputs += 1
+        try:
+            yield
+        finally:
+            self._open_user_inputs -= 1
+
+    async def steer(self, message: str) -> None:
+        """Send the user's message into the running turn (Claude Code's own steering).
+
+        The CLI takes it in at once: it ends the cycle that is generating, or moves a
+        running foreground tool to the background, and works on the message within the
+        run. While a permission request or question waits for the user, the message
+        waits for its answer. Outside of a run, the base behavior applies.
+        """
+        if (steering := self._steering) is None:
+            await super().steer(message)
+            return
+        await steering.send(message, priority="later" if self._open_user_inputs else "now")
 
     async def __aenter__(self) -> Self:
         """Connect to Claude Code with deferred client connection."""
@@ -699,8 +732,8 @@ class ClaudeCodeAgent[TDeps = None, TResult = str](BaseAgent[TDeps, TResult]):
         and registers them as slashed Commands. Should be called after
         connection is established.
 
-        Commands that are not supported or not useful for external use
-        are filtered out (e.g., login, logout, context, cost).
+        Commands that do not work through the SDK are filtered out
+        (``UNSUPPORTED_COMMANDS``, e.g. login, logout, todos).
         """
         await self.ensure_initialized()
         server_info = self._server_info
@@ -758,8 +791,10 @@ class ClaudeCodeAgent[TDeps = None, TResult = str](BaseAgent[TDeps, TResult]):
 
         reconstructor = MessageReconstructor(initial_prompts=prompts)
         claude_prompts = [*to_prompt_input(prompts)]
+        steering = RunSteering(client=client, reconstructor=reconstructor)
         try:
             await client.query(*claude_prompts)
+            self._steering = steering
             # Capture SDK session ID from init message
             stream = client.receive_response()
             first_msg = await anext(stream)
@@ -777,6 +812,7 @@ class ClaudeCodeAgent[TDeps = None, TResult = str](BaseAgent[TDeps, TResult]):
                 agent_name=self.name,
                 session_id=self.session_id,
                 on_rate_limit=self.record_rate_limit,
+                on_command_lifecycle=steering.on_lifecycle,
             )
             async with (
                 self._tool_bridge.set_run_context(run_context, prompt=prompts),
@@ -813,6 +849,7 @@ class ClaudeCodeAgent[TDeps = None, TResult = str](BaseAgent[TDeps, TResult]):
             raise
 
         finally:
+            self._steering = None
             if fork_client:
                 try:
                     await fork_client.disconnect()
@@ -1042,7 +1079,7 @@ class ClaudeCodeAgent[TDeps = None, TResult = str](BaseAgent[TDeps, TResult]):
             await self.reconnect(resume_session=False)
 
     async def load_session(self, session_id: str) -> SessionData | None:
-        """Load and restore a session from Claude storage (requires reconnect)."""
+        """Load a session from Claude storage and resume it in the CLI (reconnects)."""
         storage = self.storage
         if not storage:
             return None

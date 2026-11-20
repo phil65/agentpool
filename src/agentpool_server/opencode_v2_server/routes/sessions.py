@@ -300,7 +300,7 @@ async def session_switch_model(
 # --- input ---------------------------------------------------------------------------------
 
 
-def enqueue(
+async def enqueue(
     state: ServerState,
     session: V2Session,
     inbox_id: str,
@@ -315,7 +315,7 @@ def enqueue(
         SessionInboxEnqueuedData(session_id=session.id, inbox_id=inbox_id, item=item),
     )
     runner = state.runner(session)
-    if item.delivery == "steer" and runner.steer(inbox_id):
+    if item.delivery == "steer" and await runner.steer(inbox_id):
         return
     if resume:
         runner.schedule()
@@ -333,7 +333,7 @@ async def session_prompt(session: SessionDep, body: SessionPromptBody, state: St
     inbox_id = body.id or new_message_id()
     delivery: Delivery = body.delivery or "steer"
     item = SessionInboxItemUser(payload=payload, delivery=delivery)
-    enqueue(state, session, inbox_id, item, resume=body.resume is not False)
+    await enqueue(state, session, inbox_id, item, resume=body.resume is not False)
     stored = session.projection.inbox.get(inbox_id)
     if not isinstance(stored, SessionInboxUser):
         stored = SessionInboxUser.model_validate({
@@ -357,7 +357,7 @@ async def session_synthetic(
         text=body.text, description=body.description, metadata=body.metadata
     )
     item = SessionInboxItemSynthetic(payload=payload, delivery=delivery)
-    enqueue(state, session, inbox_id, item, resume=body.resume is not False)
+    await enqueue(state, session, inbox_id, item, resume=body.resume is not False)
     stored = session.projection.inbox.get(inbox_id)
     if not isinstance(stored, SessionInboxSynthetic):
         stored = SessionInboxSynthetic.model_validate({
@@ -438,7 +438,7 @@ async def session_inbox_update(
             ),
         )
         if body.delivery == "steer":
-            state.runner(session).steer(inbox_id)
+            await state.runner(session).steer(inbox_id)
     return _no_content()
 
 

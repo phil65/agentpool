@@ -126,19 +126,23 @@ def split_exchange(
 
 
 class BaseAgent[TDeps = None, TResult = str](MessageNode[TDeps, TResult]):
-    """Base class for Agent, ACPAgent, AGUIAgent, and ClaudeCodeAgent.
+    """Base class for Agent, ClaudeCodeAgent, CodexAgent, ACPAgent and AGUIAgent.
 
     Provides shared infrastructure:
     - tools: ToolManager for tool registration and execution
     - conversation: MessageHistory for conversation state
     - event_handler: MultiEventHandler for event distribution
-    - _event_queue: Queue for streaming events
+    - _event_queue: Queue for events of tools and subagents during a run
     - _input_provider: Provider for user input/confirmations
     - env: ExecutionEnvironment for running code/commands
-    - context property: Returns NodeContext for the agent
+    - get_context(): AgentContext for tools and callbacks
 
     Signals:
-        - run_failed: Emitted when agent execution fails with error details
+        - run_failed: Agent execution failed (with error details)
+        - interrupted: A running stream was interrupted
+        - agent_reset: Conversation and tool states were reset
+        - state_updated: A config option (mode, model, ...) changed
+        - background_event: An event arrived while no run was streaming
     """
 
     # Abstract class variable - subclasses must define this
@@ -276,7 +280,6 @@ class BaseAgent[TDeps = None, TResult = str](MessageNode[TDeps, TResult]):
         self._injection_manager = PromptInjectionManager()
         # Deferred initialization support - subclasses set True in __aenter__,
         # override ensure_initialized() to do actual connection
-        self._connect_pending: bool = False
         self._command_store = CommandStore(commands=[*get_commands(), *(commands or [])])
         # Initialize store (registers builtin help/exit commands)
         self._command_store._initialize_sync()
@@ -349,6 +352,7 @@ class BaseAgent[TDeps = None, TResult = str](MessageNode[TDeps, TResult]):
         return TeamRun([self, other])
 
     async def update_state(self, config_id: str, value_id: str | bool) -> None:
+        """Announce that config option ``config_id`` is now ``value_id`` (``state_updated``)."""
         from agentpool.agents.modes import ConfigOptionChanged
 
         self.log.info("Config option changed", config_id=config_id, mode=value_id)
@@ -602,7 +606,7 @@ class BaseAgent[TDeps = None, TResult = str](MessageNode[TDeps, TResult]):
         self._injection_manager.queue(*prompts)
 
     def inject_prompt(self, message: str) -> None:
-        """Inject a message into the conversation mid-run.
+        """Inject context into the conversation mid-run (for tools; user input: :meth:`steer`).
 
         The message will be injected after the next tool completes (if the
         agent supports tool hooks). If no tool executes before the run
@@ -619,6 +623,19 @@ class BaseAgent[TDeps = None, TResult = str](MessageNode[TDeps, TResult]):
                 return "Changes made"
         """
         self._injection_manager.inject(message)
+
+    async def steer(self, message: str) -> None:
+        """Deliver user input into the running turn.
+
+        Unlike :meth:`inject_prompt` (context from a tool, added after it completes),
+        this is input from the user that should reach the model as soon as possible.
+        Agents whose backend takes messages mid-turn override this; the default injects
+        the message after the next tool call, or runs it once the turn ends.
+
+        Args:
+            message: The user's message
+        """
+        self.inject_prompt(message)
 
     def has_queued_prompts(self) -> bool:
         """Check if there are queued prompts waiting to be processed."""
@@ -1001,40 +1018,27 @@ class BaseAgent[TDeps = None, TResult = str](MessageNode[TDeps, TResult]):
         ...
 
     async def set_tool_confirmation_mode(self, mode: str) -> None:
-        """Set tool confirmation mode (agent-specific implementation).
+        """Set the tool confirmation mode, in the agent's own values.
 
         Each agent type handles permission modes differently:
-        - NativeAgent: tool_confirmation_mode ("always", "never", "per_tool")
-        - ClaudeCodeAgent: permission_mode ("default", "acceptEdits", "plan", "bypassPermissions")
-        - CodexAgent: approval_policy ("never", "on-request", "untrusted")
-        - ACPAgent: auto_approve (bool)
-        - AGUIAgent: Not supported
+        - Agent / AGUIAgent: tool confirmation ("always", "never", "per_tool")
+        - ClaudeCodeAgent: permission mode ("default", "acceptEdits", "plan", "bypassPermissions")
+        - CodexAgent: approval policy ("never", "on-request", "untrusted")
+        - ACPAgent: a mode ID of the remote agent
 
-        Subclasses should override this method if they support permission modes.
-        The default implementation delegates to _set_mode(mode, "mode").
+        The default implementation sets the ``mode`` config option (``_set_mode``).
 
         Args:
             mode: Mode value in the agent's native format
         """
         await self._set_mode(mode, "mode")
 
-    def is_initializing(self) -> bool:
-        """Check if agent is still initializing.
-
-        Returns:
-            True if deferred initialization is pending
-        """
-        return self._connect_pending
-
     async def ensure_initialized(self) -> None:
         """Wait for deferred initialization to complete.
 
-        Subclasses that use deferred init should:
-        1. Set `self._connect_pending = True` in `__aenter__`
-        2. Override this method to do actual connection work
-        3. Set `self._connect_pending = False` when done
-
-        The base implementation is a no-op for agents without deferred init.
+        Agents that connect to their backend in the background (Claude Code starts its
+        CLI after ``__aenter__`` returns) override this to wait for it. The base
+        implementation is a no-op.
         """
 
     def is_cancelled(self) -> bool:
@@ -1093,8 +1097,8 @@ class BaseAgent[TDeps = None, TResult = str](MessageNode[TDeps, TResult]):
     ) -> ChatMessage[TResult]:
         """Run agent with prompt and get response.
 
-        This is the standard synchronous run method shared by all agent types.
-        It collects all streaming events from run_stream() and returns the final message.
+        Shared by all agent types: collects the events of run_stream() and returns the
+        final message.
 
         Args:
             prompts: User query or instruction
@@ -1171,11 +1175,8 @@ class BaseAgent[TDeps = None, TResult = str](MessageNode[TDeps, TResult]):
         represents a group of mutually exclusive modes (e.g., permissions,
         models, behavior presets).
 
-        Different agent types expose different modes:
-        - Native Agent: permissions + model selection
-        - ClaudeCodeAgent: permissions + model selection
-        - ACPAgent: Passthrough from remote server
-        - AGUIAgent: model selection (if applicable)
+        Built from :attr:`config_options` (e.g. Claude Code: permission mode, model,
+        reasoning effort, fast mode). ACPAgent passes through the remote agent's modes.
 
         Returns:
             List of ModeCategory, empty list if no modes supported

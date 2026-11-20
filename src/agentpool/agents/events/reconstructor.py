@@ -43,6 +43,8 @@ from agentpool.agents.events.events import ToolCallCompleteEvent, ToolCallStartE
 
 
 if TYPE_CHECKING:
+    from collections.abc import Sequence
+
     from pydantic_ai import FinishReason, ModelMessage, ModelResponsePart, UserContent
 
     from agentpool.agents.events.events import RichAgentStreamEvent
@@ -165,6 +167,11 @@ class MessageReconstructor:
 
             case _:
                 pass  # Ignore events not relevant to message reconstruction
+
+    def add_user_prompt(self, content: str | Sequence[UserContent]) -> None:
+        """Add a user message that arrived during the run (e.g. one steered into it)."""
+        self._flush_response()
+        self.model_messages.append(ModelRequest(parts=[UserPromptPart(content=content)]))
 
     def _upsert_tool_call(self, part: ToolCallPart) -> None:
         """Add a tool call part, or update the pending part with the same call ID."""

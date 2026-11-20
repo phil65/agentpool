@@ -268,8 +268,8 @@ class SessionRunner:
                 self._drain(), name=f"v2-drain-{self.session.id}"
             )
 
-    def steer(self, inbox_id: str) -> bool:
-        """Inject a steering input into the running turn.
+    async def steer(self, inbox_id: str) -> bool:
+        """Steer an input into the running turn (see ``BaseAgent.steer``).
 
         Returns:
             True if the input was delivered into the running turn.
@@ -285,7 +285,7 @@ class SessionRunner:
                 text = payload.text
             case _:
                 return False
-        node.inject_prompt(text)
+        await node.steer(text)
         self.session.emit(
             SessionInboxDelivered,
             SessionInboxDeliveredData(session_id=self.session.id, inbox_id=inbox_id),
