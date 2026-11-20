@@ -56,6 +56,7 @@ from agentpool.agents.events import (
     NoticeEvent,
     PlanUpdateEvent,
     PromptSuggestionEvent,
+    RetryEvent,
     RunErrorEvent,
     RunStartedEvent,
     StepCompletedEvent,
@@ -472,6 +473,15 @@ class ACPEventConverter:
                 # Client lacks notice support: rendering inline beats dropping user-facing info
                 yield AgentMessageChunk.text(event.format(), message_id=self._current_message_id)
 
+            case RetryEvent() if self.use_notices:
+                yield Notice(
+                    severity="warning", title="Retrying request", description=event.format()
+                )
+
+            case RetryEvent():
+                text = f"\n\n⏳ {event.format()}\n\n"
+                yield AgentMessageChunk.text(text, message_id=self._current_message_id)
+
             case SubAgentEvent(
                 source_name=source_name,
                 source_type=source_type,
@@ -568,6 +578,7 @@ class ACPEventConverter:
                 | PlanUpdateEvent()
                 | PromptSuggestionEvent()
                 | NoticeEvent()
+                | RetryEvent()
                 | RunErrorEvent()
                 | RunStartedEvent()
                 | StepStartedEvent()
@@ -655,6 +666,7 @@ class ACPEventConverter:
                 | PlanUpdateEvent()
                 | PromptSuggestionEvent()
                 | NoticeEvent()
+                | RetryEvent()
                 | RunErrorEvent()
                 | RunStartedEvent()
                 | StepStartedEvent()

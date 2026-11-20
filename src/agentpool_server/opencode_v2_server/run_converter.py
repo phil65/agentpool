@@ -39,6 +39,7 @@ from agentpool.agents.events import (
     LocationContentItem,
     NoticeEvent,
     PlanUpdateEvent,
+    RetryEvent,
     RunErrorEvent,
     StepCompletedEvent,
     StepStartedEvent,
@@ -71,6 +72,8 @@ from opencode_v2_sdk.models import (
     SessionReasoningEndedData,
     SessionReasoningStarted,
     SessionReasoningStartedData,
+    SessionRetryScheduled,
+    SessionRetryScheduledData,
     SessionStepEnded,
     SessionStepEndedData,
     SessionStepFailed,
@@ -224,6 +227,9 @@ class _Step:
     """Usage reported by ``StepCompletedEvent`` (explicit steps only)."""
     cost: float | None = None
     finish: FinishReason | None = None
+    awaiting_retry: bool = False
+    """A retry was scheduled before this step produced output; the retried request
+    continues the step instead of opening a new one."""
 
 
 @dataclass
@@ -666,6 +672,8 @@ class RunEventConverter:
                 self._on_step_started()
             case StepCompletedEvent():
                 self._on_step_completed(event)
+            case RetryEvent():
+                self._on_retry(event)
             case RunErrorEvent(message=message, agent_name=agent_name):
                 prefix = f"[{agent_name}] " if agent_name else ""
                 self.errors.append(f"{prefix}{message}")
@@ -699,13 +707,33 @@ class RunEventConverter:
     def _on_step_started(self) -> None:
         """An explicit step begins: close the previous one with its reported usage."""
         self.explicit_steps = True
-        if (previous := self.step) is not None:
+        if (previous := self.step) is not None and previous.awaiting_retry:
+            previous.awaiting_retry = False
+            return
+        if previous is not None:
             self._end_step(
                 previous.finish or "tool-calls",
                 tokens=previous.tokens,
                 cost=previous.cost or 0.0,
             )
         self._ensure_step()
+
+    def _on_retry(self, event: RetryEvent) -> None:
+        """Show the scheduled retry on the step that waits for it."""
+        step = self._ensure_step()
+        if not step.first_token and not step.tools_called:
+            step.awaiting_retry = True
+        error_type = f"HTTP{event.status_code}" if event.status_code else "RetryableError"
+        self.emit(
+            SessionRetryScheduled,
+            SessionRetryScheduledData(
+                session_id=self.session_id,
+                assistant_message_id=step.message_id,
+                attempt=event.attempt,
+                at=int(self.clock() + event.delay_ms),
+                error=structured_error(event.error, error_type=error_type),
+            ),
+        )
 
     def _on_step_completed(self, event: StepCompletedEvent) -> None:
         """Record the usage of the current step; it ends when the next one starts.

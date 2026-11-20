@@ -92,6 +92,7 @@ from agentpool.agents.events import (
     PartDeltaEvent,
     PartStartEvent,
     PromptSuggestionEvent,
+    RetryEvent,
     StepCompletedEvent,
     StepStartedEvent,
     SubAgentEvent,
@@ -224,12 +225,11 @@ class ClaudeCodeStreamedResponse(StreamedResponse):
     - ``session_state_changed``, ``files_persisted``, ``plugin_install``, ``hook_started`` /
       ``hook_progress``, ``worker_shutting_down``, ``elicitation_complete``,
       ``conversation_reset``, ``tool_use_summary``, ``auth_status``, ``init``,
-      ``memory_recall``, ``control_request_progress``: Claude Code internals.
+      ``memory_recall``, ``control_request_progress`` (except retries): Claude Code internals.
     - ``task_updated`` / ``task_notification`` / ``background_tasks_changed``: the task is
       also reported through its tool call (start, ``task_progress``, result).
     - ``local_command_output``: handled by the slash command runner (``slash_commands``).
     - ``commands_changed``: the command list is refreshed by the agent itself.
-    - ``api_retry``: retries are transparent to the turn.
     - Subagent ``stream_event`` frames: subagent activity is derived from its complete
       messages (Claude Code does not stream subagents).
     """
@@ -399,6 +399,26 @@ class ClaudeCodeStreamedResponse(StreamedResponse):
                         field_meta={"task_usage": dict(task_usage)},
                     )
 
+                case APIRetrySystemMessage(attempt=attempt, error=error):
+                    yield RetryEvent(
+                        attempt=attempt,
+                        max_retries=message.max_retries,
+                        delay_ms=message.retry_delay_ms,
+                        error="no response" if message.no_response else error.replace("_", " "),
+                        status_code=message.error_status,
+                    )
+
+                case ControlRequestProgressMessage(
+                    status="api_retry", attempt=int() as attempt, retry_delay_ms=float() as delay
+                ):
+                    yield RetryEvent(
+                        attempt=attempt,
+                        max_retries=message.max_retries,
+                        delay_ms=delay,
+                        error="request failed",
+                        status_code=message.error_status,
+                    )
+
                 case (
                     ModelRefusalFallbackMessage()
                     | ModelRefusalNoFallbackMessage()
@@ -431,7 +451,6 @@ class ClaudeCodeStreamedResponse(StreamedResponse):
                     | SessionStateChangedMessage()
                     | ElicitationCompleteMessage()
                     | LocalCommandOutputMessage()
-                    | APIRetrySystemMessage()
                     | PluginInstallSystemMessage()
                     | MemoryRecallSystemMessage()
                     | TaskUpdatedSystemMessage()

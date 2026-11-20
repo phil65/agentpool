@@ -668,6 +668,34 @@ class NoticeEvent:
 
 
 @dataclass(kw_only=True)
+class RetryEvent:
+    """A failed model request will be retried after a delay.
+
+    Emitted by agents whose provider retries transparently (e.g. Claude Code's
+    ``api_retry``), so clients can show that the turn is waiting instead of stalled.
+    """
+
+    attempt: int
+    """Number of the upcoming attempt (1 = first retry)."""
+    delay_ms: float
+    """Delay before the retry is sent."""
+    error: str
+    """Why the previous attempt failed."""
+    max_retries: int | None = None
+    """Maximum number of retries, if known."""
+    status_code: int | None = None
+    """HTTP status of the failed attempt, if any."""
+    event_kind: Literal["retry"] = "retry"
+    """Event type identifier."""
+
+    def format(self) -> str:
+        limit = f"/{self.max_retries}" if self.max_retries else ""
+        status = f" (HTTP {self.status_code})" if self.status_code else ""
+        seconds = self.delay_ms / 1000
+        return f"Retrying in {seconds:.1f}s, attempt {self.attempt}{limit}: {self.error}{status}"
+
+
+@dataclass(kw_only=True)
 class SubAgentEvent:
     """Event wrapping activity from a subagent or team member.
 
@@ -789,6 +817,7 @@ type RichAgentStreamEvent[OutputDataT] = (
     | PromptSuggestionEvent
     | NoticeEvent
     | CompactionEvent
+    | RetryEvent
     | SubAgentEvent
     | CustomEvent[Any]
 )

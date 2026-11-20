@@ -14,6 +14,7 @@ from agentpool.agents.events import (
     NoticeEvent,
     PartStartEvent,
     PromptSuggestionEvent,
+    RetryEvent,
     SubAgentEvent,
     ToolCallCompleteEvent,
     ToolCallProgressEvent,
@@ -263,4 +264,22 @@ async def test_notices() -> None:
         NoticeEvent(title="Permission denied: Bash", severity="warning", description="rule: deny"),
         NoticeEvent(title="Rate limit close: five hour (90% used)", severity="warning"),
         NoticeEvent(title="Rate limit reached: five hour (90% used)", severity="error"),
+    ]
+
+
+async def test_api_retry() -> None:
+    events = await _stream(
+        _system(
+            "api_retry",
+            attempt=2,
+            max_retries=10,
+            retry_delay_ms=1500.0,
+            error_status=529,
+            error="server_error",
+        )
+    )
+    assert events == [
+        RetryEvent(
+            attempt=2, max_retries=10, delay_ms=1500.0, error="server error", status_code=529
+        )
     ]

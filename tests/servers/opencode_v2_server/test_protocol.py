@@ -8,12 +8,20 @@ import re
 from typing import TYPE_CHECKING, Any
 
 from pydantic import TypeAdapter
+from pydantic_ai.usage import RequestUsage
 import pytest
 
+from agentpool.agents.events import (
+    PartStartEvent,
+    RetryEvent,
+    StepCompletedEvent,
+    StepStartedEvent,
+)
 from agentpool_server.opencode_v2_server.errors import ApiError
 from agentpool_server.opencode_v2_server.events import build_event, new_session_id
 from agentpool_server.opencode_v2_server.pagination import paginate
 from agentpool_server.opencode_v2_server.projector import SessionProjection
+from agentpool_server.opencode_v2_server.run_converter import RunEventConverter
 from opencode_v2_sdk import models
 from opencode_v2_sdk._version import OPENCODE_VERSION
 
@@ -134,3 +142,26 @@ def test_projection_builds_assistant_message() -> None:
     assert isinstance(tool, models.SessionMessageAssistantTool)
     assert isinstance(tool.state, models.SessionMessageToolStateError)
     assert tool.state.error.message == "boom"
+
+
+def test_retry_is_shown_on_the_retried_step() -> None:
+    sid = new_session_id()
+    emitted: list[tuple[type[Any], Any]] = []
+    converter = RunEventConverter(
+        session_id=sid,
+        agent_id="claude",
+        model_ref=models.ModelRef.model_validate({"id": "m", "providerID": "p"}),
+        emit=lambda cls, data: emitted.append((cls, data)),
+        clock=lambda: 1000,
+    )
+    converter.handle(RetryEvent(attempt=1, max_retries=3, delay_ms=500, error="overloaded"))
+    converter.handle(StepStartedEvent(step_id="msg_api", model_name="m"))
+    converter.handle(PartStartEvent.text(index=0, content="Hi"))
+    converter.handle(StepCompletedEvent(step_id="msg_api", usage=RequestUsage(), model_name="m"))
+    converter.finish()
+    kinds = [cls for cls, _ in emitted]
+    assert kinds.count(models.SessionStepStarted) == 1
+    (retry,) = [data for cls, data in emitted if cls is models.SessionRetryScheduled]
+    (started,) = [data for cls, data in emitted if cls is models.SessionStepStarted]
+    assert retry.assistant_message_id == started.assistant_message_id
+    assert (retry.attempt, retry.at, retry.error.message) == (1, 1500, "overloaded")
