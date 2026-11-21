@@ -644,6 +644,11 @@ class ACPAgent[TDeps = None](BaseAgent[TDeps, str]):
         """Get the model name in a consistent format."""
         return option.current_value if (option := self._model_option()) else None
 
+    def is_backend_command(self, name: str) -> bool:
+        """The remote agent's commands run on it: ``/name args`` goes to it as the prompt."""
+        commands = self._state.available_commands if self._state else None
+        return commands is not None and any(c.name == name for c in commands.available_commands)
+
     async def set_model(self, model: str) -> None:
         """Update the model for the current session via ACP protocol."""
         option = self._model_option()

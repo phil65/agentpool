@@ -112,13 +112,13 @@ def _is_slash_command(text: str) -> bool:
 
 def split_commands(
     contents: Sequence[UserContent | PathReference],
-    command_store: CommandStore,
+    is_local: Callable[[str], bool],
 ) -> tuple[list[str], list[UserContent | PathReference]]:
     """Split content into local slash commands and pass-through content.
 
-    Only commands that exist in the local command_store are extracted.
-    Remote commands (from nested ACP agents) stay in non_command_content
-    so they flow through to the agent and reach the nested server.
+    Only commands ``is_local`` accepts are extracted. Commands the agent's backend runs
+    (the Claude Code CLI's, a nested ACP agent's) stay in non_command_content so they flow
+    through to the agent as the prompt.
     """
     commands: list[str] = []
     non_command_content: list[UserContent | PathReference] = []
@@ -128,7 +128,7 @@ def split_commands(
             isinstance(item, str)
             and _is_slash_command(item)
             and (match := SLASH_PATTERN.match(item.strip()))
-            and command_store.get_command(match.group(1))
+            and is_local(match.group(1))
         ):
             commands.append(item.strip())
         else:
@@ -218,6 +218,7 @@ class ACPSession:
         self.command_store._initialize_sync()
         self._update_callbacks: list[Callable[[], None]] = []
         self._remote_commands: list[AvailableCommand] = []  # Commands from nested ACP agents
+        self._commands_update: asyncio.Task[None] | None = None
         # Inject Zed-specific instructions if client is Zed
         if self.client_info and self.client_info.name and "zed" in self.client_info.name.lower():
             self.agent.staged_content.add_text(ZED_CLIENT_PROMPT)
@@ -255,7 +256,48 @@ class ACPSession:
             # Subscribe to state change signal for all agents
             agent.state_updated.connect(self._on_state_updated)
             agent.background_event.connect(self._on_background_event)
+        self._watch_agent_commands(self.agent, watch=True)
         self.log.info("Created ACP session", current_agent=self.agent.name)
+
+    def _watch_agent_commands(self, agent: BaseAgent[Any, Any], *, watch: bool) -> None:
+        """Follow (or stop following) the commands of the session's agent.
+
+        The agent's commands can change at any time, e.g. Claude Code's once an MCP server
+        with prompts has connected.
+        """
+        events = agent.command_store.command_events
+        for signal in (events.added, events.removed, events.changed):
+            if watch:
+                signal.connect(self._on_agent_commands_changed)
+            else:
+                with contextlib.suppress(ValueError):
+                    signal.disconnect(self._on_agent_commands_changed)
+
+    def _on_agent_commands_changed(self, *_: object) -> None:
+        if self._commands_update is not None and not self._commands_update.done():
+            return
+        try:
+            loop = asyncio.get_running_loop()
+        except RuntimeError:  # Changed outside of the event loop: the next update has it
+            return
+        self._commands_update = loop.create_task(self._send_commands_after_changes())
+
+    async def _send_commands_after_changes(self) -> None:
+        await asyncio.sleep(0)  # A batch of changes (e.g. all CLI commands) sends one update
+        await self.send_available_commands_update()
+
+    def _command_store_for(self, name: str) -> CommandStore | None:
+        """The store that runs command ``name`` (None: it goes to the agent as the prompt).
+
+        The session's own commands come first, then the agent's, except those the agent's
+        backend runs itself (see ``BaseAgent.is_backend_command``).
+        """
+        if self.command_store.get_command(name) is not None:
+            return self.command_store
+        agent_store = self.agent.command_store
+        if agent_store.get_command(name) is not None and not self.agent.is_backend_command(name):
+            return agent_store
+        return None
 
     async def _on_background_event(self, background: BaseAgent.BackgroundEvent) -> None:
         """Forward an agent event produced between turns (e.g. a task finishing).
@@ -452,8 +494,9 @@ class ACPSession:
             available = list(agents.keys())
             raise ValueError(f"Agent {agent_name!r} not found. Available: {available}")
         old_agent_name = self.agent.name
-        # self.agent = pool.get_agent(agent_name, deps_type=ACPSession)
+        self._watch_agent_commands(self.agent, watch=False)
         self.agent = agents[agent_name]
+        self._watch_agent_commands(self.agent, watch=True)
         self.log.info("Switched agents", from_agent=old_agent_name, to_agent=agent_name)
         # Persist the agent switch via session manager
         if self.manager:
@@ -497,7 +540,9 @@ class ACPSession:
         if not contents:
             self.log.warning("Empty prompt received")
             return "refusal"
-        commands, non_command_content = split_commands(contents, self.command_store)
+        commands, non_command_content = split_commands(
+            contents, lambda name: self._command_store_for(name) is not None
+        )
         async with self._task_lock:
             # Reset only once the previous turn is over, it may still be cancelling
             self._cancelled = False
@@ -602,6 +647,9 @@ class ACPSession:
             for pool_agent in self.agent_pool.all_agents.values():
                 with contextlib.suppress(ValueError):  # Agents added after this session
                     pool_agent.background_event.disconnect(self._on_background_event)
+            self._watch_agent_commands(self.agent, watch=False)
+            if self._commands_update is not None:
+                self._commands_update.cancel()
             # Remove cwd context callable from all agents
             for agent in self.agent_pool.get_agents(Agent).values():
                 if self.get_cwd_context in agent.sys_prompts.prompts:
@@ -619,7 +667,9 @@ class ACPSession:
         Merges local commands from command_store with any remote commands
         from nested ACP agents.
         """
-        commands = [*self.get_acp_commands(), *self._remote_commands]
+        commands = self.get_acp_commands()
+        names = {command.name for command in commands}
+        commands += [c for c in self._remote_commands if c.name not in names]
         try:
             await self.notifications.update_commands(commands)
         except Exception:
@@ -666,13 +716,16 @@ class ACPSession:
                 logger.exception("Command update callback failed")
 
     def get_acp_commands(self) -> list[AvailableCommand]:
-        """Convert all slashed commands to ACP format."""
-        # Filter commands by node compatibility
+        """The session's commands and the agent's, in ACP format (the session's win)."""
         cmds = []
-        for cmd in self.command_store.list_commands():
+        names: set[str] = set()
+        for cmd in [*self.command_store.list_commands(), *self.agent.command_store.list_commands()]:
+            if cmd.name in names:
+                continue
             # Check if command supports current node type
             if isinstance(cmd, NodeCommand) and not cmd.supports_node(self.agent):
                 continue
+            names.add(cmd.name)
             available_cmd = AvailableCommand.create(
                 name=cmd.name,
                 description=cmd.description,
@@ -696,9 +749,11 @@ class ACPSession:
             logger.warning("Invalid slash command", command=command_text)
             return
 
+        # The session's command, else the agent's (unknown names: the session reports them)
+        store = self._command_store_for(command_name) or self.command_store
         # Check if command supports current node type
         if (
-            (cmd := self.command_store.get_command(command_name))
+            (cmd := store.get_command(command_name))
             and isinstance(cmd, NodeCommand)
             and not cmd.supports_node(self.agent)
         ):
@@ -708,14 +763,14 @@ class ACPSession:
 
         # Create context with session data
         agent_context = self.agent.get_context(data=self)
-        cmd_ctx = self.command_store.create_context(
+        cmd_ctx = store.create_context(
             data=agent_context,
             output_writer=self.notifications.send_agent_text,
         )
 
         command_str = f"{command_name} {args}".strip()
         try:
-            await self.command_store.execute_command(command_str, cmd_ctx)
+            await store.execute_command(command_str, cmd_ctx)
         except Exception as e:
             logger.exception("Command execution failed")
             await self._send_error_notification(f"❌ Command error: {e}")

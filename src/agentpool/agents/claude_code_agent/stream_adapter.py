@@ -194,6 +194,8 @@ class _StreamState:
     """Subagents by the ID of the tool call that started them."""
     subagent_calls: dict[str, ToolUseBlock] = field(default_factory=dict)
     """Tool calls made by subagents, awaiting their result."""
+    streamed_messages: set[str] = field(default_factory=set)
+    """IDs of the assistant messages whose text arrived as stream deltas."""
 
     def subagent(self, parent_tool_use_id: str, subagent_type: str | None) -> _Subagent:
         """The subagent behind a frame (registered on first sight if task_started was missed)."""
@@ -255,7 +257,6 @@ class ClaudeCodeStreamedResponse(StreamedResponse):
     - ``task_updated`` status patches: the end of a task is reported by
       ``task_notification``. ``background_tasks_changed``: a snapshot of what the task
       events already describe.
-    - ``local_command_output``: handled by the slash command runner (``slash_commands``).
     - Subagent ``stream_event`` frames: subagent activity is derived from its complete
       messages (Claude Code does not stream subagents).
     """
@@ -355,6 +356,7 @@ class ClaudeCodeStreamedResponse(StreamedResponse):
 
                 # API message lifecycle of the main conversation = one step each
                 case StreamEvent(event=MessageStartEvent(message=api_message)):
+                    state.streamed_messages.add(api_message.id)
                     usage = api_message.usage
                     state.step = _Step(
                         step_id=api_message.id,
@@ -426,6 +428,12 @@ class ClaudeCodeStreamedResponse(StreamedResponse):
                 case CommandsChangedMessage(commands=commands):
                     if self.on_commands_changed is not None:
                         self.on_commands_changed(commands)
+
+                # A local command's output (/context, /cost) is the run's reply
+                case LocalCommandOutputMessage(content=content):
+                    if content:
+                        yield PartStartEvent.text(index=0, content=content)
+                        yield PartEndEvent(index=0, part=TextPart(content=content))
 
                 case PromptSuggestionMessage(suggestion=suggestion):
                     yield PromptSuggestionEvent(suggestions=[suggestion])
@@ -537,7 +545,6 @@ class ClaudeCodeStreamedResponse(StreamedResponse):
                     | FilesPersistedSystemMessage()
                     | SessionStateChangedMessage()
                     | ElicitationCompleteMessage()
-                    | LocalCommandOutputMessage()
                     | PluginInstallSystemMessage()
                     | MemoryRecallSystemMessage()
                     | TaskUpdatedSystemMessage()
@@ -560,12 +567,18 @@ class ClaudeCodeStreamedResponse(StreamedResponse):
     ) -> Iterator[RichAgentStreamEvent[Any]]:
         """Events for the complete blocks of a main-conversation assistant message.
 
-        Text and thinking were already streamed; tool calls get their final arguments.
+        Text and thinking were already streamed, except for a message that was never
+        streamed: a local command's reply (``/context``), which no model wrote.
+        Tool calls get their final arguments.
         """
         from clawd_code_sdk.models import TextBlock, ThinkingBlock, ToolUseBlock
 
-        for block in message.content:
+        streamed = message.message.id in state.streamed_messages
+        for index, block in enumerate(message.content):
             match block:
+                case TextBlock(text=text) if not streamed and text:
+                    yield PartStartEvent.text(index=index, content=text)
+                    yield PartEndEvent(index=index, part=TextPart(content=text))
                 case ToolUseBlock(id=tc_id, name=name, input=input_data):
                     state.pending_tool_calls[tc_id] = block
                     # The start was emitted while streaming (with empty args)

@@ -386,3 +386,32 @@ async def test_edit_metadata_from_a_single_structured_result() -> None:
     complete = next(e for e in events if isinstance(e, ToolCallCompleteEvent))
     assert complete.metadata is not None
     assert complete.metadata["filediff"]["additions"] == 1
+
+
+async def test_local_command_output_is_the_reply() -> None:
+    # /context answers with a complete assistant message that never streamed (no model ran);
+    # other local commands send local_command_output
+    reply = _assistant({"type": "text", "text": "## Context Usage"})
+    local = _system("local_command_output", content="Total cost: $0.01")
+    events = await _stream(reply, local)
+    texts = [e.part.content for e in events if isinstance(e, PartStartEvent)]
+    assert texts == ["## Context Usage", "Total cost: $0.01"]
+
+
+async def test_streamed_text_is_not_repeated() -> None:
+    message_start = {
+        "type": "message_start",
+        "message": {
+            "id": "msg_1",
+            "type": "message",
+            "role": "assistant",
+            "model": "claude-sonnet-5",
+            "content": [],
+            "stop_reason": None,
+            "stop_sequence": None,
+            "usage": {"input_tokens": 1, "output_tokens": 1},
+        },
+    }
+    start = _frame({"type": "stream_event", "parent_tool_use_id": None, "event": message_start})
+    events = await _stream(start, _assistant({"type": "text", "text": "already streamed"}))
+    assert not [e for e in events if isinstance(e, PartStartEvent)]

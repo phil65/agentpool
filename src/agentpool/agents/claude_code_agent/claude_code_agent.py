@@ -796,6 +796,10 @@ class ClaudeCodeAgent[TDeps = None, TResult = str](BaseAgent[TDeps, TResult]):
         assert server_info, "No server info after ensure_initialized"
         self._register_cli_commands(server_info.commands)
 
+    def is_backend_command(self, name: str) -> bool:
+        """The CLI's commands run as turns: ``/name args`` goes to the CLI as the prompt."""
+        return name in self._cli_command_names
+
     async def _follow_sdk_session(self, sdk_session_id: str) -> None:
         """Adopt the CLI's current session ID: ``/clear`` moves to a new session.
 

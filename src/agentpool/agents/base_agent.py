@@ -368,6 +368,15 @@ class BaseAgent[TDeps = None, TResult = str](MessageNode[TDeps, TResult]):
         """Get the command store for slash commands."""
         return self._command_store
 
+    def is_backend_command(self, name: str) -> bool:
+        """Whether the agent's backend runs command ``name`` from the prompt text.
+
+        Such commands (e.g. the Claude Code CLI's, a remote ACP agent's) are listed in
+        :attr:`command_store`, but servers send ``/name args`` as a prompt, so they run as a
+        turn with tools, permissions and events instead of a command without them.
+        """
+        return False
+
     @property
     def internal_fs(self) -> IsolatedMemoryFileSystem:
         """Get the internal filesystem for tool/session state.
