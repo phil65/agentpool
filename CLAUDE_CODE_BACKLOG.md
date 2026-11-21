@@ -140,11 +140,11 @@ own history keeps the earlier turns.
 2025-11-04): defined commands reach no agent or server. Wire them into each agent's command
 store (then every server offers them), or remove the field.
 
-## 18. Prompt-like CLI commands through the command store
+## Done: 18. Backend commands run as turns everywhere
 
-The OpenCode V2 server runs Claude Code's commands through the agent's command store (the
-`slash_commands` executor), outside of a run: a command that runs a turn with tools (MCP
-prompts, `/review`, skills) has no run context, so its permission requests fail ("invoked
-outside of an active run"), and only its text is shown. ACP now passes such commands through
-as prompts instead; V2 could do the same (`BaseAgent.is_backend_command`).
-
+`BaseAgent.run_stream_with_commands()` (the OpenCode V2 runner's path) ran every `/word` text
+through the agent's command store, so the CLI's prompt-like commands (`/review`, skills,
+`/compact`) ran outside a run (permission requests failed) and unknown commands errored. It
+now runs only the agent's own commands; backend commands (`is_backend_command`) and unknown
+ones stay in the prompt, as in ACP. (MCP prompts already went through as turns: the `:` in
+`mcp:server:prompt` never matched the command pattern.)
