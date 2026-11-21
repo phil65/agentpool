@@ -104,16 +104,29 @@ result that names it (and every steered message); `idle` is the fallback. The re
 by the idle watcher. Open: a prompt sent while a background subagent still works waits for
 the CLI to go idle (`IdleWatcher.stop`); the CLI itself would take it right away.
 
-## 14. Smaller prompt details
+## Done: 14. MCP prompt commands
 
-`/mcp:server:cmd args` is rewritten to `/server:cmd (MCP) args` (`prompt-to-claude.ts`).
+MCP prompts arrive after connect (`commands_changed`, `server:prompt (MCP)`); the agent now
+follows the CLI's command list, and runs them in the CLI's spelling (clients see
+`mcp:server:prompt`; a `/mcp:server:prompt` prompt is rewritten like Zed does). Open: the ACP
+server does not list the agent's own commands (only agentpool's); typed CLI commands still pass
+through as prompts.
 
-## 15. File rewind
+## 15. Revert (files and conversation) across agents
 
-`enable_file_checkpointing` plus `rewind_files(user_message_id)` would undo a turn's edits.
+agentpool already reverts at the server level (OpenCode V2 `revert/stage` + `commit`, V1
+`revert`): files from `pool.file_ops`, and the stored conversation. Gaps for external agents:
+their built-in tools' edits are not in `pool.file_ops`, and their own state is not reverted
+(the next turn still remembers the dropped turns). Backends: Claude Code rewinds files
+(`rewind_files(user_message_id)`, needs `enable_file_checkpointing`) and resumes a session at a
+message (`ResumeSession(at_message=...)`, a reconnect); Codex reverts its thread
+(`thread/revert(before_turn_id)`), conversation only, no files. A shared
+`BaseAgent.revert(before_message)` hook the servers call after their own revert could cover the
+conversation for both; files stay agentpool's job (record the agents' edit results in
+`pool.file_ops`). To design together with 5/6.
 
-## 16. Commands Zed filters that we offer
+## Done: 16. `/clear` and `/cost` pass through
 
-Zed's `UNSUPPORTED_COMMANDS` also has `clear` and `cost` (`slash-commands.ts`). We left `cost` in
-on purpose; check what `/clear` does through the SDK (`conversation_reset`, our history and
-session ID) before offering it.
+`/clear` works through the SDK and moves the CLI to a new session ID; the agent now adopts the
+session ID of each result, so a reconnect does not resume the cleared conversation. agentpool's
+own history keeps the earlier turns.
