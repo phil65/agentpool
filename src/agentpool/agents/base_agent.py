@@ -103,11 +103,6 @@ def _parse_slash_command(command_text: str) -> tuple[str, str] | None:
     return None
 
 
-def _is_slash_command(text: str) -> bool:
-    """Check if text starts with a slash command."""
-    return bool(_SLASH_PATTERN.match(text.strip()))
-
-
 def split_exchange(
     user_msg: ChatMessage[Any], response: ChatMessage[Any]
 ) -> list[ChatMessage[Any]]:
@@ -367,6 +362,15 @@ class BaseAgent[TDeps = None, TResult = str](MessageNode[TDeps, TResult]):
     def command_store(self) -> CommandStore:
         """Get the command store for slash commands."""
         return self._command_store
+
+    def _is_local_command(self, text: str) -> bool:
+        """Whether ``text`` is a slash command the agent's command store runs."""
+        if (match := _SLASH_PATTERN.match(text.strip())) is None:
+            return False
+        name = match.group(1)
+        return self._command_store.get_command(name) is not None and not self.is_backend_command(
+            name
+        )
 
     def is_backend_command(self, name: str) -> bool:
         """Whether the agent's backend runs command ``name`` from the prompt text.
@@ -965,8 +969,9 @@ class BaseAgent[TDeps = None, TResult = str](MessageNode[TDeps, TResult]):
     ) -> AsyncIterator[StreamWithCommandsEvent[TResult]]:
         """Run agent with slash command support.
 
-        Separates slash commands from regular prompts, executes commands first,
-        then processes remaining content through the agent.
+        Separates the agent's slash commands from regular prompts, executes them first,
+        then processes remaining content through the agent. Commands the agent's backend
+        runs itself (:meth:`is_backend_command`) and unknown ones stay in the prompt.
 
         Args:
             *prompts: Input prompts (may include slash commands)
@@ -980,7 +985,7 @@ class BaseAgent[TDeps = None, TResult = str](MessageNode[TDeps, TResult]):
         regular_prompts: list[Any] = []
 
         for prompt in prompts:
-            if isinstance(prompt, str) and _is_slash_command(prompt):
+            if isinstance(prompt, str) and self._is_local_command(prompt):
                 self.log.debug("Found slash command", command=prompt)
                 commands.append(prompt.strip())
             else:
