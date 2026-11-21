@@ -137,12 +137,32 @@ conversation for both; files stay agentpool's job (record the agents' edit resul
 session ID of each result, so a reconnect does not resume the cleared conversation. agentpool's
 own history keeps the earlier turns.
 
-## 17. Manifest `commands:` are never registered
+## 17. Prompt commands: templates send, actions act (design)
 
-`AgentsManifest.commands` (static text or callable commands in YAML) is parsed, but
-`get_command_configs()` has had no callers since it was added ("prep command stuff",
-2025-11-04): defined commands reach no agent or server. Wire them into each agent's command
-store (then every server offers them), or remove the field.
+Manifest `commands:` are parsed but never registered (`get_command_configs()` has had no
+callers since "prep command stuff", 2025-11-04). The underlying question is what a prompt-like
+command does; agentpool has three behaviours today:
+
+| Behaviour | Where | `/name args` |
+|---|---|---|
+| Stage | MCP prompts, prompt hub (ACP server) | expands, stages for the *next* message |
+| Send as the turn | Claude Code CLI commands/skills, OpenCode V2 command route | expands, runs as the prompt now |
+| Act | built-ins (`/clear`, `/model`), `callable` manifest commands | runs code, shows output |
+
+Manifest `static`/`file` commands are templates but would have run as an "act" (printing the
+expanded text). Elsewhere user-defined commands are templates sent as the turn (Claude Code
+custom commands/skills, Codex custom prompts, OpenCode `command:` config, MCP prompts in Claude
+Code); side-effect commands are built-ins; staging is unusual.
+
+Proposal: decide by type. Templates (`static`, `file`, MCP prompts, prompt hub) expand and
+send as the turn, expanded in one place before command splitting so every server behaves the
+same; actions (`callable`, built-ins) run and show output, and call `queue_prompt()` to make
+the agent do something; staging only as an explicit choice.
+
+Open questions:
+1. Is staging used deliberately (collecting prompts/resources before sending)? Keep it as an
+   option (`/stage <template>` or a template flag), or drop it.
+2. Should manifest templates get OpenCode-style `agent` / `model` routing?
 
 ## Done: 18. Backend commands run as turns everywhere
 
