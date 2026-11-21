@@ -594,18 +594,19 @@ class ClaudeCodeAgent[TDeps = None, TResult = str](BaseAgent[TDeps, TResult]):
         finally:
             self._open_user_inputs -= 1
 
-    async def steer(self, message: str) -> None:
+    async def steer(self, message: str, *, interrupt: bool = False) -> None:
         """Send the user's message into the running turn (Claude Code's own steering).
 
-        The CLI takes it in at once: it ends the cycle that is generating, or moves a
-        running foreground tool to the background, and works on the message within the
-        run. While a permission request or question waits for the user, the message
-        waits for its answer. Outside of a run, the base behavior applies.
+        By default the CLI takes it in at the next step boundary (priority ``next``): after
+        the running tool call, within the same cycle. With ``interrupt`` it ends the
+        generation in progress (``now``), unless a permission request or question waits
+        for the user. Outside of a run, the base behavior applies.
         """
         if (steering := self._steering) is None or steering.closed:
-            await super().steer(message)
+            await super().steer(message, interrupt=interrupt)
             return
-        await steering.send(message, priority="later" if self._open_user_inputs else "now")
+        cut_in = interrupt and not self._open_user_inputs
+        await steering.send(message, priority="now" if cut_in else "next")
 
     async def __aenter__(self) -> Self:
         """Connect to Claude Code with deferred client connection."""
@@ -795,7 +796,12 @@ class ClaudeCodeAgent[TDeps = None, TResult = str](BaseAgent[TDeps, TResult]):
         reconstructor = MessageReconstructor(initial_prompts=prompts)
         claude_prompts = [*to_prompt_input(prompts)]
         prompt_uuid = str(uuid.uuid4())
-        steering = RunSteering(client=client, reconstructor=reconstructor, unanswered={prompt_uuid})
+        steering = RunSteering(
+            client=client,
+            reconstructor=reconstructor,
+            unanswered={prompt_uuid},
+            taken_in={prompt_uuid},
+        )
         try:
             await client.query(*claude_prompts, uuid=prompt_uuid)
             self._steering = steering

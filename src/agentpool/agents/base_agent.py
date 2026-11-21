@@ -624,16 +624,20 @@ class BaseAgent[TDeps = None, TResult = str](MessageNode[TDeps, TResult]):
         """
         self._injection_manager.inject(message)
 
-    async def steer(self, message: str) -> None:
+    async def steer(self, message: str, *, interrupt: bool = False) -> None:
         """Deliver user input into the running turn.
 
         Unlike :meth:`inject_prompt` (context from a tool, added after it completes),
-        this is input from the user that should reach the model as soon as possible.
-        Agents whose backend takes messages mid-turn override this; the default injects
-        the message after the next tool call, or runs it once the turn ends.
+        this is input from the user. It reaches the model at the next step boundary
+        (after the running tool call), or at once with ``interrupt``, which ends the
+        generation in progress (where the backend supports it). Agents whose backend
+        takes messages mid-turn override this; the default injects the message after the
+        next tool call, or runs it once the turn ends.
 
         Args:
             message: The user's message
+            interrupt: Cut into the generation in progress instead of waiting for the
+                next step boundary
         """
         self.inject_prompt(message)
 

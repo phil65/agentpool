@@ -7,9 +7,12 @@ background subagent, and the cycle the CLI starts on its own once it finishes, w
 result names none of the run's messages). That belongs to no run; the idle watcher reports
 it. A CLI that does not name messages in results ends the run at ``idle`` as before.
 
-A steered message (``priority`` now) ends the cycle that is generating, or moves a running
-foreground tool to the background; the CLI then answers it within the same run. The CLI
-reports each message's progress as ``command_lifecycle`` frames.
+A steered message goes in at the next step boundary (``priority`` next: after the running
+tool call, folded into the same cycle) or at once (``now``: it ends the generation in
+progress, whose cycle reports a result of its own). The CLI reports each message's progress
+as ``command_lifecycle`` frames. A result names only the messages its cycle took in last: a
+cycle a steer was folded into names the steer, not the prompt. So a result that names one of
+the run's messages answers every message the CLI had taken in by then.
 """
 
 from __future__ import annotations
@@ -43,6 +46,9 @@ class RunSteering:
     unanswered: set[str] = field(default_factory=set)
     """Uuids of the run's messages (prompt and steered) that no result answered yet."""
 
+    taken_in: set[str] = field(default_factory=set)
+    """Uuids of the run's messages the CLI took in (the prompt, and steers once started)."""
+
     pending: dict[str, str] = field(default_factory=dict)
     """Text of the steered messages sent but not taken in yet, by uuid."""
 
@@ -59,6 +65,7 @@ class RunSteering:
         """Follow a steered message through the CLI's queue."""
         match frame.state:
             case "started":
+                self.taken_in.add(frame.command_uuid)
                 if (text := self.pending.pop(frame.command_uuid, None)) is not None:
                     self.reconstructor.add_user_prompt(text)
             case "cancelled" | "discarded" | "refused":
@@ -70,9 +77,10 @@ class RunSteering:
 
     def answers_run(self, result: ResultMessage) -> bool:
         """Whether ``result`` answers the last unanswered message of the run."""
-        if not self.unanswered:  # Nothing was sent with a uuid
+        named = set(result.user_message_uuids or [])
+        if not named & (self.unanswered | self.taken_in):  # Not about the run's messages
             return False
-        self.unanswered.difference_update(result.user_message_uuids or [])
+        self.unanswered -= named | self.taken_in
         self.closed = not self.unanswered
         return self.closed
 

@@ -58,12 +58,17 @@ async def test_steer_during_a_run_uses_the_cli() -> None:
     steering, client, _ = _steering()
     agent._steering = steering
 
-    await agent.steer("stop and say BANANA")
-    # While a permission request waits, the message waits for its answer
+    await agent.steer("also check the tests")
+    await agent.steer("stop and say BANANA", interrupt=True)
+    # While a permission request waits, even an interrupting message waits for the step
     with agent._awaiting_user():
-        await agent.steer("and then stop")
+        await agent.steer("and then stop", interrupt=True)
 
-    assert client.steered == [("stop and say BANANA", "now"), ("and then stop", "later")]
+    assert client.steered == [
+        ("also check the tests", "next"),
+        ("stop and say BANANA", "now"),
+        ("and then stop", "next"),
+    ]
     assert not agent.has_pending_injections()
 
 
@@ -170,6 +175,24 @@ async def test_steered_run_ends_at_the_answer_of_the_steer() -> None:
     client.messages = [interrupted, banana, IDLE]
 
     assert await _read(client, steering) == [interrupted, banana]
+
+
+async def test_steer_folded_into_the_cycle_answers_the_prompt_too() -> None:
+    # Priority "next" during a tool call: the steer joins the running cycle, whose one
+    # result names only the steer
+    client = FakeClient()
+    steering = RunSteering(
+        client=client,  # type: ignore[arg-type]  # ty:ignore[invalid-argument-type]
+        reconstructor=MessageReconstructor(),
+        unanswered={"p"},
+        taken_in={"p"},
+    )
+    await steering.send("stop and say BANANA", priority="next")  # uuid "u1"
+    banana = _result("BANANA", uuids=["u1"])
+    follow_up = _result("The background agent finished", origin="task-notification")
+    client.messages = [_lifecycle("u1", "started"), banana, follow_up, IDLE]
+
+    assert await _read(client, steering) == [_lifecycle("u1", "started"), banana]
 
 
 async def test_run_without_named_results_ends_at_idle() -> None:
