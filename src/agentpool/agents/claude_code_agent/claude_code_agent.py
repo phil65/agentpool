@@ -64,7 +64,11 @@ if TYPE_CHECKING:
         ToolInput,
     )
     from clawd_code_sdk.models.messages import RateLimitInfo, ResultMessage
-    from clawd_code_sdk.models.server_info import ClaudeCodeModelInfo, ClaudeCodeServerInfo
+    from clawd_code_sdk.models.server_info import (
+        ClaudeCodeCommandInfo,
+        ClaudeCodeModelInfo,
+        ClaudeCodeServerInfo,
+    )
     from evented_config import EventConfig
     from exxec import ExecutionEnvironment
     from mcp.types import ElicitResult
@@ -304,6 +308,8 @@ class ClaudeCodeAgent[TDeps = None, TResult = str](BaseAgent[TDeps, TResult]):
         self._titled_session: str | None = None
         """The session a title was asked for (once per session)."""
         self._title_task: asyncio.Task[None] | None = None
+        self._cli_command_names: set[str] = set()
+        """Names of the CLI's commands in the command store."""
         """Context window per concrete model ID (``claude-opus-5-5``), as the CLI reported it."""
         """(monotonic time of the last get_usage, limits) cache."""
         self._sdk_session_id: str | None = session_id
@@ -788,15 +794,37 @@ class ClaudeCodeAgent[TDeps = None, TResult = str](BaseAgent[TDeps, TResult]):
         await self.ensure_initialized()
         server_info = self._server_info
         assert server_info, "No server info after ensure_initialized"
-        # Commands to skip - not useful or problematic in this context
+        self._register_cli_commands(server_info.commands)
+
+    async def _follow_sdk_session(self, sdk_session_id: str) -> None:
+        """Adopt the CLI's current session ID: ``/clear`` moves to a new session.
+
+        A reconnect resumes this ID, so a stale one would bring back a cleared conversation.
+        """
+        if sdk_session_id == self._sdk_session_id:
+            return
+        self._sdk_session_id = sdk_session_id
+        if self.storage and self.session_id:
+            await self.storage.update_sdk_session_id(self.session_id, sdk_session_id)
+
+    def _register_cli_commands(self, cli_commands: Sequence[ClaudeCodeCommandInfo]) -> None:
+        """Offer the CLI's commands, replacing the ones it offered before.
+
+        The CLI reports them at connect and again when they change (``commands_changed``),
+        e.g. once an MCP server with prompts has connected.
+        """
         commands = [
             create_claude_code_command(cmd_info)
-            for cmd_info in server_info.commands
+            for cmd_info in cli_commands
             if cmd_info.name and cmd_info.name not in UNSUPPORTED_COMMANDS
         ]
+        names = {command.name for command in commands}
+        for name in self._cli_command_names - names:
+            self._command_store.unregister_command(name)
         for command in commands:
             self._command_store.register_command(command, replace=True)
-        self.log.info("Populated command store", command_count=len(commands))
+        self._cli_command_names = names
+        self.log.info("Registered Claude Code commands", command_count=len(commands))
 
     async def _stream_events(  # noqa: PLR0915
         self,
@@ -876,6 +904,7 @@ class ClaudeCodeAgent[TDeps = None, TResult = str](BaseAgent[TDeps, TResult]):
                 session_id=self.session_id,
                 on_rate_limit=self.record_rate_limit,
                 on_command_lifecycle=steering.on_lifecycle,
+                on_commands_changed=self._register_cli_commands,
             )
             async with (
                 self._tool_bridge.set_run_context(run_context, prompt=prompts),
@@ -946,6 +975,7 @@ class ClaudeCodeAgent[TDeps = None, TResult = str](BaseAgent[TDeps, TResult]):
         run_usage: RunUsage = RunUsage()
         stop_reason: StopReason | None = "end_turn"
         if result_message:
+            await self._follow_sdk_session(result_message.session_id)
             self._learn_context_windows(result_message)
             run_usage = to_run_usage(client.query_usage)
             total_cost = Decimal(str(client.query_cost))

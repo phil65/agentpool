@@ -124,7 +124,7 @@ if TYPE_CHECKING:
 
     from anthropic.types.beta import BetaRawContentBlockDelta
     from clawd_code_sdk import AssistantMessage, Message, ResultMessage, ToolUseBlock, UserMessage
-    from clawd_code_sdk.models import BashInput, StopReason
+    from clawd_code_sdk.models import BashInput, ClaudeCodeCommandInfo, StopReason
     from clawd_code_sdk.models.messages import RateLimitInfo
     from pydantic_ai.messages import FinishReason
 
@@ -256,7 +256,6 @@ class ClaudeCodeStreamedResponse(StreamedResponse):
       ``task_notification``. ``background_tasks_changed``: a snapshot of what the task
       events already describe.
     - ``local_command_output``: handled by the slash command runner (``slash_commands``).
-    - ``commands_changed``: the command list is refreshed by the agent itself.
     - Subagent ``stream_event`` frames: subagent activity is derived from its complete
       messages (Claude Code does not stream subagents).
     """
@@ -272,6 +271,8 @@ class ClaudeCodeStreamedResponse(StreamedResponse):
     on_rate_limit: Callable[[RateLimitInfo], None] | None = None
     on_command_lifecycle: Callable[[CommandLifecycleMessage], None] | None = None
     """Called with the queue progress of the messages steered into the run."""
+    on_commands_changed: Callable[[list[ClaudeCodeCommandInfo]], None] | None = None
+    """Called with the CLI's commands when they change (e.g. MCP prompts once connected)."""
     """Receives the rate limit windows reported during the stream."""
 
     async def _get_event_iterator(self) -> AsyncIterator[RichAgentStreamEvent[Any]]:  # noqa: PLR0915
@@ -422,6 +423,10 @@ class ClaudeCodeStreamedResponse(StreamedResponse):
                             description=f"Claude Code {lifecycle_state} a message sent mid-run.",
                         )
 
+                case CommandsChangedMessage(commands=commands):
+                    if self.on_commands_changed is not None:
+                        self.on_commands_changed(commands)
+
                 case PromptSuggestionMessage(suggestion=suggestion):
                     yield PromptSuggestionEvent(suggestions=[suggestion])
 
@@ -537,7 +542,6 @@ class ClaudeCodeStreamedResponse(StreamedResponse):
                     | MemoryRecallSystemMessage()
                     | TaskUpdatedSystemMessage()
                     | BackgroundTasksChangedMessage()
-                    | CommandsChangedMessage()
                     | ControlRequestProgressMessage()
                     | ConversationResetMessage()
                     | ThinkingTokensMessage()

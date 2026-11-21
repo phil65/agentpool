@@ -97,6 +97,7 @@ class IdleWatcher:
             agent_name=agent.name,
             session_id=agent.session_id or "",
             on_rate_limit=agent.record_rate_limit,
+            on_commands_changed=agent._register_cli_commands,
         )
         try:
             async for event in adapter:

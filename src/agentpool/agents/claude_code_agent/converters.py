@@ -151,6 +151,9 @@ def to_mcp_server_status(server: McpServerStatusEntry) -> MCPServerStatus:
 
 
 def to_prompt_input(content: Sequence[UserContent]) -> Iterator[UserPrompt]:
+    from agentpool.agents.claude_code_agent.slash_commands import to_cli_command_text
+
+    first_text = True
     for item in content:
         match item:
             case BinaryContent(
@@ -178,6 +181,10 @@ def to_prompt_input(content: Sequence[UserContent]) -> Iterator[UserPrompt]:
             case UploadedFile(file_id=file_id, provider_name=provider_name):
                 raise ValueError(f"Unsupported UploadedFile: {provider_name=} {file_id=}")
             case str(text) | TextContent(content=text):
+                # A command is the first text: give MCP prompt commands the CLI's spelling
+                if first_text:
+                    text = to_cli_command_text(text)
+                    first_text = False
                 yield UserTextPrompt(text=text)
             case BinaryContent():
                 pass  # video/audio not handled yet
