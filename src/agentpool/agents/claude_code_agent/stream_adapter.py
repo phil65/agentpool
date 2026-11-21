@@ -122,7 +122,7 @@ if TYPE_CHECKING:
     from collections.abc import AsyncIterator, Callable, Iterator
     from datetime import datetime
 
-    from anthropic.types.beta import BetaRawContentBlockDelta
+    from anthropic.types.beta import BetaRawContentBlockDelta, BetaUsage
     from clawd_code_sdk import AssistantMessage, Message, ResultMessage, ToolUseBlock, UserMessage
     from clawd_code_sdk.models import BashInput, ClaudeCodeCommandInfo, StopReason
     from clawd_code_sdk.models.messages import RateLimitInfo
@@ -273,6 +273,8 @@ class ClaudeCodeStreamedResponse(StreamedResponse):
     on_command_lifecycle: Callable[[CommandLifecycleMessage], None] | None = None
     """Called with the queue progress of the messages steered into the run."""
     on_commands_changed: Callable[[list[ClaudeCodeCommandInfo]], None] | None = None
+    on_request: Callable[[str, BetaUsage], None] | None = None
+    """Called when a main-conversation request starts, with its ID and usage."""
     """Called with the CLI's commands when they change (e.g. MCP prompts once connected)."""
     """Receives the rate limit windows reported during the stream."""
 
@@ -357,6 +359,8 @@ class ClaudeCodeStreamedResponse(StreamedResponse):
                 # API message lifecycle of the main conversation = one step each
                 case StreamEvent(event=MessageStartEvent(message=api_message)):
                     state.streamed_messages.add(api_message.id)
+                    if self.on_request is not None:
+                        self.on_request(api_message.id, api_message.usage)
                     usage = api_message.usage
                     state.step = _Step(
                         step_id=api_message.id,

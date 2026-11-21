@@ -88,11 +88,15 @@ instead of the storage's `title_generation_model` (which needs another API key):
 prompt, in the background; a prompt too short to title is its own title. Stored and announced
 through `metadata_generated`, so all servers show it (`TITLES_OWN_SESSIONS`).
 
-## 12. Idle compaction
+## Done: 12. Idle compaction (Claude Code only)
 
-Zed runs `/compact` about 54 minutes after the last turn when the context is over 200k tokens,
-just before the 1h prompt cache expires (`idle-compaction.ts`). The CLI does this only for
-interactive sessions.
+`IdleCompaction` (port of Zed's rules) sends `/compact` ~54 minutes after the last request
+when that request wrote the 1h cache, the context is 200k+ tokens
+(`CLAUDE_CODE_IDLE_COMPACT_MIN_TOKENS`), the rate limit is `allowed` and the agent is idle;
+off via `idle_compaction: false`, the CLI's `autoCompactEnabled`/`idleCompaction` settings or
+`DISABLE_COMPACT`/`DISABLE_AUTO_COMPACT`. Reported as an `auto` compaction in a background
+turn. Not for Codex: its protocol has no cache TTL, it compacts by token limit itself, and
+OpenAI's cache lifetime and pricing differ (unverified).
 
 ## Done: 13. Runs end at their answer, not at idle
 

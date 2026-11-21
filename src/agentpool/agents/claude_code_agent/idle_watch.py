@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+from dataclasses import replace
 from typing import TYPE_CHECKING, Any
 import uuid
 
@@ -25,7 +26,7 @@ from clawd_code_sdk.models import (
     TaskNotificationSystemMessage,
 )
 
-from agentpool.agents.events import RunStartedEvent, StreamCompleteEvent
+from agentpool.agents.events import CompactionEvent, RunStartedEvent, StreamCompleteEvent
 from agentpool.agents.events.reconstructor import MessageReconstructor
 from agentpool.log import get_logger
 from agentpool.messaging import ChatMessage
@@ -98,6 +99,7 @@ class IdleWatcher:
             session_id=agent.session_id or "",
             on_rate_limit=agent.record_rate_limit,
             on_commands_changed=agent._register_cli_commands,
+            on_request=agent._note_request,
         )
         try:
             async for event in adapter:
@@ -127,6 +129,16 @@ class IdleWatcher:
             if isinstance(message, SessionStateChangedMessage) and message.state == "idle":
                 await self._end_turn()
                 self._set_idle()
+                self._agent._on_cli_idle()
+
+    @property
+    def busy(self) -> bool:
+        """Whether the CLI is in a turn of its own (or a run's tail is still to be read)."""
+        return not self._idle.is_set()
+
+    def expect_turn(self) -> None:
+        """A turn the agent starts outside a run (idle compaction) is about to begin."""
+        self._set_busy()
 
     def _set_busy(self) -> None:
         self._cancel_expect_turn()
@@ -152,6 +164,9 @@ class IdleWatcher:
         await agent.emit_event(started)
 
     async def _handle(self, event: RichAgentStreamEvent[Any]) -> None:
+        compaction = self._agent._idle_compaction
+        if isinstance(event, CompactionEvent) and compaction and compaction.compacting:
+            event = replace(event, trigger="auto")  # The CLI reports its /compact as manual
         if self._turn is not None:
             self._turn.observe(event)
         await self._agent.emit_event(event)

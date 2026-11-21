@@ -6,6 +6,7 @@ import asyncio
 import contextlib
 from dataclasses import replace
 from decimal import Decimal
+import os
 from pathlib import Path
 import re
 import time
@@ -27,6 +28,7 @@ from agentpool.agents.claude_code_agent.converters import (
     to_run_usage,
     to_turn_error,
 )
+from agentpool.agents.claude_code_agent.idle_compaction import IdleCompaction
 from agentpool.agents.claude_code_agent.idle_watch import IdleWatcher
 from agentpool.agents.claude_code_agent.slash_commands import create_claude_code_command
 from agentpool.agents.claude_code_agent.steering import RunSteering, run_messages
@@ -45,9 +47,10 @@ from agentpool.utils.time_utils import get_now
 
 
 if TYPE_CHECKING:
-    from collections.abc import AsyncIterator, Generator, Sequence
+    from collections.abc import AsyncIterator, Generator, Mapping, Sequence
     from types import TracebackType
 
+    from anthropic.types.beta import BetaUsage
     from clawd_code_sdk import (
         AgentDefinition,
         ClaudeSDKClient,
@@ -184,6 +187,7 @@ class ClaudeCodeAgent[TDeps = None, TResult = str](BaseAgent[TDeps, TResult]):
         use_subscription: bool = False,
         prompt_suggestions: bool = False,
         enable_tool_search: bool | int | Literal["auto"] | None = None,
+        idle_compaction: bool = True,
         env: ExecutionEnvironment | StrPath | None = None,
         input_provider: InputProvider | None = None,
         agent_pool: AgentPool[Any] | None = None,
@@ -223,6 +227,7 @@ class ClaudeCodeAgent[TDeps = None, TResult = str](BaseAgent[TDeps, TResult]):
             use_subscription: Force Claude subscription usage instead of API key
             prompt_suggestions: Predict the next user prompt after each turn
             enable_tool_search: Control MCP tool search (True/False/"auto"/threshold)
+            idle_compaction: Compact an idle session shortly before its prompt cache expires
             env: Execution environment
             input_provider: Provider for user input/confirmations
             agent_pool: Agent pool for multi-agent coordination
@@ -289,6 +294,16 @@ class ClaudeCodeAgent[TDeps = None, TResult = str](BaseAgent[TDeps, TResult]):
         self._use_subscription = use_subscription
         self._prompt_suggestions = prompt_suggestions
         self._enable_tool_search = enable_tool_search
+        self._idle_compaction = (
+            IdleCompaction(
+                compact=self._compact_idle,
+                is_busy=self._is_cli_busy,
+                settings=self._cli_settings,
+                env={**os.environ, **(env_vars or {})},
+            )
+            if idle_compaction
+            else None
+        )
         self._toolsets = toolsets or []
         # Client state
         self._client: ClaudeSDKClient | None = None
@@ -376,6 +391,7 @@ class ClaudeCodeAgent[TDeps = None, TResult = str](BaseAgent[TDeps, TResult]):
             use_subscription=config.use_subscription,
             prompt_suggestions=config.prompt_suggestions,
             enable_tool_search=config.enable_tool_search,
+            idle_compaction=config.idle_compaction,
             # Toolsets
             toolsets=config.get_tool_providers() if config.tools else [],
             # Runtime
@@ -679,6 +695,8 @@ class ClaudeCodeAgent[TDeps = None, TResult = str](BaseAgent[TDeps, TResult]):
                 await self._connection_task
         self._connection_task = None
         await self._idle_watch.stop()
+        if self._idle_compaction is not None:  # A new CLI process: nothing to compact yet
+            self._idle_compaction.reset()
         # # Clean up tool bridge
         # if self._tool_bridge._mcp is not None:
         #     await self._tool_bridge.stop()
@@ -754,6 +772,8 @@ class ClaudeCodeAgent[TDeps = None, TResult = str](BaseAgent[TDeps, TResult]):
         exc_tb: TracebackType | None,
     ) -> None:
         """Disconnect from Claude Code."""
+        if self._idle_compaction is not None:
+            await self._idle_compaction.close()
         if self._title_task and not self._title_task.done():
             self._title_task.cancel()
             with contextlib.suppress(asyncio.CancelledError):
@@ -808,6 +828,8 @@ class ClaudeCodeAgent[TDeps = None, TResult = str](BaseAgent[TDeps, TResult]):
         if sdk_session_id == self._sdk_session_id:
             return
         self._sdk_session_id = sdk_session_id
+        if self._idle_compaction is not None:  # Another conversation: its cache is not ours
+            self._idle_compaction.reset()
         if self.storage and self.session_id:
             await self.storage.update_sdk_session_id(self.session_id, sdk_session_id)
 
@@ -857,6 +879,8 @@ class ClaudeCodeAgent[TDeps = None, TResult = str](BaseAgent[TDeps, TResult]):
             raise AgentNotInitializedError
         # Take over the CLI's message stream (after a turn it started on its own)
         await self._idle_watch.stop()
+        if self._idle_compaction is not None:
+            self._idle_compaction.disarm()
         run_id = str(uuid.uuid4())
         assert self.session_id is not None  # Initialized by BaseAgent.run_stream()
         yield RunStartedEvent(session_id=self.session_id, run_id=run_id, agent_name=self.name)
@@ -909,6 +933,7 @@ class ClaudeCodeAgent[TDeps = None, TResult = str](BaseAgent[TDeps, TResult]):
                 on_rate_limit=self.record_rate_limit,
                 on_command_lifecycle=steering.on_lifecycle,
                 on_commands_changed=self._register_cli_commands,
+                on_request=self._note_request,
             )
             async with (
                 self._tool_bridge.set_run_context(run_context, prompt=prompts),
@@ -953,6 +978,8 @@ class ClaudeCodeAgent[TDeps = None, TResult = str](BaseAgent[TDeps, TResult]):
                     self.log.warning("Error disconnecting fork client", error=e)
             if self._client is not None:
                 self._idle_watch.start(self._client)
+                if self._client.session_state == "idle":  # Else the idle watcher reports it
+                    self._on_cli_idle()
 
         reconstructor.flush()
 
@@ -1168,8 +1195,33 @@ class ClaudeCodeAgent[TDeps = None, TResult = str](BaseAgent[TDeps, TResult]):
         """Update the cached usage limits from a ``rate_limit_event`` of the stream."""
         from agentpool.agents.claude_code_agent.usage_limits import apply_rate_limit_event
 
+        if self._idle_compaction is not None:
+            self._idle_compaction.note_rate_limit(info.status)
         if self._usage_limits is not None and (limits := self._usage_limits[1]) is not None:
             self._usage_limits = (self._usage_limits[0], apply_rate_limit_event(limits, info))
+
+    def _note_request(self, request_id: str, usage: BetaUsage) -> None:
+        """A main-conversation request started (in a run or a turn of the CLI's own)."""
+        if self._idle_compaction is not None:
+            self._idle_compaction.note_request(request_id, usage)
+
+    def _on_cli_idle(self) -> None:
+        """The CLI went idle: an idle compaction may become due."""
+        if self._idle_compaction is not None and self._steering is None:
+            self._idle_compaction.on_idle()
+
+    def _is_cli_busy(self) -> bool:
+        return self._steering is not None or self._idle_watch.busy
+
+    async def _cli_settings(self) -> Mapping[str, Any]:
+        assert self._client
+        return (await self._client.get_settings()).effective
+
+    async def _compact_idle(self) -> None:
+        """Send ``/compact``; the idle watcher reports it as a turn of the CLI's own."""
+        assert self._client
+        self._idle_watch.expect_turn()  # A run starting meanwhile waits for it
+        await self._client.query("/compact")
 
     @property
     def config_options(self) -> Sequence[ConfigOption[Self]]:

@@ -362,6 +362,14 @@ class ClaudeCodeAgentConfig(BaseAgentConfig):
     and individual MCP servers can opt in via ``always_load``.
     """
 
+    idle_compaction: bool = Field(default=True, title="Idle Compaction")
+    """Compact an idle session shortly before its prompt cache expires.
+
+    For large contexts (200k tokens and more) on a Claude plan: the next prompt then
+    writes a short summary to the cache instead of the whole context. The CLI's
+    ``autoCompactEnabled: false`` and ``DISABLE_COMPACT`` turn it off too.
+    """
+
     tools: list[AnyToolConfig | str] = Field(
         default_factory=list,
         title="Tools",
