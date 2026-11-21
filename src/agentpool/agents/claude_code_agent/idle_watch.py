@@ -19,7 +19,11 @@ import contextlib
 from typing import TYPE_CHECKING, Any
 import uuid
 
-from clawd_code_sdk.models import SessionStateChangedMessage, TaskNotificationSystemMessage
+from clawd_code_sdk.models import (
+    CommandLifecycleMessage,
+    SessionStateChangedMessage,
+    TaskNotificationSystemMessage,
+)
 
 from agentpool.agents.events import RunStartedEvent, StreamCompleteEvent
 from agentpool.agents.events.reconstructor import MessageReconstructor
@@ -57,7 +61,14 @@ class IdleWatcher:
         """The CLI's own turn in progress."""
 
     def start(self, client: ClaudeSDKClient) -> None:
-        """Start reading (after a run, or once connected)."""
+        """Start reading (after a run, or once connected).
+
+        A run ends at the result that answers it, so the CLI may not have reported
+        ``idle`` yet: its tail (and any background work) is still to be read, and a
+        run started meanwhile waits for it.
+        """
+        if client.session_state != "idle":
+            self._set_busy()
         if self._task is None or self._task.done():
             self._task = asyncio.create_task(self._run(client), name="claude-code-idle-watch")
 
@@ -102,7 +113,9 @@ class IdleWatcher:
         async for message in client.receive_messages():
             if client.session_state != "idle":
                 self._set_busy()
-                await self._begin_turn()
+                # The tail of the last run (its lifecycle frames) is no turn of the CLI's own
+                if not isinstance(message, CommandLifecycleMessage | SessionStateChangedMessage):
+                    await self._begin_turn()
             elif isinstance(message, TaskNotificationSystemMessage):
                 # The CLI reacts with a turn of its own; it reports "running" right after.
                 self._set_busy()

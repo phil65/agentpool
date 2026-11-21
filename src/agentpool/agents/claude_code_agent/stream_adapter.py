@@ -732,9 +732,8 @@ class ClaudeCodeStreamedResponse(StreamedResponse):
 
     @property
     def model_name(self) -> str:
-        """Get the model name of the response."""
-        assert self._model_name
-        return self._model_name
+        """The model that replied ("" for runs without a reply, e.g. ``/clear``)."""
+        return self._model_name or ""
 
     @property
     def timestamp(self) -> datetime:

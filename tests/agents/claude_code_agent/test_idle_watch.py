@@ -122,3 +122,33 @@ async def test_stop_while_idle_leaves_later_messages_for_the_run() -> None:
     message = _state("running")
     client.queue.put_nowait(message)
     assert client.queue.get_nowait() is message
+
+
+async def test_tail_of_the_last_run_is_read_before_the_next_run() -> None:
+    # A run ends at the result that answers it: its lifecycle frame and the CLI's idle
+    # are still to come when the watcher starts, and the next run must not read them
+    agent = ClaudeCodeAgent(name="cc")
+    received: list[Any] = []
+
+    async def on_background(background: BaseAgent.BackgroundEvent) -> None:
+        received.append(background.event)
+
+    agent.background_event.connect(on_background)
+    watcher = IdleWatcher(agent)
+    client = FakeClient()
+    client.session_state = "running"
+    watcher.start(client)  # type: ignore[arg-type]  # ty:ignore[invalid-argument-type]
+    stopping = asyncio.create_task(watcher.stop())
+    await asyncio.sleep(0.05)
+    assert not stopping.done()  # The next run waits for the tail
+    completed = _frame({
+        "type": "command_lifecycle",
+        "command_uuid": "p",
+        "state": "completed",
+    })
+    for message in [completed, _state("idle")]:
+        client.queue.put_nowait(message)
+    async with asyncio.timeout(TIMEOUT):
+        await stopping
+    assert client.queue.empty()
+    assert received == []  # The tail is no turn of the CLI's own
