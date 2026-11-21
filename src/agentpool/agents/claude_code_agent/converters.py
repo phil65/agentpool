@@ -7,6 +7,7 @@ event types as native agents.
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
 import re
@@ -58,7 +59,7 @@ from opencode_sdk.models.tool_metadata import (
 
 
 if TYPE_CHECKING:
-    from collections.abc import Iterator, Mapping, Sequence
+    from collections.abc import Iterator, Sequence
 
     from clawd_code_sdk.models import (
         HookContext,
@@ -329,7 +330,7 @@ def convert_mcp_servers_to_sdk_format(
     return result
 
 
-def convert_to_opencode_metadata(  # noqa: PLR0911
+def convert_to_opencode_metadata(
     tool_name: str,
     tool_use_result: Mapping[str, Any] | ToolUseResult | str | None,
     tool_input: ToolInput | dict[str, Any] | None = None,
@@ -347,11 +348,6 @@ def convert_to_opencode_metadata(  # noqa: PLR0911
             return _convert_edit_result(cast(EditOutput, tool_use_result))
         case "read":
             return _convert_read_result(cast(ReadOutput, tool_use_result))
-        case "bash":
-            return _convert_bash_result(
-                cast(BashOutput, tool_use_result),
-                cast(BashInput, tool_input),
-            )
         case "todowrite":
             return _convert_todowrite_result(cast(TodoWriteOutput, tool_use_result))
         case _:
@@ -401,20 +397,90 @@ def _convert_read_result(result: ReadOutput) -> ReadMetadata:
             return ReadMetadata(preview="", truncated=False, loaded=[])
 
 
-def _convert_bash_result(result: BashOutput, tool_input: BashInput) -> BashMetadata:
-    """Convert Bash tool result to OpenCode metadata."""
-    output = f"{result['stdout']}\n{result['stderr']}".strip()
-    # Get description from tool input (Claude Code uses "description" field)
+_EXIT_CODE = re.compile(r"^(?:Error: )?Exit code (\d+)(?:\n|$)")
+"""How the CLI starts the result of a command that exited with a failing code."""
+
+
+@dataclass(frozen=True, slots=True)
+class BashDisplay:
+    """What a Bash call shows: its output and how it exited."""
+
+    output: str
+    """stdout and stderr, without the notes the CLI adds for the model."""
+    exit_code: int | None
+    """None when unknown: a failure without a code, an interrupt, a non-zero exit that is
+    no error (``grep`` without matches), or a command still running in the background."""
+    interrupted: bool = False
+
+
+def to_bash_display(
+    text: str, structured: ToolUseResult | Mapping[str, Any] | str | None, *, is_error: bool
+) -> BashDisplay:
+    """The display of a Bash call, from its result text and structured ``tool_use_result``.
+
+    The structured output holds the command's own stdout and stderr; the text is what the
+    model got (with the CLI's notes, e.g. the ``<persisted-output>`` wrapper of a large
+    output). A failed command's result is text only, starting with ``Exit code N``.
+    """
+    output = text
+    exit_code: int | None = None if is_error else 0
+    interrupted = False
+    match structured:
+        case {"stdout": str(stdout), "stderr": str(stderr), "backgroundTaskId": str()}:
+            exit_code = None  # Still running: the text announces it
+        case {"stdout": str(stdout), "stderr": str(stderr)} if not structured.get("isImage"):
+            bash = cast(BashOutput, structured)
+            output = "\n".join(part for part in (stdout, stderr) if part)
+            if bash["interrupted"]:
+                output = _with_note(output, "[Command was aborted before completion]")
+                exit_code = None
+                interrupted = True
+            if (interpretation := bash.get("returnCodeInterpretation")) is not None:
+                exit_code = None
+                output = output or interpretation
+            if (path := bash.get("persistedOutputPath")) is not None:
+                size = bash.get("persistedOutputSize")
+                total = f" ({size} bytes total)" if size is not None else ""
+                output = _with_note(
+                    output, f"[Output truncated{total}: full output saved to {path}]"
+                )
+        case _:
+            pass
+    if is_error and (match := _EXIT_CODE.match(output)):
+        exit_code = int(match[1])
+        output = output[match.end() :]
+    return BashDisplay(output=output, exit_code=exit_code, interrupted=interrupted)
+
+
+def _with_note(output: str, note: str) -> str:
+    return f"{output}\n{note}" if output else note
+
+
+def to_bash_metadata(display: BashDisplay, tool_input: BashInput) -> BashMetadata:
+    """OpenCode metadata of a Bash call."""
     description = tool_input.get("description") or tool_input["command"]
-    # Note: Claude Code SDK doesn't provide exit code in the success result structure,
-    # it's only available in error strings. For successful commands, exit is 0.
-    # The SDK result doesn't have an exit_code field, so we infer:
-    # - If we got here with a dict result, the command likely succeeded (exit 0)
-    # - Errors come as strings, not dicts
-    exit_code: int | None = 0
-    if result["interrupted"]:
-        exit_code = None  # Interrupted commands don't have a clean exit code
-    return BashMetadata(output=output, exit=exit_code, description=description)
+    return BashMetadata(output=display.output, exit=display.exit_code, description=description)
+
+
+def structured_results(
+    tool_use_result: Sequence[ToolUseResult | dict[str, Any]]
+    | ToolUseResult
+    | dict[str, Any]
+    | str
+    | None,
+) -> list[ToolUseResult | Mapping[str, Any] | str]:
+    """A user message's structured tool results, one per tool result block.
+
+    The CLI sends a single result (an object, or a string for failures) for a message
+    with one tool result, and a list for several.
+    """
+    match tool_use_result:
+        case None:
+            return []
+        case str() | Mapping():
+            return [tool_use_result]
+        case _:
+            return list(tool_use_result)
 
 
 def _convert_todowrite_result(result: TodoWriteOutput) -> TodoMetadata | None:

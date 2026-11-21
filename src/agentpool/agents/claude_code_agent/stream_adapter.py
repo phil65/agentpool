@@ -81,7 +81,12 @@ from clawd_code_sdk.models import (
 from pydantic_ai import PartEndEvent, TextPart
 from pydantic_ai.usage import RequestUsage
 
-from agentpool.agents.claude_code_agent.converters import convert_to_opencode_metadata
+from agentpool.agents.claude_code_agent.converters import (
+    convert_to_opencode_metadata,
+    structured_results,
+    to_bash_display,
+    to_bash_metadata,
+)
 from agentpool.agents.claude_code_agent.notices import message_notice
 from agentpool.agents.claude_code_agent.server_blocks import (
     REDACTED_THINKING,
@@ -119,7 +124,7 @@ if TYPE_CHECKING:
 
     from anthropic.types.beta import BetaRawContentBlockDelta
     from clawd_code_sdk import AssistantMessage, Message, ResultMessage, ToolUseBlock, UserMessage
-    from clawd_code_sdk.models import StopReason
+    from clawd_code_sdk.models import BashInput, StopReason
     from clawd_code_sdk.models.messages import RateLimitInfo
     from pydantic_ai.messages import FinishReason
 
@@ -586,9 +591,15 @@ class ClaudeCodeStreamedResponse(StreamedResponse):
 
         if isinstance(message.content, str):
             return
+        structured = structured_results(message.tool_use_result)
+        result_index = 0
         for user_block in message.content:
             match user_block:
                 case ToolResultBlock(tool_use_id=tc_id, is_error=is_error):
+                    tool_structured = (
+                        structured[result_index] if result_index < len(structured) else None
+                    )
+                    result_index += 1
                     tool_use = state.pending_tool_calls.pop(tc_id, None)
                     if tool_use is None:
                         # A result for a call this run never started (e.g. one the CLI
@@ -597,15 +608,17 @@ class ClaudeCodeStreamedResponse(StreamedResponse):
                         continue
                     result_content = user_block.get_parsed_content()
                     stripped = _strip_mcp_prefix(tool_use.name)
-                    # Bash: stream output + exit to the virtual terminal before completion
-                    # (display-only terminal lifecycle).
+                    tool_input = cast(dict[str, Any], tool_use.input)
+                    metadata: dict[str, Any] | None = self.tool_metadata.get(tc_id)
                     if tool_use.name == "Bash":
-                        output_str = str(result_content) if result_content else ""
+                        # Output and exit to the display-only terminal before completion
+                        text = str(result_content) if result_content else ""
+                        display = to_bash_display(text, tool_structured, is_error=bool(is_error))
                         yield ToolCallProgressEvent(
                             tool_call_id=tc_id,
                             tool_name=stripped,
                             field_meta={
-                                "terminal_output": {"terminal_id": tc_id, "data": output_str},
+                                "terminal_output": {"terminal_id": tc_id, "data": display.output},
                             },
                         )
                         yield ToolCallProgressEvent(
@@ -614,23 +627,18 @@ class ClaudeCodeStreamedResponse(StreamedResponse):
                             field_meta={
                                 "terminal_exit": {
                                     "terminal_id": tc_id,
-                                    "exit_code": 1 if is_error else 0,
+                                    "exit_code": display.exit_code,
                                     "signal": None,
                                 },
                             },
                         )
-
-                    tool_input = cast(dict[str, Any], tool_use.input)
-                    metadata: dict[str, Any] | None = self.tool_metadata.get(tc_id)
-                    if (
-                        not metadata
-                        and isinstance(message.tool_use_result, list)
-                        and message.tool_use_result
-                        and not isinstance(first_result := message.tool_use_result[0], list)
-                    ):
+                        if not metadata:
+                            bash_metadata = to_bash_metadata(display, cast("BashInput", tool_input))
+                            metadata = cast(dict[str, Any], bash_metadata)
+                    elif not metadata:
                         oc_metadata = convert_to_opencode_metadata(
                             tool_name=tool_use.name,
-                            tool_use_result=first_result,
+                            tool_use_result=tool_structured,
                             tool_input=tool_input,
                         )
                         metadata = cast(dict[str, Any] | None, oc_metadata)

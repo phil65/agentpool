@@ -4,12 +4,11 @@ from __future__ import annotations
 
 from typing import Any, cast
 
-from clawd_code_sdk.models import BashInput, BashOutput, TodoItem, TodoWriteOutput
+from clawd_code_sdk.models import TodoItem, TodoWriteOutput
 import pytest
 
 from agentpool.agents.claude_code_agent.converters import convert_to_opencode_metadata
 from opencode_sdk.models.tool_metadata import (
-    BashMetadata,
     EditMetadata,
     ReadMetadata,
     TodoMetadata,
@@ -95,61 +94,6 @@ class TestConvertToolResultToOpencodeMetadata:
         assert metadata["preview"] == "def hello():\n    print('Hello')"
         assert metadata["truncated"] is False
         assert metadata["loaded"] == []
-
-    def test_bash_tool_result_success(self) -> None:
-        """Test conversion of Bash tool success result."""
-        sdk_result = BashOutput(
-            stdout="Hello from bash",
-            stderr="",
-            interrupted=False,
-            isImage=False,
-        )
-        tool_input = {"command": "echo 'Hello from bash'", "description": "Print greeting"}
-        metadata = convert_to_opencode_metadata("Bash", sdk_result, tool_input)
-
-        assert metadata is not None
-        metadata = cast(BashMetadata, metadata)
-        assert metadata["output"] == "Hello from bash"
-        assert metadata["exit"] == 0
-        assert metadata["description"] == "Print greeting"
-
-    def test_bash_tool_result_with_stderr(self) -> None:
-        """Test Bash result with both stdout and stderr."""
-        sdk_result = BashOutput(
-            stdout="output line",
-            stderr="warning: something",
-            interrupted=False,
-            isImage=False,
-        )
-        tool_input = {"command": "some_command"}
-
-        metadata = convert_to_opencode_metadata("Bash", sdk_result, tool_input)
-
-        assert metadata is not None
-        metadata = cast(BashMetadata, metadata)
-        assert "output line" in metadata["output"]
-        assert "warning: something" in metadata["output"]
-        assert metadata["description"] == "some_command"
-
-    def test_bash_tool_result_interrupted(self) -> None:
-        """Test Bash result when command was interrupted."""
-        sdk_result = BashOutput(
-            stdout="partial output",
-            stderr="",
-            interrupted=True,
-            isImage=False,
-        )
-        tool_input = BashInput(command="some_command")
-        metadata = convert_to_opencode_metadata("Bash", sdk_result, tool_input)
-        assert metadata is not None
-        metadata = cast(BashMetadata, metadata)
-        assert metadata["exit"] is None  # Interrupted commands have no clean exit
-
-    def test_bash_tool_result_error(self) -> None:
-        """Test that Bash error results (strings) return None."""
-        sdk_result = "Error: Exit code 1\ncat: /nonexistent: No such file"
-        metadata = convert_to_opencode_metadata("Bash", sdk_result)
-        assert metadata is None
 
     def test_none_result(self) -> None:
         """Test that None tool_use_result returns None."""

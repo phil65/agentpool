@@ -327,3 +327,62 @@ async def test_tool_result_without_tool_call_is_skipped() -> None:
     # A result for a call this run never started (e.g. after an interrupted run)
     events = await _stream(_user(_tool_result("unknown", "interrupted", is_error=True)))
     assert events == []
+
+
+async def test_bash_result_uses_the_structured_output() -> None:
+    command = "ls /nope; exit 3"
+    text = "Exit code 3\nls: cannot access '/nope': No such file or directory"
+    events = await _stream(
+        _assistant(_tool_use("call_1", "Bash", command=command, description="List")),
+        # One tool result: the CLI sends tool_use_result as a single value (a string on failure)
+        _user(_tool_result("call_1", text, is_error=True), tool_use_result=f"Error: {text}"),
+    )
+    output, exit_, complete = [e for e in events if e.tool_call_id == "call_1"][-3:]
+    assert isinstance(output, ToolCallProgressEvent)
+    assert output.field_meta == {
+        "terminal_output": {
+            "terminal_id": "call_1",
+            "data": "ls: cannot access '/nope': No such file or directory",
+        }
+    }
+    assert isinstance(exit_, ToolCallProgressEvent)
+    assert exit_.field_meta == {
+        "terminal_exit": {"terminal_id": "call_1", "exit_code": 3, "signal": None}
+    }
+    assert isinstance(complete, ToolCallCompleteEvent)
+    assert complete.metadata == {
+        "output": "ls: cannot access '/nope': No such file or directory",
+        "exit": 3,
+        "description": "List",
+    }
+
+
+async def test_edit_metadata_from_a_single_structured_result() -> None:
+    structured = {
+        "filePath": "/a.py",
+        "oldString": "x = 1",
+        "newString": "x = 2",
+        "originalFile": "x = 1\n",
+        "structuredPatch": [
+            {
+                "oldStart": 1,
+                "oldLines": 1,
+                "newStart": 1,
+                "newLines": 1,
+                "lines": ["-x = 1", "+x = 2"],
+            }
+        ],
+        "userModified": False,
+        "replaceAll": False,
+    }
+    events = await _stream(
+        _assistant(
+            _tool_use("call_1", "Edit", file_path="/a.py", old_string="x = 1", new_string="x = 2")
+        ),
+        _user(
+            _tool_result("call_1", "The file /a.py has been updated."), tool_use_result=structured
+        ),
+    )
+    complete = next(e for e in events if isinstance(e, ToolCallCompleteEvent))
+    assert complete.metadata is not None
+    assert complete.metadata["filediff"]["additions"] == 1
