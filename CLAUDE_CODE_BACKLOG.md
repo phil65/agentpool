@@ -61,13 +61,14 @@ window of every model the turn used (also the CLI's own Haiku calls); `get_conte
 overriding a result. Unknown models: 1M. Open: the category breakdown of `get_context_usage()`
 could feed a "what fills my context" view.
 
-## 8. Bash results from the structured output
+## Done: 8. Bash results from the structured output
 
-We pass the raw tool result text and `exit_code = 1 if is_error`. Zed uses `BashOutput`: stdout
-and stderr without the model-only notes, `interrupted`, `returnCodeInterpretation` (a non-zero
-exit that is not an error), and a note when the output was cut off and saved to
-`persistedOutputPath` (`tool-calls/reporters/bash.ts`). `tool_progress` messages give the running
-time of a call.
+`to_bash_display()` builds output and exit code from the structured `BashOutput` (stdout and
+stderr without the model's notes, the real code of a failure from `Exit code N`, no code for
+interrupts, `returnCodeInterpretation` and backgrounded commands, a note for persisted large
+output); ACP's display terminal and OpenCode's metadata use it. Also fixed: `tool_use_result`
+comes as a single value for one tool result, so Edit/Read/Write metadata was never built.
+Open: no `tool_progress` messages seen in probes (elapsed time of long tools).
 
 ## 9. Background tasks: stop and output
 
@@ -80,11 +81,12 @@ We report task events. Zed also stops tasks (`stop_task`), reads their output
 We filter it out. Zed shows the server status and runs reconnect / enable / disable through
 `mcp_reconnect` / `mcp_toggle`, since the CLI refuses them in SDK mode (`mcp-command.ts`).
 
-## 11. Session titles
+## Done: 11. Session titles
 
-We set `CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1`, which also stops the CLI from titling
-sessions. Zed asks with the `generate_session_title` control request (`session-titles.ts`); our
-SDK does not wrap it yet.
+Claude Code agents title their sessions through the CLI (`generate_session_title`, SDK 1.2.9)
+instead of the storage's `title_generation_model` (which needs another API key): at the first
+prompt, in the background; a prompt too short to title is its own title. Stored and announced
+through `metadata_generated`, so all servers show it (`TITLES_OWN_SESSIONS`).
 
 ## 12. Idle compaction
 

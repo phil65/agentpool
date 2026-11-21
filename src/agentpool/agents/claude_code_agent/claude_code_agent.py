@@ -14,7 +14,7 @@ import uuid
 
 import anyio
 from pydantic import TypeAdapter, ValidationError
-from pydantic_ai import RunUsage
+from pydantic_ai import RunUsage, TextContent
 
 from agentpool.agents.base_agent import BaseAgent
 from agentpool.agents.claude_code_agent.converters import (
@@ -116,6 +116,11 @@ _EDIT_TOOLS = frozenset({
 })
 """Tools that ``acceptEdits`` allows without asking (Claude Code's and agentpool's own)."""
 
+TITLE_CONTEXT_CHARS = 1000
+"""How much text a title is generated from (the CLI reads no more either)."""
+MAX_PROMPT_TITLE = 60
+"""Longest prompt that is its own session's title when the CLI finds it too short."""
+
 USAGE_LIMITS_TTL = 300.0
 """Seconds a get_usage result is reused (rate limit events update it meanwhile)."""
 
@@ -148,6 +153,7 @@ class ClaudeCodeAgent[TDeps = None, TResult = str](BaseAgent[TDeps, TResult]):
     """
 
     AGENT_TYPE: ClassVar = "claude"
+    TITLES_OWN_SESSIONS: ClassVar = True
 
     def __init__(  # noqa: PLR0915
         self,
@@ -295,6 +301,9 @@ class ClaudeCodeAgent[TDeps = None, TResult = str](BaseAgent[TDeps, TResult]):
         self._fast_mode: bool | None = None
         """Fast mode as chosen (``None``: as the CLI's settings have it)."""
         self._context_windows: dict[str, int] = {}
+        self._titled_session: str | None = None
+        """The session a title was asked for (once per session)."""
+        self._title_task: asyncio.Task[None] | None = None
         """Context window per concrete model ID (``claude-opus-5-5``), as the CLI reported it."""
         """(monotonic time of the last get_usage, limits) cache."""
         self._sdk_session_id: str | None = session_id
@@ -700,6 +709,38 @@ class ClaudeCodeAgent[TDeps = None, TResult = str](BaseAgent[TDeps, TResult]):
             await self._connection_task
             self._connection_task = None
 
+    async def _title_session(
+        self, client: ClaudeSDKClient, session_id: str, prompts: Sequence[UserContent]
+    ) -> None:
+        """Title a new session with the CLI's title model (the prompt itself if it is short).
+
+        Runs beside the session's first turn; the title reaches clients through the
+        storage's ``metadata_generated`` signal.
+        """
+        from clawd_code_sdk import ClaudeSDKError
+
+        storage = self.storage
+        assert storage is not None
+        if await storage.get_session_title(session_id):
+            return
+        text = "\n".join(
+            item if isinstance(item, str) else item.content
+            for item in prompts
+            if isinstance(item, str | TextContent)
+        ).strip()
+        if not text:
+            return
+        try:
+            title = await client.generate_session_title(f"User: {text}"[-TITLE_CONTEXT_CHARS:])
+        except ClaudeSDKError as e:
+            self.log.debug("Session title unavailable", error=str(e))
+            title = None
+        if title is None:  # Too short to title: like the storage, use the prompt itself
+            collapsed = " ".join(text.split())
+            cut = f"{collapsed[: MAX_PROMPT_TITLE - 1]}…"
+            title = collapsed if len(collapsed) <= MAX_PROMPT_TITLE else cut
+        await storage.apply_session_title(session_id, title)
+
     async def __aexit__(
         self,
         exc_type: type[BaseException] | None,
@@ -707,6 +748,11 @@ class ClaudeCodeAgent[TDeps = None, TResult = str](BaseAgent[TDeps, TResult]):
         exc_tb: TracebackType | None,
     ) -> None:
         """Disconnect from Claude Code."""
+        if self._title_task and not self._title_task.done():
+            self._title_task.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await self._title_task
+        self._title_task = None
         # Cancel connection task if still running
         if self._connection_task and not self._connection_task.done():
             self._connection_task.cancel()
@@ -816,6 +862,12 @@ class ClaudeCodeAgent[TDeps = None, TResult = str](BaseAgent[TDeps, TResult]):
             # Persist SDK session ID to storage for cross-referencing
             if self.storage and self.session_id:
                 await self.storage.update_sdk_session_id(self.session_id, self._sdk_session_id)
+                if store_history and self._titled_session != self.session_id:
+                    self._titled_session = self.session_id
+                    self._title_task = asyncio.create_task(
+                        self._title_session(client, self.session_id, prompts),
+                        name=f"claude-code-title-{self.session_id[:8]}",
+                    )
             adapter = ClaudeCodeStreamedResponse(
                 provider_name="claude_code",
                 stream=stream,

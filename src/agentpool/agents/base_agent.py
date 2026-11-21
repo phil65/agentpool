@@ -148,6 +148,10 @@ class BaseAgent[TDeps = None, TResult = str](MessageNode[TDeps, TResult]):
     # Abstract class variable - subclasses must define this
     AGENT_TYPE: ClassVar[AgentTypeLiteral]
 
+    TITLES_OWN_SESSIONS: ClassVar[bool] = False
+    """Whether the agent titles its sessions itself (through its backend), instead of the
+    storage titling them from the first prompt (``StorageManager.log_session``)."""
+
     @dataclass(frozen=True)
     class RunFailedEvent:
         """Event emitted when agent execution fails."""
@@ -695,8 +699,11 @@ class BaseAgent[TDeps = None, TResult = str](MessageNode[TDeps, TResult]):
             self.session_id = session_id or generate_session_id()
             user_prompts = [str(p) for p in prompts if isinstance(p, str)]
             initial_prompt = user_prompts[-1] if user_prompts else None
+            # Agents that title their sessions themselves skip the storage's titles
             await self.log_session(
-                initial_prompt, model=self.model_name, agent_type=self.AGENT_TYPE
+                None if self.TITLES_OWN_SESSIONS else initial_prompt,
+                model=self.model_name,
+                agent_type=self.AGENT_TYPE,
             )
         elif session_id and self.session_id != session_id:
             self.session_id = session_id

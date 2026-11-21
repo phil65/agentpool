@@ -37,10 +37,10 @@ class SessionMetadata(BaseModel):
     title: str
     """Short descriptive title (3-7 words)."""
 
-    emoji: str
+    emoji: str | None = None
     """Single emoji representing the topic."""
 
-    icon: str
+    icon: str | None = None
     """Iconify icon name (e.g., 'mdi:code-braces')."""
 
 
@@ -375,6 +375,18 @@ class StorageManager:
         """
         for provider in self.providers:
             await provider.update_session_title(session_id, title)
+
+    async def apply_session_title(self, session_id: str, title: str) -> None:
+        """Store a title that an agent's backend generated, and announce it.
+
+        For agents that title their own sessions (``BaseAgent.TITLES_OWN_SESSIONS``);
+        servers learn about it through ``metadata_generated``, as for generated titles.
+        """
+        await self.update_session_title(session_id, title)
+        event = SessionMetadataGeneratedEvent(
+            session_id=session_id, metadata=SessionMetadata(title=title)
+        )
+        await self.metadata_generated.emit(event)
 
     async def get_session_title(self, session_id: str) -> str | None:
         """Get the title of a conversation.
