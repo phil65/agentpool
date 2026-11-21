@@ -108,9 +108,11 @@ the CLI to go idle (`IdleWatcher.stop`); the CLI itself would take it right away
 
 MCP prompts arrive after connect (`commands_changed`, `server:prompt (MCP)`); the agent now
 follows the CLI's command list, and runs them in the CLI's spelling (clients see
-`mcp:server:prompt`; a `/mcp:server:prompt` prompt is rewritten like Zed does). Open: the ACP
-server does not list the agent's own commands (only agentpool's); typed CLI commands still pass
-through as prompts.
+`mcp:server:prompt`; a `/mcp:server:prompt` prompt is rewritten like Zed does). The ACP
+server now lists the agent's commands too (and follows changes), runs agentpool commands of
+the agent through its store (native `/compact`), and passes the backend's commands through as
+prompts (`BaseAgent.is_backend_command`); a local command's reply (`/context`, which comes as
+a complete, never streamed assistant message) now shows up in runs.
 
 ## 15. Revert (files and conversation) across agents
 
@@ -130,3 +132,19 @@ conversation for both; files stay agentpool's job (record the agents' edit resul
 `/clear` works through the SDK and moves the CLI to a new session ID; the agent now adopts the
 session ID of each result, so a reconnect does not resume the cleared conversation. agentpool's
 own history keeps the earlier turns.
+
+## 17. Manifest `commands:` are never registered
+
+`AgentsManifest.commands` (static text or callable commands in YAML) is parsed, but
+`get_command_configs()` has had no callers since it was added ("prep command stuff",
+2025-11-04): defined commands reach no agent or server. Wire them into each agent's command
+store (then every server offers them), or remove the field.
+
+## 18. Prompt-like CLI commands through the command store
+
+The OpenCode V2 server runs Claude Code's commands through the agent's command store (the
+`slash_commands` executor), outside of a run: a command that runs a turn with tools (MCP
+prompts, `/review`, skills) has no run context, so its permission requests fail ("invoked
+outside of an active run"), and only its text is shown. ACP now passes such commands through
+as prompts instead; V2 could do the same (`BaseAgent.is_backend_command`).
+
