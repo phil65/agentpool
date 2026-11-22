@@ -81,7 +81,9 @@ if TYPE_CHECKING:
 logger = get_logger(__name__)
 
 # Literal type for all agent types
-type AgentTypeLiteral = Literal["native", "acp", "agui", "antigravity", "claude", "codex", "t3"]
+type AgentTypeLiteral = Literal[
+    "native", "acp", "agui", "antigravity", "claude", "codex", "opencode_v2", "t3"
+]
 
 
 _SLASH_PATTERN: re.Pattern[str] = re.compile(r"^/([\w-]+)(?:\s+(.*))?$")

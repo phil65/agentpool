@@ -39,6 +39,10 @@ Nodes are the core building blocks of AgentPool. This section covers the differe
 
 [Antigravity agents](antigravity-agents.md) integrate Google's `google-antigravity` Python SDK (`agentpool[antigravity]`). They run Antigravity's local harness with built-in coding tools, multimodal inputs, thinking levels, policy-driven tool approvals, native structured output, and MCP bridging for AgentPool toolsets.
 
+### OpenCode V2 Agents
+
+[OpenCode V2 agents](opencode-v2-agents.md) drive an OpenCode v2.3+ HTTP/SSE server (`opencode serve` or a remote V2 endpoint), streaming live steps, reasoning, text, tool calls, permissions, and forms while bridging AgentPool toolsets via MCP.
+
 ## Teams
 
 [Teams](./team.md) coordinate multiple agents to work together on complex tasks:
@@ -49,12 +53,12 @@ Nodes are the core building blocks of AgentPool. This section covers the differe
 
 ## Quick Comparison
 
-| Feature | Standard Agent | Claude Code Agent | Codex Agent | Antigravity Agent | ACP Agent | AG-UI Agent | Team | T3 Agent |
-|---------|---------------|-------------------|-------------|-------------------|-----------|-------------|------|----------|
-| Runs in-process | Yes | Yes (SDK) | Yes (subprocess) | Yes (SDK) | No | No | Yes | No |
-| Full configuration | Yes | Yes | Yes | Yes | Limited | Limited | Yes | Limited |
-| External tools | Via toolsets | Built-in + MCP bridge | Native + MCP bridge | Built-in + MCP bridge | Built-in | Via server | Via members | The provider's |
-| Structured output | Result tools | Result tools | JSON Schema | JSON Schema (`finish`) | Limited | Limited | Via members | No |
-| Reasoning control | Model-dependent | Extended thinking | Effort levels | Thinking levels | Model-dependent | Model-dependent | Via members | Model options |
-| Streaming | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Polled |
-| Use case | Primary agents | Claude coding | Codex coding | Antigravity / Gemini coding | External agents | Remote services | Coordination | Agents in T3 Code |
+| Feature | Standard Agent | Claude Code Agent | Codex Agent | Antigravity Agent | OpenCode V2 Agent | ACP Agent | AG-UI Agent | Team | T3 Agent |
+|---------|---------------|-------------------|-------------|-------------------|-------------------|-----------|-------------|------|----------|
+| Runs in-process | Yes | Yes (SDK) | Yes (subprocess) | Yes (SDK) | Subprocess / HTTP | No | No | Yes | No |
+| Full configuration | Yes | Yes | Yes | Yes | Yes | Limited | Limited | Yes | Limited |
+| External tools | Via toolsets | Built-in + MCP bridge | Native + MCP bridge | Built-in + MCP bridge | Built-in + MCP bridge | Built-in | Via server | Via members | The provider's |
+| Structured output | Result tools | Result tools | JSON Schema | JSON Schema (`finish`) | No | Limited | Limited | Via members | No |
+| Reasoning control | Model-dependent | Extended thinking | Effort levels | Thinking levels | Model variants | Model-dependent | Model-dependent | Via members | Model options |
+| Streaming | Yes | Yes | Yes | Yes | Yes (SSE) | Yes | Yes | Yes | Polled |
+| Use case | Primary agents | Claude coding | Codex coding | Antigravity / Gemini coding | OpenCode v2.3+ coding | External agents | Remote services | Coordination | Agents in T3 Code |

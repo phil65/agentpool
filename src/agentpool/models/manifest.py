@@ -19,6 +19,7 @@ from agentpool.models.antigravity_agents import AntigravityAgentConfig
 from agentpool.models.claude_code_agents import ClaudeCodeAgentConfig
 from agentpool.models.codex_agents import CodexAgentConfig
 from agentpool.models.file_agents import FileAgentConfig
+from agentpool.models.opencode_v2_agents import OpenCodeV2AgentConfig
 from agentpool.models.t3_agents import T3AgentConfig
 from agentpool_config.commands import CommandConfig, StaticCommandConfig
 from agentpool_config.compaction import CompactionConfig
@@ -56,6 +57,7 @@ AnyAgentConfig = Annotated[
     NativeAgentConfig
     | AGUIAgentConfig
     | AntigravityAgentConfig
+    | OpenCodeV2AgentConfig
     | T3AgentConfig
     | ClaudeCodeAgentConfig
     | CodexAgentConfig
@@ -124,6 +126,7 @@ class AgentsManifest(Schema):
     - type: "antigravity" - Google Antigravity SDK agents
     - type: "claude_code" - Claude Agent SDK agents
     - type: "codex" - Codex app-server agents
+    - type: "opencode_v2" - OpenCode V2 (v2.3+) HTTP/SSE agents
     - type: "t3" - T3 Code agents
     - type: "acp" - ACP protocol agents (further discriminated by 'provider')
 

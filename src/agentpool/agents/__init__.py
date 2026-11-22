@@ -8,6 +8,7 @@ from agentpool.agents.antigravity_agent import AntigravityAgent
 from agentpool.agents.acp_agent import ACPAgent
 from agentpool.agents.claude_code_agent import ClaudeCodeAgent
 from agentpool.agents.codex_agent import CodexAgent
+from agentpool.agents.opencode_v2_agent import OpenCodeV2Agent
 from agentpool.agents.t3_agent import T3Agent
 from agentpool.agents.events import (
     detailed_print_handler,
@@ -29,6 +30,7 @@ __all__ = [
     "ClaudeCodeAgent",
     "CodexAgent",
     "Interactions",
+    "OpenCodeV2Agent",
     "PromptInjectionManager",
     "SystemPrompts",
     "T3Agent",
