@@ -90,7 +90,7 @@ async def test_backend_commands_go_to_the_agent_as_prompt() -> None:
     )
 
     assert (commands, rest) == ([], ["/context"])
-    assert "context" in [c.name for c in session.get_acp_commands()]  # Still listed
+    assert "context" in [c.name for c in session.list_commands()]  # Still listed
 
 
 async def test_switching_agents_follows_the_new_agent() -> None:

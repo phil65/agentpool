@@ -17,25 +17,21 @@ from typing import TYPE_CHECKING, Any, Literal, assert_never
 from aclientp.agent.acp_requests import ACPRequests
 from aclientp.agent.notifications import ACPNotifications
 from aclientp.filesystem import ACPFileSystem
-from aclientp.schema import AvailableCommand, ClientCapabilities, Notice
-import anyio
+from aclientp.schema import ClientCapabilities
 from exxec.acp_provider import ACPExecutionEnvironment
 from exxec.local_provider import LocalExecutionEnvironment
 import logfire
 from pydantic_ai import UsageLimitExceeded
 from slashed import CommandStore
-from tokonomics.model_discovery.model_info import ModelInfo
 
 from agentpool import Agent, AgentPool
 from agentpool.agents.acp_agent import ACPAgent
-from agentpool.agents.modes import ConfigOptionChanged, ModeInfo
 from agentpool.log import get_logger
 from agentpool_commands.base import NodeCommand
 from agentpool_server.acp_server.converters import (
     convert_acp_mcp_server_to_config,
     from_acp_content,
 )
-from agentpool_server.acp_server.event_converter import ACPEventConverter
 from agentpool_server.acp_server.input_provider import ACPInputProvider
 from agentpool_server.acp_server.turns import (
     TurnCancelled,
@@ -44,6 +40,7 @@ from agentpool_server.acp_server.turns import (
     TurnLimitReached,
     TurnRefused,
 )
+from agentpool_server.acp_server.v1_output import V1SessionOutput
 
 
 if TYPE_CHECKING:
@@ -51,7 +48,6 @@ if TYPE_CHECKING:
 
     from aclientp import Client, RequestPermissionRequest, RequestPermissionResponse
     from aclientp.schema import (
-        AvailableCommandsUpdate,
         ContentBlock,
         Implementation,
         InitialSessionConfigOption,
@@ -64,9 +60,9 @@ if TYPE_CHECKING:
     from slashed import BaseCommand
 
     from agentpool.agents.base_agent import BaseAgent
-    from agentpool.agents.events import RichAgentStreamEvent
     from agentpool.common_types import PathReference
     from agentpool_server.acp_server.acp_agent import AgentPoolACPAgent
+    from agentpool_server.acp_server.output import AgentStateChange, SessionOutput
     from agentpool_server.acp_server.session_manager import ACPSessionManager
     from agentpool_server.acp_server.turns import TurnOutcome, TurnOutput
 
@@ -240,7 +236,6 @@ class ACPSession:
         self.command_store = CommandStore(commands=get_all_commands())
         self.command_store._initialize_sync()
         self._update_callbacks: list[Callable[[], None]] = []
-        self._remote_commands: list[AvailableCommand] = []  # Commands from nested ACP agents
         self._commands_update: asyncio.Task[None] | None = None
         # Inject Zed-specific instructions if client is Zed
         if self.client_info and self.client_info.name and "zed" in self.client_info.name.lower():
@@ -249,6 +244,7 @@ class ACPSession:
             # Native agents get it via sys_prompts (see get_cwd_context)
             self.agent.staged_content.add_text(self.system_prompt)
         self.notifications = ACPNotifications(client=self.client, session_id=self.session_id)
+        self.output: SessionOutput = V1SessionOutput(self)
         self.requests = ACPRequests(client=self.client, session_id=self.session_id)
         self.input_provider = ACPInputProvider(self)
         self.env = self._create_execution_environment()
@@ -326,85 +322,18 @@ class ACPSession:
     async def _on_background_event(self, background: BaseAgent.BackgroundEvent) -> None:
         """Forward an agent event produced between turns (e.g. a task finishing).
 
-        ACP allows session updates outside a prompt turn; only this session's events count.
+        Only this session's events count.
         """
-        from agentpool_server.acp_server.event_converter import ACPEventConverter
-
         if background.session_id != self.session_id:
             return
-        converter = ACPEventConverter(
-            subagent_display_mode=self.subagent_display_mode,
-            use_notices=self.supports_notices,
-            use_compaction_updates=self.supports_compaction,
-            use_prompt_suggestions=self.supports_prompt_suggestions,
-            background_tasks=self.background_tasks,
-        )
         try:
-            async for update in converter.convert(background.event):
-                await self.notifications.send_update(update)
+            await self.output.background_event(background.event)
         except Exception:
             self.log.exception("Failed to forward background event")
 
-    async def _on_state_updated(
-        self, state: ModeInfo | ModelInfo | AvailableCommandsUpdate | ConfigOptionChanged
-    ) -> None:
-        """Handle state update signal from agent - forward to ACP client."""
-        from aclientp.schema import (
-            AvailableCommandsUpdate,
-            BooleanSessionConfigOption,
-            ConfigOptionUpdate,
-            CurrentModeUpdate,
-            SelectSessionConfigOption,
-        )
-
-        from agentpool_server.acp_server.acp_agent import get_session_config_options
-
-        update: CurrentModeUpdate | ConfigOptionUpdate
-        match state:
-            case ModeInfo(value=mode_id, category_id="mode"):
-                assert isinstance(mode_id, str)
-                update = CurrentModeUpdate(current_mode_id=mode_id)
-                self.log.debug("Forwarding mode change to client", mode_id=mode_id)
-            case ModelInfo(id=model_id):
-                # Model changes go through ConfigOptionUpdate (model category)
-                config_options = await get_session_config_options(self.agent)
-                match next((i for i in config_options if i.id == "model"), None):
-                    case SelectSessionConfigOption() as model_opt:
-                        model_opt.current_value = model_id
-                    case _:
-                        pass
-                update = ConfigOptionUpdate(config_options=config_options)
-                self.log.debug("Forwarding model change as config update", model_id=model_id)
-            case AvailableCommandsUpdate(available_commands=cmds):
-                # Store remote commands and send merged list
-                self._remote_commands = list(cmds)
-                await self.send_available_commands_update()
-                self.log.debug("Merged and sent commands update to client")
-                return
-            case ConfigOptionChanged(config_id=config_id, value_id=value_id):
-                # Get full config_options from agent (required by ACP protocol)
-                config_options = await get_session_config_options(self.agent)
-                # Update the changed option's current_value
-                match next((i for i in config_options if i.id == config_id), None), value_id:
-                    case SelectSessionConfigOption() as select_opt, str() as value:
-                        select_opt.current_value = value
-                    case BooleanSessionConfigOption() as bool_opt, bool() as flag:
-                        bool_opt.current_value = flag
-                    case _:
-                        pass
-                # Convert our core type to ACP type with full config_options
-                update = ConfigOptionUpdate(config_options=config_options)
-                self.log.debug("Config option change", config_id=config_id, value_id=value_id)
-                # For permissions, also send legacy CurrentModeUpdate (still needed)
-                if config_id == "permissions":
-                    assert isinstance(value_id, str)
-                    await self.notifications.update_session_mode(value_id)
-                    self.log.debug("Also sent legacy mode update", mode_id=value_id)
-            case ModeInfo():
-                return
-            case _ as unreachable:
-                assert_never(unreachable)
-        await self.notifications.send_update(update)
+    async def _on_state_updated(self, state: AgentStateChange) -> None:
+        """Forward an agent's changed mode, model, config option or commands."""
+        await self.output.state_changed(state)
 
     async def run_command(
         self, command: str, args: Sequence[str], *, cwd: str | None = None
@@ -609,7 +538,7 @@ class ACPSession:
         fs = self.agent.env.get_fs()
         contents = [from_acp_content(i, fs=fs) for i in content_blocks]
         self.log.debug("Converted content", content=contents)
-        match await self.run_turn(contents, _V1TurnOutput(self)):
+        match await self.run_turn(contents, self.output.turn()):
             case TurnCompleted():
                 return "end_turn"
             case TurnCancelled():
@@ -702,14 +631,11 @@ class ACPSession:
         return None
 
     async def _send_error_notification(self, message: str) -> None:
-        """Send error notification, with exception handling."""
+        """Show an error, unless the turn was cancelled."""
         if self._cancelled:
             return
         try:
-            if self.supports_notices:
-                await self.notifications.send_update(Notice(severity="error", title=message))
-            else:
-                await self.notifications.send_agent_text(message)
+            await self.output.error(message)
         except Exception:
             self.log.exception("Failed to send error notification")
 
@@ -735,16 +661,9 @@ class ACPSession:
             self.log.exception("Error closing session")
 
     async def send_available_commands_update(self) -> None:
-        """Send current available commands to client.
-
-        Merges local commands from command_store with any remote commands
-        from nested ACP agents.
-        """
-        commands = self.get_acp_commands()
-        names = {command.name for command in commands}
-        commands += [c for c in self._remote_commands if c.name not in names]
+        """Send the session's current slash commands to the client."""
         try:
-            await self.notifications.update_commands(commands)
+            await self.output.commands_changed(self.list_commands())
         except Exception:
             self.log.exception("Failed to send available commands update")
 
@@ -788,24 +707,21 @@ class ACPSession:
             except Exception:
                 logger.exception("Command update callback failed")
 
-    def get_acp_commands(self) -> list[AvailableCommand]:
-        """The session's commands and the agent's, in ACP format (the session's win)."""
-        cmds = []
+    def list_commands(self) -> list[BaseCommand]:
+        """The session's commands and the agent's (the session's win on a name clash).
+
+        Commands that do not support the session's agent are left out.
+        """
+        commands: list[BaseCommand] = []
         names: set[str] = set()
         for cmd in [*self.command_store.list_commands(), *self.agent.command_store.list_commands()]:
             if cmd.name in names:
                 continue
-            # Check if command supports current node type
             if isinstance(cmd, NodeCommand) and not cmd.supports_node(self.agent):
                 continue
             names.add(cmd.name)
-            available_cmd = AvailableCommand.create(
-                name=cmd.name,
-                description=cmd.description,
-                input_hint=cmd.usage,
-            )
-            cmds.append(available_cmd)
-        return cmds
+            commands.append(cmd)
+        return commands
 
     @logfire.instrument(r"Execute Slash Command {command_text}")
     async def execute_slash_command(self, command_text: str) -> None:
@@ -831,14 +747,14 @@ class ACPSession:
             and not cmd.supports_node(self.agent)
         ):
             error_msg = f"❌ Command `/{command_name}` is not available for this node type"
-            await self.notifications.send_agent_text(error_msg)
+            await self.output.text(error_msg)
             return
 
         # Create context with session data
         agent_context = self.agent.get_context(data=self)
         cmd_ctx = store.create_context(
             data=agent_context,
-            output_writer=self.notifications.send_agent_text,
+            output_writer=self.output.text,
         )
 
         command_str = f"{command_name} {args}".strip()
@@ -851,51 +767,3 @@ class ACPSession:
     def register_update_callback(self, callback: Callable[[], None]) -> None:
         """Register callback for command updates."""
         self._update_callbacks.append(callback)
-
-
-class _V1TurnOutput:
-    """A turn's events as ACP v1 session updates (``ACPEventConverter``)."""
-
-    def __init__(self, session: ACPSession) -> None:
-        self._session = session
-        self._converter: ACPEventConverter | None = None
-
-    async def start(self) -> None:
-        session = self._session
-        self._converter = ACPEventConverter(
-            subagent_display_mode=session.subagent_display_mode,
-            use_notices=session.supports_notices,
-            use_compaction_updates=session.supports_compaction,
-            use_prompt_suggestions=session.supports_prompt_suggestions,
-            context_window=await session._get_context_window(),
-            session_cost=session.total_cost,
-            background_tasks=session.background_tasks,
-        )
-
-    async def event(self, event: RichAgentStreamEvent[Any]) -> None:
-        assert self._converter is not None, "start() comes first"
-        async for update in self._converter.convert(event):
-            await self._session.notifications.send_update(update)
-
-    async def finish(self, outcome: TurnOutcome) -> None:
-        converter = self._converter
-        assert converter is not None, "start() comes first"
-        session = self._session
-        session.total_cost = converter.session_cost
-        match outcome:
-            case TurnCompleted():
-                session.last_usage = converter.last_usage
-            case TurnCancelled():
-                async for cancel_update in converter.cancel_pending_tools():
-                    await session.notifications.send_update(cancel_update)
-                # Give the client time to apply the tool call updates before the
-                # PromptResponse; some clients were seen handling the response first,
-                # leaving the UI stuck.
-                await anyio.sleep(0.05)
-            case TurnFailed(error=error):
-                # Within the turn, so the error shows up before the response
-                await session._send_error_notification(f"❌ Agent error: {error}")
-            case TurnLimitReached() | TurnRefused():
-                pass
-            case _ as unreachable:
-                assert_never(unreachable)
