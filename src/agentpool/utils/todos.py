@@ -14,10 +14,10 @@ if TYPE_CHECKING:
 
 
 TodoPriority = Literal["high", "medium", "low"]
-TodoStatus = Literal["pending", "in_progress", "completed"]
+TodoStatus = Literal["pending", "in_progress", "completed", "cancelled"]
 
 
-STATUS_ICONS = {"pending": "⬚", "in_progress": "◐", "completed": "✓"}
+STATUS_ICONS = {"pending": "⬚", "in_progress": "◐", "completed": "✓", "cancelled": "✗"}
 PRIORITY_LABELS = {"high": "🔴", "medium": "🟡", "low": "🟢"}
 
 

@@ -34,7 +34,6 @@ class PydanticAiStreamedResponse(StreamedResponse):
     """Streamed pydantic-ai response."""
 
     stream: AgentRun[Any, Any]
-    tool_metadata: dict[str, dict[str, Any]]
     agent_name: str
     message_id: str
     _timestamp: datetime = field(default_factory=get_now)

@@ -86,13 +86,6 @@ class SandboxBashTool(Tool[ToolResult]):
 
         return ToolResult(
             content=result.output,
-            metadata={
-                "stdout": result.stdout,
-                "stderr": result.stderr,
-                "exit_code": result.exit_code,
-                "error": result.error,
-                "description": commands,
-            },
         )
 
     def reset(self) -> None:

@@ -604,8 +604,6 @@ class ToolCallCompleteEvent:
     """The name of the agent that made the tool call."""
     message_id: str
     """The message ID associated with this tool call."""
-    metadata: dict[str, Any] | None = None
-    """Optional metadata for UI/client use (diffs, diagnostics, etc.)."""
     error: str | None = None
     """Error message if the call failed (None for successful calls)."""
     event_kind: Literal["tool_call_complete"] = "tool_call_complete"

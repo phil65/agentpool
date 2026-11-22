@@ -1156,7 +1156,6 @@ class ClaudeCodeAgent[TDeps = None, TResult = str](BaseAgent[TDeps, TResult]):
             adapter = ClaudeCodeStreamedResponse(
                 provider_name="claude_code",
                 stream=stream,
-                tool_metadata=self._tool_bridge.route(self._route).tool_metadata,
                 agent_name=self.name,
                 session_id=run_session_id,
                 on_rate_limit=self.record_rate_limit,

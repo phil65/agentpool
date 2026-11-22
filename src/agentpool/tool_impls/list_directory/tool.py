@@ -108,7 +108,6 @@ class ListDirectoryTool(Tool[ToolResult]):
                 await ctx.events.file_operation("list", path=path, success=False, error=error_msg)
                 return ToolResult(
                     content=f"Error: {error_msg}",
-                    metadata={"count": 0, "truncated": False},
                 )
 
             # Build glob path
@@ -133,7 +132,6 @@ class ListDirectoryTool(Tool[ToolResult]):
                 error_msg = f"Error: Too many items ({total_found:,}). {suggestion_text}"
                 return ToolResult(
                     content=error_msg,
-                    metadata={"count": total_found, "truncated": True},
                 )
 
             for file_path, file_info in paths.items():
@@ -163,6 +161,8 @@ class ListDirectoryTool(Tool[ToolResult]):
 
             await ctx.events.file_operation("list", path=path, success=True)
             result = format_directory_listing(path, dirs, files, pattern)
+            if len(files) + len(dirs) >= self.max_items:  # The listing stopped at the limit
+                result += f"\n\n[Listing truncated at {self.max_items} items]"
             # Emit formatted content for UI display
             from agentpool.agents.events import TextContentItem
 
@@ -178,13 +178,6 @@ class ListDirectoryTool(Tool[ToolResult]):
             )
             return ToolResult(
                 content=error_msg,
-                metadata={"count": 0, "truncated": False},
             )
         else:
-            total_items = len(files) + len(dirs)
-            # Check if we hit the limit (truncation)
-            was_truncated = total_items >= self.max_items
-            return ToolResult(
-                content=result,
-                metadata={"count": total_items, "truncated": was_truncated},
-            )
+            return ToolResult(content=result)

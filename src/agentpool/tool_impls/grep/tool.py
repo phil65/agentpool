@@ -156,7 +156,6 @@ class GrepTool(Tool[ToolResult]):
                 error_msg = f"Error: {result['error']}"
                 return ToolResult(
                     content=error_msg,
-                    metadata={"matches": 0, "truncated": False},
                 )
 
             # Format output
@@ -183,10 +182,8 @@ class GrepTool(Tool[ToolResult]):
             error_msg = f"Error: Grep failed: {e}"
             return ToolResult(
                 content=error_msg,
-                metadata={"matches": 0, "truncated": False},
             )
         else:
             return ToolResult(
                 content=output,
-                metadata={"matches": match_count, "truncated": was_truncated},
             )

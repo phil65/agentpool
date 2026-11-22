@@ -455,7 +455,12 @@ class ACPEventConverter:
 
             case PlanUpdateEvent(entries=entries):
                 acp_entries = [
-                    ACPPlanEntry(content=e.content, priority=e.priority, status=e.status)
+                    ACPPlanEntry(
+                        content=e.content,
+                        priority=e.priority,
+                        # ACP has no "cancelled": the entry is done with
+                        status="completed" if e.status == "cancelled" else e.status,
+                    )
                     for e in entries
                 ]
                 yield AgentPlanUpdate(entries=acp_entries)

@@ -627,7 +627,6 @@ class ACPAgent[TDeps = None](BaseAgent[TDeps, str]):
             prompt_task=prompt_task,
             agent_name=self.name,
             session_id=run_session_id,
-            tool_metadata=self._tool_bridge.route(route).tool_metadata,
         )
 
         try:

@@ -11,6 +11,7 @@ from agentpool.agents.claude_code_agent.server_blocks import REDACTED_THINKING
 from agentpool.agents.claude_code_agent.stream_adapter import ClaudeCodeStreamedResponse
 from agentpool.agents.events import (
     CompactionEvent,
+    DiffContentItem,
     NoticeEvent,
     PartStartEvent,
     PromptSuggestionEvent,
@@ -38,7 +39,6 @@ async def _stream(*messages: Any) -> list[Any]:
     response = ClaudeCodeStreamedResponse(
         provider_name="claude_code",
         stream=source(),
-        tool_metadata={},
         agent_name="claude",
         session_id="local",
     )
@@ -350,14 +350,9 @@ async def test_bash_result_uses_the_structured_output() -> None:
         "terminal_exit": {"terminal_id": "call_1", "exit_code": 3, "signal": None}
     }
     assert isinstance(complete, ToolCallCompleteEvent)
-    assert complete.metadata == {
-        "output": "ls: cannot access '/nope': No such file or directory",
-        "exit": 3,
-        "description": "List",
-    }
 
 
-async def test_edit_metadata_from_a_single_structured_result() -> None:
+async def test_edit_shows_the_whole_file_from_a_single_structured_result() -> None:
     structured = {
         "filePath": "/a.py",
         "oldString": "x = 1",
@@ -383,9 +378,11 @@ async def test_edit_metadata_from_a_single_structured_result() -> None:
             _tool_result("call_1", "The file /a.py has been updated."), tool_use_result=structured
         ),
     )
-    complete = next(e for e in events if isinstance(e, ToolCallCompleteEvent))
-    assert complete.metadata is not None
-    assert complete.metadata["filediff"]["additions"] == 1
+    *_, diff, complete = [e for e in events if e.tool_call_id == "call_1"]
+    assert isinstance(diff, ToolCallProgressEvent)
+    assert diff.replace_content  # The whole file instead of the snippet the start showed
+    assert diff.items == [DiffContentItem(path="/a.py", old_text="x = 1\n", new_text="x = 2\n")]
+    assert isinstance(complete, ToolCallCompleteEvent)
 
 
 async def test_local_command_output_is_the_reply() -> None:

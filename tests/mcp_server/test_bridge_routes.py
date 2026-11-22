@@ -58,23 +58,6 @@ async def test_injections_reach_the_tool_calls_of_their_own_session() -> None:
             assert "FOR FIRST" in await _text(bridge.url_for(first.session_id), "work")
 
 
-async def test_tool_metadata_is_kept_per_route() -> None:
-    from agentpool.tools.base import ToolResult
-
-    async def tagged(ctx: AgentContext) -> ToolResult:
-        """Return a result with metadata."""
-        return ToolResult(content="ok", metadata={"by": str(ctx.data)})
-
-    agent = Agent(name="bridged", model=TestModel(), tools=[tagged])
-    async with agent, ToolManagerBridge(node=agent) as bridge:
-        session = Session.create("bridged")
-        ctx = agent.get_context(data="S")
-        async with bridge.set_run_context(ctx, route=session.session_id) as route:
-            await _text(bridge.url_for(session.session_id), "tagged")
-        assert [m["by"] for m in route.tool_metadata.values()] == ["S"]
-        assert bridge.tool_metadata == {}  # The default route's
-
-
 async def test_tool_calls_run_in_the_session_environment_of_their_turn() -> None:
     from exxec import LocalExecutionEnvironment
 

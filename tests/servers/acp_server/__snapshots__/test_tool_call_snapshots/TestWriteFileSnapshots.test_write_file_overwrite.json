@@ -35,7 +35,7 @@
       "content": [
         {
           "newText": "Updated content",
-          "oldText": "",
+          "oldText": "Old content",
           "path": "/test/existing.txt",
           "type": "diff"
         }

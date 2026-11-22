@@ -6,7 +6,6 @@ from typing import TYPE_CHECKING, Any, Literal
 
 from agentpool.agents.events import (
     CustomEvent,
-    DiffContentItem,
     LocationContentItem,
     PlanUpdateEvent,
     TextContentItem,
@@ -47,18 +46,6 @@ class StreamEventEmitter:
     # =========================================================================
     # Core methods - the essential API
     # =========================================================================
-
-    @property
-    def _turn_session_id(self) -> str | None:
-        """The session of the turn the tool runs in (file changes record it)."""
-        runtime = self._context.runtime
-        return runtime.session.session_id if runtime is not None else None
-
-    @property
-    def _turn_message_id(self) -> str | None:
-        """ID of the user message of the turn the tool runs in."""
-        runtime = self._context.runtime
-        return runtime.turn_message_id if runtime is not None else None
 
     async def tool_call_start(
         self,
@@ -106,20 +93,7 @@ class StreamEventEmitter:
             items: Rich content items (terminals, diffs, locations, text)
             replace_content: If True, items replace existing content instead of appending
         """
-        # Record file changes from DiffContentItem for diff/revert support
-        if self._context.pool and self._context.pool.file_ops and items:
-            for item in items:
-                if isinstance(item, DiffContentItem):
-                    self._context.pool.file_ops.record_change(
-                        path=item.path,
-                        old_content=item.old_text,
-                        new_content=item.new_text,
-                        operation="create" if item.old_text is None else "write",
-                        agent_name=self._context.node_name,
-                        session_id=self._turn_session_id,
-                        message_id=self._turn_message_id,
-                    )
-
+        # Diffs among the items are recorded as file changes by the turn (SessionRuntime)
         event = ToolCallProgressEvent(
             tool_call_id=self._context.tool_call_id or "",
             tool_name=self._context.tool_name,
@@ -197,18 +171,7 @@ class StreamEventEmitter:
             new_text: New file content
             status: Current status of the edit operation
         """
-        # Record file change for diff/revert support
-        if self._context.pool and self._context.pool.file_ops:
-            self._context.pool.file_ops.record_change(
-                path=path,
-                old_content=old_text,
-                new_content=new_text,
-                operation="edit",
-                agent_name=self._context.node_name,
-                session_id=self._turn_session_id,
-                message_id=self._turn_message_id,
-            )
-
+        # Recorded as a file change by the turn (SessionRuntime), like any diff
         event = ToolCallProgressEvent.file_edit(
             tool_call_id=self._context.tool_call_id or "",
             tool_name=self._context.tool_name,

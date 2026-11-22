@@ -9,18 +9,16 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 from dataclasses import dataclass
-from pathlib import Path
 import re
-from typing import TYPE_CHECKING, Any, Literal, assert_never, cast
+from typing import TYPE_CHECKING, Any, assert_never, cast
 
 from clawd_code_sdk.models import (
-    BashInput,
     BashOutput,
     EditOutput,
     McpHttpServerConfig,
     McpSSEServerConfig,
     McpStdioServerConfig,
-    ReadOutput,
+    ReadTextOutput,
     ResultErrorMessage,
     ResultSuccessMessage,
     TodoWriteOutput,
@@ -45,17 +43,9 @@ from pydantic_ai import (
     VideoUrl,
 )
 
+from agentpool.agents.events import DiffContentItem, PlanUpdateEvent, ToolCallProgressEvent
 from agentpool.common_types import MCPServerStatus
-from agentpool.utils.diffs import compute_unified_diff
-from opencode_v2_sdk.tool_metadata import (
-    BashMetadata,
-    EditMetadata,
-    FileDiff,
-    ReadMetadata,
-    TodoInfo,
-    TodoMetadata,
-    WriteMetadata,
-)
+from agentpool.utils.todos import PlanEntry
 
 
 if TYPE_CHECKING:
@@ -73,9 +63,7 @@ if TYPE_CHECKING:
         PreToolUseHookInput,
         ResultMessage,
         StopReason,
-        StructuredPatchHunk,
         SyncHookJSONOutput,
-        ToolInput,
         ToolUseResult,
         Usage,
         UserPrompt,
@@ -89,7 +77,6 @@ if TYPE_CHECKING:
     from agentpool.agents.context import ConfirmationResult
     from agentpool.hooks import AgentHooks
     from agentpool_config.mcp_server import MCPServerConfig as NativeMCPServerConfig
-    from opencode_v2_sdk.tool_metadata import ToolMetadata
 
 
 def to_auth_status(account: ClaudeCodeAccountInfo | None) -> AuthStatus:
@@ -337,71 +324,56 @@ def convert_mcp_servers_to_sdk_format(
     return result
 
 
-def convert_to_opencode_metadata(
+def tool_result_events(  # noqa: PLR0911
+    tc_id: str,
     tool_name: str,
     tool_use_result: Mapping[str, Any] | ToolUseResult | str | None,
-    tool_input: ToolInput | dict[str, Any] | None = None,
-) -> ToolMetadata | None:
-    """Convert Claude Code SDK tool_use_result to OpenCode metadata format."""
-    # Handle None or string results (bash errors come as plain strings)
-    if tool_use_result is None or not isinstance(tool_use_result, dict):
-        return None
-    tool_input = tool_input or {}
-    # Dispatch to appropriate converter based on tool name
-    match tool_name.lower():
-        case "write":
-            return _convert_write_result(cast(WriteOutput, tool_use_result))
-        case "edit":
-            return _convert_edit_result(cast(EditOutput, tool_use_result))
-        case "read":
-            return _convert_read_result(cast(ReadOutput, tool_use_result))
-        case "todowrite":
-            return _convert_todowrite_result(cast(TodoWriteOutput, tool_use_result))
+) -> list[ToolCallProgressEvent | PlanUpdateEvent]:
+    """What a tool's structured result (``tool_use_result``) shows beyond its text.
+
+    - Edit, Write: the whole file before and after (the start showed only the edited
+      snippet), as a diff; the turn records it as a file change (diffs, reverts).
+    - TodoWrite: the todo list, as the plan.
+    - Read of part of a file: which lines, in the title.
+    """
+    if not isinstance(tool_use_result, Mapping):
+        return []
+    match tool_name.lower(), tool_use_result:
+        case "edit", {"filePath": str(path), "newString": str(new), "oldString": str(old)}:
+            edit = cast(EditOutput, tool_use_result)
+            before = edit["originalFile"]
+            after = new if before is None else _apply_edit(before, old, new, edit["replaceAll"])
+            diff = DiffContentItem(path=path, old_text=before, new_text=after)
+            return [_diff_progress(tc_id, tool_name, diff)]
+        case "write", {"filePath": str(path), "content": str(content)}:
+            write = cast(WriteOutput, tool_use_result)
+            before = write["originalFile"] if write["type"] == "update" else None
+            diff = DiffContentItem(path=path, old_text=before, new_text=content)
+            return [_diff_progress(tc_id, tool_name, diff)]
+        case "todowrite", {"newTodos": list()}:
+            todos = cast(TodoWriteOutput, tool_use_result)["newTodos"]
+            entries = [PlanEntry(content=t["content"], status=t["status"]) for t in todos]
+            return [PlanUpdateEvent(entries=entries, tool_call_id=tc_id)]
+        case "read", {"type": "text", "file": {"filePath": str(path)}}:
+            info = cast(ReadTextOutput, tool_use_result)["file"]
+            first, count, total = info["startLine"], info["numLines"], info["totalLines"]
+            if first <= 1 and count >= total:
+                return []
+            title = f"Read {path} (lines {first}-{first + max(count, 1) - 1} of {total})"
+            return [ToolCallProgressEvent(tool_call_id=tc_id, tool_name=tool_name, title=title)]
         case _:
-            return None
+            return []
 
 
-def _convert_write_result(result: WriteOutput) -> WriteMetadata:
-    """Convert Write tool result to OpenCode metadata."""
-    return WriteMetadata(filepath=result["filePath"], exists=True, diagnostics={})
+def _apply_edit(original: str, old: str, new: str, replace_all: bool) -> str:
+    return original.replace(old, new) if replace_all else original.replace(old, new, 1)
 
 
-def _convert_edit_result(result: EditOutput) -> EditMetadata:
-    """Convert Edit tool result to OpenCode metadata."""
-    file_path = result["filePath"]
-    original_file = result["originalFile"]
-    structured_patch = result["structuredPatch"]
-    # Compute the "after" content by applying the edit
-    after_content = original_file
-    if original_file is not None and (old := result["oldString"]) and (new := result["newString"]):
-        after_content = original_file.replace(old, new, 1)
-
-    # Build unified diff from structuredPatch or compute it
-    diff = _build_unified_diff(file_path, original_file, after_content, structured_patch)
-    # Count additions and deletions
-    additions, deletions = _count_diff_changes(structured_patch)
-    filediff = FileDiff(
-        file=file_path,
-        before=original_file or "",
-        after=after_content or "",
-        additions=additions,
-        deletions=deletions,
+def _diff_progress(tc_id: str, tool_name: str, diff: DiffContentItem) -> ToolCallProgressEvent:
+    """The whole-file diff, replacing the snippet the start showed."""
+    return ToolCallProgressEvent(
+        tool_call_id=tc_id, tool_name=tool_name, items=[diff], replace_content=True
     )
-    return EditMetadata(diff=diff, filediff=filediff, diagnostics={})
-
-
-def _convert_read_result(result: ReadOutput) -> ReadMetadata:
-    """Convert Read tool result to OpenCode metadata."""
-    match result:
-        case {
-            "type": "text",
-            "file": {"content": str(content), "numLines": int(num), "totalLines": int(total)},
-        }:
-            lines = content.splitlines()
-            preview = "\n".join(lines[:20])
-            return ReadMetadata(preview=preview, truncated=num < total, loaded=[])
-        case _:  # Only text reads have metadata support for Opencode
-            return ReadMetadata(preview="", truncated=False, loaded=[])
 
 
 _EXIT_CODE = re.compile(r"^(?:Error: )?Exit code (\d+)(?:\n|$)")
@@ -463,12 +435,6 @@ def _with_note(output: str, note: str) -> str:
     return f"{output}\n{note}" if output else note
 
 
-def to_bash_metadata(display: BashDisplay, tool_input: BashInput) -> BashMetadata:
-    """OpenCode metadata of a Bash call."""
-    description = tool_input.get("description") or tool_input["command"]
-    return BashMetadata(output=display.output, exit=display.exit_code, description=description)
-
-
 def structured_results(
     tool_use_result: Sequence[ToolUseResult | dict[str, Any]]
     | ToolUseResult
@@ -488,113 +454,6 @@ def structured_results(
             return [tool_use_result]
         case _:
             return list(tool_use_result)
-
-
-def _convert_todowrite_result(result: TodoWriteOutput) -> TodoMetadata | None:
-    """Convert TodoWrite tool result to OpenCode metadata."""
-    new_todos = result["newTodos"]
-    todos: list[TodoInfo] = []
-    for i, todo in enumerate(new_todos):
-        content = todo["content"]
-        priority = _infer_priority(content, i, len(new_todos))
-        todos.append(TodoInfo(content=content, status=todo["status"], priority=priority))
-    return TodoMetadata(todos=todos)
-
-
-# Priority thresholds for position-based inference
-_HIGH_PRIORITY_THRESHOLD = 0.33
-_MEDIUM_PRIORITY_THRESHOLD = 0.67
-
-
-def _infer_priority(content: str, index: int, total: int) -> Literal["low", "medium", "high"]:
-    """Infer priority from content keywords or position."""
-    content_lower = content.lower()
-
-    # Check for explicit priority keywords
-    high_keywords = ("critical", "urgent", "asap", "immediately", "important", "soon", "priority")
-    low_keywords = ("later", "eventually", "low priority", "nice to have")
-
-    if any(kw in content_lower for kw in high_keywords):
-        return "high"
-    if any(kw in content_lower for kw in low_keywords):
-        return "low"
-
-    # Fall back to position-based priority
-    # First third = high, middle third = medium, last third = low
-    if total <= 1:
-        return "medium"
-    position_ratio = index / (total - 1) if total > 1 else 0
-    if position_ratio < _HIGH_PRIORITY_THRESHOLD:
-        return "high"
-    if position_ratio < _MEDIUM_PRIORITY_THRESHOLD:
-        return "medium"
-    return "low"
-
-
-def _build_unified_diff(
-    file_path: str,
-    before: str | None,
-    after: str | None,
-    structured_patch: list[StructuredPatchHunk],
-) -> str:
-    """Build unified diff string from structured patch or content."""
-    # If we have both before and after, compute proper diff
-    if before is not None and after is not None:
-        name = Path(file_path).name
-        return compute_unified_diff(
-            before,
-            after,
-            fromfile=f"a/{name}",
-            tofile=f"b/{name}",
-            ensure_trailing_newline=True,
-        )
-
-    # Fallback: reconstruct from structuredPatch
-    if structured_patch:
-        return _structured_patch_to_diff(file_path, structured_patch)
-
-    return ""
-
-
-def _structured_patch_to_diff(file_path: str, structured_patch: list[StructuredPatchHunk]) -> str:
-    """Convert Claude Code's structuredPatch to unified diff format.
-
-    structuredPatch format:
-        [
-            {
-                "oldStart": 1,
-                "oldLines": 4,
-                "newStart": 1,
-                "newLines": 5,
-                "lines": [" def hello_world():", "+    \"\"\"Docstring.\"\"\"", ...]
-            }
-        ]
-
-    The lines array uses prefixes: " " (context), "+" (added), "-" (removed)
-    """
-    name = Path(file_path).name
-    lines = [f"--- a/{name}", f"+++ b/{name}"]
-    for p in structured_patch:
-        # Add hunk header
-        lines.append(f"@@ -{p['oldStart']},{p['oldLines']} +{p['newStart']},{p['newLines']} @@")
-        # Add the diff lines (already prefixed with ' ', '+', or '-')
-        lines.extend(p["lines"])
-    return "\n".join(lines) + "\n" if lines else ""
-
-
-def _count_diff_changes(structured_patch: list[StructuredPatchHunk]) -> tuple[int, int]:
-    """Count additions and deletions from structured patch."""
-    additions = 0
-    deletions = 0
-
-    for hunk in structured_patch:
-        for line in hunk["lines"]:
-            if line.startswith("+"):
-                additions += 1
-            elif line.startswith("-"):
-                deletions += 1
-
-    return additions, deletions
 
 
 def build_sdk_hooks_from_agent_hooks(

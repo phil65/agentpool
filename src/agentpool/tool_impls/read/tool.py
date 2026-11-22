@@ -159,10 +159,7 @@ class ReadTool(Tool[ToolResult]):
                         pass
                     else:
                         # Converter returned markdown
-                        lines = content.splitlines()
-                        preview = "\n".join(lines[:20])
-                        meta = {"preview": preview, "truncated": False}
-                        return ToolResult(content=content, metadata=meta)
+                        return ToolResult(content=content)
 
                 # Fall back to native binary handling
                 data = await self._get_fs(ctx)._cat_file(path)
@@ -176,11 +173,9 @@ class ReadTool(Tool[ToolResult]):
                     if note:
                         # Return resized image with dimension note for coordinate mapping
                         binary = BinaryContent(data=data, media_type=mime, identifier=path)
-                        meta = {"preview": "Image read successfully", "truncated": False}
-                        return ToolResult(content=[note, binary], metadata=meta)
+                        return ToolResult(content=[note, binary])
                 binary = BinaryContent(data=data, media_type=mime, identifier=path)
-                meta = {"preview": "Binary file read successfully", "truncated": False}
-                return ToolResult(content=[binary], metadata=meta)
+                return ToolResult(content=[binary])
 
             # Read content and probe for binary (git-style null byte detection)
             data = await self._get_fs(ctx)._cat_file(path)
@@ -195,10 +190,7 @@ class ReadTool(Tool[ToolResult]):
                         pass
                     else:
                         # Converter returned markdown
-                        lines = content.splitlines()
-                        preview = "\n".join(lines[:20])
-                        meta = {"preview": preview, "truncated": False}
-                        return ToolResult(content=content, metadata=meta)
+                        return ToolResult(content=content)
 
                 # Fall back to native binary handling
                 await ctx.events.file_operation("read", path=path, success=True)
@@ -210,11 +202,9 @@ class ReadTool(Tool[ToolResult]):
                     )
                     if note:
                         binary = BinaryContent(data=data, media_type=mime, identifier=path)
-                        meta = {"preview": "Image read successfully", "truncated": False}
-                        return ToolResult(content=[note, binary], metadata=meta)
+                        return ToolResult(content=[note, binary])
                 return ToolResult(
                     content=[BinaryContent(data=data, media_type=mime, identifier=path)],
-                    metadata={"preview": "Binary file read successfully", "truncated": False},
                 )
 
             content = data.decode(encoding)
@@ -245,8 +235,7 @@ class ReadTool(Tool[ToolResult]):
         except Exception as e:  # noqa: BLE001
             await ctx.events.file_operation("read", path=path, success=False, error=str(e))
             error_msg = f"error: Failed to read file {path}: {e}"
-            meta = {"preview": "", "truncated": False}
-            return ToolResult(content=error_msg, metadata=meta)
+            return ToolResult(content=error_msg)
         else:
             # Emit file content for UI display (formatted at ACP layer)
             # Use non-negative line for display (negative lines are internal Python convention)
@@ -256,11 +245,4 @@ class ReadTool(Tool[ToolResult]):
                 items=[FileContentItem(content=content, path=path, start_line=display_start_line)],
                 replace_content=True,
             )
-            # Prepare metadata for OpenCode UI
-            lines = content.splitlines()
-            preview = "\n".join(lines[:20])
-            # Check if content was truncated
-            was_truncated = "[Content truncated" in content
-            # Return result with metadata
-            meta = {"preview": preview, "truncated": was_truncated}
-            return ToolResult(content=content, metadata=meta)
+            return ToolResult(content=content)

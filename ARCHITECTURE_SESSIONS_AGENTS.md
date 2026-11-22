@@ -820,6 +820,7 @@ agent's review, largely matching §3–§10).
 2. **Stable message identity (§10.4).** `run_stream` takes the user message ID and exposes stable
    IDs per model response from the first chunk. Removes turn counting and timestamp matching in
    the V2 server's fork/revert/diffs, and is what ACP v2 (`messageId`) and OpenCode V2 want.
+   Done for user messages (§10.4 status); IDs per model response are still open.
 3. **A protocol-neutral core event and message model.** Already done: one tool lifecycle (§10.6),
    step events (§10.5). Still open: external agents build pydantic-ai `ModelMessage`s via
    `MessageReconstructor` to fill `ChatMessage.messages`. Storage and session replay use those, so
@@ -838,4 +839,16 @@ agent's review, largely matching §3–§10).
    every agent produces and every server renders. Today `ClaudeCodeAgent` imports
    `opencode_v2_sdk.tool_metadata` (an agent depending on a protocol SDK), next to
    `opencode_v2_server/tool_display.py` and the ACP converters.
+   **Done (2026-11-22):** the internal form is the tool events' content items (diffs,
+   terminals, locations, text) and plan updates; both servers render from them. The
+   OpenCode-shaped second channel (`ToolCallCompleteEvent.metadata`, `ToolResult.metadata`, the
+   bridge's per-route tool metadata) had no reader left since the OpenCode v1 server went, and
+   is gone. What only it carried is translated into events: Claude Code's Edit and Write give
+   the whole file before and after (the start showed a snippet), TodoWrite the plan, a partial
+   Read its lines; the OpenCode V2 agent turns its backend's metadata into diffs (edit,
+   multiedit, apply_patch, new files) and the plan; list_directory says when it stopped at its
+   limit. The turn records every agent's diffs as file changes (not only native tools'), so V2
+   diffs and reverts cover external agents' edits too. Plans have a `cancelled` status (ACP,
+   which lacks it, gets `completed`). Fixed on the way: fsspec's write reported an overwritten
+   file as new (old text ""), so a revert emptied it instead of restoring it.
 7. **ACP v2 as the core of the ACP server** once Zed speaks v2 (`ACP_V2_SERVER.md`, Open).

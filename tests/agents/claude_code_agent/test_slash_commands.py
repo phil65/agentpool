@@ -91,7 +91,6 @@ async def test_adapter_reports_changed_commands() -> None:
     response = ClaudeCodeStreamedResponse(
         provider_name="claude_code",
         stream=source(),
-        tool_metadata={},
         agent_name="cc",
         session_id="local",
         on_commands_changed=lambda commands: seen.append([c.name for c in commands]),

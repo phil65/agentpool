@@ -537,7 +537,6 @@ def acp_to_native_event(  # noqa: PLR0911
                     tool_result=output,
                     agent_name="",  # Will be set by agent
                     message_id="",
-                    metadata=None,  # Will be injected by agent from metadata accumulator
                     error=(output or "Tool call failed") if status == "failed" else None,
                 )
             # Otherwise return progress event

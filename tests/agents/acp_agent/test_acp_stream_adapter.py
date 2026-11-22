@@ -40,7 +40,6 @@ async def _stream(*updates: SessionUpdate) -> list[RichAgentStreamEvent[str]]:
         prompt_task=prompt_task,
         agent_name="agent",
         session_id="local",
-        tool_metadata={},
     )
     return [event async for event in response._get_event_iterator()]
 

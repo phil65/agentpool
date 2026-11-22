@@ -34,7 +34,6 @@ class AcpAgentStreamedResponse(StreamedResponse):
     prompt_task: asyncio.Task[Any]
     agent_name: str
     session_id: str
-    tool_metadata: dict[str, dict[str, Any]]
     _timestamp: datetime = field(default_factory=get_now)
     _model_name: str | None = None
     _compaction_ids: set[str] = field(default_factory=set)
@@ -77,8 +76,6 @@ class AcpAgentStreamedResponse(StreamedResponse):
             return event
         if not event.agent_name:
             event = replace(event, agent_name=self.agent_name)
-        if event.metadata is None and event.tool_call_id in self.tool_metadata:
-            event = replace(event, metadata=self.tool_metadata[event.tool_call_id])
         return event
 
     @property

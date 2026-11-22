@@ -549,18 +549,20 @@ class FSSpecTools(ResourceProvider):
                 await agent_ctx.events.file_operation("write", path=path, success=False, error=msg)
                 return f"Error: {msg}"
 
-            # Handle append mode: read existing content and prepend it
-            if mode == "a" and file_exists:
+            # What the file held (the diff's, and a revert's, starting point)
+            previous: str | None = None
+            if file_exists:
                 try:
-                    existing_content = await self._read(agent_ctx, path)
-                    content = existing_content + content
+                    previous = await self._read(agent_ctx, path)
                 except Exception:  # noqa: BLE001
-                    pass  # If we can't read, just write new content
+                    previous = None  # Unreadable: shown as new, appended content as written
+            if mode == "a" and previous is not None:
+                content = previous + content
 
             await self._write(agent_ctx, path, content)
             await agent_ctx.events.tool_call_progress(
                 title=f"Wrote: {path}",
-                items=[DiffContentItem(path=path, old_text="", new_text=content)],
+                items=[DiffContentItem(path=path, old_text=previous, new_text=content)],
             )
 
             # Run diagnostics if enabled (include in message for agent)
@@ -570,8 +572,7 @@ class FSSpecTools(ResourceProvider):
 
             action = "Appended to" if mode == "a" and file_exists else "Wrote"
             success_msg = f"{action} {path} ({content_bytes} bytes){diagnostics_msg}"
-            meta = {"filePath": str(Path(path).absolute()), "content": content}
-            return ToolResult(content=success_msg, metadata=meta)  # Agent sees content
+            return ToolResult(content=success_msg)  # Agent sees content
         except Exception as e:  # noqa: BLE001
             await agent_ctx.events.file_operation("write", path=path, success=False, error=str(e))
             return f"Error: Failed to write file {path}: {e}"
@@ -770,8 +771,7 @@ class FSSpecTools(ResourceProvider):
             return error_msg
         else:
             # Ensure content ends with newline for proper diff formatting
-            meta = to_opencode_edit_metadata(original_content, new_content, path)
-            return ToolResult(content=success_msg, metadata=meta)
+            return ToolResult(content=success_msg)
 
     async def regex_replace_lines(
         self,
@@ -1548,32 +1548,6 @@ class FSSpecTools(ResourceProvider):
                     )
 
         return streamed_content
-
-
-def to_opencode_edit_metadata(original_content: str, new_content: str, path: str) -> dict[str, Any]:
-    from agentpool.utils.diffs import compute_unified_diff
-
-    name = Path(path).name
-    diff = compute_unified_diff(
-        original_content,
-        new_content,
-        fromfile=f"a/{name}",
-        tofile=f"b/{name}",
-        ensure_trailing_newline=True,
-    )
-    # Count additions and deletions
-    original_lines = set(original_content.splitlines())
-    new_lines = set(new_content.splitlines())
-    return {
-        "diff": diff,
-        "filediff": {
-            "file": str(Path(path).absolute()),
-            "before": original_content,
-            "after": new_content,
-            "additions": len(new_lines - original_lines),
-            "deletions": len(original_lines - new_lines),
-        },
-    }
 
 
 def _build_create_prompt(path: str, description: str) -> str:

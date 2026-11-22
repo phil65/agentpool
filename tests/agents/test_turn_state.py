@@ -8,7 +8,7 @@ from typing import TYPE_CHECKING
 from pydantic_ai import ModelRequest, UserPromptPart
 from pydantic_ai.models.function import AgentInfo, FunctionModel
 
-from agentpool import Agent
+from agentpool import Agent, AgentContext
 from agentpool.agents.events import StreamCompleteEvent
 from agentpool.sessions import Session
 
@@ -172,3 +172,34 @@ async def test_steering_an_explicit_session_reaches_its_turn() -> None:
     async with agent:
         await asyncio.wait_for(_final(agent, session, "go"), TIMEOUT)
     assert any("ALSO MENTION KIWI" in content for content in seen), seen
+
+
+async def test_turns_record_the_diffs_of_their_tools_as_file_changes() -> None:
+    """From any agent's tool progress (here a native tool's), with the session and turn."""
+    from pydantic_ai.models.function import DeltaToolCall, DeltaToolCalls
+
+    from agentpool import AgentPool, AgentsManifest
+    from agentpool.agents.events import DiffContentItem
+
+    async def write(ctx: AgentContext) -> str:
+        """Write a file."""
+        diff = DiffContentItem(path="/x.py", old_text=None, new_text="x = 1\n")
+        await ctx.events.tool_call_progress("Wrote /x.py", items=[diff])
+        return "done"
+
+    async def stream(
+        messages: list[ModelMessage], info: AgentInfo
+    ) -> AsyncIterator[str | DeltaToolCalls]:
+        if len(messages) == 1:
+            yield {0: DeltaToolCall(name="write", json_args="{}")}
+        else:
+            yield "ok"
+
+    async with AgentPool(AgentsManifest()) as pool:
+        agent = Agent(name="w", model=FunctionModel(stream_function=stream), tools=[write])
+        await pool.add_agent(agent)
+        session = Session.create("w")
+        await asyncio.wait_for(agent.run("go", session=session, user_message_id="msg_1"), TIMEOUT)
+        [change] = pool.file_ops.changes
+        assert (change.path, change.old_content, change.new_content) == ("/x.py", None, "x = 1\n")
+        assert (change.session_id, change.message_id) == (session.session_id, "msg_1")

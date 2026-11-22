@@ -89,7 +89,7 @@ class PlanProvider(ResourceProvider):
             # Emit progress for empty plan
             item = TextContentItem(text="*No tasks in plan yet.*")
             await agent_ctx.events.tool_call_progress(title="Fetched plan (empty)", items=[item])
-            return ToolResult(content="## Plan\n\n*No plan entries yet.", metadata={"todos": []})
+            return ToolResult(content="## Plan\n\n*No plan entries yet.")
 
         lines = ["## Plan", ""]
 
@@ -108,9 +108,7 @@ class PlanProvider(ResourceProvider):
         plan_text = "\n".join(lines)
         item = TextContentItem(text=plan_text)
         await agent_ctx.events.tool_call_progress(title=title, items=[item])
-        # Convert to OpenCode format for metadata
-        todos = [{"content": e.content, "status": e.status} for e in tracker.entries]
-        return ToolResult(content=plan_text, metadata={"todos": todos})
+        return ToolResult(content=plan_text)
 
     async def set_plan(
         self,
@@ -137,7 +135,6 @@ class PlanProvider(ResourceProvider):
         if tracker is None:
             return ToolResult(
                 content="Error: No pool available for plan tracking",
-                metadata={"todos": []},
             )
 
         tracker.clear()  # Clear existing entries
@@ -177,12 +174,8 @@ class PlanProvider(ResourceProvider):
             items=[TextContentItem(text=details)],
         )
 
-        # Convert to OpenCode format for metadata
-        todos = [{"content": e.content, "status": e.status} for e in tracker.entries]
-
         return ToolResult(
             content=f"Plan updated with {entry_count} entries",
-            metadata={"todos": todos},
         )
 
     async def add_plan_entry(

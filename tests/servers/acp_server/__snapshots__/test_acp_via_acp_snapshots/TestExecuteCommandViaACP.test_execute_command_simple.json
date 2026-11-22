@@ -82,11 +82,6 @@
     "error": null,
     "event_kind": "tool_call_complete",
     "message_id": "",
-    "metadata": {
-      "description": "echo hello",
-      "exit": 0,
-      "output": "hello\n"
-    },
     "tool_call_id": "pyd_ai_tool_call_id__bash",
     "tool_input": {},
     "tool_name": "unknown",

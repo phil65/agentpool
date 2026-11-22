@@ -10,10 +10,12 @@ from pydantic_ai import RunUsage
 
 from agentpool.agents.events import (
     CompactionEvent,
+    DiffContentItem,
     LocationContentItem,
     NoticeEvent,
     PartDeltaEvent,
     PartStartEvent,
+    PlanUpdateEvent,
     RetryEvent,
     RunErrorEvent,
     StepCompletedEvent,
@@ -30,6 +32,7 @@ from agentpool.agents.opencode_v2_agent.converters import (
     to_run_usage,
 )
 from agentpool.utils.time_utils import now_ms
+from agentpool.utils.todos import PlanEntry, TodoPriority, TodoStatus
 from opencode_v2_sdk.models import (
     SessionCompactionEnded,
     SessionCompactionFailed,
@@ -60,7 +63,7 @@ from opencode_v2_sdk.models import (
 
 
 if TYPE_CHECKING:
-    from collections.abc import Iterator
+    from collections.abc import Iterator, Mapping
 
     from pydantic_ai import FinishReason
 
@@ -112,6 +115,95 @@ def _tool_locations(tool_input: dict[str, Any]) -> list[LocationContentItem]:
         if isinstance(val, str) and val:
             return [LocationContentItem(path=val)]
     return []
+
+
+def tool_metadata_events(
+    call_id: str, name: str, tool_input: dict[str, Any], metadata: Mapping[str, Any] | None
+) -> list[ToolCallProgressEvent | PlanUpdateEvent]:
+    """What OpenCode's metadata of a finished tool shows beyond its output.
+
+    Changed files (edit, multiedit, apply_patch; write of a new file) as diffs: the turn
+    records them as file changes. Todos (todowrite, todoread) as the plan. Diagnostics are in
+    the output already (OpenCode adds them for the model).
+    """
+    match metadata:
+        case {"todos": list(todos)}:
+            entries = [entry for todo in todos if (entry := _plan_entry(todo)) is not None]
+            return [PlanUpdateEvent(entries=entries, tool_call_id=call_id)]
+        case {"filediff": dict(filediff)}:  # edit
+            diffs = _file_diffs([filediff])
+        case {"results": list(results)}:  # multiedit: per file, first before to last after
+            diffs = _file_diffs([r["filediff"] for r in results if isinstance(r, dict)])
+        case {"files": list(files)}:  # apply_patch
+            diffs = [diff for f in files if (diff := _patch_diff(f)) is not None]
+        case {"filepath": str(path), "exists": False}:  # write of a new file
+            content = tool_input.get("content")
+            diffs = (
+                [DiffContentItem(path=path, new_text=content)] if isinstance(content, str) else []
+            )
+        case _:
+            diffs = []
+    if not diffs:
+        return []
+    progress = ToolCallProgressEvent(
+        tool_call_id=call_id, tool_name=name, items=diffs, replace_content=True
+    )
+    return [progress]
+
+
+def _file_diffs(filediffs: list[Any]) -> list[DiffContentItem]:
+    """One diff per file: its content before the first change and after the last."""
+    before: dict[str, str | None] = {}
+    after: dict[str, str] = {}
+    for filediff in filediffs:
+        match filediff:
+            case {"file": str(path), "before": str(old), "after": str(new)}:
+                added = filediff.get("status") == "added"
+                before.setdefault(path, None if added else old)
+                after[path] = new
+    return [
+        DiffContentItem(path=path, old_text=old, new_text=after[path])
+        for path, old in before.items()
+    ]
+
+
+def _patch_diff(file: Any) -> DiffContentItem | None:
+    match file:
+        case {"filePath": str(path), "type": str(kind), "before": str(old), "after": str(new)}:
+            target = file.get("movePath") if kind == "move" else None
+            return DiffContentItem(
+                path=target if isinstance(target, str) else path,
+                old_text=None if kind == "add" else old,
+                new_text=new,
+            )
+        case _:
+            return None
+
+
+def _plan_entry(todo: Any) -> PlanEntry | None:
+    match todo:
+        case {"content": str(content), "status": str(status), "priority": str(priority)}:
+            return PlanEntry(
+                content=content, status=_todo_status(status), priority=_priority(priority)
+            )
+        case _:
+            return None
+
+
+def _todo_status(status: str) -> TodoStatus:
+    match status:
+        case "pending" | "in_progress" | "completed" | "cancelled":
+            return status
+        case _:
+            return "pending"
+
+
+def _priority(priority: str) -> TodoPriority:
+    match priority:
+        case "high" | "medium" | "low":
+            return priority
+        case _:
+            return "medium"
 
 
 def _tool_title(
@@ -422,6 +514,9 @@ class V2EventTracker:
                     )
                 if not state.completed:
                     state.completed = True
+                    yield from tool_metadata_events(
+                        data.id, state.name, state.tool_input, data.metadata
+                    )
                     yield ToolCallCompleteEvent(
                         tool_name=state.name,
                         tool_call_id=data.id,
@@ -429,7 +524,6 @@ class V2EventTracker:
                         tool_result=format_tool_content(data.content),
                         agent_name=self.agent_name,
                         message_id=self.message_id,
-                        metadata=dict(data.metadata) if data.metadata else None,
                     )
             case SessionToolFailed(data=data):
                 state = self._tools.setdefault(
@@ -455,6 +549,5 @@ class V2EventTracker:
                         tool_result=output,
                         agent_name=self.agent_name,
                         message_id=self.message_id,
-                        metadata=dict(data.metadata) if data.metadata else None,
                         error=data.error.message,
                     )

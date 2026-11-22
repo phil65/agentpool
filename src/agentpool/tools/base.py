@@ -48,15 +48,15 @@ ToolKind = Literal[
 
 @dataclass
 class ToolResult:
-    """Structured tool result with content for LLM and metadata for UI.
+    """Structured tool result: content for the LLM, optionally structured data.
 
-    This abstraction allows tools to return rich data that gets converted to
-    agent-specific formats (pydantic-ai ToolReturn, FastMCP ToolResult, etc.).
+    Converted to agent-specific formats (pydantic-ai ToolReturn, FastMCP ToolResult, etc.).
+    What a tool shows beyond its result (diffs, terminals, the plan) goes out as events
+    while it runs (``ctx.events``).
 
     Attributes:
         content: What the LLM sees - can be string or list of content blocks
         structured_content: Machine-readable JSON data (optional)
-        metadata: UI/application data that is NOT sent to the LLM
     """
 
     content: str | list[UserContent]
@@ -65,13 +65,10 @@ class ToolResult:
     structured_content: dict[str, Any] | None = None
     """Structured JSON data for programmatic access (optional)"""
 
-    metadata: dict[str, Any] | None = None
-    """Metadata for UI/app use - NOT sent to LLM (diffs, diagnostics, etc.)."""
-
     def to_pydantic_ai(self) -> ToolReturn:
         """Convert this ToolResult to a pydantic-ai ToolReturn."""
         val = self.structured_content or self.content
-        return ToolReturn(return_value=val, content=self.content, metadata=self.metadata)
+        return ToolReturn(return_value=val, content=self.content)
 
 
 @dataclass

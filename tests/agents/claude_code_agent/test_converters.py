@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from clawd_code_sdk.models import BashInput, UserTextPrompt, message_adapter
+from clawd_code_sdk.models import UserTextPrompt, message_adapter
 from pydantic_ai import BinaryContent
 import pytest
 
@@ -13,11 +13,9 @@ from agentpool.agents.claude_code_agent.converters import (
     TurnError,
     structured_results,
     to_bash_display,
-    to_bash_metadata,
     to_prompt_input,
     to_turn_error,
 )
-from opencode_v2_sdk.tool_metadata import BashMetadata
 
 
 USAGE = {"input_tokens": 1, "output_tokens": 1}
@@ -149,14 +147,6 @@ BASH_CASES = {
 )
 def test_bash_display(text: str, structured: Any, is_error: bool, expected: BashDisplay) -> None:
     assert to_bash_display(text, structured, is_error=is_error) == expected
-
-
-def test_bash_metadata() -> None:
-    display = BashDisplay(output="ok", exit_code=3)
-    tool_input = BashInput(command="make test", description="Run the tests")
-    assert to_bash_metadata(display, tool_input) == BashMetadata(
-        output="ok", exit=3, description="Run the tests"
-    )
 
 
 @pytest.mark.parametrize(

@@ -82,10 +82,9 @@ from pydantic_ai import PartEndEvent, TextPart
 from pydantic_ai.usage import RequestUsage
 
 from agentpool.agents.claude_code_agent.converters import (
-    convert_to_opencode_metadata,
     structured_results,
     to_bash_display,
-    to_bash_metadata,
+    tool_result_events,
 )
 from agentpool.agents.claude_code_agent.notices import RateLimitNotices, message_notice
 from agentpool.agents.claude_code_agent.server_blocks import (
@@ -124,7 +123,7 @@ if TYPE_CHECKING:
 
     from anthropic.types.beta import BetaRawContentBlockDelta, BetaUsage
     from clawd_code_sdk import AssistantMessage, Message, ResultMessage, ToolUseBlock, UserMessage
-    from clawd_code_sdk.models import BashInput, ClaudeCodeCommandInfo, StopReason
+    from clawd_code_sdk.models import ClaudeCodeCommandInfo, StopReason
     from clawd_code_sdk.models.messages import RateLimitInfo
     from pydantic_ai.messages import FinishReason
 
@@ -262,7 +261,6 @@ class ClaudeCodeStreamedResponse(StreamedResponse):
     """
 
     stream: AsyncIterator[Message | RichAgentStreamEvent[Any]]
-    tool_metadata: dict[str, dict[str, Any]]
     agent_name: str
     session_id: str
     _timestamp: datetime = field(default_factory=get_now)
@@ -636,7 +634,6 @@ class ClaudeCodeStreamedResponse(StreamedResponse):
                     result_content = user_block.get_parsed_content()
                     stripped = _strip_mcp_prefix(tool_use.name)
                     tool_input = cast(dict[str, Any], tool_use.input)
-                    metadata: dict[str, Any] | None = self.tool_metadata.get(tc_id)
                     if tool_use.name == "Bash":
                         # Output and exit to the display-only terminal before completion
                         text = str(result_content) if result_content else ""
@@ -659,16 +656,8 @@ class ClaudeCodeStreamedResponse(StreamedResponse):
                                 },
                             },
                         )
-                        if not metadata:
-                            bash_metadata = to_bash_metadata(display, cast("BashInput", tool_input))
-                            metadata = cast(dict[str, Any], bash_metadata)
-                    elif not metadata:
-                        oc_metadata = convert_to_opencode_metadata(
-                            tool_name=tool_use.name,
-                            tool_use_result=tool_structured,
-                            tool_input=tool_input,
-                        )
-                        metadata = cast(dict[str, Any] | None, oc_metadata)
+                    # What the structured result shows beyond its text (diffs, the plan)
+                    yield from tool_result_events(tc_id, stripped, tool_structured)
 
                     yield ToolCallCompleteEvent(
                         tool_name=stripped,
@@ -677,7 +666,6 @@ class ClaudeCodeStreamedResponse(StreamedResponse):
                         tool_result=result_content,
                         agent_name=self.agent_name,
                         message_id="",
-                        metadata=metadata,
                         error=str(result_content) if is_error else None,
                     )
                 case ImageBlock() | TextBlock() | DocumentBlock():

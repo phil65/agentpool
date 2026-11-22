@@ -94,7 +94,6 @@ class IdleWatcher:
         adapter = ClaudeCodeStreamedResponse(
             provider_name="claude_code",
             stream=self._messages(client),
-            tool_metadata=agent._tool_bridge.route(agent._route).tool_metadata,
             agent_name=agent.name,
             session_id=agent._acting_session_id or "",
             on_rate_limit=agent.record_rate_limit,

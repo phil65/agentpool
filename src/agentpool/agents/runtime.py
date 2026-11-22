@@ -27,7 +27,12 @@ from contextvars import ContextVar
 from types import MappingProxyType
 from typing import TYPE_CHECKING, Any
 
-from agentpool.agents.events import NoticeEvent, StreamCompleteEvent
+from agentpool.agents.events import (
+    DiffContentItem,
+    NoticeEvent,
+    StreamCompleteEvent,
+    ToolCallProgressEvent,
+)
 from agentpool.agents.prompt_injection import PromptInjectionManager
 from agentpool.agents.staged_content import StagedContent
 from agentpool.prompts.convert import convert_prompts
@@ -312,6 +317,7 @@ class SessionRuntime[TDeps = Any, TResult = Any]:
                 deps=deps,
             ):
                 await resolved_handler(context, event)
+                self._record_file_changes(event)
                 yield event
                 # Capture final message from StreamCompleteEvent
                 if isinstance(event, StreamCompleteEvent):
@@ -335,6 +341,26 @@ class SessionRuntime[TDeps = Any, TResult = Any]:
                 store_history=store_history,
                 wait_for_connections=wait_for_connections,
             )
+
+    def _record_file_changes(self, event: RichAgentStreamEvent[Any]) -> None:
+        """Record the diffs of a tool's progress as file changes of this turn.
+
+        Every agent's: native tools and the bridge's report them, external agents translate
+        their tools' results into them. The pool's tracker serves diffs and reverts.
+        """
+        if not isinstance(event, ToolCallProgressEvent) or (pool := self.agent.agent_pool) is None:
+            return
+        for item in event.items:
+            if isinstance(item, DiffContentItem):
+                pool.file_ops.record_change(
+                    path=item.path,
+                    old_content=item.old_text,
+                    new_content=item.new_text,
+                    operation="create" if item.old_text is None else "write",
+                    agent_name=self.agent.name,
+                    session_id=self.session.session_id,
+                    message_id=self.turn_message_id,
+                )
 
     async def _finalize(
         self,

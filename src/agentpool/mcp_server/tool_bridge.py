@@ -64,7 +64,7 @@ ROUTE_PARAM = "route"
 
 @dataclass
 class BridgeRoute:
-    """The tool calls of one session: the turn running on it, and what its tools return."""
+    """The tool calls of one session: the turn running on them."""
 
     key: str
     context: AgentContext[Any] | None = None
@@ -73,12 +73,6 @@ class BridgeRoute:
     """Prompt of the running turn (needed for a stub RunContext)."""
     environment: SessionEnvironment | None = None
     """Session environment of the running turn: its tool calls run in it."""
-    tool_metadata: dict[str, dict[str, Any]] = field(default_factory=dict)
-    """Metadata of tool results, by tool_call_id.
-
-    Agents read it to enrich ToolCallCompleteEvent with metadata the backend strips
-    (e.g. MCP _meta). Cleared at the start of each turn on the route.
-    """
 
 
 def _request_route() -> str:
@@ -249,7 +243,7 @@ class ToolManagerBridge:
     """Actual port the server is bound to."""
 
     def route(self, key: str = DEFAULT_ROUTE) -> BridgeRoute:
-        """The route ``key`` (created on first use; kept, so its tool metadata is too)."""
+        """The route ``key`` (created on first use, then kept)."""
         if (route := self._routes.get(key)) is None:
             route = self._routes[key] = BridgeRoute(key)
         return route
@@ -263,11 +257,6 @@ class ToolManagerBridge:
         """Context of the turn running on route ``key``, if one is."""
         route = self._routes.get(key)
         return route.context if route is not None else None
-
-    @property
-    def tool_metadata(self) -> dict[str, dict[str, Any]]:
-        """Tool result metadata of the default route (see :attr:`BridgeRoute.tool_metadata`)."""
-        return self.route().tool_metadata
 
     async def __aenter__(self) -> Self:
         """Start the MCP server."""
@@ -471,11 +460,6 @@ class ToolManagerBridge:
                     result = await self._bridge.invoke_tool_with_context(
                         self._tool, ctx, args, prompt=route.prompt
                     )
-                # Store metadata for agent to correlate with ToolCallCompleteEvent
-                # (works around Claude SDK stripping MCP _meta field)
-                if isinstance(result, AgentPoolToolResult) and result.metadata:
-                    logger.info("Storing tool result metadata", tool_call_id=tc_id)
-                    route.tool_metadata[tc_id] = result.metadata
                 # Take in what was injected into this session's turn meanwhile
                 runtime = ctx.runtime or self._bridge.node.runtime()
                 if injection := await runtime.injections.consume():
@@ -485,7 +469,6 @@ class ToolManagerBridge:
                     return FastMCPToolResult(
                         content=result.content,
                         structured_content=result.structured_content,
-                        meta=result.metadata,
                     )
                 return self.convert_result(result)
 
@@ -514,7 +497,6 @@ class ToolManagerBridge:
         bridge_route.context = context
         bridge_route.prompt = prompt
         bridge_route.environment = current_session_environment()
-        bridge_route.tool_metadata.clear()
         try:
             yield bridge_route
         finally:

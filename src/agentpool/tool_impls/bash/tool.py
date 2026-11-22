@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 import re
 import time
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 import uuid
 
 from exxec.events import (
@@ -125,8 +125,7 @@ class BashTool(Tool[ToolResult]):
         except Exception as e:  # noqa: BLE001
             error_id = process_id or f"cmd_{uuid.uuid4().hex[:8]}"
             await ctx.events.process_started(error_id, command, success=False, error=str(e))
-            meta: dict[str, Any] = {"output": "", "exit": None, "description": command}
-            return ToolResult(content=f"Error executing command: {e}", metadata=meta)
+            return ToolResult(content=f"Error executing command: {e}")
 
         stdout = "".join(stdout_parts)
         stderr = "".join(stderr_parts)
@@ -136,8 +135,7 @@ class BashTool(Tool[ToolResult]):
                 stderr = apply_linewise_regex_filter(stderr, filter_lines)
             except re.error as regex_err:
                 error_msg = f"Invalid filter regex: {regex_err}"
-                meta = {"output": "", "exit": None, "description": command}
-                return ToolResult(content=error_msg, metadata=meta)
+                return ToolResult(content=error_msg)
             # Apply output limit if specified
         truncated = False
         if effective_limit:
@@ -148,12 +146,9 @@ class BashTool(Tool[ToolResult]):
         if error_msg:
             output = stdout + stderr if stdout or stderr else ""
             result_output = f"{output}\n\nError: {error_msg}\nExit code: {exit_code}"
-            meta = {"output": output, "exit": exit_code, "description": command}
-            return ToolResult(content=result_output, metadata=meta)
+            return ToolResult(content=result_output)
 
         # Format success response
         elapsed = time.monotonic() - start_time
         formatted_output = format_output(stdout, stderr, exit_code, truncated, elapsed)
-        combined_output = stdout + stderr
-        meta = {"output": combined_output, "exit": exit_code, "description": command}
-        return ToolResult(content=formatted_output, metadata=meta)
+        return ToolResult(content=formatted_output)

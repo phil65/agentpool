@@ -86,21 +86,21 @@ class QuestionTool(Tool[ToolResult]):
                 answer_str = ", ".join(str(v) for v in value)
                 # OpenCode expects array of arrays (one per question)
                 # Single question, array of selected values
-                return ToolResult(content=answer_str, metadata={"answers": [value]})
+                return ToolResult(content=answer_str)
             case ElicitResult(action="accept", content={"value": value}):
                 # Single answer
                 answer_str = str(value)
                 # Single question, single answer
-                return ToolResult(content=answer_str, metadata={"answers": [[answer_str]]})
+                return ToolResult(content=answer_str)
             case ElicitResult(action="accept", content=content):
                 # Fallback for plain content
                 answer_str = str(content)
-                return ToolResult(content=answer_str, metadata={"answers": [[answer_str]]})
+                return ToolResult(content=answer_str)
             case ElicitResult(action="cancel"):
-                return ToolResult(content="User cancelled the request", metadata={"answers": []})
+                return ToolResult(content="User cancelled the request")
             case ElicitResult():
-                return ToolResult(content="User declined to answer", metadata={"answers": []})
+                return ToolResult(content="User declined to answer")
             case ErrorData(message=message):
-                return ToolResult(content=f"Error: {message}", metadata={"answers": []})
+                return ToolResult(content=f"Error: {message}")
             case _ as unreachable:
                 assert_never(unreachable)
