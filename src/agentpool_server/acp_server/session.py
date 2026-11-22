@@ -218,6 +218,9 @@ class ACPSession:
     manager: ACPSessionManager | None = None
     """Session manager for managing sessions. Used for session management commands."""
 
+    output_factory: Callable[[ACPSession], SessionOutput] = V1SessionOutput
+    """Builds the session's output for its client's protocol version (v1 by default)."""
+
     subagent_display_mode: Literal["inline", "tool_box"] = "tool_box"
     """How to display subagent output:
     - 'inline': Subagent output flows into main message stream
@@ -244,7 +247,7 @@ class ACPSession:
             # Native agents get it via sys_prompts (see get_cwd_context)
             self.agent.staged_content.add_text(self.system_prompt)
         self.notifications = ACPNotifications(client=self.client, session_id=self.session_id)
-        self.output: SessionOutput = V1SessionOutput(self)
+        self.output: SessionOutput = self.output_factory(self)
         self.requests = ACPRequests(client=self.client, session_id=self.session_id)
         self.input_provider = ACPInputProvider(self)
         self.env = self._create_execution_environment()
@@ -535,10 +538,7 @@ class ACPSession:
         Args:
             content_blocks: Content blocks of the prompt request
         """
-        fs = self.agent.env.get_fs()
-        contents = [from_acp_content(i, fs=fs) for i in content_blocks]
-        self.log.debug("Converted content", content=contents)
-        match await self.run_turn(contents, self.output.turn()):
+        match await self.run_turn(self.convert_prompt(content_blocks), self.output.turn()):
             case TurnCompleted():
                 return "end_turn"
             case TurnCancelled():
@@ -551,6 +551,15 @@ class ACPSession:
                 return "refusal"
             case _ as unreachable:
                 assert_never(unreachable)
+
+    def convert_prompt(
+        self, content_blocks: Sequence[ContentBlock]
+    ) -> list[UserContent | PathReference]:
+        """The agent's content for the content blocks of a prompt."""
+        fs = self.agent.env.get_fs()
+        contents = [from_acp_content(i, fs=fs) for i in content_blocks]
+        self.log.debug("Converted content", content=contents)
+        return contents
 
     async def run_turn(
         self, contents: Sequence[UserContent | PathReference], output: TurnOutput

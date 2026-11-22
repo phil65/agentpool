@@ -228,3 +228,74 @@ def test_location_line_zero_means_no_line(translator: UpdateTranslator) -> None:
         tool_call_id="t1", title="t", locations=[ToolCallLocation(path="/w/a.py", line=0)]
     )
     assert _wire(translator.translate(start))["locations"] == [{"path": "/w/a.py"}]
+
+
+def test_config_options(translator: UpdateTranslator) -> None:
+    from aclientp.schema import (
+        BooleanSessionConfigOption,
+        ConfigOptionUpdate,
+        SelectSessionConfigOption,
+        SessionConfigSelectGroup,
+        SessionConfigSelectOption,
+    )
+
+    flat = SelectSessionConfigOption(
+        id="model",
+        name="Model",
+        category="model",
+        current_value="haiku",
+        options=[SessionConfigSelectOption(value="haiku", name="Haiku", description="fast")],
+    )
+    grouped = SelectSessionConfigOption(
+        id="mode",
+        name="Mode",
+        current_value="plan",
+        options=[
+            SessionConfigSelectGroup(
+                group="safe",
+                name="Safe",
+                options=[SessionConfigSelectOption(value="plan", name="Plan")],
+            )
+        ],
+    )
+    flag = BooleanSessionConfigOption(id="fast", name="Fast", current_value=True)
+    wire = _wire(translator.translate(ConfigOptionUpdate(config_options=[flat, grouped, flag])))
+    assert wire["configOptions"] == [
+        {
+            "configId": "model",
+            "name": "Model",
+            "category": "model",
+            "type": "select",
+            "currentValue": "haiku",
+            "options": [{"value": "haiku", "name": "Haiku", "description": "fast"}],
+        },
+        {
+            "configId": "mode",
+            "name": "Mode",
+            "type": "select",
+            "currentValue": "plan",
+            "options": [
+                {"groupId": "safe", "name": "Safe", "options": [{"value": "plan", "name": "Plan"}]}
+            ],
+        },
+        {"configId": "fast", "name": "Fast", "type": "boolean", "currentValue": True},
+    ]
+
+
+def test_commands(translator: UpdateTranslator) -> None:
+    from aclientp.schema import AvailableCommand, AvailableCommandsUpdate
+
+    commands = [
+        AvailableCommand.create(name="help", description="Show help"),
+        AvailableCommand.create(name="git-diff", description="Diff", input_hint="commit"),
+    ]
+    wire = _wire(translator.translate(AvailableCommandsUpdate(available_commands=commands)))
+    assert wire["availableCommands"] == [
+        {"type": "command", "name": "help", "description": "Show help"},
+        {
+            "type": "command",
+            "name": "git-diff",
+            "description": "Diff",
+            "input": {"type": "text", "hint": "commit"},
+        },
+    ]

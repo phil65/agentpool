@@ -10,10 +10,11 @@ from aclientp.schema import ClientCapabilities
 from agentpool.log import get_logger
 from agentpool.sessions import SessionData
 from agentpool_server.acp_server.session import ACPSession
+from agentpool_server.acp_server.v1_output import V1SessionOutput
 
 
 if TYPE_CHECKING:
-    from collections.abc import Sequence
+    from collections.abc import Callable, Sequence
 
     from aclientp import Client
     from aclientp.schema import Implementation, McpServer
@@ -22,6 +23,7 @@ if TYPE_CHECKING:
     from agentpool.agents.base_agent import BaseAgent
     from agentpool.storage.manager import StorageManager
     from agentpool_server.acp_server.acp_agent import AgentPoolACPAgent
+    from agentpool_server.acp_server.output import SessionOutput
 
 
 logger = get_logger(__name__)
@@ -65,6 +67,7 @@ class ACPSessionManager:
         client_info: Implementation | None = None,
         additional_directories: Sequence[str] = (),
         system_prompt: str | None = None,
+        output_factory: Callable[[ACPSession], SessionOutput] | None = None,
     ) -> ACPSession:
         """Create a new ACP session.
 
@@ -79,6 +82,7 @@ class ACPSessionManager:
             client_info: Client implementation info (name, version)
             additional_directories: Additional workspace roots
             system_prompt: Client-provided system instructions
+            output_factory: Builds the session's output (v1 when omitted)
 
         Returns:
             The created session
@@ -122,6 +126,7 @@ class ACPSessionManager:
                 client_capabilities=client_capabilities or ClientCapabilities(),
                 client_info=client_info,
                 manager=self,
+                output_factory=output_factory or V1SessionOutput,
             )
             session.register_update_callback(self._on_commands_updated)
             await session.initialize()

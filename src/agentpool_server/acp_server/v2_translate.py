@@ -26,8 +26,13 @@ from aclientp.schema import (
     AgentMessageChunk as V1AgentMessageChunk,
     AgentPlanUpdate as V1AgentPlanUpdate,
     AgentThoughtChunk as V1AgentThoughtChunk,
+    AvailableCommandsUpdate as V1AvailableCommandsUpdate,
+    BooleanSessionConfigOption as V1BooleanSessionConfigOption,
+    ConfigOptionUpdate as V1ConfigOptionUpdate,
     ContentToolCallContent as V1ContentToolCallContent,
     FileEditToolCallContent as V1FileEditToolCallContent,
+    SelectSessionConfigOption as V1SelectSessionConfigOption,
+    SessionConfigSelectGroup as V1SessionConfigSelectGroup,
     SessionReferenceToolCallContent as V1SessionReferenceToolCallContent,
     TerminalToolCallContent as V1TerminalToolCallContent,
     ToolCallProgress as V1ToolCallProgress,
@@ -44,10 +49,14 @@ if TYPE_CHECKING:
     from collections.abc import Sequence
 
     from aclientp.schema import (
+        AvailableCommand as V1AvailableCommand,
         ContentBlock as V1ContentBlock,
+        SessionConfigOption as V1SessionConfigOption,
+        SessionConfigSelectOption as V1SessionConfigSelectOption,
         SessionUpdate as V1SessionUpdate,
         ToolCallContent as V1ToolCallContent,
         ToolCallLocation as V1ToolCallLocation,
+        ToolCallUpdate as V1ToolCallUpdate,
     )
 
 
@@ -115,10 +124,18 @@ def _locations(locations: Sequence[V1ToolCallLocation] | None) -> list[v2.ToolCa
     ]
 
 
-def tool_call_update(update: V1ToolCallStart | V1ToolCallProgress) -> v2.ToolCallSessionUpdate:
-    """A v1 tool call start or progress as the v2 upsert of that tool call."""
+def tool_call_update[T: v2.ToolCallUpdate](
+    update: V1ToolCallStart | V1ToolCallProgress | V1ToolCallUpdate, kind: type[T]
+) -> T:
+    """A v1 tool call as v2's tool call upsert.
+
+    Args:
+        update: A v1 tool call start or progress, or a permission request's tool call
+        kind: ``v2.ToolCallSessionUpdate`` for a session update, ``v2.ToolCallUpdate``
+            for a permission request's subject
+    """
     content = MISSING if update.content is None else [tool_call_content(c) for c in update.content]
-    return v2.ToolCallSessionUpdate(
+    return kind(
         tool_call_id=update.tool_call_id,
         name=_given(update.name),
         title=_given(update.title),
@@ -132,6 +149,63 @@ def tool_call_update(update: V1ToolCallStart | V1ToolCallProgress) -> v2.ToolCal
     )
 
 
+def _select_option(option: V1SessionConfigSelectOption) -> v2.SessionConfigSelectOption:
+    return v2.SessionConfigSelectOption(
+        value=option.value, name=option.name, description=_given(option.description)
+    )
+
+
+def config_option(option: V1SessionConfigOption) -> v2.SessionConfigOption:
+    """A v1 config option in v2 (``id`` became ``configId``, a group's ``group`` ``groupId``)."""
+    match option:
+        case V1SelectSessionConfigOption(options=choices):
+            converted: list[v2.SessionConfigSelectOption] | list[v2.SessionConfigSelectGroup] = (
+                [
+                    v2.SessionConfigSelectGroup(
+                        group_id=c.group,
+                        name=c.name,
+                        options=[_select_option(o) for o in c.options],
+                    )
+                    for c in choices
+                    if isinstance(c, V1SessionConfigSelectGroup)
+                ]
+                if choices and isinstance(choices[0], V1SessionConfigSelectGroup)
+                else [
+                    _select_option(c)
+                    for c in choices
+                    if not isinstance(c, V1SessionConfigSelectGroup)
+                ]
+            )
+            return v2.SelectSessionConfigOption(
+                config_id=option.id,
+                name=option.name,
+                description=_given(option.description),
+                category=_given(option.category),
+                current_value=option.current_value,
+                options=converted,
+            )
+        case V1BooleanSessionConfigOption():
+            return v2.BooleanSessionConfigOption(
+                config_id=option.id,
+                name=option.name,
+                description=_given(option.description),
+                category=_given(option.category),
+                current_value=option.current_value,
+            )
+        case _ as unreachable:
+            assert_never(unreachable)
+
+
+def command(cmd: V1AvailableCommand) -> v2.Command:
+    """A v1 slash command in v2 (a ``command`` with a ``text`` input hint)."""
+    hint = cmd.input.root.hint if cmd.input is not None else None
+    return v2.Command(
+        name=cmd.name,
+        description=cmd.description,
+        input=MISSING if hint is None else v2.TextCommandInput(hint=hint),
+    )
+
+
 class UpdateTranslator:
     """Translates the v1 updates of one converter into v2 updates.
 
@@ -142,7 +216,7 @@ class UpdateTranslator:
     def __init__(self, message_id: str) -> None:
         self.message_id = message_id
 
-    def translate(self, update: V1SessionUpdate) -> v2.SessionUpdate | None:
+    def translate(self, update: V1SessionUpdate) -> v2.SessionUpdate | None:  # noqa: PLR0911
         """The v2 form of a v1 update, or None when it has none."""
         match update:
             case V1AgentMessageChunk(content=block, message_id=message_id):
@@ -158,7 +232,11 @@ class UpdateTranslator:
                     message_id=message_id or self.message_id, content=content_block(block)
                 )
             case V1ToolCallStart() | V1ToolCallProgress():
-                return tool_call_update(update)
+                return tool_call_update(update, v2.ToolCallSessionUpdate)
+            case V1ConfigOptionUpdate(config_options=options):
+                return v2.ConfigOptionUpdate(config_options=[config_option(o) for o in options])
+            case V1AvailableCommandsUpdate(available_commands=commands):
+                return v2.AvailableCommandsUpdate(available_commands=[command(c) for c in commands])
             case V1AgentPlanUpdate(entries=entries):
                 items = [
                     v2.PlanEntry(content=e.content, priority=e.priority, status=e.status)

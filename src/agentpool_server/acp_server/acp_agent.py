@@ -51,6 +51,8 @@ from agentpool_server.acp_server.session_manager import ACPSessionManager
 
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
+
     from aclientp import Client
     from aclientp.schema import (
         AuthenticateRequest,
@@ -81,6 +83,7 @@ if TYPE_CHECKING:
     from agentpool import AgentPool
     from agentpool.agents.base_agent import BaseAgent
     from agentpool.storage.manager import SessionMetadataGeneratedEvent
+    from agentpool_server.acp_server.output import SessionOutput
     from agentpool_server.acp_server.server import ACPServer
     from agentpool_server.acp_server.session import ACPSession
 
@@ -170,6 +173,9 @@ class AgentPoolACPAgent(ACPAgent):
 
     server: ACPServer | None = field(default=None)
     """Reference to the ACPServer for pool hot-switching."""
+
+    session_output: Callable[[ACPSession], SessionOutput] | None = None
+    """Builds each session's output; v1 when None. The v2 handler serves v2 through this one."""
 
     def __post_init__(self) -> None:
         """Initialize derived attributes and setup after field assignment."""
@@ -271,6 +277,7 @@ class AgentPoolACPAgent(ACPAgent):
             client_info=self.client_info,
             session_id=session_id,
             additional_directories=params.additional_directories,
+            output_factory=self.session_output,
             system_prompt=system_prompt_text(params.system_prompt),
         )
         if params.config_options:
@@ -440,9 +447,20 @@ class AgentPoolACPAgent(ACPAgent):
             session_id=session_id,
             client_capabilities=self.client_capabilities,
             client_info=self.client_info,
+            output_factory=self.session_output,
         )
         self._schedule_session_setup(session)
         return session
+
+    async def session_for_prompt(self, session_id: str) -> ACPSession:
+        """The active session, or the stored one recreated (e.g. after a pool swap).
+
+        Raises:
+            RequestError: The session exists neither in memory nor in storage.
+        """
+        if session := self.session_manager.get_session(session_id):
+            return session
+        return await self._recreate_session(session_id)
 
     async def prompt(self, params: PromptRequest) -> PromptResponse:
         """Process a prompt request.
@@ -452,9 +470,7 @@ class AgentPoolACPAgent(ACPAgent):
         """
         self._require_initialized()
         logger.info("Processing prompt", session_id=params.session_id)
-        session = self.session_manager.get_session(params.session_id)
-        if session is None:
-            session = await self._recreate_session(params.session_id)
+        session = await self.session_for_prompt(params.session_id)
         stop_reason = await session.process_prompt(params.prompt)
         logger.info("Returning PromptResponse", stop_reason=stop_reason)
         return PromptResponse(stop_reason=stop_reason, usage=session.last_usage)
