@@ -586,18 +586,25 @@ class Agent[TDeps = None, OutputDataT = str](BaseAgent[TDeps, OutputDataT]):
             if pass_message_history and not parent:
                 raise ToolError("Parent agent required for message history sharing")
 
-            if reset_history_on_run:
-                await self.conversation.clear()
-
-            history = None
-            old = []
             if pass_message_history and parent:
-                history = parent.conversation.get_history()
-                old = self.conversation.get_history()
-                self.conversation.set_history(history)
+                child = parent.session.child(
+                    self.name, fork_history=True, agent_type=self.AGENT_TYPE
+                )
+                result = await self.run(prompt, session=child)
+                return result.data
+            if reset_history_on_run:
+                from agentpool.sessions import Session
+
+                child = Session.create(
+                    self.name,
+                    parent_id=parent.session.session_id if parent else None,
+                    cwd=self.env.cwd,
+                    agent_type=self.AGENT_TYPE,
+                    storage=self.storage,
+                )
+                result = await self.run(prompt, session=child)
+                return result.data
             result = await self.run(prompt)
-            if history:
-                self.conversation.set_history(old)
             return result.data
 
         # Set the correct return annotation dynamically

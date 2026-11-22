@@ -75,20 +75,17 @@ class WorkersTools(ResourceProvider):
                 raise ToolError(msg)
 
             worker = agents[agent_name]
-            old_history = None
-
-            if pass_message_history:
-                old_history = worker.conversation.get_history()
-                worker.conversation.set_history(ctx.agent.conversation.get_history())
-            elif reset_history_on_run:
-                await worker.conversation.clear()
-
-            try:
-                result = await worker.run(prompt)
+            if pass_message_history or reset_history_on_run:
+                child = ctx.agent.session.child(
+                    worker.name,
+                    fork_history=pass_message_history,
+                    agent_type=worker.AGENT_TYPE,
+                )
+                ctx.pool.sessions.register(child)
+                result = await worker.run(prompt, session=child)
                 return result.data
-            finally:
-                if old_history is not None:
-                    worker.conversation.set_history(old_history)
+            result = await worker.run(prompt)
+            return result.data
 
         normalized_name = agent_name.replace("_", " ").title()
         run.__name__ = f"ask_{agent_name}"

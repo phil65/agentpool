@@ -246,6 +246,28 @@ class SubagentTools(StaticResourceProvider):
 
         return "\n".join(lines) if lines else "No nodes available"
 
+    def _resolve_child_session(
+        self,
+        ctx: AgentContext,
+        node: Any,
+        *,
+        context: Literal["isolated", "fork"],
+        session_id: str | None,
+    ) -> Any:
+        from agentpool.agents.base_agent import BaseAgent
+
+        if ctx.pool is None or not isinstance(node, BaseAgent):
+            return None
+        if session_id is not None and (existing := ctx.pool.sessions.get(session_id)) is not None:
+            return existing
+        child = ctx.agent.session.child(
+            node.name,
+            fork_history=context == "fork",
+            agent_type=node.AGENT_TYPE,
+            session_id=session_id,
+        )
+        return ctx.pool.sessions.register(child)
+
     async def task(  # noqa: D417
         self,
         ctx: AgentContext,
@@ -253,6 +275,8 @@ class SubagentTools(StaticResourceProvider):
         prompt: str,
         description: str,
         async_mode: bool = False,
+        context: Literal["isolated", "fork"] = "isolated",
+        session_id: str | None = None,
     ) -> str:
         """Execute a task on an agent or team.
 
@@ -270,10 +294,8 @@ class SubagentTools(StaticResourceProvider):
             prompt: The task instructions for the agent or team
             description: A short (3-5 words) description of the task
             async_mode: If True, run in background and return task ID immediately
-
-        Returns:
-            In sync mode: The result of the task execution
-            In async mode: Task ID and output file path
+            context: History mode for a new child session ("isolated" or "fork")
+            session_id: Optional existing child session ID to continue
         """
         from agentpool import Team, TeamRun
         from agentpool.agents.base_agent import BaseAgent
@@ -306,11 +328,21 @@ class SubagentTools(StaticResourceProvider):
             msg = f"Node {agent_or_team} does not support streaming"
             raise ToolError(msg)
 
+        child_session = self._resolve_child_session(
+            ctx, node, context=context, session_id=session_id
+        )
+        run_stream = (
+            node.run_stream(prompt, session=child_session)
+            if isinstance(node, BaseAgent) and child_session is not None
+            else node.run_stream(prompt)
+        )
+
         logger.info(
             "Executing task",
             agent_or_team=agent_or_team,
             description=description,
             async_mode=async_mode,
+            child_session_id=child_session.session_id if child_session else None,
         )
 
         if async_mode:
@@ -340,7 +372,7 @@ class SubagentTools(StaticResourceProvider):
                     fs=fs,
                     task_id=task_id,
                     source_name=agent_or_team,
-                    stream=node.run_stream(prompt),
+                    stream=run_stream,
                 ),
                 name=f"async_task_{task_id}",
             )
@@ -371,7 +403,7 @@ class SubagentTools(StaticResourceProvider):
                 ctx,
                 source_name=agent_or_team,
                 source_type=source_type,
-                stream=node.run_stream(prompt),
+                stream=run_stream,
                 batch_deltas=self._batch_stream_deltas,
                 parent_tool_call_id=ctx.tool_call_id,
             )
