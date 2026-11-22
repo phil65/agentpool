@@ -65,9 +65,22 @@ def _is_boolean_schema(schema: dict[str, Any]) -> bool:
             return False
 
 
-def _is_enum_schema(schema: dict[str, Any]) -> bool:
-    """Check if the elicitation schema is requesting an enum value."""
-    return schema.get("type") == "string" and "enum" in schema
+def _enum_field(schema: dict[str, Any]) -> tuple[str | None, dict[str, Any]] | None:
+    """The string enum an elicitation asks for: (property name, its schema), or None.
+
+    MCP forms are objects; one with a single string enum property asks for that
+    property (name returned). A bare string enum schema is accepted too (name None).
+    """
+    match schema:
+        case {"type": "string", "enum": list()}:
+            return None, schema
+        case {"type": "object", "properties": dict() as props} if len(props) == 1:
+            name, prop = next(iter(props.items()))
+            if isinstance(prop, dict) and prop.get("type") == "string" and "enum" in prop:
+                return name, prop
+            return None
+        case _:
+            return None
 
 
 def _create_boolean_elicitation_options() -> list[PermissionOption]:
@@ -281,15 +294,15 @@ class ACPInputProvider(InputProvider):
                             options=options,
                         )
                         return self._handle_boolean_elicitation_response(response, schema)
-                    if _is_enum_schema(schema) and (
-                        options := _create_enum_elicitation_options(schema)
+                    if (field := _enum_field(schema)) and (
+                        options := _create_enum_elicitation_options(field[1])
                     ):
                         response = await self.session.requests.request_permission(
                             tool_call_id=tool_call_id,
                             title=title,
                             options=options,
                         )
-                        return _handle_enum_elicitation_response(response, schema)
+                        return _handle_enum_elicitation_response(response, *field)
 
                     options = [
                         PermissionOption(option_id="accept", name="Accept", kind="allow_once"),
@@ -369,9 +382,15 @@ class ACPInputProvider(InputProvider):
 
 
 def _handle_enum_elicitation_response(
-    response: RequestPermissionResponse, schema: dict[str, Any]
+    response: RequestPermissionResponse, name: str | None, schema: dict[str, Any]
 ) -> types.ElicitResult | types.ErrorData:
-    """Handle ACP response for enum elicitation."""
+    """Handle ACP response for enum elicitation.
+
+    Args:
+        response: The client's choice
+        name: Property the form asks for (the answer's key), None for a bare enum
+        schema: Schema of the enum (``enum`` holds the values)
+    """
     from mcp import types
 
     match response.outcome:
@@ -387,7 +406,7 @@ def _handle_enum_elicitation_response(
                     if 0 <= enum_index < len(enum_values):
                         selected_value = enum_values[enum_index]
                         return types.ElicitResult(
-                            action="accept", content={"value": selected_value}
+                            action="accept", content={name or "value": selected_value}
                         )
             except (ValueError, IndexError):
                 pass

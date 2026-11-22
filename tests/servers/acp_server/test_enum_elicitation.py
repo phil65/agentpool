@@ -5,7 +5,10 @@ from __future__ import annotations
 from aclientp import RequestPermissionResponse
 from mcp import types
 
-from agentpool_server.acp_server.input_provider import _handle_enum_elicitation_response
+from agentpool_server.acp_server.input_provider import (
+    _enum_field,
+    _handle_enum_elicitation_response,
+)
 
 
 def test_enum_elicitation_response_returns_dict_format():
@@ -32,7 +35,7 @@ def test_enum_elicitation_response_returns_dict_format():
     })
 
     # Call the function
-    result = _handle_enum_elicitation_response(response, schema)
+    result = _handle_enum_elicitation_response(response, None, schema)
 
     # Verify the result is an ElicitResult (not ErrorData)
     assert isinstance(result, types.ElicitResult)
@@ -65,7 +68,7 @@ def test_enum_elicitation_response_handles_cancel():
         }
     })
 
-    result = _handle_enum_elicitation_response(response, schema)
+    result = _handle_enum_elicitation_response(response, None, schema)
 
     # Verify the result is an ElicitResult (not ErrorData)
     assert isinstance(result, types.ElicitResult)
@@ -87,7 +90,7 @@ def test_enum_elicitation_response_handles_multiple_options():
         }
     })
 
-    result = _handle_enum_elicitation_response(response, schema)
+    result = _handle_enum_elicitation_response(response, None, schema)
 
     # Verify the result is an ElicitResult (not ErrorData)
     assert isinstance(result, types.ElicitResult)
@@ -103,10 +106,38 @@ def test_enum_elicitation_response_handles_multiple_options():
         }
     })
 
-    result2 = _handle_enum_elicitation_response(response2, schema)
+    result2 = _handle_enum_elicitation_response(response2, None, schema)
 
     # Verify the result is an ElicitResult (not ErrorData)
     assert isinstance(result2, types.ElicitResult)
     assert result2.action == "accept"
     assert isinstance(result2.content, dict)
     assert result2.content["value"] == "option_z"
+
+
+def test_form_with_one_enum_property_is_an_enum_question():
+    """MCP forms are objects: a single string enum property is asked as a choice."""
+    prop = {"type": "string", "title": "Color", "enum": ["Red", "Blue"]}
+    schema = {"type": "object", "properties": {"color": prop}, "required": ["color"]}
+    assert _enum_field(schema) == ("color", prop)
+    response = RequestPermissionResponse.model_validate({
+        "outcome": {"outcome": "selected", "optionId": "enum_1_Blue"}
+    })
+    result = _handle_enum_elicitation_response(response, "color", prop)
+    assert isinstance(result, types.ElicitResult)
+    assert (result.action, result.content) == ("accept", {"color": "Blue"})
+
+
+def test_other_forms_are_not_enum_questions():
+    text = {"type": "object", "properties": {"name": {"type": "string"}}}
+    two = {
+        "type": "object",
+        "properties": {"a": {"type": "string", "enum": ["x"]}, "b": {"type": "string"}},
+    }
+    multi = {
+        "type": "object",
+        "properties": {"m": {"type": "array", "items": {"type": "string", "enum": ["x"]}}},
+    }
+    assert _enum_field(text) is None
+    assert _enum_field(two) is None
+    assert _enum_field(multi) is None
