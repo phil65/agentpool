@@ -7,21 +7,8 @@ resolution-markers = [
     "python_full_version < '3.14'",
 ]
 
-[[package]]
-name = "ably"
-version = "2.1.4"
-source = { registry = "https://pypi.org/simple" }
-dependencies = [
-    { name = "h2" },
-    { name = "httpx" },
-    { name = "msgpack" },
-    { name = "pyee" },
-    { name = "websockets" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/b4/ef/e4a13ecbe9280488413ac141806edcd0c7b3bc39fdf19e599dbe87e97c1c/ably-2.1.4.tar.gz", hash = "sha256:e8c8e55dc78e42456a48e03d19aa3ae1c9f738ad803309d940738c9ab0c26c48", size = 1045086, upload-time = "2026-03-13T15:09:11.23Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/f7/d0/57b28d94e52473fec2b2e8e3fc2d8d9eb2bf903c7a3c580f91cd7a1978a7/ably-2.1.4-py3-none-any.whl", hash = "sha256:6bf108f072315cf2507c56302485e42637a78d00bf8cc2be8637be4da128b1e2", size = 128168, upload-time = "2026-03-13T15:09:09.259Z" },
-]
+[manifest]
+overrides = [{ name = "centrifuge-python", specifier = ">=0.6" }]
 
 [[package]]
 name = "absl-py"
@@ -1082,6 +1069,19 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/62/e2/9f32db16441875afaa2a8a27d9734c2c8421f259163d7d814528160fa6c8/caio-0.12.10-cp315-cp315t-musllinux_1_2_aarch64.whl", hash = "sha256:8d1071f8cb5d23c8aeccffe36c50a17d32257cddbf913b7e9b6fb524ba42d7a8", size = 185740, upload-time = "2026-10-22T21:35:02.059Z" },
     { url = "https://files.pythonhosted.org/packages/0d/7d/17836b477a1e57a648b90f16a27ebd367d686a02e5b2a4e72b53ae5ad7fe/caio-0.12.10-cp315-cp315t-musllinux_1_2_x86_64.whl", hash = "sha256:2a54ddadb7db4eab50bfc8b34f36fcf6763e9007f86b92f7cd03f07b542e891e", size = 183396, upload-time = "2026-10-22T21:35:03.492Z" },
     { url = "https://files.pythonhosted.org/packages/5c/c3/1c44005ec4d4c3f7c51b707308efe7836ee16c466f4ff2e2a6f2089eceee/caio-0.12.10-py3-none-any.whl", hash = "sha256:b34a5483b987d207348ebbf86921bc42f08abcde833b91e0caa8760c7daa2f03", size = 26166, upload-time = "2026-10-22T21:35:04.842Z" },
+]
+
+[[package]]
+name = "centrifuge-python"
+version = "0.7.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "protobuf" },
+    { name = "websockets" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/5b/86/c25886d114d2030af6b3c316ad6d73d429a22f818f06f2c2f6c65710ab68/centrifuge_python-0.7.0.tar.gz", hash = "sha256:11252b45c3f6b6104cfb07fb0fcfc9d2d62832d2af14715dd16fdc5e9c6e5964", size = 97038, upload-time = "2026-10-20T20:05:08.455Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/74/b4/2c508b18972448fc80e035cb82c435719fe81ba830a604f00dc4fc18fc86/centrifuge_python-0.7.0-py3-none-any.whl", hash = "sha256:a60741e28d34644aa4b5a7b58ab04d36941821512177ce7e04c45b1b887588e8", size = 44461, upload-time = "2026-10-20T20:05:07.4Z" },
 ]
 
 [[package]]
@@ -4324,6 +4324,21 @@ wheels = [
 ]
 
 [[package]]
+name = "openrouter"
+version = "1.3.203"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "httpcore" },
+    { name = "httpx" },
+    { name = "jsonpath-python" },
+    { name = "pydantic" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/d0/72/dea55664246a7f0d57448eee2f5fc2e6b611c82dadec4beafc06c891f222/openrouter-1.3.203.tar.gz", hash = "sha256:f4baac9b10debaae15611898f9d370e1a52538d9ca09faaff2867954e74b75d4", size = 701537, upload-time = "2026-11-21T18:17:12.308Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/31/79/e6b13de10bac92352aa831584ed9cc978e97da8d13ee0f4896fc3b49fdbd/openrouter-1.3.203-py3-none-any.whl", hash = "sha256:0b67f12195db31a2684cbf15feb05eee4311dacc0757d00b7423ac5ae83531fb", size = 1508669, upload-time = "2026-11-21T18:17:10.505Z" },
+]
+
+[[package]]
 name = "opentelemetry-api"
 version = "1.45.2"
 source = { registry = "https://pypi.org/simple" }
@@ -4778,20 +4793,26 @@ wheels = [
 
 [[package]]
 name = "promptlayer"
-version = "1.0.71"
+version = "1.5.17"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "ably" },
     { name = "aiohttp" },
+    { name = "cachetools" },
+    { name = "centrifuge-python" },
     { name = "httpx" },
+    { name = "jinja2" },
     { name = "nest-asyncio" },
-    { name = "opentelemetry-api" },
-    { name = "opentelemetry-sdk" },
+    { name = "openrouter", marker = "python_full_version < '4'" },
+    { name = "opentelemetry-api", marker = "python_full_version < '4'" },
+    { name = "opentelemetry-exporter-otlp-proto-http", marker = "python_full_version < '4'" },
+    { name = "opentelemetry-sdk", marker = "python_full_version < '4'" },
     { name = "requests" },
+    { name = "rich" },
+    { name = "tenacity" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/0e/22/610b0fa53dc6dae9bb03eca6a13a416328ab4e7beb66a4577914eacd97e3/promptlayer-1.0.71.tar.gz", hash = "sha256:f56be68fd0a9e4115c5b278c6ca4ddc4ee024a7793a721d943f0b16f8745dc23", size = 34141, upload-time = "2025-10-20T12:48:17.766Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/89/66/bee30bb6fe5cec0e20542c62c708df45222e79637af40baeb4ea386d6912/promptlayer-1.5.17.tar.gz", hash = "sha256:599d9cc16d7f7b2a5031d1886b2d35fd547d5135d53e61e5d4b5f4fe2ed9bef9", size = 163031, upload-time = "2026-10-29T20:59:36.405Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/96/ac/bdbd1ab62c23d1be3a7c3d0826fa0f9f982afad481dbb3516766b0a8bbb2/promptlayer-1.0.71-py3-none-any.whl", hash = "sha256:dfdbf4f763f1956be09c00fa7c5b3a59445c073ef79b571d4e582fbb8b273754", size = 38791, upload-time = "2025-10-20T12:48:16.353Z" },
+    { url = "https://files.pythonhosted.org/packages/e0/80/52da37cb06825ae54390d01cdd29cb67e85e291b6c823ffcbafd4ca78847/promptlayer-1.5.17-py3-none-any.whl", hash = "sha256:ce4f4e907908ac648738b064eca3bd7eb5ef00ce9c4e621363f9d9e73641a0ba", size = 200050, upload-time = "2026-10-29T20:59:37.745Z" },
 ]
 
 [[package]]
@@ -5462,18 +5483,6 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/00/9c/a229c6d6297b6b003131a352ca6961d40e245910a4d7717f821271fd1735/pydocket-0.28.0.tar.gz", hash = "sha256:4ef59cf5fb11ddee91af6560776c947fae721a8329c6b90c8fe0a35458528927", size = 338292, upload-time = "2026-11-06T02:13:32.378Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/b3/56/6d8138bc17f646ca2ba6274440edb0395c01f41fd8fb192faac55f7c7b3e/pydocket-0.28.0-py3-none-any.whl", hash = "sha256:9663e83a07234dd8b4e8e682e6fd30132f7538eca9ae27c992a9c6fa39d2b67f", size = 156334, upload-time = "2026-11-06T02:13:30.867Z" },
-]
-
-[[package]]
-name = "pyee"
-version = "13.0.1"
-source = { registry = "https://pypi.org/simple" }
-dependencies = [
-    { name = "typing-extensions" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/8b/04/e7c1fe4dc78a6fdbfd6c337b1c3732ff543b8a397683ab38378447baa331/pyee-13.0.1.tar.gz", hash = "sha256:0b931f7c14535667ed4c7e0d531716368715e860b988770fc7eb8578d1f67fc8", size = 31655, upload-time = "2026-02-14T21:12:28.044Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/a0/c4/b4d4827c93ef43c01f599ef31453ccc1c132b353284fc6c87d535c233129/pyee-13.0.1-py3-none-any.whl", hash = "sha256:af2f8fede4171ef667dfded53f96e2ed0d6e6bd7ee3bb46437f77e3b57689228", size = 15659, upload-time = "2026-02-14T21:12:26.263Z" },
 ]
 
 [[package]]

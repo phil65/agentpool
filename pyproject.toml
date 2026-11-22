@@ -418,6 +418,11 @@ division-by-zero = "warn"
 
 [tool.uv]
 default-groups = ["dev", "lint", "docs"]
+# promptlayer (even 1.5.x) pins centrifuge-python<0.5, which pins protobuf<7, while
+# google-antigravity needs protobuf>=7.35: resolving both extras downgraded promptlayer
+# to 1.0. We only use promptlayer's prompt registry, not its centrifuge-based realtime
+# feature, and centrifuge-python 0.6+ allows protobuf 7.
+override-dependencies = ["centrifuge-python>=0.6"]
 # exclude-newer = "1 day"
 
 # [tool.uv.exclude-newer-package]  # exclude self-maintained
