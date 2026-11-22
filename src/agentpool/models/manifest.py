@@ -15,6 +15,7 @@ from agentpool import log
 from agentpool.models.acp_agents import ACPAgentConfigTypes
 from agentpool.models.agents import NativeAgentConfig
 from agentpool.models.agui_agents import AGUIAgentConfig
+from agentpool.models.antigravity_agents import AntigravityAgentConfig
 from agentpool.models.claude_code_agents import ClaudeCodeAgentConfig
 from agentpool.models.codex_agents import CodexAgentConfig
 from agentpool.models.file_agents import FileAgentConfig
@@ -54,6 +55,7 @@ ResourceConfig = _FileSystemConfigUnion | str
 AnyAgentConfig = Annotated[
     NativeAgentConfig
     | AGUIAgentConfig
+    | AntigravityAgentConfig
     | T3AgentConfig
     | ClaudeCodeAgentConfig
     | CodexAgentConfig
@@ -119,7 +121,10 @@ class AgentsManifest(Schema):
     All agent types are unified under this single dict, discriminated by the 'type' field:
     - type: "native" (default) - pydantic-ai based agents
     - type: "agui" - AG-UI protocol agents
+    - type: "antigravity" - Google Antigravity SDK agents
     - type: "claude_code" - Claude Agent SDK agents
+    - type: "codex" - Codex app-server agents
+    - type: "t3" - T3 Code agents
     - type: "acp" - ACP protocol agents (further discriminated by 'provider')
 
     Example:

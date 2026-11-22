@@ -21,7 +21,7 @@ class PromptLayerProvider(BasePromptProvider):
 
     def __init__(self, config: PromptLayerConfig) -> None:
         key = config.api_key.get_secret_value() if config.api_key else None
-        self.client = PromptLayer(api_key=key)  # pyright: ignore[reportArgumentType]
+        self.client = PromptLayer(api_key=key) if key is not None else PromptLayer()
 
     async def get_prompt(
         self,

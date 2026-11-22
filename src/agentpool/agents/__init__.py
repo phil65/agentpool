@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from agentpool.agents.native_agent import Agent
 from agentpool.agents.agui_agent import AGUIAgent
+from agentpool.agents.antigravity_agent import AntigravityAgent
 from agentpool.agents.acp_agent import ACPAgent
 from agentpool.agents.claude_code_agent import ClaudeCodeAgent
 from agentpool.agents.codex_agent import CodexAgent
@@ -24,6 +25,7 @@ __all__ = [
     "AGUIAgent",
     "Agent",
     "AgentContext",
+    "AntigravityAgent",
     "ClaudeCodeAgent",
     "CodexAgent",
     "Interactions",

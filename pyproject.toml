@@ -103,6 +103,7 @@ agentpool = "agentpool.utils:setup_env"
 [project.optional-dependencies]
 a2a = ["fasta2a", "starlette"]  # A2A Server
 ag-ui = ["ag-ui-protocol>=0.1.10"]  # Ag-UI Agents
+antigravity = ["google-antigravity>=0.1.24"]  # Google Antigravity Agents
 bot = [
   "python-telegram-bot[socks]>=21.0",
   "slack-sdk>=3.26.0",
