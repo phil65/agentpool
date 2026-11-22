@@ -118,7 +118,7 @@ class AgentBinder:
 
         Native :class:`Agent` runs use an isolated :class:`Session` from ``pool.sessions``
         (its own history and model override) and their own turn state (cancellation,
-        queued input, events: ``agentpool.agents.turn_state``), so turns of different
+        queued input, events: ``agentpool.agents.runtime``), so turns of different
         sessions run concurrently, without a lock or re-binding. External agents keep one
         native session per instance: their turns are serialized, and the instance is
         re-bound to the session of each turn (``load_session`` / ``start_new_session``).
