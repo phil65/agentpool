@@ -234,7 +234,7 @@ requires-dist = [
     { name = "composio", marker = "extra == 'composio'" },
     { name = "copykitten", marker = "extra == 'clipboard'" },
     { name = "croniter", marker = "extra == 'bot'", specifier = ">=2.0.0" },
-    { name = "docler", specifier = ">=1.0.3" },
+    { name = "docler", specifier = ">=2.2.0" },
     { name = "docstring-parser", specifier = ">=0.17.0" },
     { name = "epregistry" },
     { name = "evented", specifier = ">=1.0.5" },
@@ -1715,7 +1715,7 @@ wheels = [
 
 [[package]]
 name = "docler"
-version = "2.1.1"
+version = "2.2.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "anyenv" },
@@ -1727,9 +1727,9 @@ dependencies = [
     { name = "schemez" },
     { name = "upathtools" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/d5/fa/9d0da5814fae67fc890613f1dcf00fca0b1aea4fbf430502a1f76a20e2fa/docler-2.1.1.tar.gz", hash = "sha256:e231309e648924e8218475e37838ea1b917799d3cb5dfa7c10e7d31851fb7354", size = 1406248, upload-time = "2026-01-04T03:40:00.131Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/a7/26/cfe0029f350da00c77d22f674fb968771ae68e1c9e29495b776437c2de4b/docler-2.2.0.tar.gz", hash = "sha256:30d1f3bac8d611d647a50a6d823fbfa471527acc734e14d92ff0e1c18df5c573", size = 1416265, upload-time = "2026-11-19T05:34:30.566Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/44/64/f5901aa7e2029944de35b243164c0f01a45c06355d004a3b17cb0484de4b/docler-2.1.1-py3-none-any.whl", hash = "sha256:446d2476530017465519cb4d2da7d836a7b2cf531032bd16a3867549aef737ae", size = 1444038, upload-time = "2026-01-04T03:40:04.19Z" },
+    { url = "https://files.pythonhosted.org/packages/fc/3a/2bffa5b3d66184c4a49824cf01a77cbfc011fecf3833b70c0ffa81c91eb1/docler-2.2.0-py3-none-any.whl", hash = "sha256:5d0109520a9260ff9054e94ecafe97104189bcf07995eb6bb3095e39b9f8f313", size = 1444705, upload-time = "2026-11-19T05:34:28.646Z" },
 ]
 
 [[package]]
