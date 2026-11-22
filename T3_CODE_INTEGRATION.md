@@ -1,6 +1,6 @@
 # T3 Code integration
 
-Status: 1 works (open items below), the rest are ideas. Written 2026-11-22 against T3 Code
+Status: 1 and 2 work (open items below), the rest are ideas. Written 2026-11-22 against T3 Code
 `0.1.11-nightly.20261117` ([pingdotgg/t3code](https://github.com/pingdotgg/t3code)).
 
 T3 Code runs coding agents (Claude Code, Codex, Cursor, Grok, OpenCode, Kiro, Antigravity, Pi,
@@ -128,12 +128,31 @@ and ACP Registry agents, all on the user's own subscriptions, on any machine T3 
 for free. The agent joins teams, `|` / `&` composition and every agentpool server like any
 other agent.
 
-Sketch: build on pyt3client. Credentials come from `pyt3 login` or config (`url` plus token or
-pairing code). An agentpool session is a T3 thread. `run_stream` polls `t3_thread_read`
-incrementally and turns items into agentpool events. `t3_pending_request` feeds the input
-provider. Models come from `orchestrator_capabilities`, and the two mode categories are
-runtime and interaction. Real streaming can come later through the native WebSocket
-(`orchestration.subscribeThread`).
+Built (2026-11-22): `src/agentpool/agents/t3_agent/`, config `src/agentpool/models/t3_agents.py`,
+docs `docs/configuration/node-types/t3-agents.md`. Sign-in via a `pyt3 login` alias (`login`)
+or `url` + `token`. An agentpool session is a T3 thread (launch, then send).
+`_stream_events` polls `t3_thread_read` (`activity` view) from before the oldest unfinished
+item, with paging; `items.ItemTracker` diffs items into events. Questions go through the input
+provider (`questions.py`, `t3_pending_request` list/read/respond); approvals can't be given
+over MCP, so a waiting approval gives one notice (`thread.pendingRequestCount > 0` with no
+listed question). Models from `orchestrator_capabilities` as `provider/model`; config options
+are runtime mode, interaction mode and model.
+
+Tested live against the isolated T3 (claudeAgent / haiku): a command plus reply, a follow-up
+over `t3_thread_send`, and a question answered through the input provider. Unit tests replay
+the recorded MCP results (`tests/agents/t3_agent/data/two_turns.json`).
+
+Findings:
+
+- A run's status passes through `waiting` after the reply, before its checkpoint. It does
+  not mean that the run waits for the user; `thread.pendingRequestCount` does.
+- T3 adds a `command_execution` item "Preparing workspace" to the first run of a thread.
+- An assistant message can appear only once complete, so text "streams" per message;
+  reasoning grows in place.
+
+Open: real streaming through the native WebSocket (`orchestration.subscribeThread`);
+permission requests (need the WebSocket API too); attachments (prompts must be text);
+agentpool toolsets are not passed to the thread.
 
 ### 3. T3 as a toolset
 

@@ -18,6 +18,7 @@ from agentpool.models.agui_agents import AGUIAgentConfig
 from agentpool.models.claude_code_agents import ClaudeCodeAgentConfig
 from agentpool.models.codex_agents import CodexAgentConfig
 from agentpool.models.file_agents import FileAgentConfig
+from agentpool.models.t3_agents import T3AgentConfig
 from agentpool_config.commands import CommandConfig, StaticCommandConfig
 from agentpool_config.compaction import CompactionConfig
 from agentpool_config.converters import ConversionConfig
@@ -53,6 +54,7 @@ ResourceConfig = _FileSystemConfigUnion | str
 AnyAgentConfig = Annotated[
     NativeAgentConfig
     | AGUIAgentConfig
+    | T3AgentConfig
     | ClaudeCodeAgentConfig
     | CodexAgentConfig
     | ACPAgentConfigTypes,

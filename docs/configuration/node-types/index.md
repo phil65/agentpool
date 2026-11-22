@@ -31,6 +31,9 @@ Nodes are the core building blocks of AgentPool. This section covers the differe
 
 [Codex agents](codex-agents.md) integrate with the Codex app-server via its JSON-RPC protocol. Codex provides advanced code editing capabilities with configurable reasoning effort levels and tool approval policies. Like Claude Code agents, Codex agents can leverage AgentPool's internal toolsets through MCP bridging.
 
+### T3 Code Agents
+
+[T3 agents](t3-agents.md) run their turns as threads in a T3 Code environment, which drives Claude Code, Codex, Cursor and other coding agents on its host, with worktrees and checkpoints. They connect to the environment's MCP endpoint, locally or remotely.
 
 ## Teams
 
@@ -42,12 +45,12 @@ Nodes are the core building blocks of AgentPool. This section covers the differe
 
 ## Quick Comparison
 
-| Feature | Standard Agent | Claude Code Agent | Codex Agent | ACP Agent | AG-UI Agent | Team |
-|---------|---------------|-------------------|-------------|-----------|-------------|------|
-| Runs in-process | Yes | Yes (SDK) | Yes (subprocess) | No | No | Yes |
-| Full configuration | Yes | Yes | Yes | Limited | Limited | Yes |
-| External tools | Via toolsets | Built-in + MCP bridge | Native + MCP bridge | Built-in | Via server | Via members |
-| Structured output | Result tools | Result tools | JSON Schema | Limited | Limited | Via members |
-| Reasoning control | Model-dependent | Extended thinking | Effort levels | Model-dependent | Model-dependent | Via members |
-| Streaming | Yes | Yes | Yes | Yes | Yes | Yes |
-| Use case | Primary agents | Claude coding | Codex coding | External agents | Remote services | Coordination |
+| Feature | Standard Agent | Claude Code Agent | Codex Agent | ACP Agent | AG-UI Agent | Team | T3 Agent |
+|---------|---------------|-------------------|-------------|-----------|-------------|------|----------|
+| Runs in-process | Yes | Yes (SDK) | Yes (subprocess) | No | No | Yes | No |
+| Full configuration | Yes | Yes | Yes | Limited | Limited | Yes | Limited |
+| External tools | Via toolsets | Built-in + MCP bridge | Native + MCP bridge | Built-in | Via server | Via members | The provider's |
+| Structured output | Result tools | Result tools | JSON Schema | Limited | Limited | Via members | No |
+| Reasoning control | Model-dependent | Extended thinking | Effort levels | Model-dependent | Model-dependent | Via members | Model options |
+| Streaming | Yes | Yes | Yes | Yes | Yes | Yes | Polled |
+| Use case | Primary agents | Claude coding | Codex coding | External agents | Remote services | Coordination | Agents in T3 Code |

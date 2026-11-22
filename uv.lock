@@ -88,6 +88,7 @@ dependencies = [
     { name = "pydantic-ai-slim", extra = ["anthropic", "google", "mistral", "openai", "retries"] },
     { name = "pydantic-monty" },
     { name = "pydocket" },
+    { name = "pyt3client" },
     { name = "python-dotenv" },
     { name = "rich" },
     { name = "ripgrep-rs" },
@@ -268,6 +269,7 @@ requires-dist = [
     { name = "pydantic-ai-slim", extras = ["openai", "google", "anthropic", "mistral", "retries"], specifier = ">=1.0.0" },
     { name = "pydantic-monty", specifier = ">=0.0.11" },
     { name = "pydocket", specifier = ">=0.16.1" },
+    { name = "pyt3client", specifier = ">=0.1.0" },
     { name = "python-dotenv", specifier = ">=1.0.1" },
     { name = "python-telegram-bot", extras = ["socks"], marker = "extra == 'bot'", specifier = ">=21.0" },
     { name = "rich" },
@@ -5598,6 +5600,19 @@ dependencies = [
     { name = "websocket-client" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/12/a0/d0638470df605ce266991fb04f74c69ab1bed3b90ac3838e9c3c8b69b66a/Pysher-1.0.8.tar.gz", hash = "sha256:7849c56032b208e49df67d7bd8d49029a69042ab0bb45b2ed59fa08f11ac5988", size = 9071, upload-time = "2022-10-10T13:41:09.936Z" }
+
+[[package]]
+name = "pyt3client"
+version = "0.1.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "httpx" },
+    { name = "pydantic" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/fc/0e/e61706a998684c3dd65b9e196b581cdcd066f46db1e05317cfc362052aa6/pyt3client-0.1.0.tar.gz", hash = "sha256:d2aa1361c0a5e17ed43bdc635075673f91698be9dc8ab247b59cbdb97f62bc29", size = 43981, upload-time = "2026-11-22T06:22:29.545Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/eb/af/04a8f57cdb61186af37c405ab7c26b203652d3fba9f12dc4cce9718ae9a0/pyt3client-0.1.0-py3-none-any.whl", hash = "sha256:c23f3096a463dc169814e860453c9afe517a3abfc98281028430fddc3815eff3", size = 47126, upload-time = "2026-11-22T06:22:28.379Z" },
+]
 
 [[package]]
 name = "pytest"

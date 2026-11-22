@@ -81,7 +81,7 @@ if TYPE_CHECKING:
 logger = get_logger(__name__)
 
 # Literal type for all agent types
-type AgentTypeLiteral = Literal["native", "acp", "agui", "claude", "codex"]
+type AgentTypeLiteral = Literal["native", "acp", "agui", "claude", "codex", "t3"]
 
 
 _SLASH_PATTERN: re.Pattern[str] = re.compile(r"^/([\w-]+)(?:\s+(.*))?$")
@@ -121,7 +121,7 @@ def split_exchange(
 
 
 class BaseAgent[TDeps = None, TResult = str](MessageNode[TDeps, TResult]):
-    """Base class for Agent, ClaudeCodeAgent, CodexAgent, ACPAgent and AGUIAgent.
+    """Base class for Agent, ClaudeCodeAgent, CodexAgent, ACPAgent, AGUIAgent and T3Agent.
 
     Provides shared infrastructure:
     - tools: ToolManager for tool registration and execution

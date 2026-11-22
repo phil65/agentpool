@@ -109,3 +109,4 @@ agents:
 - [MCP Servers](../mcp.md) - MCP integration
 - [ACP Agents](acp-agents.md) - External ACP agent integration
 - [AG-UI Agents](agui-agents.md) - AG-UI protocol agents
+- [T3 Code Agents](t3-agents.md) - Threads in a T3 Code environment
