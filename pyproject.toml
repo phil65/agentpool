@@ -452,7 +452,6 @@ module-name = [
   "agentpool_prompts",
   "agentpool_server",
   "agentpool_toolsets",
-  "opencode_sdk",
   "opencode_v2_sdk",
   "pi_sdk",
 ]

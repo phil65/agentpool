@@ -17,7 +17,7 @@ from agentpool.agents.claude_code_agent.converters import (
     to_prompt_input,
     to_turn_error,
 )
-from opencode_sdk.models.tool_metadata import BashMetadata
+from opencode_v2_sdk.tool_metadata import BashMetadata
 
 
 USAGE = {"input_tokens": 1, "output_tokens": 1}

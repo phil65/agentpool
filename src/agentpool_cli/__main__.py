@@ -17,7 +17,6 @@ from agentpool_cli.serve_agui import agui_command
 from agentpool_cli.serve_api import api_command
 from agentpool_cli.serve_mcp import serve_command
 from agentpool_cli.serve_opencode import opencode_command
-from agentpool_cli.serve_opencode_v2 import opencode_v2_command
 from agentpool_cli.serve_vercel import vercel_command
 from agentpool_cli.store import ConfigStore
 from agentpool_cli.task import task_command
@@ -81,7 +80,6 @@ cli.command(name="serve-agui")(agui_command)
 cli.command(name="serve-mcp")(serve_command)
 cli.command(name="serve-api")(api_command)
 cli.command(name="serve-opencode")(opencode_command)
-cli.command(name="serve-opencode-v2")(opencode_v2_command)
 cli.command(name="serve-vercel")(vercel_command)
 cli.command(name="task")(task_command)
 

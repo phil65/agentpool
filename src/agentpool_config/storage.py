@@ -197,32 +197,6 @@ class ClaudeStorageConfig(BaseStorageProviderConfig):
         return ClaudeStorageProvider(self)
 
 
-class OpenCodeStorageConfig(BaseStorageProviderConfig):
-    """OpenCode SQLite storage format configuration.
-
-    Reads from OpenCode's native SQLite database at ~/.local/share/opencode/opencode.db.
-    This is the current format used by OpenCode >= 1.2.
-    """
-
-    model_config = ConfigDict(json_schema_extra={"x-doc-title": "OpenCode Storage"})
-
-    type: Literal["opencode"] = Field("opencode", init=False)
-    """OpenCode SQLite storage configuration."""
-
-    path: str = Field(
-        default="~/.local/share/opencode/opencode.db",
-        examples=["~/.local/share/opencode/opencode.db"],
-        title="OpenCode database path",
-    )
-    """Path to OpenCode SQLite database file."""
-
-    def get_provider(self) -> StorageProvider:
-        """Create an OpenCode SQLite storage provider instance."""
-        from agentpool_storage.opencode_provider import OpenCodeStorageProvider
-
-        return OpenCodeStorageProvider(self)
-
-
 class ZedStorageConfig(BaseStorageProviderConfig):
     """Zed IDE native storage format configuration.
 
@@ -294,7 +268,6 @@ StorageProviderConfig = Annotated[
     | FileStorageConfig
     | MemoryStorageConfig
     | ClaudeStorageConfig
-    | OpenCodeStorageConfig
     | ZedStorageConfig
     | ACPStorageConfig
     | CodexStorageConfig,

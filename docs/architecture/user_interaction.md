@@ -46,12 +46,12 @@ AgentPool uses **InputProvider** to handle user interactions across different ex
 **Why hacky**: ACP lacks native elicitation, shoehorns questions into permission system  
 **Limitations**: Max 4 options, no multi-select, wrong semantics
 
-### OpenCodeInputProvider
-**Location**: `agentpool_server/opencode_server/input_provider.py`  
-**Usage**: OpenCode TUI/Desktop  
-**Mechanism**: SSE events + HTTP response endpoints  
-**Flow**: Create question → broadcast event → await HTTP reply → resolve future  
-**Advantages**: Native questions, multi-select, unlimited options, rich descriptions
+### OpenCode V2 InputProvider
+**Location**: `agentpool_server/opencode_v2_server/interactions.py`  
+**Usage**: OpenCode V2 TUI/Desktop/Web  
+**Mechanism**: SSE events (`permission.asked` / `form.created`) + HTTP reply endpoints  
+**Flow**: Emit form/permission event → await HTTP reply → resolve future  
+**Advantages**: Native forms & permissions, multi-select, unlimited options, rich descriptions
 
 ### MockInputProvider
 **Location**: `agentpool/ui/mock_provider.py`  

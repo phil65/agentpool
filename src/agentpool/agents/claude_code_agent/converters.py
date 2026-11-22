@@ -47,7 +47,7 @@ from pydantic_ai import (
 
 from agentpool.common_types import MCPServerStatus
 from agentpool.utils.diffs import compute_unified_diff
-from opencode_sdk.models.tool_metadata import (
+from opencode_v2_sdk.tool_metadata import (
     BashMetadata,
     EditMetadata,
     FileDiff,
@@ -89,7 +89,7 @@ if TYPE_CHECKING:
     from agentpool.agents.context import ConfirmationResult
     from agentpool.hooks import AgentHooks
     from agentpool_config.mcp_server import MCPServerConfig as NativeMCPServerConfig
-    from opencode_sdk.models.tool_metadata import ToolMetadata
+    from opencode_v2_sdk.tool_metadata import ToolMetadata
 
 
 def to_auth_status(account: ClaudeCodeAccountInfo | None) -> AuthStatus:

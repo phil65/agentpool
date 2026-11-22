@@ -19,9 +19,8 @@ from __future__ import annotations
 
 from typing import Any, Literal, NotRequired, TypedDict
 
-from opencode_sdk.models.common import FileDiffStatus  # noqa: TC001
 
-
+FileDiffStatus = Literal["added", "deleted", "modified"]
 ChangeType = Literal["add", "update", "delete", "move"]
 # ---------------------------------------------------------------------------
 # Common / shared sub-types

@@ -4,16 +4,13 @@ Serves an `AgentPool` through the [OpenCode](https://github.com/anomalyco/openco
 API, so the OpenCode V2 TUI, web and desktop clients can drive pool agents.
 
 ```bash
-agentpool serve-opencode-v2 [config.yml] --port 4096 [--password secret]
+agentpool serve-opencode [config.yml] --port 4096 [--password secret]
 opencode --server http://127.0.0.1:4096          # OpenCode >= 2.x client
 ```
 
 Auth is HTTP Basic with username `opencode` and the password from `--password` or
 `OPENCODE_PASSWORD` (`OPENCODE_SERVER_PASSWORD` is accepted as well). Without a password, auth is
 off.
-
-The V1 server (`agentpool_server/opencode_server/`, models in `opencode_sdk`) is separate and
-unchanged. OpenCode still releases V1 (`v1.19.x`) in parallel.
 
 ## Protocol version
 
@@ -156,6 +153,4 @@ These come from the interim session/agent model. They are tracked, with the code
     `agentpool_config.storage.DATA_DIR`, and `agentpool_server.base.BaseServer`.
 
   These are reasonable candidates for a stable public API. The CLI entry point
-  (`agentpool_cli/serve_opencode_v2.py`) would become a plugin command.
-- The V1 server and `opencode_sdk` could move into the same package. `agentpool_storage.opencode_provider`
-  (reading OpenCode's on-disk storage) depends on `opencode_sdk` too.
+  (`agentpool_cli/serve_opencode.py`) would become a plugin command.

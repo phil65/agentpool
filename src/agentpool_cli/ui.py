@@ -77,7 +77,7 @@ def opencode_ui_command(
     if attach:
         logger.info("Attaching to existing OpenCode server", url=url)
         os.system("clear" if os.name != "nt" else "cls")
-        result = subprocess.run(["opencode", "attach", url], check=False)
+        result = subprocess.run(["opencode", "--server", url], check=False)
         if result.returncode not in {0, 130}:  # 130 = Ctrl+C
             logger.warning("OpenCode TUI exited with non-zero status", code=result.returncode)
         return
@@ -111,7 +111,7 @@ def opencode_ui_command(
         time.sleep(0.5)
         os.system("clear" if os.name != "nt" else "cls")
         # Attach TUI
-        result = subprocess.run(["opencode", "attach", url], check=False)
+        result = subprocess.run(["opencode", "--server", url], check=False)
         if result.returncode != 0:
             logger.warning("OpenCode TUI exited with non-zero status", code=result.returncode)
 

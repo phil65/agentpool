@@ -6,13 +6,12 @@ from typing import Any, Literal, assert_never, overload
 
 from agentpool_commands.text_sharing.base import ShareResult, TextSharer, Visibility
 from agentpool_commands.text_sharing.github_gist import GistSharer
-from agentpool_commands.text_sharing.opencode import OpenCodeSharer
 from agentpool_commands.text_sharing.paste_rs import PasteRsSharer
 from agentpool_commands.text_sharing.pastebin import PastebinSharer
 from agentpool_commands.text_sharing.shittycodingagent import ShittyCodingAgentSharer
 
 
-TextSharerStr = Literal["gist", "pastebin", "paste_rs", "opencode", "shittycodingagent"]
+TextSharerStr = Literal["gist", "pastebin", "paste_rs", "shittycodingagent"]
 
 
 @overload
@@ -35,14 +34,6 @@ def get_sharer(
 def get_sharer(
     provider: Literal["paste_rs"],
 ) -> PasteRsSharer: ...
-
-
-@overload
-def get_sharer(
-    provider: Literal["opencode"],
-    *,
-    api_url: str | None = None,
-) -> OpenCodeSharer: ...
 
 
 @overload
@@ -79,12 +70,6 @@ def get_sharer(provider: TextSharerStr, **kwargs: Any) -> TextSharer:
 
         # paste.rs (no auth needed)
         sharer = get_sharer("paste_rs")
-
-        # OpenCode (no auth needed)
-        sharer = get_sharer("opencode")
-
-        # OpenCode with custom API URL
-        sharer = get_sharer("opencode", api_url="https://api.dev.opencode.ai")
         ```
     """
     match provider:
@@ -94,8 +79,6 @@ def get_sharer(provider: TextSharerStr, **kwargs: Any) -> TextSharer:
             return PastebinSharer(**kwargs)
         case "paste_rs":
             return PasteRsSharer()
-        case "opencode":
-            return OpenCodeSharer(**kwargs)
         case "shittycodingagent":
             return ShittyCodingAgentSharer(**kwargs)
         case _ as unreachable:
@@ -104,7 +87,6 @@ def get_sharer(provider: TextSharerStr, **kwargs: Any) -> TextSharer:
 
 __all__ = [
     "GistSharer",
-    "OpenCodeSharer",
     "PasteRsSharer",
     "PastebinSharer",
     "ShareResult",

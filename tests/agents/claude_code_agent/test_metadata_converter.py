@@ -8,7 +8,7 @@ from clawd_code_sdk.models import TodoItem, TodoWriteOutput
 import pytest
 
 from agentpool.agents.claude_code_agent.converters import convert_to_opencode_metadata
-from opencode_sdk.models.tool_metadata import (
+from opencode_v2_sdk.tool_metadata import (
     EditMetadata,
     ReadMetadata,
     TodoMetadata,
