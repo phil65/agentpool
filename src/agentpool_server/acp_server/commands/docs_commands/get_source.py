@@ -62,10 +62,8 @@ class GetSourceCommand(NodeCommand):
                 kind="read",
             )
             # Run importing.py as script
-            output, exit_code = await session.requests.run_command(
-                command="uv",
-                args=["run", importing_py_path, dot_path],
-                cwd=cwd or session.cwd,
+            output, exit_code = await session.run_command(
+                "uv", ["run", importing_py_path, dot_path], cwd=cwd or session.cwd
             )
             # Check if command succeeded
             if exit_code != 0:

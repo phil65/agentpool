@@ -19,7 +19,7 @@ logger = get_logger(__name__)
 class GitDiffCommand(NodeCommand):
     """Fetch git diff for a specific commit.
 
-    Executes git diff client-side to get the complete diff
+    Runs git diff where the session runs its tools to get the complete diff
     and displays it in a structured format.
     """
 
@@ -68,10 +68,8 @@ class GitDiffCommand(NodeCommand):
             )
 
             # Run git diff command
-            output, exit_code = await session.requests.run_command(
-                command=git_command[0],
-                args=git_command[1:],
-                cwd=cwd or session.cwd,
+            output, exit_code = await session.run_command(
+                git_command[0], git_command[1:], cwd=cwd or session.cwd
             )
 
             # Check if git command succeeded

@@ -11,6 +11,7 @@ import contextlib
 from dataclasses import dataclass, field
 from decimal import Decimal
 import re
+import shlex
 from typing import TYPE_CHECKING, Any, Literal, assert_never
 
 from aclientp.agent.acp_requests import ACPRequests
@@ -19,6 +20,7 @@ from aclientp.filesystem import ACPFileSystem
 from aclientp.schema import AvailableCommand, ClientCapabilities, Notice
 import anyio
 from exxec.acp_provider import ACPExecutionEnvironment
+from exxec.local_provider import LocalExecutionEnvironment
 import logfire
 from pydantic_ai import UsageLimitExceeded
 from slashed import CommandStore
@@ -50,6 +52,7 @@ if TYPE_CHECKING:
         StopReason,
         Usage,
     )
+    from exxec.base import ExecutionEnvironment
     from pydantic_ai import UserContent
     from slashed import BaseCommand
 
@@ -60,6 +63,18 @@ if TYPE_CHECKING:
 
 logger = get_logger(__name__)
 SLASH_PATTERN = re.compile(r"^/([\w-]+)(?:\s+(.*))?$")
+
+
+def supports_client_execution(capabilities: ClientCapabilities) -> bool:
+    """Whether tools can run through the client's terminal and filesystem.
+
+    ``ACPFileSystem`` reads and writes files via ``fs/*`` requests but answers
+    ``exists``/``ls``/``info`` by running shell commands in a client terminal,
+    so it needs both capabilities.
+    """
+    fs = capabilities.fs
+    return bool(capabilities.terminal and fs and fs.read_text_file and fs.write_text_file)
+
 
 # Zed-specific instructions for code references
 ZED_CLIENT_PROMPT = """\
@@ -213,7 +228,6 @@ class ACPSession:
         self.last_usage: Usage | None = None
         self.total_cost = Decimal(0)  # Cumulative cost of this session's turns
         self.background_tasks: dict[str, str] = {}  # Running background tasks (ID -> description)
-        self.fs = ACPFileSystem(self.client, session_id=self.session_id)
         self.command_store = CommandStore(commands=get_all_commands())
         self.command_store._initialize_sync()
         self._update_callbacks: list[Callable[[], None]] = []
@@ -228,9 +242,10 @@ class ACPSession:
         self.notifications = ACPNotifications(client=self.client, session_id=self.session_id)
         self.requests = ACPRequests(client=self.client, session_id=self.session_id)
         self.input_provider = ACPInputProvider(self)
-        self.acp_env = ACPExecutionEnvironment(fs=self.fs, requests=self.requests, cwd=self.cwd)
+        self.env = self._create_execution_environment()
+        self.fs = self.env.get_fs()
         for agent in self.agent_pool.all_agents.values():
-            agent.env = self.acp_env
+            agent.env = self.env
             if isinstance(agent, Agent):
                 # TODO: need to inject this info for ACP agents, too.
                 agent.sys_prompts.prompts.append(self.get_cwd_context)
@@ -382,9 +397,49 @@ class ACPSession:
                 assert_never(unreachable)
         await self.notifications.send_update(update)
 
+    async def run_command(
+        self, command: str, args: Sequence[str], *, cwd: str | None = None
+    ) -> tuple[str, int | None]:
+        """Run a program where this session's tools run: a client terminal or this host.
+
+        Args:
+            command: Program to run
+            args: Its arguments
+            cwd: Working directory; the session's when omitted
+
+        Returns:
+            The combined output and the exit code (None if the program did not run)
+        """
+        # An explicit `cd`: the local environment's execute_command ignores its cwd
+        line = f"cd {shlex.quote(cwd or self.cwd)} && {shlex.join([command, *args])}"
+        result = await self.env.execute_command(line)
+        return (result.stdout or "") + (result.stderr or ""), result.exit_code
+
+    def _create_execution_environment(self) -> ExecutionEnvironment:
+        """Run tools on the client when it supports that, otherwise on this host."""
+        caps = self.client_capabilities
+        client_name = self.client_info.name if self.client_info else None
+        if supports_client_execution(caps):
+            self.log.info(
+                "Using client execution environment (terminal and fs via ACP)",
+                client=client_name,
+                cwd=self.cwd,
+            )
+            fs = ACPFileSystem(self.client, session_id=self.session_id)
+            return ACPExecutionEnvironment(fs=fs, requests=self.requests, cwd=self.cwd)
+        self.log.info(
+            "Client lacks terminal or fs capabilities, running tools on the server host",
+            client=client_name,
+            cwd=self.cwd,
+            terminal=bool(caps.terminal),
+            read_text_file=bool(caps.fs and caps.fs.read_text_file),
+            write_text_file=bool(caps.fs and caps.fs.write_text_file),
+        )
+        return LocalExecutionEnvironment(cwd=self.cwd)
+
     async def initialize(self) -> None:
         """Initialize async resources. Must be called after construction."""
-        await self.acp_env.__aenter__()
+        await self.env.__aenter__()
 
     async def initialize_mcp_servers(self) -> None:
         """Initialize MCP servers if any are configured."""
@@ -424,14 +479,22 @@ class ACPSession:
         ]
 
     async def init_client_skills(self) -> None:
-        """Discover and load skills from the client's workspace roots over ACP."""
+        """Discover and load skills from the client's workspace roots.
+
+        Read over ACP when the client provides the filesystem; otherwise the
+        roots are local paths on this host.
+        """
+        manager = self.agent_pool.skills
         for skills_dir in self.client_skill_dirs:
             try:
-                await self.agent_pool.skills.add_skills_directory(skills_dir, fs=self.fs)
+                if isinstance(self.fs, ACPFileSystem):
+                    await manager.add_skills_directory(skills_dir, fs=self.fs)
+                else:
+                    await manager.add_skills_directory(skills_dir)
             except Exception:
                 self.log.exception("Failed to discover client-side skills", path=skills_dir)
-        skills = self.agent_pool.skills.list_skills()
-        self.log.info("Collected client-side skills", skill_count=len(skills))
+        skill_count = len(manager.list_skills())
+        self.log.info("Collected client-side skills", skill_count=skill_count)
 
     @property
     def agent_pool(self) -> AgentPool[Any]:
@@ -643,7 +706,7 @@ class ACPSession:
     async def close(self) -> None:
         """Close the session and cleanup resources."""
         try:
-            await self.acp_env.__aexit__(None, None, None)
+            await self.env.__aexit__(None, None, None)
             for pool_agent in self.agent_pool.all_agents.values():
                 with contextlib.suppress(ValueError):  # Agents added after this session
                     pool_agent.background_event.disconnect(self._on_background_event)

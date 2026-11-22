@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 
-# Script constants for client-side execution
+# Scripts run where the session runs its tools (client terminal or this host)
 SCHEMA_EXTRACTION_SCRIPT = """
 import sys
 import json

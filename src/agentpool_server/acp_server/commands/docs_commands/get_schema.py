@@ -92,15 +92,11 @@ class GetSchemaCommand(NodeCommand):
                 generated_code = generated_code.strip()
 
             else:
-                # Dot path approach - client-side schema extraction
-                # Step 1: CLIENT-SIDE - Extract schema via inline script
+                # Dot path approach: extract the schema with an inline script, run where
+                # the session runs its tools (the client's terminal, or this host)
                 schema_script = SCHEMA_EXTRACTION_SCRIPT.format(input_path=input_path)
-
-                # Run schema extraction client-side using uv run python -c
-                output, exit_code = await session.requests.run_command(
-                    command="uv",
-                    args=["run", "python", "-c", schema_script],
-                    cwd=cwd or session.cwd,
+                output, exit_code = await session.run_command(
+                    "uv", ["run", "python", "-c", schema_script], cwd=cwd or session.cwd
                 )
 
                 if exit_code != 0:
