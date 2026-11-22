@@ -531,8 +531,14 @@ async def test_persistent_sse_steer_and_background_turn() -> None:
     bg_events: list[Any] = []
     agent.background_event.connect(bg_events.append)
 
-    async with http, agent, agent.subscribe() as stream:
-        await agent.submit("Start work")
+    async with http, agent:
+        foreground: list[Any] = []
+
+        async def run_turn() -> None:
+            async for ev in agent.run_stream("Start work"):
+                foreground.append(ev)  # noqa: PERF401
+
+        turn = asyncio.create_task(run_turn())
         while not any(p.endswith("/prompt") for _, p, _ in server.calls):
             await asyncio.sleep(0.01)
 
@@ -568,7 +574,8 @@ async def test_persistent_sse_steer_and_background_turn() -> None:
             "type": "session.execution.succeeded",
             "data": {"sessionID": "ses_1"},
         })
-        await agent.wait_idle()
+        async with asyncio.timeout(5.0):
+            await turn
 
         # Now idle: push an unsolicited background turn + toast over the same SSE stream
         server.push_event({
@@ -604,15 +611,12 @@ async def test_persistent_sse_steer_and_background_turn() -> None:
             "data": {"title": "Saved", "message": "Checkpoint created", "variant": "info"},
         })
 
-        seen: list[Any] = []
-        async with asyncio.timeout(5.0):
-            async for ev in stream:
-                seen.append(ev)
-                if isinstance(ev, NoticeEvent):
-                    break
+        async with asyncio.timeout(5.0):  # Between turns, events arrive as background events
+            while not any(isinstance(b.event, NoticeEvent) for b in bg_events):
+                await asyncio.sleep(0.01)
 
-    completes = [e for e in seen if isinstance(e, StreamCompleteEvent)]
-    assert [c.message.content for c in completes] == ["Pivoted!", "Background done"]
+    completes = [e for e in foreground if isinstance(e, StreamCompleteEvent)]
+    assert [c.message.content for c in completes] == ["Pivoted!"]
     assert any(isinstance(b.event, RunStartedEvent) for b in bg_events)
     assert any(
         isinstance(b.event, StreamCompleteEvent) and b.event.message.content == "Background done"

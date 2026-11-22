@@ -7,7 +7,6 @@ from dataclasses import replace
 from typing import TYPE_CHECKING, Any
 from uuid import uuid4
 
-from pydantic import Field
 from schemez import Schema
 
 from agentpool.messaging.message_history import MessageHistory
@@ -26,20 +25,14 @@ class SessionOverrides(Schema):
     """Per-session runtime overrides that survive resume without mutating shared definitions."""
 
     model: str | None = None
-    """Optional model override for this session."""
+    """Model for this session's turns instead of the agent's (native agents)."""
 
-    modes: dict[str, str | bool] = Field(default_factory=dict)
-    """Config option overrides keyed by category/config ID."""
-
-    instructions: list[str] = Field(default_factory=list)
-    """Additional session-scoped instructions appended for turns in this session."""
-
-    env: dict[str, str] = Field(default_factory=dict)
-    """Session-scoped environment variable overrides."""
+    # Session-scoped instructions, env vars and modes belong here too, once a runtime per
+    # session can apply them (ARCHITECTURE_SESSIONS_AGENTS.md section 10.9)
 
     def is_empty(self) -> bool:
         """Whether no overrides are set."""
-        return not (self.model or self.modes or self.instructions or self.env)
+        return self.model is None
 
 
 class Session:
@@ -159,18 +152,6 @@ class Session:
         if agent_type is not None:
             updates["agent_type"] = agent_type
         self.data = self.data.with_agent(agent_name).model_copy(update=updates)
-
-    def add_instruction(self, text: str) -> None:
-        """Append a session-scoped instruction."""
-        self.overrides = self.overrides.model_copy(
-            update={"instructions": [*self.overrides.instructions, text]}
-        )
-
-    def set_env(self, key: str, value: str) -> None:
-        """Set a session-scoped environment variable override."""
-        self.overrides = self.overrides.model_copy(
-            update={"env": {**self.overrides.env, key: value}}
-        )
 
     def fork(
         self,

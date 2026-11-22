@@ -47,20 +47,16 @@ async def test_session_fork_and_overrides_snapshot() -> None:
         await agent.run("turn 2")
         assert len(agent.session.history.get_history()) == 4
 
-        agent.session.add_instruction("Be concise")
-        agent.session.set_env("FOO", "bar")
+        agent.session.overrides = SessionOverrides(model="test")
         snap = agent.session.snapshot()
         restored = Session.from_session_data(snap)
-        assert restored.overrides == SessionOverrides(
-            instructions=["Be concise"],
-            env={"FOO": "bar"},
-        )
+        assert restored.overrides == SessionOverrides(model="test")
 
         forked = agent.session.fork(at_message_id=cutoff_id)
         assert forked.parent_id == agent.session.session_id
         assert len(forked.history.get_history()) == 2
         assert all(m.session_id == forked.session_id for m in forked.history.get_history())
-        assert forked.overrides.instructions == ["Be concise"]
+        assert forked.overrides.model == "test"
 
         with pytest.raises(ValueError, match="not found"):
             agent.session.fork(at_message_id="missing_id")
