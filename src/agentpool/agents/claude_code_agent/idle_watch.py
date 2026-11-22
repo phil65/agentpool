@@ -94,9 +94,9 @@ class IdleWatcher:
         adapter = ClaudeCodeStreamedResponse(
             provider_name="claude_code",
             stream=self._messages(client),
-            tool_metadata=agent._tool_bridge.tool_metadata,
+            tool_metadata=agent._tool_bridge.route(agent._route).tool_metadata,
             agent_name=agent.name,
-            session_id=agent.session_id or "",
+            session_id=agent._acting_session_id or "",
             on_rate_limit=agent.record_rate_limit,
             on_commands_changed=agent._register_cli_commands,
             on_request=agent._note_request,
@@ -159,7 +159,9 @@ class IdleWatcher:
         agent = self._agent
         self._turn = MessageReconstructor(model_name=agent.model_name, provider_name="claude_code")
         started = RunStartedEvent(
-            session_id=agent.session_id or "", run_id=str(uuid.uuid4()), agent_name=agent.name
+            session_id=agent._acting_session_id or "",
+            run_id=str(uuid.uuid4()),
+            agent_name=agent.name,
         )
         await agent.emit_event(started)
 
@@ -181,7 +183,7 @@ class IdleWatcher:
             content=turn.text_content,
             role="assistant",
             name=agent.name,
-            session_id=agent.session_id,
+            session_id=agent._acting_session_id,
             model_name=agent.model_name,
             messages=turn.model_messages,
             finish_reason="stop",

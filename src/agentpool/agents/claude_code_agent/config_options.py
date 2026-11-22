@@ -109,10 +109,11 @@ class FastModeOption(ConfigOption["AnyClaudeCodeAgent"]):
         return "on" if agent._fast_mode else "off"
 
     async def _apply(self, agent: AnyClaudeCodeAgent, value: str) -> None:
-        agent._fast_mode = value == "on"
+        enabled = value == "on"
+        agent._fast_mode = enabled
         if agent._client:
             await agent.ensure_initialized()
-            await agent._apply_fast_mode(enabled=agent._fast_mode)
+            await agent._apply_fast_mode(enabled=enabled)
 
 
 CONFIG_OPTIONS: tuple[ConfigOption[AnyClaudeCodeAgent], ...] = (

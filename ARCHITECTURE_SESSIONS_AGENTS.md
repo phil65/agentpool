@@ -240,7 +240,16 @@ need to stay distinct:
    capture it with the turn. Before, each new ACP session set its environment on every pool
    agent, so all sessions' tools ran in the newest's. The OpenCode V2 server doesn't set one
    yet: its sessions' `directory` is recorded, but agents run in their own environment.
-   Next: Claude Code (a CLI process per session). **Tool bridge routes (2026-11-22):** the bridge (`ToolManagerBridge`) serves
+   **Claude Code (2026-11-22):** `concurrent_sessions`: a CLI process per session
+   (`CliProcess`: client, idle watcher, idle compaction, steering, title), started on the
+   session's first turn and resuming its Claude session, with the bridge on its route;
+   connected from within the session's context, which the SDK's callbacks and the idle
+   watcher inherit. Model, effort, permission mode and fast mode per session. Idle processes
+   of explicit sessions beyond `max_processes` (default 8) close, least recently used first,
+   checked when one opens or goes idle; their session resumes on its next turn. Tested live:
+   two sessions in parallel (own processes, CLI sessions, tool contexts and follow-ups), and
+   with `max_processes=1` an evicted session resuming its conversation. Agents still
+   serialized: AG-UI, OpenCode V2, Antigravity. **Tool bridge routes (2026-11-22):** the bridge (`ToolManagerBridge`) serves
    every session of its agent; each session reaches it through its own route
    (`url_for(session_id)`, the plain URL for the default session). A tool call runs with the
    context of the turn on its route (`set_run_context(..., route=...)`: input provider, deps,
@@ -781,8 +790,8 @@ agent's review, largely matching §3–§10).
    runs a session's turns and holds their state, config options are per session, native sessions
    on one agent run in parallel, and `AgentBinder`'s native path is gone. `BaseAgent` went from
    1,700 to 1,500 lines. Next: an `AgentDefinition` (§9.1) so the instance stops being the
-   definition; runtimes for the other external agents (T3, Codex and ACP done; Claude Code
-   needs a process per session). Until then their turns of different
+   definition; runtimes for the other external agents (T3, Codex, ACP and Claude Code done;
+   AG-UI, OpenCode V2 and Antigravity still serialized). Until then their turns of different
    sessions are serialized (`BaseAgent.session_turn()`, `capabilities.concurrent_sessions`).
 2. **Stable message identity (§10.4).** `run_stream` takes the user message ID and exposes stable
    IDs per model response from the first chunk. Removes turn counting and timestamp matching in

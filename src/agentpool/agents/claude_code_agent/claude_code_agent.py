@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+from contextlib import nullcontext
 from dataclasses import replace
 from decimal import Decimal
 import os
@@ -19,6 +20,7 @@ from pydantic_ai import RunUsage, TextContent
 
 from agentpool.agents.base_agent import BaseAgent
 from agentpool.agents.capabilities import AgentCapabilities
+from agentpool.agents.claude_code_agent.cli_process import CliProcess
 from agentpool.agents.claude_code_agent.converters import (
     confirmation_result_to_native,
     convert_mcp_servers_to_sdk_format,
@@ -39,8 +41,10 @@ from agentpool.agents.events.reconstructor import MessageReconstructor
 from agentpool.agents.exceptions import (
     AgentNotInitializedError,
 )
+from agentpool.agents.runtime import activate
 from agentpool.common_types import MCPServerStatus
 from agentpool.log import get_logger
+from agentpool.mcp_server.tool_bridge import DEFAULT_ROUTE
 from agentpool.messaging import ChatMessage
 from agentpool.messaging.messages import TokenCost
 from agentpool.sessions.models import SessionData
@@ -171,6 +175,7 @@ class ClaudeCodeAgent[TDeps = None, TResult = str](BaseAgent[TDeps, TResult]):
         live_model_discovery=True,
         native_compaction=False,  # It auto-compacts, but compact() is not wired to /compact
         background_events=True,
+        concurrent_sessions=True,  # A CLI process per session (see cli_process)
     )
     TITLES_OWN_SESSIONS: ClassVar = True
 
@@ -198,6 +203,7 @@ class ClaudeCodeAgent[TDeps = None, TResult = str](BaseAgent[TDeps, TResult]):
         setting_sources: list[SettingSource] | None = None,
         use_subscription: bool = False,
         prompt_suggestions: bool = False,
+        max_processes: int = 8,
         enable_tool_search: bool | int | Literal["auto"] | None = None,
         idle_compaction: bool = True,
         env: ExecutionEnvironment | StrPath | None = None,
@@ -238,6 +244,9 @@ class ClaudeCodeAgent[TDeps = None, TResult = str](BaseAgent[TDeps, TResult]):
             setting_sources: Setting sources to load ("user", "project", "local")
             use_subscription: Force Claude subscription usage instead of API key
             prompt_suggestions: Predict the next user prompt after each turn
+            max_processes: Most CLI processes of sessions besides the default one kept
+                running (one per session served); idle ones beyond it are closed, least
+                recently used first
             enable_tool_search: Control MCP tool search (True/False/"auto"/threshold)
             idle_compaction: Compact an idle session shortly before its prompt cache expires
             env: Execution environment
@@ -290,13 +299,12 @@ class ClaudeCodeAgent[TDeps = None, TResult = str](BaseAgent[TDeps, TResult]):
                 all_prompts.extend(system_prompt)
         prompt_manager = agent_pool.prompt_manager if agent_pool else None
         self.sys_prompts = SystemPrompts(all_prompts, prompt_manager=prompt_manager)
-        self._model = model
+        self._own_model = model
         self._max_turns = max_turns
         self._max_budget_usd = max_budget_usd
-        self._effort: ReasoningEffort | None = reasoning_effort
-        self._permission_mode: PermissionMode = permission_mode or "default"
-        self._pre_plan_mode: PermissionMode = "default"
-        """The mode that approving a plan (ExitPlanMode) returns to."""
+        self._own_effort: ReasoningEffort | None = reasoning_effort
+        self._own_permission_mode: PermissionMode = permission_mode or "default"
+        self._max_processes = max_processes
         self._external_mcp_servers = list(mcp_servers) if mcp_servers else []
         self._env_vars = env_vars
         self._add_dir = add_dir
@@ -306,35 +314,19 @@ class ClaudeCodeAgent[TDeps = None, TResult = str](BaseAgent[TDeps, TResult]):
         self._use_subscription = use_subscription
         self._prompt_suggestions = prompt_suggestions
         self._enable_tool_search = enable_tool_search
-        self._idle_compaction = (
-            IdleCompaction(
-                compact=self._compact_idle,
-                is_busy=self._is_cli_busy,
-                settings=self._cli_settings,
-                env={**os.environ, **(env_vars or {})},
-            )
-            if idle_compaction
-            else None
-        )
+        self._idle_compaction_enabled = idle_compaction
         self._toolsets = toolsets or []
-        # Client state
-        self._client: ClaudeSDKClient | None = None
-        self._connection_task: asyncio.Task[None] | None = None
-        self._idle_watch = IdleWatcher(self)
-        """Reads what the CLI sends between runs (see idle_watch)."""
+        # CLI processes: one per session (see cli_process)
+        self._processes: dict[str, CliProcess] = {}
+        """The CLI process of each session, by its key (``""``: the default session's)."""
+        self._closing_tasks: set[asyncio.Task[None]] = set()
+        """Closing idle processes beyond the limit (started when one goes idle)."""
         self._usage_limits: tuple[float, UsageLimits | None] | None = None
-        self._steering: RunSteering | None = None
-        """Messages steered into the running turn (None outside of runs)."""
-        self._open_user_inputs = 0
-        """Permission requests and questions waiting for the user."""
         self._server_info: ClaudeCodeServerInfo | None = None
         """What the CLI reported at connect: models, commands, account, fast mode state."""
-        self._fast_mode: bool | None = None
+        self._own_fast_mode: bool | None = None
         """Fast mode as chosen (``None``: as the CLI's settings have it)."""
         self._context_windows: dict[str, int] = {}
-        self._titled_session: str | None = None
-        """The session a title was asked for (once per session)."""
-        self._title_task: asyncio.Task[None] | None = None
         self._cli_command_names: set[str] = set()
         """Names of the CLI's commands in the command store."""
         """Context window per concrete model ID (``claude-opus-5-5``), as the CLI reported it."""
@@ -352,6 +344,194 @@ class ClaudeCodeAgent[TDeps = None, TResult = str](BaseAgent[TDeps, TResult]):
             set_mode=self._set_mode,
             env=self.env,
         )
+
+    # --- Settings: per session when set within one (``use_session``), else the agent's ---
+
+    @property
+    def _model(self) -> AnthropicMaxModelName | str | None:
+        return self._session_model() or self._own_model
+
+    @_model.setter
+    def _model(self, value: AnthropicMaxModelName | str) -> None:
+        if not self._set_session_model(value):
+            self._own_model = value
+
+    @property
+    def _effort(self) -> ReasoningEffort | None:
+        value = self._session_mode("thought_level")
+        return cast("ReasoningEffort", value) if value is not None else self._own_effort
+
+    @_effort.setter
+    def _effort(self, value: ReasoningEffort) -> None:
+        if not self._set_session_mode("thought_level", value):
+            self._own_effort = value
+
+    @property
+    def _permission_mode(self) -> PermissionMode:
+        value = self._session_mode("mode")
+        return cast("PermissionMode", value) if value is not None else self._own_permission_mode
+
+    @_permission_mode.setter
+    def _permission_mode(self, value: PermissionMode) -> None:
+        if not self._set_session_mode("mode", value):
+            self._own_permission_mode = value
+
+    @property
+    def _fast_mode(self) -> bool | None:
+        value = self._session_mode("fast")
+        return value == "on" if value is not None else self._own_fast_mode
+
+    @_fast_mode.setter
+    def _fast_mode(self, value: bool) -> None:
+        if not self._set_session_mode("fast", "on" if value else "off"):
+            self._own_fast_mode = value
+
+    # --- CLI processes: one per session ----------------------------------------------
+
+    @property
+    def _route(self) -> str:
+        """Key of the session acting: its ID (its bridge route), ``""`` for the default."""
+        session = self._explicit_session
+        return session.session_id if session is not None else DEFAULT_ROUTE
+
+    @property
+    def _process(self) -> CliProcess | None:
+        """The CLI process of the session acting, once it has one."""
+        return self._processes.get(self._route)
+
+    def _new_process(self) -> CliProcess:
+        """A process record for the session acting (not connected yet)."""
+        compaction = (
+            IdleCompaction(
+                compact=self._compact_idle,
+                is_busy=self._is_cli_busy,
+                settings=self._cli_settings,
+                env={**os.environ, **(self._env_vars or {})},
+            )
+            if self._idle_compaction_enabled
+            else None
+        )
+        process = CliProcess(self._route, idle_watch=IdleWatcher(self), idle_compaction=compaction)
+        self._processes[process.key] = process
+        return process
+
+    def _proc(self) -> CliProcess:
+        """The CLI process of the session acting, created (unconnected) if it has none."""
+        return self._process or self._new_process()
+
+    @property
+    def _client(self) -> ClaudeSDKClient | None:
+        """The SDK client of the session acting's CLI process."""
+        process = self._process
+        return process.client if process is not None else None
+
+    @_client.setter
+    def _client(self, client: ClaudeSDKClient | None) -> None:
+        self._proc().client = client
+
+    @property
+    def _connection_task(self) -> asyncio.Task[None] | None:
+        process = self._process
+        return process.connection_task if process is not None else None
+
+    @_connection_task.setter
+    def _connection_task(self, task: asyncio.Task[None] | None) -> None:
+        self._proc().connection_task = task
+
+    @property
+    def _idle_watch(self) -> IdleWatcher:
+        """Reads what the CLI sends between runs (see idle_watch)."""
+        return self._proc().idle_watch
+
+    @property
+    def _idle_compaction(self) -> IdleCompaction | None:
+        process = self._process
+        return process.idle_compaction if process is not None else None
+
+    @property
+    def _steering(self) -> RunSteering | None:
+        """Messages steered into the running turn (None outside of runs)."""
+        process = self._process
+        return process.steering if process is not None else None
+
+    @_steering.setter
+    def _steering(self, steering: RunSteering | None) -> None:
+        self._proc().steering = steering
+
+    @property
+    def _open_user_inputs(self) -> int:
+        """Permission requests and questions waiting for the user."""
+        process = self._process
+        return process.open_user_inputs if process is not None else 0
+
+    @_open_user_inputs.setter
+    def _open_user_inputs(self, count: int) -> None:
+        self._proc().open_user_inputs = count
+
+    @property
+    def _pre_plan_mode(self) -> PermissionMode:
+        """The mode that approving a plan (ExitPlanMode) returns to."""
+        process = self._process
+        mode = process.pre_plan_mode if process is not None else None
+        return mode if mode is not None else "default"
+
+    @_pre_plan_mode.setter
+    def _pre_plan_mode(self, mode: PermissionMode) -> None:
+        self._proc().pre_plan_mode = mode
+
+    async def _open_process(self) -> CliProcess:
+        """Start the CLI process of the session acting (resuming its Claude session).
+
+        Connected in the background from within the session's context, which the SDK's
+        callbacks and the idle watcher inherit. Then idle processes beyond the limit close.
+        """
+        process = self._proc()
+        process.last_used = time.monotonic()
+        formatted_prompt = await self.sys_prompts.format_system_prompt(self)
+        process.client = self._get_client(system_prompt=formatted_prompt)
+        process.connection_task = asyncio.create_task(self._do_connect())
+        self._schedule_closing(keep=process)
+        return process
+
+    def _schedule_closing(self, *, keep: CliProcess) -> None:
+        """Close idle processes beyond the limit, in a task of its own.
+
+        Not in the caller's (a turn's): a process's SDK client belongs to the task that
+        connected it, and disconnecting it elsewhere can cancel the disconnecting task.
+        """
+        task = asyncio.create_task(self._close_idle_processes(keep=keep))
+        self._closing_tasks.add(task)
+        task.add_done_callback(self._closing_tasks.discard)
+
+    async def _close_process(self, process: CliProcess) -> None:
+        """Disconnect ``process`` (its session resumes its Claude session on its next turn)."""
+        if process.idle_compaction is not None:
+            await process.idle_compaction.close()
+        for task in (process.title_task, process.connection_task):
+            if task is not None and not task.done():
+                task.cancel()
+                with contextlib.suppress(asyncio.CancelledError):
+                    await task
+        process.title_task = process.connection_task = None
+        await process.idle_watch.stop()
+        if (client := process.client) is not None:
+            process.client = None
+            try:
+                await client.disconnect()
+            except Exception:  # noqa: BLE001
+                self.log.warning("Error disconnecting Claude Code client", key=process.key)
+        self._processes.pop(process.key, None)
+
+    async def _close_idle_processes(self, *, keep: CliProcess) -> None:
+        """Close idle processes of explicit sessions beyond ``max_processes``, oldest first.
+
+        The default session's process doesn't count, and ``keep`` (just opened) stays.
+        """
+        explicit = [p for p in self._processes.values() if p.key != DEFAULT_ROUTE]
+        idle = sorted((p for p in explicit if p.idle and p is not keep), key=lambda p: p.last_used)
+        for process in idle[: max(0, len(explicit) - self._max_processes)]:
+            self.log.info("Closing an idle CLI process", session_id=process.key)
+            await self._close_process(process)
 
     @classmethod
     def from_config(
@@ -403,6 +583,7 @@ class ClaudeCodeAgent[TDeps = None, TResult = str](BaseAgent[TDeps, TResult]):
             setting_sources=config.setting_sources,
             use_subscription=config.use_subscription,
             prompt_suggestions=config.prompt_suggestions,
+            max_processes=config.max_processes,
             enable_tool_search=config.enable_tool_search,
             idle_compaction=config.idle_compaction,
             # Toolsets
@@ -423,8 +604,6 @@ class ClaudeCodeAgent[TDeps = None, TResult = str](BaseAgent[TDeps, TResult]):
         and starts an MCP bridge to expose them to Claude Code via the SDK's
         native MCP support. Also converts external MCP servers to SDK format.
         """
-        from clawd_code_sdk.models import McpHttpServerConfig
-
         # Convert external MCP servers to SDK format first
         if self._external_mcp_servers:
             external_configs = convert_mcp_servers_to_sdk_format(self._external_mcp_servers)
@@ -446,9 +625,7 @@ class ClaudeCodeAgent[TDeps = None, TResult = str](BaseAgent[TDeps, TResult]):
         # Bridge tools are the agent's own core tools: never defer them behind
         # tool search (whose refresh path is also where Claude Code's
         # list_changed handling is least reliable).
-        cfg = McpHttpServerConfig(type="http", url=self._tool_bridge.url, alwaysLoad=True)
-        mcp_config = {self._tool_bridge.resolved_server_name: cfg}
-        self._mcp_servers.update(mcp_config)
+        # Each process reaches it on its session's route (see _process_mcp_servers)
         self.log.info("Toolsets initialized", toolset_count=len(self._toolsets))
 
     @property
@@ -525,7 +702,7 @@ class ClaudeCodeAgent[TDeps = None, TResult = str](BaseAgent[TDeps, TResult]):
             on_user_question=self._on_user_question,
             on_elicitation=self._on_elicitation,
             output_schema=self._output_type if self._output_type is not str else None,
-            mcp_servers=self._mcp_servers or {},
+            mcp_servers=self._process_mcp_servers(),
             hooks=self._hook_manager.build_hooks(),
             setting_sources=self._setting_sources,
             chrome="Chrome" in builtin_tools,
@@ -549,7 +726,7 @@ class ClaudeCodeAgent[TDeps = None, TResult = str](BaseAgent[TDeps, TResult]):
         tc_id = context.tool_use_id
         display_name = _strip_mcp_prefix(tool_name)
         self.log.debug("Permission request", tool_name=display_name, tool_call_id=tc_id)
-        if (run_context := self._tool_bridge.context()) is None:
+        if (run_context := self._tool_bridge.context(self._route)) is None:
             raise RuntimeError("Permission callback invoked outside of an active run")
         ctx = replace(
             run_context,
@@ -603,7 +780,7 @@ class ClaudeCodeAgent[TDeps = None, TResult = str](BaseAgent[TDeps, TResult]):
         """Handle AskUserQuestion elicitation requests."""
         from agentpool.agents.claude_code_agent.elicitation import handle_clarifying_questions
 
-        ctx = self._tool_bridge.context()
+        ctx = self._tool_bridge.context(self._route)
         if ctx is None:
             raise RuntimeError("User question callback invoked outside of an active run")
         with self._awaiting_user():
@@ -614,10 +791,11 @@ class ClaudeCodeAgent[TDeps = None, TResult = str](BaseAgent[TDeps, TResult]):
     def _turn_runtime(self) -> SessionRuntime[Any, Any]:
         """Runtime of the turn running on the CLI.
 
-        The SDK runs callbacks (hooks, permissions) in its own task, outside the turn's
-        context: its runtime comes with the turn's context on the bridge.
+        The SDK runs callbacks (hooks, permissions) in its own tasks, which inherit the
+        process's session but not the turn's context: its runtime comes with the turn's
+        context on the session's bridge route.
         """
-        run_context = self._tool_bridge.context()
+        run_context = self._tool_bridge.context(self._route)
         if run_context is not None and run_context.runtime is not None:
             return run_context.runtime
         return self._runtime
@@ -626,7 +804,7 @@ class ClaudeCodeAgent[TDeps = None, TResult = str](BaseAgent[TDeps, TResult]):
         """Handle MCP elicitation requests."""
         from mcp.types import ElicitResult, ErrorData
 
-        if (run_context := self._tool_bridge.context()) is None:
+        if (run_context := self._tool_bridge.context(self._route)) is None:
             raise RuntimeError("Elicitation callback invoked outside of an active run")
         input_provider = run_context.get_input_provider()
         params = request.to_mcp()
@@ -659,21 +837,34 @@ class ClaudeCodeAgent[TDeps = None, TResult = str](BaseAgent[TDeps, TResult]):
         generation in progress (``now``), unless a permission request or question waits
         for the user. Outside of a run, the base behavior applies.
         """
-        if (steering := self._steering) is None or steering.closed:
+        runtimes = self._runtimes_of(session_id)
+        with activate(self, runtimes[0]) if runtimes else nullcontext():  # That session's
+            steering = self._steering
+        if steering is None or steering.closed:
             await super().steer(message, interrupt=interrupt, session_id=session_id)
             return
         cut_in = interrupt and not self._open_user_inputs
         await steering.send(message, priority="now" if cut_in else "next")
 
+    def _process_mcp_servers(self) -> dict[str, McpServerConfig]:
+        """MCP servers of the session acting's process: the bridge on its route."""
+        from clawd_code_sdk.models import McpHttpServerConfig
+
+        servers = dict(self._mcp_servers)
+        if self._tool_bridge._actual_port is not None:
+            # Use HTTP transport to preserve _meta field with claudecode/toolUseId. Bridge
+            # tools are the agent's own core tools: never defer them behind tool search.
+            url = self._tool_bridge.url_for(self._route)
+            bridge = McpHttpServerConfig(type="http", url=url, alwaysLoad=True)
+            servers[self._tool_bridge.resolved_server_name] = bridge
+        return servers
+
     async def __aenter__(self) -> Self:
         """Connect to Claude Code with deferred client connection."""
         await super().__aenter__()
         await self._setup_toolsets()  # Setup toolsets before building opts (they add MCP servers)
-        formatted_prompt = await self.sys_prompts.format_system_prompt(self)
-        self._client = self._get_client(system_prompt=formatted_prompt)
-        # Start connection in background task to reduce first-prompt latency
-        # The task owns the anyio context, we just await it when needed
-        self._connection_task = asyncio.create_task(self._do_connect())
+        # The default session's process, connected in the background (first-prompt latency)
+        await self._open_process()
         return self
 
     async def _do_connect(self) -> None:
@@ -702,56 +893,27 @@ class ClaudeCodeAgent[TDeps = None, TResult = str](BaseAgent[TDeps, TResult]):
             raise
 
     async def reconnect(self, *, resume_session: bool = True) -> None:
-        """Reconnect to Claude Code SDK, optionally resuming the current session.
+        """Restart the session acting's CLI process, optionally resuming its session.
 
-        This is useful for recovering from hangs or connection issues without
-        losing conversation history.
+        Recovers from hangs or connection issues without losing the conversation.
 
         Args:
-            resume_session: If True, attempt to resume the current session using
-                the stored session ID. If False, start a fresh session.
+            resume_session: Resume the session's Claude session (else start a fresh one)
         """
-        # Recreate client with new options
         session_to_resume = self._sdk_session_id if resume_session else None
         self.log.info("Reconnecting CC agent", resume=resume_session, session_id=session_to_resume)
-        # Cancel existing connection if active
-        if self._connection_task and not self._connection_task.done():
-            self._connection_task.cancel()
-            with contextlib.suppress(asyncio.CancelledError):
-                await self._connection_task
-        self._connection_task = None
-        await self._idle_watch.stop()
-        if self._idle_compaction is not None:  # A new CLI process: nothing to compact yet
-            self._idle_compaction.reset()
-        # # Clean up tool bridge
-        # if self._tool_bridge._mcp is not None:
-        #     await self._tool_bridge.stop()
-        # self._mcp_servers.clear()
-        if self._client:
-            try:
-                await self._client.disconnect()
-                self.log.info("Disconnected existing Claude Code client")
-            except Exception:
-                self.log.exception("Error disconnecting Claude Code client during reconnect")
-            self._client = None
-
-        # Clear session ID if not resuming (before _get_client which uses it)
+        if (process := self._process) is not None:
+            await self._close_process(process)
         if not resume_session:
-            self._sdk_session_id = None
-
-        formatted_prompt = await self.sys_prompts.format_system_prompt(self)
-        # _get_client includes resume=self._sdk_session_id automatically
-        if session_to_resume:
-            self.log.info("Attempting to resume session", session=session_to_resume)
-        self._client = self._get_client(system_prompt=formatted_prompt)
-        try:  # Reconnect in background
-            self._connection_task = asyncio.create_task(self._do_connect())
-            await self._connection_task
-            mode = "resumed" if session_to_resume else "fresh"
-            self.log.info("Claude Code agent reconnected successfully", session_mode=mode)
+            self._sdk_session_id = None  # Before the client is built: it resumes this
+        await self._open_process()
+        try:
+            await self.ensure_initialized()
         except Exception:
             self.log.exception("Error reconnecting Claude Code agent")
             raise
+        mode = "resumed" if session_to_resume else "fresh"
+        self.log.info("Claude Code agent reconnected successfully", session_mode=mode)
 
     async def ensure_initialized(self) -> None:
         """Wait for background connection task to complete."""
@@ -797,34 +959,15 @@ class ClaudeCodeAgent[TDeps = None, TResult = str](BaseAgent[TDeps, TResult]):
         exc_val: BaseException | None,
         exc_tb: TracebackType | None,
     ) -> None:
-        """Disconnect from Claude Code."""
-        if self._idle_compaction is not None:
-            await self._idle_compaction.close()
-        if self._title_task and not self._title_task.done():
-            self._title_task.cancel()
+        """Disconnect every CLI process, then the bridge."""
+        for task in list(self._closing_tasks):
             with contextlib.suppress(asyncio.CancelledError):
-                await self._title_task
-        self._title_task = None
-        # Cancel connection task if still running
-        if self._connection_task and not self._connection_task.done():
-            self._connection_task.cancel()
-            with contextlib.suppress(asyncio.CancelledError):
-                await self._connection_task
-        self._connection_task = None
-
-        # Clean up tool bridge first
-        # Only stop bridge if it was started (has _mcp set)
-        if self._tool_bridge._mcp is not None:
+                await task
+        for process in list(self._processes.values()):
+            await self._close_process(process)
+        if self._tool_bridge._mcp is not None:  # Only if it was started
             await self._tool_bridge.stop()
         self._mcp_servers.clear()
-        await self._idle_watch.stop()
-        if self._client:
-            try:
-                await self._client.disconnect()
-                self.log.info("Claude Code client disconnected")
-            except Exception:  # noqa: BLE001
-                self.log.warning("Error disconnecting Claude Code client")
-            self._client = None
         await super().__aexit__(exc_type, exc_val, exc_tb)
 
     async def _populate_commands(self) -> None:
@@ -876,8 +1019,8 @@ class ClaudeCodeAgent[TDeps = None, TResult = str](BaseAgent[TDeps, TResult]):
         through this link: `claude --resume` takes only the CLI's own ID.
         """
         store = self._session_store
-        if store is not None and self.session_id and self._sdk_session_id:
-            await store.update_sdk_session_id(self.session_id, self._sdk_session_id)
+        if store is not None and (session_id := self._acting_session_id) and self._sdk_session_id:
+            await store.update_sdk_session_id(session_id, self._sdk_session_id)
 
     def _register_cli_commands(self, cli_commands: Sequence[ClaudeCodeCommandInfo]) -> None:
         """Offer the CLI's commands, replacing the ones it offered before.
@@ -898,7 +1041,43 @@ class ClaudeCodeAgent[TDeps = None, TResult = str](BaseAgent[TDeps, TResult]):
         self._cli_command_names = names
         self.log.info("Registered Claude Code commands", command_count=len(commands))
 
-    async def _stream_events(  # noqa: PLR0915
+    async def _stream_events(
+        self,
+        prompts: list[UserContent],
+        *,
+        user_msg: ChatMessage[Any],
+        message_history: MessageHistory,
+        effective_parent_id: str | None,
+        message_id: str | None = None,
+        session_id: str | None = None,
+        parent_id: str | None = None,
+        input_provider: InputProvider | None = None,
+        deps: TDeps | None = None,
+        wait_for_connections: bool | None = None,
+        store_history: bool = True,
+    ) -> AsyncIterator[RichAgentStreamEvent[TResult]]:
+        """A turn on the session's CLI process (counted on it: it isn't idle meanwhile)."""
+        process = self._proc()
+        process.turns += 1
+        try:
+            async for event in self._stream_turn(
+                prompts,
+                user_msg=user_msg,
+                message_history=message_history,
+                effective_parent_id=effective_parent_id,
+                message_id=message_id,
+                session_id=session_id,
+                parent_id=parent_id,
+                input_provider=input_provider,
+                deps=deps,
+                wait_for_connections=wait_for_connections,
+                store_history=store_history,
+            ):
+                yield event
+        finally:
+            process.turns -= 1
+
+    async def _stream_turn(  # noqa: PLR0915
         self,
         prompts: list[UserContent],
         *,
@@ -917,6 +1096,11 @@ class ClaudeCodeAgent[TDeps = None, TResult = str](BaseAgent[TDeps, TResult]):
 
         from agentpool.agents.claude_code_agent.stream_adapter import ClaudeCodeStreamedResponse
 
+        # The session's CLI process: started (resuming its Claude session) on first use
+        process = self._process
+        if process is None or process.client is None:
+            process = await self._open_process()
+        process.last_used = time.monotonic()
         await self.ensure_initialized()
         # Resolve input provider: explicit parameter overrides agent default
         effective_input_provider = input_provider or self._input_provider
@@ -928,8 +1112,9 @@ class ClaudeCodeAgent[TDeps = None, TResult = str](BaseAgent[TDeps, TResult]):
         if self._idle_compaction is not None:
             self._idle_compaction.disarm()
         run_id = str(uuid.uuid4())
-        assert self.session_id is not None  # Initialized by BaseAgent.run_stream()
-        yield RunStartedEvent(session_id=self.session_id, run_id=run_id, agent_name=self.name)
+        run_session_id = session_id or self._acting_session_id
+        assert run_session_id is not None  # Initialized by BaseAgent.run_stream()
+        yield RunStartedEvent(session_id=run_session_id, run_id=run_id, agent_name=self.name)
 
         # Handle ephemeral execution (fork session if store_history=False)
         fork_client = None
@@ -962,23 +1147,18 @@ class ClaudeCodeAgent[TDeps = None, TResult = str](BaseAgent[TDeps, TResult]):
             )
             self._sdk_session_id = first_msg.session_id
             await self._record_sdk_session_id()
-            if (
-                self.storage
-                and self.session_id
-                and store_history
-                and self._titled_session != self.session_id
-            ):
-                self._titled_session = self.session_id
-                self._title_task = asyncio.create_task(
-                    self._title_session(client, self.session_id, prompts),
-                    name=f"claude-code-title-{self.session_id[:8]}",
+            if self.storage and store_history and process.titled_session != run_session_id:
+                process.titled_session = run_session_id
+                process.title_task = asyncio.create_task(
+                    self._title_session(client, run_session_id, prompts),
+                    name=f"claude-code-title-{run_session_id[:8]}",
                 )
             adapter = ClaudeCodeStreamedResponse(
                 provider_name="claude_code",
                 stream=stream,
-                tool_metadata=self._tool_bridge.tool_metadata,
+                tool_metadata=self._tool_bridge.route(self._route).tool_metadata,
                 agent_name=self.name,
-                session_id=self.session_id,
+                session_id=run_session_id,
                 on_rate_limit=self.record_rate_limit,
                 rate_limit_notices=self._rate_limit_notices,
                 on_command_lifecycle=steering.on_lifecycle,
@@ -986,7 +1166,7 @@ class ClaudeCodeAgent[TDeps = None, TResult = str](BaseAgent[TDeps, TResult]):
                 on_request=self._note_request,
             )
             async with (
-                self._tool_bridge.set_run_context(run_context, prompt=prompts),
+                self._tool_bridge.set_run_context(run_context, prompt=prompts, route=self._route),
                 merge_queue_into_iterator(adapter, self._event_queue) as merged_events,
             ):
                 async for event in merged_events:
@@ -1005,7 +1185,7 @@ class ClaudeCodeAgent[TDeps = None, TResult = str](BaseAgent[TDeps, TResult]):
                 role="assistant",
                 name=self.name,
                 message_id=message_id or str(uuid.uuid4()),
-                session_id=self.session_id,
+                session_id=run_session_id,
                 parent_id=user_msg.message_id,
                 model_name=resolved,
                 messages=reconstructor.model_messages,
@@ -1089,7 +1269,7 @@ class ClaudeCodeAgent[TDeps = None, TResult = str](BaseAgent[TDeps, TResult]):
             role="assistant",
             name=self.name,
             message_id=message_id or str(uuid.uuid4()),
-            session_id=self.session_id,
+            session_id=run_session_id,
             parent_id=user_msg.message_id,
             model_name=adapter.model_name or self.model_name,
             messages=reconstructor.model_messages,
@@ -1256,9 +1436,12 @@ class ClaudeCodeAgent[TDeps = None, TResult = str](BaseAgent[TDeps, TResult]):
             self._idle_compaction.note_request(request_id, usage)
 
     def _on_cli_idle(self) -> None:
-        """The CLI went idle: an idle compaction may become due."""
+        """The CLI went idle: an idle compaction may become due, others may close."""
         if self._idle_compaction is not None and self._steering is None:
             self._idle_compaction.on_idle()
+        if (process := self._process) is not None and process.key != DEFAULT_ROUTE:
+            # Sessions beyond the limit may now be idle; this one stays (it's its watcher)
+            self._schedule_closing(keep=process)
 
     def _is_cli_busy(self) -> bool:
         return self._steering is not None or self._idle_watch.busy
@@ -1343,9 +1526,9 @@ class ClaudeCodeAgent[TDeps = None, TResult = str](BaseAgent[TDeps, TResult]):
                 sdk_session_id=cli_session_id,
             )
             return None
-        # Restore to conversation history
-        self.conversation.chat_messages.clear()
-        self.conversation.chat_messages.extend(messages)
+        # Restore to the session acting's history
+        self._history.chat_messages.clear()
+        self._history.chat_messages.extend(messages)
         self.log.info("Session loaded", session_id=session_id, message_count=len(messages))
         self._sdk_session_id = cli_session_id
         try:

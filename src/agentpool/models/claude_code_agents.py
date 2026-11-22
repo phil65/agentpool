@@ -345,6 +345,15 @@ class ClaudeCodeAgentConfig(BaseAgentConfig):
     clients which support them (e.g. ACP ``prompt_suggestions_update``).
     """
 
+    max_processes: int = Field(default=8, ge=1, title="Max CLI Processes")
+    """Most Claude Code processes kept running for sessions (one per session served).
+
+    Sessions served at once (e.g. several editor threads) each get their own process,
+    besides the agent's own (default) one, which always runs. Idle ones beyond this are
+    closed, least recently used first; their session resumes its Claude session on its
+    next turn.
+    """
+
     enable_tool_search: bool | int | Literal["auto"] | None = Field(
         default=None,
         title="Enable Tool Search",

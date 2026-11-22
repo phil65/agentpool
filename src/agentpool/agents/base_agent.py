@@ -508,6 +508,12 @@ class BaseAgent[TDeps = None, TResult = str](MessageNode[TDeps, TResult]):
         self._default_session.history = value
 
     @property
+    def _acting_session_id(self) -> str | None:
+        """ID of the session acting: the explicit session's, else the agent's own."""
+        session = self._explicit_session
+        return session.session_id if session is not None else self.session_id
+
+    @property
     def _history(self) -> MessageHistory:
         """Conversation history of the session acting (see :meth:`use_session`)."""
         session = self._explicit_session

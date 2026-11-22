@@ -426,16 +426,18 @@ async def test_rules_go_into_the_first_prompt_even_when_slow_to_load() -> None:
 
 
 async def test_turns_on_a_shared_external_agent_are_serialized(server: AgentPoolACPAgent) -> None:
-    """External agents have one native session per instance; native ones need no lock."""
+    """Agents with one native session per instance serialize turns; others need no lock."""
     from contextlib import nullcontext
 
-    from agentpool.agents import ClaudeCodeAgent
+    from agentpool.agents import AGUIAgent, ClaudeCodeAgent
 
-    external = ClaudeCodeAgent(name="claude")
+    external = AGUIAgent(endpoint="http://agui.test", name="agui")
+    assert not external.capabilities.concurrent_sessions
     lock = external.session_turn()
     assert isinstance(lock, asyncio.Lock)
     assert external.session_turn() is lock  # Every session holds the same one
     assert isinstance(server.default_agent.session_turn(), nullcontext)
+    assert isinstance(ClaudeCodeAgent(name="claude").session_turn(), nullcontext)  # A process each
 
 
 async def test_config_options_of_a_native_agent_are_per_acp_session(

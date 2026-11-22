@@ -13,6 +13,7 @@ import pytest
 from agentpool.agents.claude_code_agent import ClaudeCodeAgent
 from agentpool.agents.claude_code_agent.converters import convert_mcp_servers_to_sdk_format
 from agentpool.models.claude_code_agents import ClaudeCodeAgentConfig
+from agentpool.sessions import Session
 from agentpool_config.mcp_server import (
     SSEMCPServerConfig,
     StdioMCPServerConfig,
@@ -62,9 +63,15 @@ async def test_tool_bridge_tools_are_always_loaded() -> None:
     agent = ClaudeCodeAgent.from_config(config)
     await agent._setup_toolsets()
     try:
-        bridge_cfg = agent._mcp_servers[agent._tool_bridge.resolved_server_name]
+        name = agent._tool_bridge.resolved_server_name
+        bridge_cfg = agent._process_mcp_servers()[name]
         assert isinstance(bridge_cfg, McpHttpServerConfig)
         assert bridge_cfg.alwaysLoad is True
-        assert bridge_cfg.url == agent._tool_bridge.url
+        assert bridge_cfg.url == agent._tool_bridge.url  # The default session's route
+        session = Session.create("cc")
+        with agent.use_session(session):  # Another session's process: its own route
+            session_cfg = agent._process_mcp_servers()[name]
+        assert isinstance(session_cfg, McpHttpServerConfig)
+        assert session_cfg.url == agent._tool_bridge.url_for(session.session_id)
     finally:
         await agent._tool_bridge.stop()
