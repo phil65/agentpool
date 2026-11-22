@@ -8,7 +8,7 @@ from typing import Annotated, Any, Literal
 
 from aclientp.schema.content_blocks import ContentBlock
 import anyenv
-from pydantic import AliasChoices, BaseModel, ConfigDict, Field
+from pydantic import AliasChoices, BaseModel, BeforeValidator, ConfigDict, Field
 from pydantic_ai import RunUsage
 
 
@@ -204,6 +204,23 @@ class ZedToolResultContent(ZedBaseModel):
     Image: ZedImage | None = None
 
 
+def _content_items(value: object) -> object:
+    """Zed's tool result content as a list of items.
+
+    Zed keeps a list since September 2026 (``Vec<LanguageModelToolResultContent>``), one
+    item before; it reads both, and an item may be a plain string.
+    """
+    match value:
+        case None:
+            return []
+        case list():
+            return [{"Text": item} if isinstance(item, str) else item for item in value]
+        case str():
+            return [{"Text": value}]
+        case _:
+            return [value]
+
+
 # Typed tool outputs
 
 
@@ -266,8 +283,17 @@ class ZedToolResult(ZedBaseModel):
     tool_use_id: str
     tool_name: str
     is_error: bool = False
-    content: ZedToolResultContent | str | None = None
+    content: Annotated[list[ZedToolResultContent], BeforeValidator(_content_items)] = Field(
+        default_factory=list
+    )
+    """What the model saw (text and images)."""
     output: ZedToolOutput = None
+    """The tool's raw output, kept for display and replay."""
+
+    @property
+    def text(self) -> str:
+        """The text parts of :attr:`content`, joined."""
+        return "".join(item.Text for item in self.content if item.Text is not None)
 
 
 # User message content blocks (v0.2.0+)

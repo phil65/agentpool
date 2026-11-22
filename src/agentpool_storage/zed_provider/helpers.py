@@ -36,6 +36,7 @@ from agentpool_storage.zed_provider.models import (
     ZedTextBlock,
     ZedTextContent,
     ZedThinkingBlock,
+    ZedToolResultContent,
     ZedToolUseBlock,
     ZedUserMessage,
 )
@@ -161,20 +162,27 @@ def parse_tool_results(tool_results: dict[str, ZedToolResult]) -> list[ToolRetur
     parts: list[ToolReturnPart] = []
 
     for tool_id, result in tool_results.items():
-        match result.output, result.content:
-            case {"Text": text}, _:
+        # The content is what the model saw; the raw output only when it has no text
+        match result.output:
+            case _ if result.text:
+                output_str = result.text
+            case str(text):
                 output_str = text
-            case _, {"Text": text}:
-                output_str = text
-            case _, str(text):
-                output_str = text
-            case str(text), _:
+            case ZedToolResultContent(Text=str(text)):
                 output_str = text
             case _:
                 output_str = ""
-
+        images = [
+            BinaryContent(data=data, media_type=detect_image_media_type(data))
+            for item in result.content
+            if item.Image is not None
+            for data in [base64.b64decode(item.Image.source)]
+        ]
+        content: str | list[str | BinaryContent] = (
+            ([output_str, *images] if output_str else list(images)) if images else output_str
+        )
         parts.append(
-            ToolReturnPart(tool_name=result.tool_name, content=output_str, tool_call_id=tool_id)
+            ToolReturnPart(tool_name=result.tool_name, content=content, tool_call_id=tool_id)
         )
 
     return parts
