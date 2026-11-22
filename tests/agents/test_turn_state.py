@@ -105,3 +105,29 @@ async def test_active_session_is_the_turns_own_with_parallel_turns() -> None:
         await asyncio.gather(_final(agent, first, "a"), _final(agent, second, "b"))
         assert agent.active_session is agent.session  # Outside any turn: the default
     assert seen == {"a": first.session_id, "b": second.session_id}
+
+
+async def test_native_config_options_are_kept_per_session() -> None:
+    """Set within a session, tool confirmation and model are that session's."""
+    agent = Agent(name="opts", model="test", tool_confirmation_mode="per_tool")
+    first, second = Session.create("opts"), Session.create("opts")
+    async with agent:
+        own_model = agent.model_name
+        with agent.use_session(first):
+            await agent.set_mode("always", category_id="mode")
+            await agent.set_model("openai:gpt-5-mini")
+        with agent.use_session(first):
+            assert agent.tool_confirmation_mode == "always"
+            assert agent.model_name == "openai:gpt-5-mini"
+        with agent.use_session(second):
+            assert agent.tool_confirmation_mode == "per_tool"
+            assert agent.model_name == own_model
+        # The agent's own (default session) values are untouched
+        assert (agent.tool_confirmation_mode, agent.model_name) == ("per_tool", own_model)
+        assert first.overrides.modes == {"mode": "always"}
+        assert first.overrides.model == "openai:gpt-5-mini"
+        # Without a session, options change the agent, as before sessions
+        await agent.set_mode("never", category_id="mode")
+        assert agent.tool_confirmation_mode == "never"
+        with agent.use_session(first):
+            assert agent.tool_confirmation_mode == "always"

@@ -53,6 +53,8 @@ if TYPE_CHECKING:
         Implementation,
         InitialSessionConfigOption,
         McpServer,
+        SessionConfigOption,
+        SessionModeState,
         StopReason,
         Usage,
     )
@@ -487,9 +489,32 @@ class ACPSession:
         for option in options:
             value = str(option.value).lower() if isinstance(option.value, bool) else option.value
             try:
-                await self.agent.set_mode(value, category_id=option.config_id)
+                await self.set_mode(value, category_id=option.config_id)
             except Exception:
                 self.log.exception("Failed to apply initial config option", option=option)
+
+    async def mode_state(self) -> SessionModeState | None:
+        """The agent's mode state as this session sees it (see :meth:`set_mode`)."""
+        from agentpool_server.acp_server.acp_agent import get_session_mode_state
+
+        with self.agent.use_session(await self.pool_session()):
+            return await get_session_mode_state(self.agent)
+
+    async def config_options(self) -> list[SessionConfigOption]:
+        """The agent's config options as this session sees them (see :meth:`set_mode`)."""
+        from agentpool_server.acp_server.acp_agent import get_session_config_options
+
+        with self.agent.use_session(await self.pool_session()):
+            return await get_session_config_options(self.agent)
+
+    async def set_mode(self, value: str | bool, *, category_id: str) -> None:
+        """Set a mode or config option of the agent for this session.
+
+        A native agent keeps it per session (``SessionOverrides``), since sessions share
+        the pool's agent instance; other agents keep one value for their native session.
+        """
+        with self.agent.use_session(await self.pool_session()):
+            await self.agent.set_mode(value, category_id=category_id)
 
     async def switch_active_agent(self, agent_name: str) -> None:
         """Switch to a different agent in the pool.
@@ -600,7 +625,7 @@ class ACPSession:
                 self.log.info("Processing slash command", command=command)
                 # Commands may stage content for the next prompt: this session's, even
                 # on an agent other sessions share (and may switch the agent)
-                with self.agent.use_session(await self._native_pool_session()):
+                with self.agent.use_session(await self.pool_session()):
                     await self.execute_slash_command(command)
             if not non_command_content:
                 return TurnCompleted()
@@ -626,7 +651,7 @@ class ACPSession:
         if rules is not None:
             self.staged.add_text(rules)
 
-    async def _native_pool_session(self) -> PoolSession | None:
+    async def pool_session(self) -> PoolSession | None:
         """The pool ``Session`` of this ACP session when it runs a native ``Agent``, else None.
 
         External agents keep the conversation in their backend, so they run on their own
@@ -662,7 +687,7 @@ class ACPSession:
                     *contents,
                     input_provider=self.input_provider,
                     deps=self,
-                    session=await self._native_pool_session(),
+                    session=await self.pool_session(),
                     session_id=self.session_id,
                 ):
                     if self._cancelled:

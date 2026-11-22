@@ -194,15 +194,20 @@ need to stay distinct:
 6. Connections and teams: per-connection session policy.
 7. Runtime factory: `AgentDefinition + Session → AgentRuntime`, so one definition can serve N sessions
    concurrently. This is the big one for native agents (cheap) and external agents (one process or
-   native session each). **Turn state done for native agents (2026-11-22):**
-   `agentpool/agents/turn_state.py` keeps cancellation, the run's task, queued and injected
-   prompts, tool/subagent events and staged content per session (`TurnState`), resolved through
-   a context variable that maps each agent to its active turn (nested runs of other agents find
-   their own). `interrupt()`, `steer()` and `queue_prompt()` take a `session_id`;
-   `AgentContext` remembers its turn, so events from other tasks (MCP progress callbacks) reach
-   the right stream. Native turns of different sessions now run concurrently on one instance.
-   Still instance state: config options (a native agent's tool confirmation mode). Not done:
-   the Definition/Runtime split itself, and runtimes for external agents.
+   native session each). **Runtime done for native agents (2026-11-22):**
+   `agentpool/agents/runtime.py` `SessionRuntime` is the live side of one session on an agent:
+   it runs the session's turns (formerly `BaseAgent.run_stream`'s body, `_run_stream_once`,
+   `_finalize_turn`) and keeps what they change per session (cancellation, task, queued and
+   injected prompts, tool/subagent events, staged content). A context variable maps each agent
+   to its active runtime (nested runs of other agents find their own); `agent.runtime(session)`
+   gets one, `run_stream(session=...)` delegates to it. `interrupt()`, `steer()` and
+   `queue_prompt()` take a `session_id`; `AgentContext` remembers its runtime, so events from
+   other tasks (MCP progress callbacks) reach the right stream. Config options are per session
+   too: a native agent's tool confirmation and model, set within a session
+   (`agent.use_session(...)`), go to `SessionOverrides` (`modes`, `model`); servers apply
+   them that way. Native turns of different sessions run concurrently on one instance. Not
+   done: the definition still lives on the instance (no `AgentDefinition`), and runtimes for
+   external agents.
 
 Steps 1–3 already unblock a clean OpenCode V2 server (session ↔ agent binding, child sessions,
 inbox). The V2 server now exists with stopgaps for exactly these gaps. §10 lists them, with the
@@ -663,8 +668,8 @@ and the migration step (§6) that should make the stopgap unnecessary.
 - **Status (2026-11-22):** `compact()` exists, with `AgentCapabilities.native_compaction` saying
   where it works (native, Codex, OpenCode V2); the V2 server uses it and refuses up front for the
   others. Claude Code's `/compact` isn't wired. Session instructions and env are still open:
-  `SessionOverrides` only has `model`, since prepending instructions to the user prompt (tried)
-  stored them again every turn.
+  `SessionOverrides` has `model` and `modes` (config options) only, since prepending
+  instructions to the user prompt (tried) stored them again every turn.
 
 ### 10.10 Teams have no session or model surface
 
@@ -724,13 +729,13 @@ and the migration step (§6) that should make the stopgap unnecessary.
 Ordered by what each step unblocks. Ideas from an architecture review are folded in (a separate
 agent's review, largely matching §3–§10).
 
-1. **Runtime per session, native agents first (§6 step 7).** Turn state done (2026-11-22,
-   `TurnState`): native sessions on one agent run in parallel, and `AgentBinder`'s native path
-   is gone. Next: extract the runtime (turn execution) from `BaseAgent` (1,700+ lines) around
-   `TurnState`, rather than splitting `BaseAgent` first, so the same code isn't refactored twice;
-   per-session config options. External agents follow (one process or native session per
-   runtime; ACP can multiplex sessions over one connection). Until then their turns of different
-   sessions are serialized (`BaseAgent.session_turn()`, `capabilities.concurrent_sessions`).
+1. **Runtime per session, native agents first (§6 step 7).** Done (2026-11-22): `SessionRuntime`
+   runs a session's turns and holds their state, config options are per session, native sessions
+   on one agent run in parallel, and `AgentBinder`'s native path is gone. `BaseAgent` went from
+   1,700 to 1,500 lines. Next: an `AgentDefinition` (§9.1) so the instance stops being the
+   definition; then runtimes for external agents (one process or native session per runtime; ACP
+   can multiplex sessions over one connection). Until then their turns of different sessions are
+   serialized (`BaseAgent.session_turn()`, `capabilities.concurrent_sessions`).
 2. **Stable message identity (§10.4).** `run_stream` takes the user message ID and exposes stable
    IDs per model response from the first chunk. Removes turn counting and timestamp matching in
    the V2 server's fork/revert/diffs, and is what ACP v2 (`messageId`) and OpenCode V2 want.

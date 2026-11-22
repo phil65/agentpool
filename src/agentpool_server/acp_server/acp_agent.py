@@ -135,10 +135,10 @@ async def get_session_config_options(agent: BaseAgent) -> list[SessionConfigOpti
     #         break
 
 
-async def _set_mode(agent: BaseAgent, mode_id: str, *, category_id: str) -> None:
-    """Switch an agent mode, reporting unknown modes/categories as invalid params."""
+async def _set_mode(session: ACPSession, mode_id: str, *, category_id: str) -> None:
+    """Switch a mode for ``session``, reporting unknown modes/categories as invalid params."""
     try:
-        await agent.set_mode(mode_id, category_id=category_id)
+        await session.set_mode(mode_id, category_id=category_id)
     except (UnknownModeError, UnknownCategoryError) as exc:
         raise RequestError.invalid_params({"details": str(exc)}) from exc
 
@@ -326,8 +326,8 @@ class AgentPoolACPAgent(ACPAgent):
             if session.agent._state:
                 state = session.agent._state.modes
         else:
-            state = await get_session_mode_state(session.agent)
-        config_options = await get_session_config_options(session.agent)
+            state = await session.mode_state()
+        config_options = await session.config_options()
         # Schedule follow-up work to run after the response is sent
         self._schedule_session_setup(session, new=True)
         self.tasks.create_task(session._register_prompt_hub_commands())
@@ -369,7 +369,7 @@ class AgentPoolACPAgent(ACPAgent):
         mode_state: SessionModeState | None = None
         if isinstance(self.default_agent, ACPAgentClient) and self.default_agent._state:
             mode_state = self.default_agent._state.modes
-        config_opts = await get_session_config_options(self.default_agent)
+        config_opts = await session.config_options()
         self._schedule_session_setup(session)
         logger.info("Session loaded", session_id=params.session_id)
         return LoadSessionResponse(modes=mode_state, config_options=config_opts)
@@ -400,7 +400,7 @@ class AgentPoolACPAgent(ACPAgent):
         logger.info("Forking session", session_id=params.session_id)
         # For now, just create a new session - full fork implementation would copy state
         session = await self._create_session(params)
-        config_options = await get_session_config_options(session.agent)
+        config_options = await session.config_options()
         self._schedule_session_setup(session, new=True)
         return ForkSessionResponse(session_id=session.session_id, config_options=config_options)
 
@@ -514,10 +514,14 @@ class AgentPoolACPAgent(ACPAgent):
     async def session_options(self, params: SessionOptionsRequest) -> SessionOptionsResponse:
         """Report the modes and config options a session would start with."""
         session = self.session_manager.get_session(params.session_id or "")
-        agent = session.agent if session else self.default_agent
+        if session is not None:
+            return SessionOptionsResponse(
+                modes=await session.mode_state(),
+                config_options=await session.config_options() or None,
+            )
         return SessionOptionsResponse(
-            modes=await get_session_mode_state(agent),
-            config_options=await get_session_config_options(agent) or None,
+            modes=await get_session_mode_state(self.default_agent),
+            config_options=await get_session_config_options(self.default_agent) or None,
         )
 
     async def set_session_title(self, params: SetSessionTitleRequest) -> SetSessionTitleResponse:
@@ -559,7 +563,7 @@ class AgentPoolACPAgent(ACPAgent):
         from agentpool.agents.acp_agent import ACPAgent as ACPAgentClient
 
         session = self._require_session(params.session_id)
-        await _set_mode(session.agent, params.mode_id, category_id="mode")
+        await _set_mode(session, params.mode_id, category_id="mode")
         # Update stored mode state for ACPAgent
         if (
             isinstance(session.agent, ACPAgentClient)
@@ -594,8 +598,8 @@ class AgentPoolACPAgent(ACPAgent):
                 value = params.value
             case _ as unreachable:
                 assert_never(unreachable)
-        await _set_mode(session.agent, value, category_id=params.config_id)
-        config_options = await get_session_config_options(session.agent)
+        await _set_mode(session, value, category_id=params.config_id)
+        config_options = await session.config_options()
         return SetSessionConfigOptionResponse(config_options=config_options)
 
     async def swap_pool(self, config_path: str, agent_name: str | None = None) -> list[str]:

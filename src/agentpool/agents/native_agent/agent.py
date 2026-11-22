@@ -274,7 +274,7 @@ class Agent[TDeps = None, OutputDataT = str](BaseAgent[TDeps, OutputDataT]):
             hooks=hooks,
             storage=storage,
         )
-        self.tool_confirmation_mode: ToolConfirmationMode = tool_confirmation_mode
+        self._tool_confirmation_mode: ToolConfirmationMode = tool_confirmation_mode
         # Store builtin tools for pydantic-ai
         self._builtin_tools = list(builtin_tools) if builtin_tools else []
         # Override tools with Agent-specific ToolManager (with tools and tool_mode)
@@ -569,8 +569,27 @@ class Agent[TDeps = None, OutputDataT = str](BaseAgent[TDeps, OutputDataT]):
 
     @property
     def model_name(self) -> str | None:
-        """Get the model name in a consistent format (provider:model_name)."""
+        """The model (provider:model_name): the session's override, else the agent's."""
+        if (session := self._explicit_session) is not None and session.overrides.model:
+            return session.overrides.model
         return self._model.model_id if self._model else None
+
+    @property
+    def tool_confirmation_mode(self) -> ToolConfirmationMode:
+        """When tool calls need confirmation: the session's setting, else the agent's."""
+        session = self._explicit_session
+        if session is not None and (mode := session.overrides.modes.get("mode")) is not None:
+            return cast("ToolConfirmationMode", mode)
+        return self._tool_confirmation_mode
+
+    @tool_confirmation_mode.setter
+    def tool_confirmation_mode(self, mode: ToolConfirmationMode) -> None:
+        """Set it for the session acting in this context, else for the agent."""
+        if (session := self._explicit_session) is not None:
+            modes = {**session.overrides.modes, "mode": mode}
+            session.overrides = session.overrides.model_copy(update={"modes": modes})
+        else:
+            self._tool_confirmation_mode = mode
 
     def to_tool(
         self,
@@ -640,8 +659,11 @@ class Agent[TDeps = None, OutputDataT = str](BaseAgent[TDeps, OutputDataT]):
         tools = await self.tools.get_tools(state="enabled")
         final_type = to_type(output_type) if output_type not in [None, str] else self._output_type
         actual_model = model or self._model
+        model_settings = self.model_settings
         if isinstance(actual_model, str):
-            model_, _settings = self._resolve_model_string(actual_model)
+            model_, variant_settings = self._resolve_model_string(actual_model)
+            if variant_settings is not None:  # A model variant brings its own settings
+                model_settings = variant_settings
         else:
             model_ = actual_model
         # Filter builtin tools to those supported by the resolved model
@@ -657,7 +679,7 @@ class Agent[TDeps = None, OutputDataT = str](BaseAgent[TDeps, OutputDataT]):
             name=self.name,
             description=self.description,
             model=model_,
-            model_settings=self.model_settings,
+            model_settings=model_settings,
             instructions=self._formatted_system_prompt,
             retries=retries,
             end_strategy=self._end_strategy,

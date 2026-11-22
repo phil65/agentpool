@@ -51,10 +51,18 @@ class ToolConfirmationOption(ConfigOption["AnyAgent"]):
 
 
 class NativeModelOption(ModelOption["AnyAgent"]):
-    """Model selection; accepts any model string pydantic-ai can resolve."""
+    """Model selection; accepts any model string pydantic-ai can resolve.
+
+    Set within a session (``agent.use_session(...)``), it is that session's model
+    (``SessionOverrides.model``); otherwise the agent's.
+    """
 
     async def _apply(self, agent: AnyAgent, value: str) -> None:
-        agent._model, settings = agent._resolve_model_string(value)
+        model, settings = agent._resolve_model_string(value)  # Validates the string
+        if (session := agent._explicit_session) is not None:
+            session.overrides = session.overrides.model_copy(update={"model": value})
+            return
+        agent._model = model
         if settings:
             agent.model_settings = settings
 

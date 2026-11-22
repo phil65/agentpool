@@ -416,3 +416,25 @@ async def test_turns_on_a_shared_external_agent_are_serialized(server: AgentPool
     assert isinstance(lock, asyncio.Lock)
     assert external.session_turn() is lock  # Every session holds the same one
     assert isinstance(server.default_agent.session_turn(), nullcontext)
+
+
+async def test_config_options_of_a_native_agent_are_per_acp_session(
+    server: AgentPoolACPAgent,
+) -> None:
+    """Two ACP sessions share the pool's native agent; a mode set in one stays in it."""
+    from aclientp.schema import SetSessionConfigOptionRequest
+
+    first, second = await _new_session(server), await _new_session(server)
+    request = SetSessionConfigOptionRequest(session_id=first, config_id="mode", value="always")
+    await server.set_session_config_option(request)
+
+    values: list[str] = []
+    for session_id in (first, second):
+        session = server.session_manager.get_session(session_id)
+        assert session is not None
+        mode = next(o for o in await session.config_options() if o.id == "mode")
+        values.append(str(mode.current_value))
+    assert values == ["always", "per_tool"]
+    agent = server.default_agent
+    assert isinstance(agent, Agent)
+    assert agent.tool_confirmation_mode == "per_tool"  # The shared agent's own value

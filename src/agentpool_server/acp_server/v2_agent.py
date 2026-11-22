@@ -287,9 +287,7 @@ class AgentPoolV2Agent(V2Agent):
         session = self.v1.session_manager.get_session(params.session_id)
         options = None
         if session is not None:
-            from agentpool_server.acp_server.acp_agent import get_session_config_options
-
-            options = await get_session_config_options(session.agent)
+            options = await session.config_options()
         return v2.ResumeSessionResponse(config_options=_config_options(options))
 
     async def fork_session(self, params: v2.ForkSessionRequest) -> v2.ForkSessionResponse:

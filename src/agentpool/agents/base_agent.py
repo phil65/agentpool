@@ -360,6 +360,16 @@ class BaseAgent[TDeps = None, TResult = str](MessageNode[TDeps, TResult]):
             yield
 
     @property
+    def _explicit_session(self) -> Session | None:
+        """The session of this agent's turn in this context, unless it's the default one.
+
+        Agents that keep settings per session (native agents' config options) store them
+        on it; with the default session they stay on the instance, as before sessions.
+        """
+        active = active_runtime(self)
+        return active.session if active is not None and not active.is_default else None
+
+    @property
     def staged_content(self) -> StagedContent:
         """Content for the next prompt of the active turn's session."""
         return self._runtime.staged

@@ -121,9 +121,11 @@ queue, steer and background design than v1's request-scoped turn.
 - **A prompt during a running turn is steered into it** (since 2026-11-22; before, it
   queued as the next turn). Text prompts steer, multimodal ones queue. Not configurable
   yet; decide whether it should be (a follow-up then lands in the current answer).
-- Sessions on one native agent run on their own `Session` and turn state, concurrently;
-  cancel and steer reach only their own turn (`agentpool/agents/turn_state.py`).
-  First-turn context (rules, Zed prompt) and slash-command staging are per ACP session.
+- Sessions on one native agent run on their own `Session` and runtime, concurrently; cancel
+  and steer reach only their own turn (`agentpool/agents/runtime.py`). Modes and config
+  options (tool confirmation, model) are per session too (`ACPSession.set_mode` /
+  `config_options`). First-turn context (rules, Zed prompt) and slash-command staging are
+  per ACP session.
 - External agents shared by several ACP sessions run one turn at a time
   (`BaseAgent.session_turn()`; fixed 2026-11-22, before that two sessions on one Claude Code /
   Codex / ACP agent could run concurrent turns on its one native session). Native agents

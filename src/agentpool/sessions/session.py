@@ -7,6 +7,7 @@ from dataclasses import replace
 from typing import TYPE_CHECKING, Any
 from uuid import uuid4
 
+from pydantic import Field
 from schemez import Schema
 
 from agentpool.messaging.message_history import MessageHistory
@@ -27,12 +28,16 @@ class SessionOverrides(Schema):
     model: str | None = None
     """Model for this session's turns instead of the agent's (native agents)."""
 
-    # Session-scoped instructions, env vars and modes belong here too, once a runtime per
-    # session can apply them (ARCHITECTURE_SESSIONS_AGENTS.md section 10.9)
+    modes: dict[str, str] = Field(default_factory=dict)
+    """Config option values for this session by option ID (native agents' options read
+    them, e.g. ``mode`` for tool confirmation)."""
+
+    # Session-scoped instructions and env vars belong here too, once the runtime can apply
+    # them (ARCHITECTURE_SESSIONS_AGENTS.md section 10.9)
 
     def is_empty(self) -> bool:
         """Whether no overrides are set."""
-        return self.model is None
+        return self.model is None and not self.modes
 
 
 class Session:
