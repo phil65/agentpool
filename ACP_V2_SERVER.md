@@ -6,7 +6,11 @@ Status: done, `serve-acp` serves v1 and v2 (steps 1-4); open points below. Writt
 ## Goal
 
 `agentpool serve-acp` answers ACP v1 and v2 clients from one process. T3 Code asks for v2
-(and falls back to v1, see `T3_CODE_INTEGRATION.md`); Zed asks for v1. v2 is close to stable,
+(and falls back to v1, see `T3_CODE_INTEGRATION.md`). Zed asks for v1 by default: its v2
+client (`crates/agent_servers/src/acp/v2.rs`, ACP SDK 5.4.0 with `unstable_protocol_v2`, on
+Zed's main branch as of 2026-11-20) runs only with the `acp-beta` feature flag. That flag is
+on for Zed staff and can be set by anyone (`"feature_flags": { "acp-beta": "on" }` in Zed's
+settings); Zed then tries v2 and falls back to v1 if the agent refuses. v2 is close to stable,
 and more clients are moving to it.
 
 ## Decision: one server, two protocol adapters
@@ -115,21 +119,28 @@ queue, steer and background design than v1's request-scoped turn.
 - **v2 over v1, for now.** Every v2 update is a translated v1 update (`v2_translate.py`),
   so v2-only features that v1 has no form for can't come through: `subagent_update`,
   `requires_action` states, cancelling single tool calls. Flip it (v2 as the core, v1
-  adapted down) once Zed, the main v1 client, speaks v2 (as with OpenCode v1, whose
-  server is gone). A protocol-neutral core event model with stable message IDs
-  (`ARCHITECTURE_SESSIONS_AGENTS.md` §10.4, §11) makes the flip small.
+  adapted down) once Zed, the main v1 client, speaks v2 by default, not only behind
+  `acp-beta` (as with OpenCode v1, whose server is gone). Zed with `acp-beta` on is a
+  real v2 client to test against before that. Already in place for the flip: one tool
+  display model and stable user message IDs (`ARCHITECTURE_SESSIONS_AGENTS.md` §10.4, §11);
+  still open: stable IDs per model response and a neutral transcript.
 - **A prompt during a running turn is steered into it** (since 2026-11-22; before, it
   queued as the next turn). Text prompts steer, multimodal ones queue. Not configurable
   yet; decide whether it should be (a follow-up then lands in the current answer).
-- Sessions on one native agent run on their own `Session` and runtime, concurrently; cancel
-  and steer reach only their own turn (`agentpool/agents/runtime.py`). Modes and config
-  options (tool confirmation, model) are per session too (`ACPSession.set_mode` /
-  `config_options`). First-turn context (rules, Zed prompt) and slash-command staging are
-  per ACP session.
-- External agents shared by several ACP sessions run one turn at a time
-  (`BaseAgent.session_turn()`; fixed 2026-11-22, before that two sessions on one Claude Code /
-  Codex / ACP agent could run concurrent turns on its one native session). Native agents
-  (`capabilities.concurrent_sessions`) need no lock.
+- ACP sessions on one shared agent run on their own pool `Session` and runtime,
+  concurrently, for agents with `capabilities.concurrent_sessions`: native agents, T3 (a
+  thread per session), Codex (a thread per session), ACP agents (an ACP session per session)
+  and Claude Code (a CLI process per session). Cancel and steer reach only their own turn
+  (`agentpool/agents/runtime.py`); modes and config options are per session
+  (`ACPSession.set_mode` / `config_options`), and so are config change notifications. The
+  others (AG-UI, OpenCode V2, Antigravity) run one turn at a time
+  (`BaseAgent.session_turn()`).
+- Each ACP session's turns run in its client's environment and with its instructions
+  (working directory, the client's system prompt): `SessionEnvironment`, current while the
+  session acts, instead of being set on the shared agents. Native agents, Claude Code and
+  Codex take the instructions themselves (`capabilities.session_instructions`); for the
+  others the client's prompt is staged into the first prompt. Rules and slash-command
+  staging are per ACP session.
 
 ## Notes
 
