@@ -1,6 +1,6 @@
 # ACP v2 for the agentpool ACP server
 
-Status: design agreed; step 1 done in aclientp (unreleased), step 2 next. Written
+Status: steps 1 (aclientp, unreleased) and 2 done; step 3 next. Written
 2026-11-22 against aclientp 0.1.7, which pins the v2 schema at `schema-v2.0.0-alpha.17`.
 
 ## Goal
@@ -70,7 +70,23 @@ queue, steer and background design than v1's request-scoped turn.
    streams). `RoutedAgentConnection` got `debug_file`, and `serve()`'s untyped `**kwargs`
    became `observers`. Tests: `aclientp/tests/v2/test_serve.py`. agentpool needs no change
    until it has a v2 agent to pass (step 3); its ACP tests pass on the new aclientp.
-2. **Core/adapter split of `session.py`**, guarded by the v1 ACP snapshot tests.
+2. **Core/adapter split of `session.py` (done).** Protocol-neutral now:
+   - `turns.py`: `TurnOutcome` (completed / cancelled / limit reached / failed / refused) and
+     `TurnOutput` (`start`, `event`, `finish`). `ACPSession.run_turn` runs a turn (slash
+     commands, then the agent) under the session's lock.
+   - `output.py`: `SessionOutput`, i.e. everything a session sends (turn events, events
+     between turns, changed mode/model/config options, the command list, errors, text,
+     slash commands' tool calls).
+   - `v1_output.py`: `V1SessionOutput` / `V1TurnOutput`, the v1 code that lived in the
+     session. `process_prompt` maps the outcome to v1's stop reason.
+
+   Still v1 and owned by the v1 adapter: `acp_agent.py` (request handlers),
+   `input_provider.py` (permission requests and elicitation via `session.requests`),
+   `from_acp_content` in `process_prompt`, the `supports_*` capability checks,
+   `session.notifications` / `session.requests`, and `debug_commands.py` (test tooling
+   for v1 notifications, which stays v1-only). For v2, `ACPSession` gets its output (and
+   input provider) from the adapter instead of building `V1SessionOutput` in
+   `__post_init__`.
 3. **v2 adapter**, tested against the isolated T3 setup (a real v2 client) and with Zed
    as the v1 check; snapshot tests per version.
 4. **Offer both by default**, with `serve-acp --max-protocol 1` as the escape hatch while
