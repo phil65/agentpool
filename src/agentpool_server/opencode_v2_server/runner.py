@@ -21,12 +21,17 @@ from agentpool.delegation.team import Team
 from agentpool.delegation.teamrun import TeamRun
 from agentpool.log import get_logger
 from agentpool.messaging.compaction import summarizing_context
+from agentpool.sessions.environment import SessionEnvironment, use_session_environment
 from agentpool_server.opencode_v2_server.catalog import leaf_agents, variant_category
 from agentpool_server.opencode_v2_server.prompt_input import payload_to_prompts
 from agentpool_server.opencode_v2_server.run_converter import (
     RunEventConverter,
     structured_error,
     usage_to_tokens,
+)
+from agentpool_server.opencode_v2_server.session_environment import (
+    SessionEnvironments,
+    session_instructions,
 )
 from agentpool_server.opencode_v2_server.tasks import TaskTracker
 from opencode_v2_sdk.models import (
@@ -178,6 +183,10 @@ class AgentBinder:
             await agent.set_mode(model.variant, category_id=category)
 
 
+def _takes_session_instructions(node: MessageNode[Any, Any]) -> bool:
+    return isinstance(node, BaseAgent) and node.capabilities.session_instructions
+
+
 @dataclass
 class SessionRunner:
     """Drains a session's inbox and runs its turns."""
@@ -197,9 +206,14 @@ class SessionRunner:
     compaction_pipeline: CompactionPipeline | None = None
     """Pipeline for manual compaction (defaults to a summarizing pipeline)."""
     environment: dict[str, str] = field(default_factory=dict)
-    """Environment variables for the session's shell commands."""
+    """Environment variables of the session: its shell commands and its turns' tools."""
     pending_context: list[str] = field(default_factory=list)
-    """Context (e.g. activated skills) prepended to the next turn's prompt."""
+    """Changes of the session's instructions (entries, activated skills) since the last turn.
+
+    Added to the next prompt for agents that don't take session instructions (external
+    agents, teams); the others get the current set with every run instead."""
+    environments: SessionEnvironments = field(default_factory=SessionEnvironments)
+    """Execution environments of the session's turns (in its directory), by agent."""
     tasks: TaskTracker = field(init=False)
     """Subagent runs and background commands started by the agent (listed as jobs)."""
 
@@ -357,10 +371,11 @@ class SessionRunner:
             await asyncio.shield(self._drain_task)
 
     async def shutdown(self) -> None:
-        """Interrupt running work and stop draining."""
+        """Interrupt running work, stop draining, close the session's environments."""
         await self.interrupt("shutdown")
         if self._drain_task is not None and not self._drain_task.done():
             self._drain_task.cancel()
+        await self.environments.close()
 
     def _current_node(self) -> MessageNode[Any, Any] | None:
         agent = self.session.info.agent or self.catalog.default_agent_name()
@@ -428,13 +443,15 @@ class SessionRunner:
                 model_ref=model_ref,
                 emit=session.emit_sink,
             )
-            prompts = await self._prompts(item)
+            prompts = await self._prompts(item, node)
+            environment = await self._environment(node)
             async with self.binder.hold(
                 node, session, model, has_history=has_history
             ) as pool_session:
-                async for event in self._stream(node, prompts, session=pool_session):
-                    self.tasks.observe(event)
-                    self.converter.handle(event)
+                with use_session_environment(environment):  # The session's directory
+                    async for event in self._stream(node, prompts, session=pool_session):
+                        self.tasks.observe(event)
+                        self.converter.handle(event)
             self.converter.finish()
             if self.converter.errors:
                 error = structured_error("; ".join(self.converter.errors))
@@ -549,16 +566,30 @@ class SessionRunner:
         finally:
             self._status(busy=False)
 
-    async def _prompts(self, item: SessionInboxUser | SessionInboxSynthetic) -> list[UserContent]:
+    async def _prompts(
+        self, item: SessionInboxUser | SessionInboxSynthetic, node: MessageNode[Any, Any]
+    ) -> list[UserContent]:
         prompts: list[UserContent] = []
         match item:
             case SessionInboxUser(payload=payload):
                 prompts.extend(await payload_to_prompts(payload, skills=self.skills))
             case SessionInboxSynthetic(payload=payload):
                 prompts.append(payload.text)
-        prompts.extend(self.pending_context)
+        if not _takes_session_instructions(node):  # The others get them as instructions
+            prompts.extend(self.pending_context)
         self.pending_context.clear()
         return prompts
+
+    async def _environment(self, node: MessageNode[Any, Any]) -> SessionEnvironment | None:
+        """The session environment of a turn of ``node``: its directory, its instructions.
+
+        For a team, None: its members keep their own environments.
+        """
+        if not isinstance(node, BaseAgent):
+            return None
+        env = await self.environments.get(node, self.session.directory, self.environment)
+        instructions = session_instructions(self.session.projection)
+        return SessionEnvironment(env=env, instructions=instructions)
 
     def _stream(
         self,

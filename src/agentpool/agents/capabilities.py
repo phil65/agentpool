@@ -37,5 +37,9 @@ class AgentCapabilities:
     """Runs turns of several sessions at once on one instance (each on its own history and
     turn state). Otherwise ``session_turn()`` serializes them: one native session each."""
 
+    session_instructions: bool = False
+    """Takes the session's instructions (``SessionEnvironment.instructions``) as system
+    instructions with every run. Otherwise servers send changes to them as prompt text."""
+
     background_events: bool = False
     """Backend streams between-turn / unsolicited events via ``BaseAgent.emit_event``."""

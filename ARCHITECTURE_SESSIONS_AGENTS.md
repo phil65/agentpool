@@ -239,7 +239,8 @@ need to stay distinct:
    instructions never reached them); the bridge and a nested ACP agent's client handler
    capture it with the turn. Before, each new ACP session set its environment on every pool
    agent, so all sessions' tools ran in the newest's. The OpenCode V2 server doesn't set one
-   yet: its sessions' `directory` is recorded, but agents run in their own environment.
+   yet: its sessions' `directory` is recorded, but agents run in their own environment (done
+   later the same day, see §10.9).
    **Claude Code (2026-11-22):** `concurrent_sessions`: a CLI process per session
    (`CliProcess`: client, idle watcher, idle compaction, steering, title), started on the
    session's first turn and resuming its Claude session, with the bridge on its route;
@@ -724,9 +725,13 @@ and the migration step (§6) that should make the stopgap unnecessary.
 - **Status (2026-11-22, later):** the mechanism exists: `SessionEnvironment` (execution
   environment and instructions), current while a server acts for the session. Native agents
   take its instructions as system instructions per run (not prompt text). The ACP server uses
-  it for each session's client environment, cwd and client instructions. Not yet: V2
-  instruction entries and skills on it (`pending_context` stays), env vars on the environment,
-  and external agents (they take instructions only as staged prompt text).
+  it for each session's client environment, cwd and client instructions. The V2 server too:
+  a session's turns run in an environment rooted in its `directory`, with its environment
+  variables (a copy of a local agent environment's settings; agents with non-local ones keep
+  theirs), and its instruction entries and activated skills are its instructions, the current
+  set with every run. `AgentCapabilities.session_instructions` says who takes them (native
+  agents); for the others (external agents, teams) `pending_context` still adds the changes
+  to the next prompt, since their backends keep the conversation.
 
 ### 10.10 Teams have no session or model surface
 
@@ -806,8 +811,10 @@ agent's review, largely matching §3–§10).
    `subagent_update` and V2 children.
 5. **Session-scoped instructions and env (§10.9),** applied by the runtime (system instructions,
    not user prompt text; env on the runtime's exxec environment). Then `pending_context` goes.
-   Started: `SessionEnvironment` (ACP server; native agents' instructions); next the OpenCode
-   V2 server (a session's `directory`, instruction entries) on it.
+   Done for native agents in both servers (`SessionEnvironment`: ACP client environment and
+   instructions; V2 directory, env vars, instruction entries, skills). External agents still
+   take instructions as prompt text: each would need its own channel (Claude Code's
+   `--append-system-prompt` per process, Codex `developer_instructions` per thread).
 6. **One tool display model.** Diffs, terminal output and tool kinds in one internal form that
    every agent produces and every server renders. Today `ClaudeCodeAgent` imports
    `opencode_v2_sdk.tool_metadata` (an agent depending on a protocol SDK), next to

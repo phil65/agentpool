@@ -76,6 +76,7 @@ HTTP route ──► V2Session.emit(EventClass, data)
 | `prompt_input.py` | Prompt admission (attachments, skills, agent mentions) |
 | `tool_display.py` | Maps tool names/arguments onto OpenCode's renderers (`bash` → `shell`, …) |
 | `session_ops.py` | Fork, revert, diffs, import, stats, instruction entries |
+| `session_environment.py` | A session's directory (execution environment) and instructions for its turns |
 | `shells.py`, `ptys.py` | Background shell commands; PTYs with the OpenCode websocket protocol |
 | `location.py` | Locations and projects (git root commit = project ID, else `global`) |
 | `pagination.py`, `errors.py`, `deps.py` | Cursors, typed `{_tag, message}` errors, FastAPI deps |

@@ -151,6 +151,7 @@ class Agent[TDeps = None, OutputDataT = str](BaseAgent[TDeps, OutputDataT]):
         native_compaction=True,
         native_fork=True,
         concurrent_sessions=True,
+        session_instructions=True,  # Added per run (see _session_instructions)
     )
 
     def __init__(  # noqa: PLR0915
