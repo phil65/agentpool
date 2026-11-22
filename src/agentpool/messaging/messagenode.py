@@ -94,6 +94,8 @@ class MessageNode[TDeps, TResult](ABC):
         initial_prompt: str | None = None,
         model: str | None = None,
         agent_type: str | None = None,
+        *,
+        session_id: str | None = None,
     ) -> None:
         """Log conversation to storage if enabled.
 
@@ -105,15 +107,18 @@ class MessageNode[TDeps, TResult](ABC):
             initial_prompt: Optional initial prompt to trigger title generation.
             model: Requested model identifier for this session.
             agent_type: Type of agent backend (native, claude, codex, etc.).
+            session_id: Explicit session ID to log (defaults to ``self.session_id``).
         """
+        target_session_id = session_id or self.session_id
 
         def _set_session_title(title: str) -> None:
             """Callback for setting conversation title (called by storage manager)."""
-            self.session_title = title
+            if target_session_id == self.session_id:
+                self.session_title = title
 
-        if self.enable_db_logging and self.storage and self.session_id:
+        if self.enable_db_logging and self.storage and target_session_id:
             await self.storage.log_session(
-                session_id=self.session_id,
+                session_id=target_session_id,
                 node_name=self.name,
                 model=model,
                 agent_type=agent_type,

@@ -70,7 +70,7 @@ if TYPE_CHECKING:
     )
     from agentpool.delegation import AgentPool, Team, TeamRun
     from agentpool.messaging import ChatMessage
-    from agentpool.sessions import SessionData
+    from agentpool.sessions import Session, SessionData
     from agentpool.storage import StorageManager
     from agentpool.talk.stats import MessageStats
     from agentpool.ui.base import InputProvider
@@ -268,7 +268,6 @@ class BaseAgent[TDeps = None, TResult = str](MessageNode[TDeps, TResult]):
         self._event_subscribers: set[asyncio.Queue[RichAgentStreamEvent[Any] | None]] = set()
         self._active_runs = 0
         """Number of runs currently streaming (events go to their stream)."""
-        self.conversation = MessageHistory(storage=self.storage)
         match env:
             case ExecutionEnvironment():
                 self.env = env
@@ -276,6 +275,14 @@ class BaseAgent[TDeps = None, TResult = str](MessageNode[TDeps, TResult]):
                 self.env = LocalExecutionEnvironment(cwd=str(env) if env is not None else None)
             case _ as unreachable:
                 assert_never(unreachable)
+        from agentpool.sessions import Session
+
+        self._default_session: Session = Session.create(
+            agent_name=self.name,
+            cwd=self.env.cwd,
+            agent_type=self.AGENT_TYPE,
+            storage=self.storage,
+        )
         self._input_provider = input_provider
         self._output_type: type[TResult] = output_type
         self.tools = ToolManager()
@@ -293,6 +300,22 @@ class BaseAgent[TDeps = None, TResult = str](MessageNode[TDeps, TResult]):
         # Internal filesystem for tool/session state (can get written to via AgentContext)
         self._internal_fs = IsolatedMemoryFileSystem()
         self.staged_content = StagedContent()
+
+    @property
+    def session(self) -> Session:
+        """Default :class:`Session` owning this agent's implicit conversation state."""
+        if self.session_id is not None and self._default_session.session_id != self.session_id:
+            self._default_session.set_session_id(self.session_id)
+        return self._default_session
+
+    @property
+    def conversation(self) -> MessageHistory:
+        """Conversation history of the agent's default session."""
+        return self._default_session.history
+
+    @conversation.setter
+    def conversation(self, value: MessageHistory) -> None:
+        self._default_session.history = value
 
     def __repr__(self) -> str:
         typ = self.__class__.__name__
@@ -434,8 +457,18 @@ class BaseAgent[TDeps = None, TResult = str](MessageNode[TDeps, TResult]):
         external runtime with its own native session (Claude Code, Codex, ACP, ...) override
         this to also start a fresh native session instead of resuming the previous one.
         """
+        from agentpool.sessions import SessionData, SessionOverrides
+        from agentpool.utils.identifiers import generate_session_id
+
         await self.reset()
         self.session_id = None
+        self._default_session.data = SessionData(
+            session_id=generate_session_id(),
+            agent_name=self.name,
+            cwd=self.env.cwd,
+            agent_type=self.AGENT_TYPE,
+        )
+        self._default_session.overrides = SessionOverrides()
 
     def get_context(
         self,
@@ -727,6 +760,7 @@ class BaseAgent[TDeps = None, TResult = str](MessageNode[TDeps, TResult]):
         interrupt: bool = False,
         store_history: bool = True,
         message_id: str | None = None,
+        session: Session | None = None,
         session_id: str | None = None,
         parent_id: str | None = None,
         message_history: MessageHistory | None = None,
@@ -760,6 +794,7 @@ class BaseAgent[TDeps = None, TResult = str](MessageNode[TDeps, TResult]):
                     *prompts,
                     store_history=store_history,
                     message_id=msg_id,
+                    session=session,
                     session_id=session_id,
                     parent_id=parent_id,
                     message_history=message_history,
@@ -809,6 +844,7 @@ class BaseAgent[TDeps = None, TResult = str](MessageNode[TDeps, TResult]):
         *prompts: PromptCompatible,
         store_history: bool = True,
         message_id: str | None = None,
+        session: Session | None = None,
         session_id: str | None = None,
         parent_id: str | None = None,
         message_history: MessageHistory | None = None,
@@ -827,6 +863,8 @@ class BaseAgent[TDeps = None, TResult = str](MessageNode[TDeps, TResult]):
             *prompts: Input prompts (various formats supported)
             store_history: Whether to store in history
             message_id: Optional message ID
+            session: Explicit :class:`Session` owning history and overrides for this run.
+                Leaves the agent's default session untouched.
             session_id: Optional conversation ID
             parent_id: Optional parent message ID
             message_history: Optional message history
@@ -840,19 +878,36 @@ class BaseAgent[TDeps = None, TResult = str](MessageNode[TDeps, TResult]):
         """
         from agentpool.utils.identifiers import generate_session_id
 
-        # Initialize session_id once for the entire run (including queued prompts)
-        if self.session_id is None:
-            self.session_id = session_id or generate_session_id()
-            user_prompts = [str(p) for p in prompts if isinstance(p, str)]
-            initial_prompt = user_prompts[-1] if user_prompts else None
-            # Agents that title their sessions themselves skip the storage's titles
-            await self.log_session(
-                None if self.TITLES_OWN_SESSIONS else initial_prompt,
-                model=self.model_name,
-                agent_type=self.AGENT_TYPE,
-            )
-        elif session_id and self.session_id != session_id:
-            self.session_id = session_id
+        if session is not None:
+            effective_session_id = session.session_id
+            effective_history = message_history if message_history is not None else session.history
+            if not session.history:
+                user_prompts = [str(p) for p in prompts if isinstance(p, str)]
+                initial_prompt = user_prompts[-1] if user_prompts else None
+                await self.log_session(
+                    None if self.TITLES_OWN_SESSIONS else initial_prompt,
+                    model=session.overrides.model or self.model_name,
+                    agent_type=self.AGENT_TYPE,
+                    session_id=effective_session_id,
+                )
+        else:
+            # Initialize default session_id once for the entire run (including queued prompts)
+            if self.session_id is None:
+                self.session_id = session_id or generate_session_id()
+                self._default_session.set_session_id(self.session_id)
+                user_prompts = [str(p) for p in prompts if isinstance(p, str)]
+                initial_prompt = user_prompts[-1] if user_prompts else None
+                # Agents that title their sessions themselves skip the storage's titles
+                await self.log_session(
+                    None if self.TITLES_OWN_SESSIONS else initial_prompt,
+                    model=self.model_name,
+                    agent_type=self.AGENT_TYPE,
+                )
+            elif session_id and self.session_id != session_id:
+                self.session_id = session_id
+                self._default_session.set_session_id(session_id)
+            effective_session_id = session_id
+            effective_history = message_history
 
         # Reset cancellation state and track current task
         self._cancelled = False
@@ -870,9 +925,10 @@ class BaseAgent[TDeps = None, TResult = str](MessageNode[TDeps, TResult]):
                     *current_prompts,
                     store_history=store_history,
                     message_id=message_id,
-                    session_id=session_id,
+                    session=session,
+                    session_id=effective_session_id,
                     parent_id=parent_id,
-                    message_history=message_history,
+                    message_history=effective_history,
                     input_provider=input_provider,
                     wait_for_connections=wait_for_connections,
                     deps=deps,
@@ -891,6 +947,7 @@ class BaseAgent[TDeps = None, TResult = str](MessageNode[TDeps, TResult]):
         *prompts: PromptCompatible,
         store_history: bool = True,
         message_id: str | None = None,
+        session: Session | None = None,
         session_id: str | None = None,
         parent_id: str | None = None,
         message_history: MessageHistory | None = None,
@@ -908,6 +965,7 @@ class BaseAgent[TDeps = None, TResult = str](MessageNode[TDeps, TResult]):
             *prompts: Input prompts (various formats supported)
             store_history: Whether to store in history
             message_id: Optional message ID
+            session: Optional explicit session owning history and overrides
             session_id: Optional conversation ID
             parent_id: Optional parent message ID
             message_history: Optional message history
@@ -926,11 +984,20 @@ class BaseAgent[TDeps = None, TResult = str](MessageNode[TDeps, TResult]):
 
         # Convert prompts to standard UserContent format
         converted_prompts = await convert_prompts(prompts)
+        if session is not None and session.overrides.instructions:
+            converted_prompts = [*session.overrides.instructions, *converted_prompts]
         # Prepend any staged content
         if staged := await self.staged_content.consume_as_text():
             converted_prompts = [*converted_prompts, staged]
-        # Get message history (either passed or agent's own)
-        conversation = message_history if message_history is not None else self.conversation
+        # Get message history (explicit > session > agent default)
+        conversation = (
+            message_history
+            if message_history is not None
+            else (session.history if session is not None else self.conversation)
+        )
+        effective_session_id = (
+            session.session_id if session is not None else (session_id or self.session_id)
+        )
         # Determine effective parent_id (from param or last message in history)
         pending_parts = conversation.get_pending_parts()
         effective_parent_id = parent_id if parent_id else conversation.get_last_message_id()
@@ -938,7 +1005,7 @@ class BaseAgent[TDeps = None, TResult = str](MessageNode[TDeps, TResult]):
         user_msg = ChatMessage.user_prompt(
             message=converted_prompts,
             parent_id=effective_parent_id,
-            session_id=self.session_id,
+            session_id=effective_session_id,
         )
 
         # Resolve event handlers
@@ -951,7 +1018,6 @@ class BaseAgent[TDeps = None, TResult = str](MessageNode[TDeps, TResult]):
 
         # Stream events from implementation
         final_message = None
-        conversation = message_history if message_history is not None else self.conversation
         await self.message_received.emit(user_msg)
         self._active_runs += 1
         try:
@@ -960,7 +1026,7 @@ class BaseAgent[TDeps = None, TResult = str](MessageNode[TDeps, TResult]):
                 pre_run_result = await self.hooks.run_pre_run_hooks(
                     agent_name=self.name,
                     prompt=str(user_msg.content),  # TODO: allow UserContent for hook?
-                    session_id=self.session_id,
+                    session_id=effective_session_id,
                     env=self.env,
                 )
                 if pre_run_result.get("decision") == "deny":
@@ -974,7 +1040,7 @@ class BaseAgent[TDeps = None, TResult = str](MessageNode[TDeps, TResult]):
                 effective_parent_id=effective_parent_id,
                 store_history=store_history,
                 message_id=message_id,
-                session_id=session_id,
+                session_id=effective_session_id,
                 parent_id=parent_id,
                 message_history=conversation,
                 input_provider=input_provider,
@@ -999,32 +1065,44 @@ class BaseAgent[TDeps = None, TResult = str](MessageNode[TDeps, TResult]):
         finally:
             self._active_runs -= 1
 
-        # Post-processing after stream completes
         if final_message is not None:
-            # Execute post-run hooks
-            if self.hooks:
-                await self.hooks.run_post_run_hooks(
-                    agent_name=self.name,
-                    prompt=str(user_msg.content),
-                    result=final_message.content,
-                    session_id=self.session_id,
-                    env=self.env,
-                )
+            await self._finalize_turn(
+                user_msg=user_msg,
+                final_message=final_message,
+                conversation=conversation,
+                session=session,
+                effective_session_id=effective_session_id,
+                store_history=store_history,
+                wait_for_connections=wait_for_connections,
+            )
 
-            # Emit signal (always - for event handlers)
-            await self.message_sent.emit(final_message)
-            # Conditional persistence based on store_history
-            # TODO: Verify store_history semantics across all use cases:
-            #   - Should subagent tool calls set store_history=False?
-            #   - Should forked/ephemeral runs always skip persistence?
-            #   - Should signals still fire when store_history=False?
-            #   Current behavior: store_history controls both DB logging AND conversation context
-            if store_history:
-                # Log to persistent storage and add to conversation context
-                await self.log_message(final_message)
-                conversation.add_chat_messages(split_exchange(user_msg, final_message))
-            # Route to connected agents (always - they decide what to do with it)
-            await self.connections.route_message(final_message, wait=wait_for_connections)
+    async def _finalize_turn(
+        self,
+        *,
+        user_msg: ChatMessage[Any],
+        final_message: ChatMessage[TResult],
+        conversation: MessageHistory,
+        session: Session | None,
+        effective_session_id: str | None,
+        store_history: bool,
+        wait_for_connections: bool | None,
+    ) -> None:
+        """Run post-run hooks, emit signals, persist history, and route connections."""
+        if self.hooks:
+            await self.hooks.run_post_run_hooks(
+                agent_name=self.name,
+                prompt=str(user_msg.content),
+                result=final_message.content,
+                session_id=effective_session_id,
+                env=self.env,
+            )
+        await self.message_sent.emit(final_message)
+        if store_history:
+            await self.log_message(final_message)
+            conversation.add_chat_messages(split_exchange(user_msg, final_message))
+            if session is not None:
+                session.data.touch()
+        await self.connections.route_message(final_message, wait=wait_for_connections)
 
     async def _execute_slash_command_streaming(
         self, command_text: str
@@ -1246,6 +1324,7 @@ class BaseAgent[TDeps = None, TResult = str](MessageNode[TDeps, TResult]):
         *prompts: PromptCompatible | ChatMessage[Any],
         store_history: bool = True,
         message_id: str | None = None,
+        session: Session | None = None,
         session_id: str | None = None,
         parent_id: str | None = None,
         message_history: MessageHistory | None = None,
@@ -1265,6 +1344,7 @@ class BaseAgent[TDeps = None, TResult = str](MessageNode[TDeps, TResult]):
                             context window
             message_id: Optional message id for the returned message.
                         Automatically generated if not provided.
+            session: Explicit :class:`Session` owning history and overrides for this run.
             session_id: Optional conversation id for the returned message.
             parent_id: Parent message id
             message_history: Optional MessageHistory object to
@@ -1287,6 +1367,7 @@ class BaseAgent[TDeps = None, TResult = str](MessageNode[TDeps, TResult]):
             *prompts,
             store_history=store_history,
             message_id=message_id,
+            session=session,
             session_id=session_id,
             parent_id=parent_id,
             message_history=message_history,

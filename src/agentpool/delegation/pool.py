@@ -89,6 +89,7 @@ class AgentPool[TPoolDeps = None](BaseRegistry[NodeName, MessageNode[Any, Any]])
         from agentpool.models.manifest import AgentsManifest
         from agentpool.observability import registry
         from agentpool.prompts.manager import PromptManager
+        from agentpool.sessions import SessionRegistry
         from agentpool.skills.manager import SkillsManager
         from agentpool.storage import StorageManager
         from agentpool.utils.file_ops_tracker import FileOpsTracker
@@ -115,6 +116,7 @@ class AgentPool[TPoolDeps = None](BaseRegistry[NodeName, MessageNode[Any, Any]])
         self.exit_stack = AsyncExitStack()
         self.parallel_load = parallel_load
         self.storage = StorageManager(self.manifest.storage)
+        self.sessions = SessionRegistry(storage=self.storage)
         self.vfs_registry = VFSRegistry()
         for name, resource_config in self.manifest.resources.items():
             self.vfs_registry.register_from_config(name, resource_config)
