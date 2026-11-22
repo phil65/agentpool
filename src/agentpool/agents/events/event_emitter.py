@@ -48,6 +48,18 @@ class StreamEventEmitter:
     # Core methods - the essential API
     # =========================================================================
 
+    @property
+    def _turn_session_id(self) -> str | None:
+        """The session of the turn the tool runs in (file changes record it)."""
+        runtime = self._context.runtime
+        return runtime.session.session_id if runtime is not None else None
+
+    @property
+    def _turn_message_id(self) -> str | None:
+        """ID of the user message of the turn the tool runs in."""
+        runtime = self._context.runtime
+        return runtime.turn_message_id if runtime is not None else None
+
     async def tool_call_start(
         self,
         title: str,
@@ -104,6 +116,8 @@ class StreamEventEmitter:
                         new_content=item.new_text,
                         operation="create" if item.old_text is None else "write",
                         agent_name=self._context.node_name,
+                        session_id=self._turn_session_id,
+                        message_id=self._turn_message_id,
                     )
 
         event = ToolCallProgressEvent(
@@ -191,6 +205,8 @@ class StreamEventEmitter:
                 new_content=new_text,
                 operation="edit",
                 agent_name=self._context.node_name,
+                session_id=self._turn_session_id,
+                message_id=self._turn_message_id,
             )
 
         event = ToolCallProgressEvent.file_edit(

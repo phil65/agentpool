@@ -69,6 +69,8 @@ class SessionRuntime[TDeps = Any, TResult = Any]:
         self.injections = PromptInjectionManager()
         self.events: asyncio.Queue[RichAgentStreamEvent[Any]] = asyncio.Queue()
         self.staged = StagedContent()
+        self.turn_message_id: str | None = None
+        """ID of the user message of the prompt group running (e.g. file changes record it)."""
 
     @property
     def idle(self) -> bool:
@@ -90,6 +92,7 @@ class SessionRuntime[TDeps = Any, TResult = Any]:
         *prompts: PromptCompatible,
         store_history: bool = True,
         message_id: str | None = None,
+        user_message_id: str | None = None,
         session_id: str | None = None,
         parent_id: str | None = None,
         message_history: MessageHistory | None = None,
@@ -101,7 +104,8 @@ class SessionRuntime[TDeps = Any, TResult = Any]:
         """Run the prompts as this session's turn, then any queued during it.
 
         Arguments as for ``BaseAgent.run_stream``; ``session_id`` only applies to the
-        default session (it re-points the agent's own session).
+        default session (it re-points the agent's own session). ``user_message_id`` is the
+        ID of the given prompts' user message; queued prompts get their own.
         """
         agent = self.agent
         if self.is_default:
@@ -128,14 +132,17 @@ class SessionRuntime[TDeps = Any, TResult = Any]:
             self.injections.insert_queued(prompts)
             try:
                 # Process queued prompts until queue is empty
+                prompt_message_id = user_message_id  # The given prompts' (the first group)
                 while self.injections.has_queued() and not self.cancelled:
                     current_prompts = self.injections.pop_queued()
                     if current_prompts is None:
                         break
+                    group_message_id, prompt_message_id = prompt_message_id, None
                     async for event in self._run_once(
                         *current_prompts,
                         store_history=store_history,
                         message_id=message_id,
+                        user_message_id=group_message_id,
                         session_id=effective_session_id,
                         parent_id=parent_id,
                         message_history=effective_history,
@@ -149,6 +156,7 @@ class SessionRuntime[TDeps = Any, TResult = Any]:
                     self.injections.flush_pending_to_queue()
             finally:
                 self.task = None
+                self.turn_message_id = None
                 self.injections.clear()  # Clean slate for next run
                 if not self.is_default and self.idle:
                     agent._runtimes.pop(self.session.session_id, None)
@@ -226,6 +234,7 @@ class SessionRuntime[TDeps = Any, TResult = Any]:
         *prompts: PromptCompatible,
         store_history: bool,
         message_id: str | None,
+        user_message_id: str | None,
         session_id: str | None,
         parent_id: str | None,
         message_history: MessageHistory | None,
@@ -264,7 +273,9 @@ class SessionRuntime[TDeps = Any, TResult = Any]:
             message=converted_prompts,
             parent_id=effective_parent_id,
             session_id=effective_session_id,
+            message_id=user_message_id,
         )
+        self.turn_message_id = user_msg.message_id
         resolved_handler = (
             MultiEventHandler(resolve_event_handlers(event_handlers))
             if event_handlers is not None

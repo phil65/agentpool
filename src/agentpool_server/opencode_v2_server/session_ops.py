@@ -132,7 +132,7 @@ from opencode_v2_sdk.models import (
 
 
 if TYPE_CHECKING:
-    from collections.abc import Sequence
+    from collections.abc import Collection, Sequence
 
     from agentpool.messaging import ChatMessage
     from agentpool.utils.file_ops_tracker import FileChange, FileOpsTracker
@@ -197,13 +197,43 @@ def fork_events(
     return copied
 
 
-def user_turns(messages: Sequence[SessionMessageInfo]) -> int:
-    """Number of user messages."""
-    return sum(1 for m in messages if isinstance(m, SessionMessageUser))
+def prompt_ids(messages: Sequence[SessionMessageInfo]) -> list[str]:
+    """IDs of the messages that started turns (user and synthetic prompts), in order.
+
+    The runner runs each turn with its prompt's ID as the user message ID: the stored
+    answer of the turn has it as ``parent_id``, and its file changes as ``message_id``.
+    """
+    return [m.id for m in messages if isinstance(m, SessionMessageUser | SessionMessageSynthetic)]
 
 
-def history_prefix(history: Sequence[ChatMessage[Any]], turns: int) -> list[ChatMessage[Any]]:
-    """Stored conversation messages before the ``turns + 1``-th user message."""
+def history_before(
+    history: Sequence[ChatMessage[Any]], prompts: Sequence[str], keep: int
+) -> list[ChatMessage[Any]]:
+    """Stored conversation messages of the first ``keep`` of the session's ``prompts``.
+
+    Cut at the first stored message of a dropped prompt's turn (by ID). A history stored
+    before turns carried their prompt's ID (none of them found) is cut by counting turns.
+    """
+    dropped = set(prompts[keep:])
+    known = set(prompts)
+    if any(m.message_id in known or m.parent_id in known for m in history):
+        result: list[ChatMessage[Any]] = []
+        for message in history:
+            if message.message_id in dropped or message.parent_id in dropped:
+                break
+            result.append(message)
+        return result
+    return _history_of_turns(history, keep)
+
+
+def _history_of_turns(history: Sequence[ChatMessage[Any]], turns: int) -> list[ChatMessage[Any]]:
+    """The first ``turns`` turns of a history stored without prompt IDs.
+
+    Stored with their user messages: up to the ``turns + 1``-th one. Stored as answers
+    only (the prompt inside): one message per turn.
+    """
+    if not any(message.role == "user" for message in history):
+        return list(history[:turns])
     result: list[ChatMessage[Any]] = []
     seen = 0
     for message in history:
@@ -242,16 +272,31 @@ def message_time(session: V2Session, message_id: str) -> float | None:
     return message.time.created if message is not None else None
 
 
-def changes_between(
-    tracker: FileOpsTracker, start_ms: float | None, end_ms: float | None = None
+def changes_of_turns(
+    tracker: FileOpsTracker,
+    session_id: str,
+    prompts: Collection[str],
+    start_ms: float | None,
+    end_ms: float | None = None,
 ) -> list[FileChange]:
-    """File changes recorded in a time window (epoch ms, end exclusive)."""
+    """The file changes the turns of ``prompts`` (of session ``session_id``) made.
+
+    The tracker is the pool's, shared by sessions: changes are picked by session and turn.
+    Changes recorded without a session (outside a turn, or before turns recorded theirs)
+    are picked by time (epoch ms, end exclusive).
+    """
+    turns = set(prompts)
     start = (start_ms or 0) / 1000
     end = end_ms / 1000 if end_ms is not None else None
     return [
         change
         for change in tracker.changes
-        if change.timestamp >= start and (end is None or change.timestamp < end)
+        if (change.session_id == session_id and change.message_id in turns)
+        or (
+            change.session_id is None
+            and change.timestamp >= start
+            and (end is None or change.timestamp < end)
+        )
     ]
 
 

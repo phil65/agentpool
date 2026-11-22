@@ -714,7 +714,7 @@ class CodexAgent[TDeps = None, OutputDataT = str](BaseAgent[TDeps, OutputDataT])
             role="assistant",
             message_id=final_message_id,
             session_id=final_session_id,
-            parent_id=parent_id,
+            parent_id=user_msg.message_id,  # The turn's prompt (like every agent's answer)
             cost_info=cost_info,
             usage=run_usage,
             model_name=self.model_name,

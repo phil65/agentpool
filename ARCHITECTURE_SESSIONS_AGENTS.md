@@ -650,6 +650,17 @@ and the migration step (§6) that should make the stopgap unnecessary.
     (`changes_between()`), because `FileChange.message_id` holds agent-side IDs.
 - **Fix:** `run_stream` should accept a caller-supplied ID for the user message and expose stable
   IDs for each model response. That fits naturally with step 1.
+- **Status (2026-11-22):** `run_stream(user_message_id=...)`: the V2 runner passes each turn's
+  prompt ID, and every agent's stored answer has its turn's user message as `parent_id` (Codex's
+  didn't). Revert and fork cut the stored history at the first dropped prompt's turn
+  (`history_before`); histories stored before fall back to counting turns. The counting was
+  broken anyway: storage keeps a turn's answer with the prompt inside it, so it found no user
+  messages, and revert never truncated the stored history (the agent kept remembering reverted
+  turns). File changes record their session and turn (`FileChange.session_id` / `message_id`,
+  from the turn's runtime), so diffs and file reverts pick the session's own changes by turn
+  instead of the pool's by time (another session's edits were reverted too); changes without a
+  session still go by time. Not done: stable IDs per model response (V2 step IDs still differ
+  from stored messages).
 
 ### 10.5 No model-request (step) lifecycle in the event stream
 

@@ -449,7 +449,8 @@ class SessionRunner:
                 node, session, model, has_history=has_history
             ) as pool_session:
                 with use_session_environment(environment):  # The session's directory
-                    async for event in self._stream(node, prompts, session=pool_session):
+                    stream = self._stream(node, prompts, session=pool_session, prompt_id=item.id)
+                    async for event in stream:
                         self.tasks.observe(event)
                         self.converter.handle(event)
             self.converter.finish()
@@ -597,7 +598,9 @@ class SessionRunner:
         prompts: list[UserContent],
         *,
         session: Session | None = None,
+        prompt_id: str | None = None,
     ) -> AsyncIterator[StreamWithCommandsEvent[Any]]:
+        """The turn's events; ``prompt_id`` (the prompt message's) becomes its user message ID."""
         match node:
             case BaseAgent():
                 first = prompts[0] if prompts else None
@@ -606,12 +609,14 @@ class SessionRunner:
                         *prompts,
                         session=session,
                         session_id=self.session.id,
+                        user_message_id=prompt_id,
                         input_provider=self.input_provider,
                     )
                 return node.run_stream(
                     *prompts,
                     session=session,
                     session_id=self.session.id,
+                    user_message_id=prompt_id,
                     input_provider=self.input_provider,
                 )
             case Team() | TeamRun():

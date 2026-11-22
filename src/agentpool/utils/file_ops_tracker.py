@@ -28,10 +28,13 @@ class FileChange:
     """Unix timestamp when the change occurred."""
 
     message_id: str | None = None
-    """ID of the message that triggered this change (for revert-to-message)."""
+    """ID of the user message of the turn that made this change (for revert-to-message)."""
 
     agent_name: str | None = None
     """Name of the agent that made this change."""
+
+    session_id: str | None = None
+    """The session whose turn made this change (the tracker is the pool's, shared)."""
 
     def to_unified_diff(self) -> str:
         """Generate unified diff for this change.
@@ -94,6 +97,7 @@ class FileOpsTracker:
         operation: FileOperation,
         message_id: str | None = None,
         agent_name: str | None = None,
+        session_id: str | None = None,
     ) -> None:
         """Record a file change.
 
@@ -102,8 +106,9 @@ class FileOpsTracker:
             old_content: Content before change (None for new files)
             new_content: Content after change (None for deletions)
             operation: Type of operation ('create', 'write', 'edit', 'delete')
-            message_id: Optional message ID that triggered this change
+            message_id: ID of the user message of the turn that made this change
             agent_name: Optional name of the agent that made this change
+            session_id: The session whose turn made this change
         """
         change = FileChange(
             path=path,
@@ -112,6 +117,7 @@ class FileOpsTracker:
             operation=operation,
             message_id=message_id,
             agent_name=agent_name,
+            session_id=session_id,
         )
         self.changes.append(change)
 

@@ -297,6 +297,7 @@ class ChatMessage[TContent]:
         session_id: str | None = None,
         instructions: str | None = None,
         parent_id: str | None = None,
+        message_id: str | None = None,
     ) -> ChatMessage[TPromptContent]:
         """Create a user prompt message.
 
@@ -305,6 +306,7 @@ class ChatMessage[TContent]:
             session_id: ID of the conversation
             instructions: Optional instructions for the model
             parent_id: ID of the parent message (typically the previous assistant response)
+            message_id: Its ID (generated when omitted), e.g. the client's ID for it
 
         Returns:
             A ChatMessage representing the user prompt
@@ -318,6 +320,7 @@ class ChatMessage[TContent]:
             content=message,
             session_id=id_,
             parent_id=parent_id,
+            message_id=message_id or str(uuid.uuid4()),
         )
 
     @classmethod

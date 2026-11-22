@@ -34,20 +34,20 @@ from agentpool_server.opencode_v2_server.events import new_message_id
 from agentpool_server.opencode_v2_server.location import normalize_directory
 from agentpool_server.opencode_v2_server.run_converter import usage_to_tokens
 from agentpool_server.opencode_v2_server.session_ops import (
-    changes_between,
+    changes_of_turns,
     changes_to_diffs,
     compute_stats,
     copy_history,
     fork_events,
     forked_event_data,
-    history_prefix,
+    history_before,
     instruction_update,
     message_events,
     message_time,
     parse_time,
+    prompt_ids,
     rekey_event,
     revert_operations,
-    user_turns,
 )
 from agentpool_server.opencode_v2_server.state import SessionNotFoundError
 from opencode_v2_sdk.models import (
@@ -148,9 +148,9 @@ async def session_fork(session: SessionDep, body: SessionForkBody, state: StateD
         last = session.projection.messages[-1].id
         child.emit(SessionForked, forked_event_data(child.id, session.id, "through", last))
     history = await state.storage.get_session_messages(session.id)
-    for message in copy_history(
-        history_prefix(history, user_turns(child.projection.messages)), child.id
-    ):
+    kept = len(prompt_ids(child.projection.messages))
+    prompts = prompt_ids(session.projection.messages)
+    for message in copy_history(history_before(history, prompts, kept), child.id):
         await state.storage.log_message(message)
     await state.save_session_data(child)
     return ok(SessionForkResponse(data=child.info))
@@ -219,7 +219,13 @@ async def session_revert_stage(
     created = message_time(session, body.message_id)
     if created is None:
         raise message_not_found(session.id, body.message_id)
-    files = changes_to_diffs(changes_between(state.pool.file_ops, created)) if body.files else None
+    if body.files:
+        dropped = _prompts_from(session, body.message_id)
+        files = changes_to_diffs(
+            changes_of_turns(state.pool.file_ops, session.id, dropped, created)
+        )
+    else:
+        files = None
     revert = SessionRevert(message_id=body.message_id, files=files)
     session.emit(SessionRevertStaged, SessionRevertStagedData(session_id=session.id, revert=revert))
     return ok(SessionRevertStageResponse(data=revert))
@@ -245,7 +251,8 @@ async def session_revert_commit(session: SessionDep, state: StateDep) -> Respons
         raise message_not_found(session.id, revert.message_id)
     if revert.files:
         tracker = state.pool.file_ops
-        changes = changes_between(tracker, created)
+        dropped = _prompts_from(session, revert.message_id)
+        changes = changes_of_turns(tracker, session.id, dropped, created)
         for path, content in revert_operations(changes):
             target = anyio.Path(path)
             if content is None:
@@ -255,10 +262,11 @@ async def session_revert_commit(session: SessionDep, state: StateDep) -> Respons
                 await target.write_text(content)
         tracker.changes = [c for c in tracker.changes if c not in changes]
     index = session.projection.message_index(revert.message_id) or 0
-    kept_turns = user_turns(session.projection.messages[:index])
+    kept = len(prompt_ids(session.projection.messages[:index]))
+    prompts = prompt_ids(session.projection.messages)
     history = await state.storage.get_session_messages(session.id)
     await state.storage.replace_conversation_messages(
-        session.id, history_prefix(history, kept_turns)
+        session.id, history_before(history, prompts, kept)
     )
     state.pool.sessions.remove(session.id)
     for agent in state.pool.all_agents.values():
@@ -291,8 +299,18 @@ async def session_diff(
         raise message_not_found(session.id, start_id)
     if to and end is None:
         raise message_not_found(session.id, to)
-    diffs = changes_to_diffs(changes_between(state.pool.file_ops, start, end))
+    messages = session.projection.messages
+    first = session.projection.message_index(start_id) if start_id else 0
+    last = session.projection.message_index(to) if to else None
+    turns = prompt_ids(messages[first or 0 : last])
+    diffs = changes_to_diffs(changes_of_turns(state.pool.file_ops, session.id, turns, start, end))
     return ok(SessionDiffResponse(data=diffs))
+
+
+def _prompts_from(session: V2Session, message_id: str) -> list[str]:
+    """Prompts of the turns from ``message_id`` on (what a revert to it drops)."""
+    index = session.projection.message_index(message_id) or 0
+    return prompt_ids(session.projection.messages[index:])
 
 
 @router.post("/api/session/{session_id}/generate")

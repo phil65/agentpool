@@ -1025,6 +1025,7 @@ class BaseAgent[TDeps = None, TResult = str](MessageNode[TDeps, TResult]):
         *prompts: PromptCompatible,
         store_history: bool = True,
         message_id: str | None = None,
+        user_message_id: str | None = None,
         session: Session | None = None,
         session_id: str | None = None,
         parent_id: str | None = None,
@@ -1045,6 +1046,8 @@ class BaseAgent[TDeps = None, TResult = str](MessageNode[TDeps, TResult]):
             *prompts: Input prompts (various formats supported)
             store_history: Whether to store in history
             message_id: Optional message ID
+            user_message_id: ID of the user message of the prompts (e.g. the client's), so
+                the stored turn can be found by it: its answer's ``parent_id``
             session: Explicit :class:`Session` owning history and overrides for this run.
                 Leaves the agent's default session untouched.
             session_id: Optional conversation ID
@@ -1062,6 +1065,7 @@ class BaseAgent[TDeps = None, TResult = str](MessageNode[TDeps, TResult]):
             *prompts,
             store_history=store_history,
             message_id=message_id,
+            user_message_id=user_message_id,
             session_id=session_id,
             parent_id=parent_id,
             message_history=message_history,
@@ -1296,6 +1300,7 @@ class BaseAgent[TDeps = None, TResult = str](MessageNode[TDeps, TResult]):
         *prompts: PromptCompatible | ChatMessage[Any],
         store_history: bool = True,
         message_id: str | None = None,
+        user_message_id: str | None = None,
         session: Session | None = None,
         session_id: str | None = None,
         parent_id: str | None = None,
@@ -1316,6 +1321,7 @@ class BaseAgent[TDeps = None, TResult = str](MessageNode[TDeps, TResult]):
                             context window
             message_id: Optional message id for the returned message.
                         Automatically generated if not provided.
+            user_message_id: ID of the user message of the prompts (see run_stream)
             session: Explicit :class:`Session` owning history and overrides for this run.
             session_id: Optional conversation id for the returned message.
             parent_id: Parent message id
@@ -1339,6 +1345,7 @@ class BaseAgent[TDeps = None, TResult = str](MessageNode[TDeps, TResult]):
             *prompts,
             store_history=store_history,
             message_id=message_id,
+            user_message_id=user_message_id,
             session=session,
             session_id=session_id,
             parent_id=parent_id,
