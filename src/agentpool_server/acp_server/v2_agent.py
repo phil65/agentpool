@@ -362,9 +362,9 @@ class AgentPoolV2Agent(V2Agent):
         if session.is_running:
             if contents and all(isinstance(c, str) for c in contents):
                 text = "\n\n".join(c for c in contents if isinstance(c, str))
-                await session.agent.steer(text)
+                await session.agent.steer(text, session_id=session.session_id)
             elif contents:
-                session.agent.queue_prompt(*contents)
+                session.agent.queue_prompt(*contents, session_id=session.session_id)
             return v2.PromptResponse(message_id=message_id)
         self.v1.tasks.create_task(
             self._run_turn(session, contents), name=f"acp-v2-turn-{message_id[:8]}"

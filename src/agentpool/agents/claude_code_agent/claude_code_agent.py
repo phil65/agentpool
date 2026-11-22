@@ -637,7 +637,9 @@ class ClaudeCodeAgent[TDeps = None, TResult = str](BaseAgent[TDeps, TResult]):
         finally:
             self._open_user_inputs -= 1
 
-    async def steer(self, message: str, *, interrupt: bool = False) -> None:
+    async def steer(
+        self, message: str, *, interrupt: bool = False, session_id: str | None = None
+    ) -> None:
         """Send the user's message into the running turn (Claude Code's own steering).
 
         By default the CLI takes it in at the next step boundary (priority ``next``): after
@@ -646,7 +648,7 @@ class ClaudeCodeAgent[TDeps = None, TResult = str](BaseAgent[TDeps, TResult]):
         for the user. Outside of a run, the base behavior applies.
         """
         if (steering := self._steering) is None or steering.closed:
-            await super().steer(message, interrupt=interrupt)
+            await super().steer(message, interrupt=interrupt, session_id=session_id)
             return
         cut_in = interrupt and not self._open_user_inputs
         await steering.send(message, priority="now" if cut_in else "next")

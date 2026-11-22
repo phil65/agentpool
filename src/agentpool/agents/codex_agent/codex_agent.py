@@ -633,7 +633,9 @@ class CodexAgent[TDeps = None, OutputDataT = str](BaseAgent[TDeps, OutputDataT])
         """
         await self._set_mode(policy, "mode")
 
-    async def steer(self, message: str, *, interrupt: bool = False) -> None:
+    async def steer(
+        self, message: str, *, interrupt: bool = False, session_id: str | None = None
+    ) -> None:
         """Steer an active Codex turn natively via ``turn/steer``.
 
         When a Codex turn is in progress, delivers ``message`` directly into the active
@@ -649,12 +651,12 @@ class CodexAgent[TDeps = None, OutputDataT = str](BaseAgent[TDeps, OutputDataT])
         ):
             session = self._sessions[self._sdk_session_id]
             if interrupt:
-                self.queue_prompt(message)
+                self.queue_prompt(message, session_id=session_id)
                 await session.turn_interrupt(turn_id)
             else:
                 await session.turn_steer(message, expected_turn_id=turn_id)
             return
-        await super().steer(message, interrupt=interrupt)
+        await super().steer(message, interrupt=interrupt, session_id=session_id)
 
     async def compact(
         self,

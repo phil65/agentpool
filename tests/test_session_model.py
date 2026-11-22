@@ -178,6 +178,7 @@ async def test_agent_capabilities_and_base_fork_and_compact() -> None:
         live_model_discovery=True,
         native_compaction=True,
         native_fork=True,
+        concurrent_sessions=True,
     )
     assert expected_native == Agent.CAPABILITIES
     assert ClaudeCodeAgent.CAPABILITIES.native_steer

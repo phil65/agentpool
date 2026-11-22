@@ -5,8 +5,7 @@ from __future__ import annotations
 from abc import abstractmethod
 import asyncio
 from collections.abc import Callable
-from contextlib import suppress
-from contextvars import ContextVar
+from contextlib import contextmanager, nullcontext, suppress
 from dataclasses import dataclass, field, replace
 import os
 from pathlib import Path
@@ -22,6 +21,7 @@ from upathtools.filesystems import IsolatedMemoryFileSystem
 from agentpool.agents.capabilities import AgentCapabilities
 from agentpool.agents.events import StreamCompleteEvent, resolve_event_handlers
 from agentpool.agents.modes import ModeInfo
+from agentpool.agents.turn_state import TurnState, activate, active_turn
 from agentpool.common_types import IndividualEventHandler
 from agentpool.hooks import AgentHooks
 from agentpool.log import get_logger
@@ -33,7 +33,8 @@ from agentpool.utils.time_utils import get_now
 
 
 if TYPE_CHECKING:
-    from collections.abc import AsyncIterator, Sequence
+    from collections.abc import AsyncIterator, Generator, Sequence
+    from contextlib import AbstractAsyncContextManager
     from datetime import datetime
 
     from aclientp.schema import AvailableCommandsUpdate
@@ -59,6 +60,8 @@ if TYPE_CHECKING:
         ModeCategory,
         ModeCategoryId,
     )
+    from agentpool.agents.prompt_injection import PromptInjectionManager
+    from agentpool.agents.staged_content import StagedContent
     from agentpool.agents.usage_limits import UsageLimits
     from agentpool.common_types import (
         AgentName,
@@ -87,8 +90,6 @@ logger = get_logger(__name__)
 type AgentTypeLiteral = Literal[
     "native", "acp", "agui", "antigravity", "claude", "codex", "opencode_v2", "t3"
 ]
-
-_ACTIVE_SESSION: ContextVar[Session | None] = ContextVar("_agentpool_active_session", default=None)
 
 
 _SLASH_PATTERN: re.Pattern[str] = re.compile(r"^/([\w-]+)(?:\s+(.*))?$")
@@ -248,8 +249,6 @@ class BaseAgent[TDeps = None, TResult = str](MessageNode[TDeps, TResult]):
         from exxec import ExecutionEnvironment, LocalExecutionEnvironment
         from slashed import CommandStore
 
-        from agentpool.agents.prompt_injection import PromptInjectionManager
-        from agentpool.agents.staged_content import StagedContent
         from agentpool_commands import get_commands
 
         super().__init__(
@@ -265,9 +264,6 @@ class BaseAgent[TDeps = None, TResult = str](MessageNode[TDeps, TResult]):
         self._infinite = False
         self.deps_type = deps_type  # or type(None)
         self._background_task: asyncio.Task[ChatMessage[Any]] | None = None
-        self._event_queue: asyncio.Queue[RichAgentStreamEvent[Any]] = asyncio.Queue()
-        self._active_runs = 0
-        """Number of runs currently streaming (events go to their stream)."""
         match env:
             case ExecutionEnvironment():
                 self.env = env
@@ -283,15 +279,18 @@ class BaseAgent[TDeps = None, TResult = str](MessageNode[TDeps, TResult]):
             agent_type=self.AGENT_TYPE,
             storage=self.storage,
         )
+        self._default_turn = TurnState(session=self._default_session)
+        """Turn state of the default session (runs without an explicit ``session``)."""
+        self._turns: dict[str, TurnState] = {}
+        """Turn state of explicit sessions by session ID, while they run or have input waiting."""
+        self._session_turn_lock = asyncio.Lock()
+        """Serializes turns of different sessions where they can't run concurrently."""
         self._input_provider = input_provider
         self._output_type: type[TResult] = output_type
         self.tools = ToolManager()
         handlers = resolve_event_handlers(event_handlers)
         self.event_handler: MultiEventHandler[IndividualEventHandler] = MultiEventHandler(handlers)
         self.hooks = hooks or AgentHooks()
-        self._cancelled = False
-        self._current_stream_task: asyncio.Task[Any] | None = None
-        self._injection_manager = PromptInjectionManager()
         # Deferred initialization support - subclasses set True in __aenter__,
         # override ensure_initialized() to do actual connection
         self._command_store = CommandStore(commands=[*get_commands(), *(commands or [])])
@@ -299,7 +298,99 @@ class BaseAgent[TDeps = None, TResult = str](MessageNode[TDeps, TResult]):
         self._command_store._initialize_sync()
         # Internal filesystem for tool/session state (can get written to via AgentContext)
         self._internal_fs = IsolatedMemoryFileSystem()
-        self.staged_content = StagedContent()
+
+    # --- Turn state (per session; see agentpool.agents.turn_state) --------------------
+
+    @property
+    def _turn(self) -> TurnState:
+        """State of this agent's turn running in this context, else of the default session."""
+        return active_turn(self) or self._default_turn
+
+    def _turn_for(self, session: Session | None) -> TurnState:
+        """The turn state of ``session`` (the default session when None), created on use."""
+        if session is None:
+            return self._default_turn
+        turn = self._turns.get(session.session_id)
+        if turn is None:
+            turn = self._turns[session.session_id] = TurnState(session=session)
+        else:
+            turn.session = session  # E.g. rebuilt from storage after the registry dropped it
+        return turn
+
+    def _turns_of(self, session_id: str | None) -> list[TurnState]:
+        """Turns a caller outside a run means: those of ``session_id``, else the active one.
+
+        Without ``session_id`` and outside a run of this agent: every turn that runs (or
+        the default session's), so a plain ``interrupt()`` stops whatever runs.
+        """
+        if session_id is not None:
+            if (turn := self._turns.get(session_id)) is not None:
+                return [turn]
+            return [self._default_turn] if session_id == self.session_id else []
+        if (turn := active_turn(self)) is not None:
+            return [turn]
+        running = [t for t in (self._default_turn, *self._turns.values()) if t.active_runs]
+        return running or [self._default_turn]
+
+    def session_turn(self) -> AbstractAsyncContextManager[Any]:
+        """Hold this while running a turn for one of several sessions sharing this instance.
+
+        Agents with ``capabilities.concurrent_sessions`` (native agents) run each session on
+        its own history and turn state, so there is nothing to hold. Others have one
+        native session per instance: their turns of different sessions run one at a time.
+        """
+        if self.capabilities.concurrent_sessions:
+            return nullcontext()
+        return self._session_turn_lock
+
+    @contextmanager
+    def use_session(self, session: Session | None) -> Generator[None]:
+        """Run the block as part of ``session``'s turns on this agent.
+
+        For callers that act for a session outside ``run_stream``, such as slash commands
+        staging content for the session's next prompt.
+        """
+        with activate(self, self._turn_for(session)):
+            yield
+
+    @property
+    def staged_content(self) -> StagedContent:
+        """Content for the next prompt of the active turn's session."""
+        return self._turn.staged
+
+    @property
+    def _cancelled(self) -> bool:
+        return self._turn.cancelled
+
+    @_cancelled.setter
+    def _cancelled(self, value: bool) -> None:
+        self._turn.cancelled = value
+
+    @property
+    def _current_stream_task(self) -> asyncio.Task[Any] | None:
+        return self._turn.task
+
+    @_current_stream_task.setter
+    def _current_stream_task(self, value: asyncio.Task[Any] | None) -> None:
+        self._turn.task = value
+
+    @property
+    def _active_runs(self) -> int:
+        """Runs of the active turn's session that are streaming."""
+        return self._turn.active_runs
+
+    @_active_runs.setter
+    def _active_runs(self, value: int) -> None:
+        self._turn.active_runs = value
+
+    @property
+    def _injection_manager(self) -> PromptInjectionManager:
+        return self._turn.injections
+
+    @property
+    def _event_queue(self) -> asyncio.Queue[RichAgentStreamEvent[Any]]:
+        """Events of tools and subagents for the active turn's stream."""
+        return self._turn.events
 
     @property
     def capabilities(self) -> AgentCapabilities:
@@ -320,9 +411,8 @@ class BaseAgent[TDeps = None, TResult = str](MessageNode[TDeps, TResult]):
         The context variable holds the session of the innermost running turn, which can
         belong to another agent (e.g. a subagent's turn); only this agent's turns count.
         """
-        active = _ACTIVE_SESSION.get()
-        if active is not None and active.agent_name == self.name:
-            return active
+        if (turn := active_turn(self)) is not None and turn is not self._default_turn:
+            return turn.session
         return self.session
 
     @property
@@ -600,6 +690,7 @@ class BaseAgent[TDeps = None, TResult = str](MessageNode[TDeps, TResult]):
             tool_call_id=tool_call_id,
             tool_input=tool_input or {},
             tool_name=tool_name,
+            turn=active_turn(self),
         )
 
     @property
@@ -744,7 +835,7 @@ class BaseAgent[TDeps = None, TResult = str](MessageNode[TDeps, TResult]):
         finally:
             self._background_task = None
 
-    def queue_prompt(self, *prompts: PromptCompatible) -> None:
+    def queue_prompt(self, *prompts: PromptCompatible, session_id: str | None = None) -> None:
         """Queue a prompt to be processed after the current run completes.
 
         When called during an active run_stream, the queued prompt will be
@@ -753,6 +844,8 @@ class BaseAgent[TDeps = None, TResult = str](MessageNode[TDeps, TResult]):
 
         Args:
             *prompts: Prompts to queue (same format as run/run_stream)
+            session_id: The session whose turn to queue for (from outside its run; see
+                :meth:`interrupt`)
 
         Example:
             # In a tool implementation:
@@ -760,7 +853,8 @@ class BaseAgent[TDeps = None, TResult = str](MessageNode[TDeps, TResult]):
                 ctx.agent.queue_prompt("Now analyze the results")
                 return "Initial work done"
         """
-        self._injection_manager.queue(*prompts)
+        for turn in self._turns_of(session_id)[:1]:
+            turn.injections.queue(*prompts)
 
     def inject_prompt(self, message: str) -> None:
         """Inject context into the conversation mid-run (for tools; user input: :meth:`steer`).
@@ -781,7 +875,9 @@ class BaseAgent[TDeps = None, TResult = str](MessageNode[TDeps, TResult]):
         """
         self._injection_manager.inject(message)
 
-    async def steer(self, message: str, *, interrupt: bool = False) -> None:
+    async def steer(
+        self, message: str, *, interrupt: bool = False, session_id: str | None = None
+    ) -> None:
         """Deliver user input into the running turn.
 
         Unlike :meth:`inject_prompt` (context from a tool, added after it completes),
@@ -795,8 +891,11 @@ class BaseAgent[TDeps = None, TResult = str](MessageNode[TDeps, TResult]):
             message: The user's message
             interrupt: Cut into the generation in progress instead of waiting for the
                 next step boundary
+            session_id: The session whose turn to steer (from outside its run; see
+                :meth:`interrupt`)
         """
-        self.inject_prompt(message)
+        for turn in self._turns_of(session_id)[:1]:
+            turn.injections.inject(message)
 
     def has_queued_prompts(self) -> bool:
         """Check if there are queued prompts waiting to be processed."""
@@ -881,38 +980,42 @@ class BaseAgent[TDeps = None, TResult = str](MessageNode[TDeps, TResult]):
             effective_session_id = session_id
             effective_history = message_history
 
-        # Reset cancellation state and track current task
-        self._cancelled = False
-        self._current_stream_task = asyncio.current_task()
-        # Queue the initial prompts
-        self._injection_manager.insert_queued(prompts)
+        turn = self._turn_for(session)
+        with activate(self, turn):  # Turn state below is this session's
+            # Reset cancellation state and track current task
+            turn.cancelled = False
+            turn.task = asyncio.current_task()
+            # Queue the initial prompts
+            turn.injections.insert_queued(prompts)
 
-        try:
-            # Process queued prompts until queue is empty
-            while self._injection_manager.has_queued() and not self._cancelled:
-                current_prompts = self._injection_manager.pop_queued()
-                if current_prompts is None:
-                    break
-                async for event in self._run_stream_once(
-                    *current_prompts,
-                    store_history=store_history,
-                    message_id=message_id,
-                    session=session,
-                    session_id=effective_session_id,
-                    parent_id=parent_id,
-                    message_history=effective_history,
-                    input_provider=input_provider,
-                    wait_for_connections=wait_for_connections,
-                    deps=deps,
-                    event_handlers=event_handlers,
-                ):
-                    yield event
+            try:
+                # Process queued prompts until queue is empty
+                while turn.injections.has_queued() and not turn.cancelled:
+                    current_prompts = turn.injections.pop_queued()
+                    if current_prompts is None:
+                        break
+                    async for event in self._run_stream_once(
+                        *current_prompts,
+                        store_history=store_history,
+                        message_id=message_id,
+                        session=session,
+                        session_id=effective_session_id,
+                        parent_id=parent_id,
+                        message_history=effective_history,
+                        input_provider=input_provider,
+                        wait_for_connections=wait_for_connections,
+                        deps=deps,
+                        event_handlers=event_handlers,
+                    ):
+                        yield event
 
-                # After each iteration, flush unconsumed injections to queue
-                self._injection_manager.flush_pending_to_queue()
-        finally:
-            self._current_stream_task = None
-            self._injection_manager.clear()  # Clean slate for next run
+                    # After each iteration, flush unconsumed injections to queue
+                    turn.injections.flush_pending_to_queue()
+            finally:
+                turn.task = None
+                turn.injections.clear()  # Clean slate for next run
+                if session is not None and turn.idle:
+                    self._turns.pop(session.session_id, None)
 
     async def _run_stream_once(
         self,
@@ -990,7 +1093,6 @@ class BaseAgent[TDeps = None, TResult = str](MessageNode[TDeps, TResult]):
         final_message = None
         await self.message_received.emit(user_msg)
         self._active_runs += 1
-        session_token = _ACTIVE_SESSION.set(session if session is not None else self.session)
         try:
             # Execute pre-run hooks
             if self.hooks:
@@ -1033,7 +1135,6 @@ class BaseAgent[TDeps = None, TResult = str](MessageNode[TDeps, TResult]):
             await self.run_failed.emit(failed_event)
             raise
         finally:
-            _ACTIVE_SESSION.reset(session_token)
             self._active_runs -= 1
 
         if final_message is not None:
@@ -1253,16 +1354,22 @@ class BaseAgent[TDeps = None, TResult = str](MessageNode[TDeps, TResult]):
         """Check if the agent has been cancelled."""
         return self._cancelled
 
-    async def interrupt(self) -> None:
-        """Interrupt the currently running stream.
+    async def interrupt(self, session_id: str | None = None) -> None:
+        """Interrupt the running turn of ``session_id``.
 
-        Sets the cancelled flag, calls subclass-specific _interrupt(),
-        and emits the interrupted signal.
+        Without ``session_id``: the turn running in this context, else whatever runs on
+        this agent. Sets the turn's cancelled flag, calls the subclass's ``_interrupt()``
+        with that turn active (so it cancels that turn's work), and emits the
+        interrupted signal.
         """
-        self._cancelled = True
-        await self._interrupt()
-        await self.interrupted.emit(self.InterruptEvent(agent_name=self.name))
-        logger.info("Agent interrupted", agent=self.name)
+        turns = self._turns_of(session_id)
+        for turn in turns:
+            with activate(self, turn):
+                turn.cancelled = True
+                await self._interrupt()
+        if turns:
+            await self.interrupted.emit(self.InterruptEvent(agent_name=self.name))
+            logger.info("Agent interrupted", agent=self.name, session_id=session_id)
 
     @abstractmethod
     async def _interrupt(self) -> None:

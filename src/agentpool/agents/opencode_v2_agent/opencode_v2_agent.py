@@ -750,7 +750,9 @@ class OpenCodeV2Agent[TDeps = None](BaseAgent[TDeps, str]):
         )
         await self.emit_event(StreamCompleteEvent(message=complete_msg))
 
-    async def steer(self, message: str, *, interrupt: bool = False) -> None:
+    async def steer(
+        self, message: str, *, interrupt: bool = False, session_id: str | None = None
+    ) -> None:
         """Steer a running OpenCode V2 turn natively via ``delivery="steer"``.
 
         With ``interrupt=True``, interrupts the generation in progress and queues the
@@ -763,13 +765,13 @@ class OpenCodeV2Agent[TDeps = None](BaseAgent[TDeps, str]):
             and self._turn_queue is not None
         ):
             if interrupt:
-                self.queue_prompt(message)
+                self.queue_prompt(message, session_id=session_id)
                 await self._client.interrupt_session(self._sdk_session_id, resume=False)
             else:
                 body = SessionPromptBody(text=message, delivery="steer")
                 await self._client.send_prompt(self._sdk_session_id, body)
             return
-        await super().steer(message, interrupt=interrupt)
+        await super().steer(message, interrupt=interrupt, session_id=session_id)
 
     async def _stream_events(
         self,

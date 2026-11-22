@@ -105,10 +105,6 @@ class AgentBinder:
     def _lock(self, agent: BaseAgent[Any, Any]) -> asyncio.Lock:
         return self._locks.setdefault(agent.name, asyncio.Lock())
 
-    def is_busy(self, node: MessageNode[Any, Any]) -> bool:
-        """Whether any agent of the node is currently running a turn."""
-        return any(self._lock(a).locked() for a in leaf_agents(node))
-
     @asynccontextmanager
     async def hold(
         self,
@@ -118,18 +114,17 @@ class AgentBinder:
         *,
         has_history: bool,
     ) -> AsyncGenerator[Session | None]:
-        """Prepare the node for a turn of ``session``, holding its agents' locks.
+        """Prepare the node for a turn of ``session``.
 
         Native :class:`Agent` runs use an isolated :class:`Session` from ``pool.sessions``
-        (its own history and model override), so they need no re-binding. Turns on one
-        agent instance still run one at a time: cancellation, staged content and modes
-        are state of the instance, not of a session, until each session gets its own
-        runtime (``ARCHITECTURE_SESSIONS_AGENTS.md`` §6 step 7). External agents also
-        re-bind via ``load_session`` / ``start_new_session``.
+        (its own history and model override) and their own turn state (cancellation,
+        queued input, events: ``agentpool.agents.turn_state``), so turns of different
+        sessions run concurrently, without a lock or re-binding. External agents keep one
+        native session per instance: their turns are serialized, and the instance is
+        re-bound to the session of each turn (``load_session`` / ``start_new_session``).
         """
         if isinstance(node, Agent):
-            async with self._lock(node):
-                yield await self._native_session(node, session, model, has_history=has_history)
+            yield await self._native_session(node, session, model, has_history=has_history)
             return
         agents = sorted(leaf_agents(node), key=lambda a: a.name)
         async with AsyncExitStack() as stack:
@@ -337,7 +332,7 @@ class SessionRunner:
                 text = payload.text
             case _:
                 return False
-        await node.steer(text)
+        await node.steer(text, session_id=self.session.id)
         self.session.emit(
             SessionInboxDelivered,
             SessionInboxDeliveredData(session_id=self.session.id, inbox_id=inbox_id),
@@ -361,7 +356,9 @@ class SessionRunner:
         node = self._current_node()
         for agent in leaf_agents(node) if node is not None else []:
             try:
-                await agent.interrupt()
+                # A single agent runs this session's turn; team members run their own
+                session_id = self.session.id if agent is node else None
+                await agent.interrupt(session_id=session_id)
             except Exception:
                 logger.exception("Agent interrupt failed", agent=agent.name)
         self._run_task.cancel()

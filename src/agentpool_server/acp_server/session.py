@@ -62,6 +62,7 @@ if TYPE_CHECKING:
 
     from agentpool.agents.base_agent import BaseAgent
     from agentpool.common_types import PathReference
+    from agentpool.sessions import Session as PoolSession
     from agentpool_server.acp_server.acp_agent import AgentPoolACPAgent
     from agentpool_server.acp_server.output import AgentStateChange, SessionOutput
     from agentpool_server.acp_server.session_manager import ACPSessionManager
@@ -528,8 +529,8 @@ class ACPSession:
         """
         self._cancelled = True
         self.log.info("Session cancelled, interrupting agent")
-        try:  # Actively interrupt the agent's stream
-            await self.agent.interrupt()
+        try:  # Actively interrupt the agent's stream (only this session's turn)
+            await self.agent.interrupt(session_id=self.session_id)
         except Exception:
             self.log.exception("Failed to interrupt agent")
 
@@ -597,7 +598,10 @@ class ACPSession:
             self._cancelled = False
             for command in commands:
                 self.log.info("Processing slash command", command=command)
-                await self.execute_slash_command(command)
+                # Commands may stage content for the next prompt: this session's, even
+                # on an agent other sessions share (and may switch the agent)
+                with self.agent.use_session(await self._native_pool_session()):
+                    await self.execute_slash_command(command)
             if not non_command_content:
                 return TurnCompleted()
             self.log.debug("Processing prompt", content_items=len(non_command_content))
@@ -622,8 +626,12 @@ class ACPSession:
         if rules is not None:
             self.staged.add_text(rules)
 
-    async def _native_pool_session(self) -> Any:
-        """Resolve or create an isolated pool ``Session`` when running a native ``Agent``."""
+    async def _native_pool_session(self) -> PoolSession | None:
+        """The pool ``Session`` of this ACP session when it runs a native ``Agent``, else None.
+
+        External agents keep the conversation in their backend, so they run on their own
+        (default) session instead.
+        """
         if not isinstance(self.agent, Agent) or self.agent.agent_pool is None:
             return None
         registry = self.agent.agent_pool.sessions
@@ -649,20 +657,19 @@ class ACPSession:
         event_count = 0
         try:  # Use the session's persistent input provider
             # Staged content is automatically injected by run_stream
-            pool_session = await self._native_pool_session()
-            stream_kwargs: dict[str, Any] = {
-                "input_provider": self.input_provider,
-                "deps": self,
-                "session_id": self.session_id,
-            }
-            if pool_session is not None:
-                stream_kwargs["session"] = pool_session
-            async for event in self.agent.run_stream(*contents, **stream_kwargs):
-                if self._cancelled:
-                    self.log.info("Cancelled during event loop, cleaning up tool calls")
-                    return TurnCancelled()
-                event_count += 1
-                await output.event(event)
+            async with self.agent.session_turn():  # Sessions share pool agents
+                async for event in self.agent.run_stream(
+                    *contents,
+                    input_provider=self.input_provider,
+                    deps=self,
+                    session=await self._native_pool_session(),
+                    session_id=self.session_id,
+                ):
+                    if self._cancelled:
+                        self.log.info("Cancelled during event loop, cleaning up tool calls")
+                        return TurnCancelled()
+                    event_count += 1
+                    await output.event(event)
         except asyncio.CancelledError:
             # Task was cancelled (e.g., via interrupt() or `$/cancel_request`). Answer
             # with the proper outcome instead of propagating the cancellation.

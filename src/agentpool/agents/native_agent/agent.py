@@ -149,6 +149,7 @@ class Agent[TDeps = None, OutputDataT = str](BaseAgent[TDeps, OutputDataT]):
         live_model_discovery=True,
         native_compaction=True,
         native_fork=True,
+        concurrent_sessions=True,
     )
 
     def __init__(  # noqa: PLR0915

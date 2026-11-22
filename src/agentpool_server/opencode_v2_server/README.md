@@ -104,10 +104,12 @@ All 173 operations of the pinned spec have a route (guarded by
 These come from the interim session/agent model. They are tracked, with the code to remove, in
 `ARCHITECTURE_SESSIONS_AGENTS.md` §10.
 
-- Pool agents are shared instances. `AgentBinder` serializes turns per agent. Native agents run
-  each V2 session on its own pool `Session` (own history and model override); external agents
-  are re-bound to the session of each turn (`load_session` / `BaseAgent.start_new_session`).
-  The lock stays until each session gets its own runtime (`ARCHITECTURE_SESSIONS_AGENTS.md` §11).
+- Pool agents are shared instances. Native agents run each V2 session on its own pool
+  `Session` and turn state (history, model override, cancellation, queued input, events), so
+  sessions on one native agent run concurrently. `AgentBinder` serializes turns of external
+  agents and re-binds the instance to the session of each turn (`load_session` /
+  `BaseAgent.start_new_session`), until they get a runtime per session
+  (`ARCHITECTURE_SESSIONS_AGENTS.md` §11).
 - Manual compaction runs the summary turn, then `node.compact()`. Agents that can't compact on
   demand (`capabilities.native_compaction`, e.g. Claude Code) are refused before the summary.
 - Native and Claude Code agents report steps (`StepStartedEvent` / `StepCompletedEvent`) with

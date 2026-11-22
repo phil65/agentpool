@@ -14,7 +14,8 @@ if TYPE_CHECKING:
     from upathtools.filesystems import IsolatedMemoryFileSystem, OverlayFileSystem
 
     from agentpool import Agent
-    from agentpool.agents.events import StreamEventEmitter
+    from agentpool.agents.events import RichAgentStreamEvent, StreamEventEmitter
+    from agentpool.agents.turn_state import TurnState
     from agentpool.tools.base import Tool
 
 
@@ -42,6 +43,10 @@ class AgentContext[TDeps = Any](NodeContext[TDeps]):
     model_name: str | None = None
     """Model name in provider:model format (e.g., 'anthropic:claude-haiku-4-5')."""
 
+    turn: TurnState | None = field(default=None, repr=False)
+    """The turn this context was created in, so events reach its stream even when emitted
+    from another task (e.g. an MCP client's progress callback)."""
+
     @property
     def native_agent(self) -> Agent[TDeps, Any]:
         """Current agent, type-narrowed to native pydantic-ai Agent."""
@@ -68,7 +73,17 @@ class AgentContext[TDeps = Any](NodeContext[TDeps]):
             tool_call_id=self.tool_call_id or "",
             tool_input=self.tool_input,
         )
-        await self.agent.emit_event(progress_event)
+        await self.emit_event(progress_event)
+
+    async def emit_event(self, event: RichAgentStreamEvent[Any]) -> None:
+        """Emit an event into the stream of the turn this context belongs to."""
+        if self.turn is None:
+            await self.agent.emit_event(event)
+            return
+        from agentpool.agents.turn_state import activate
+
+        with activate(self.agent, self.turn):
+            await self.agent.emit_event(event)
 
     @property
     def events(self) -> StreamEventEmitter:

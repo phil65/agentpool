@@ -1,7 +1,7 @@
 # Architecture: Sessions, agents, subagents, runtime dynamism, and protocol alignment
 
-Status: **steps 1–3 of §6 are implemented** (2026-11-22, for native agents; see the status
-notes in §6 and §10); the rest is still a proposal. Prepared 2026-11-17; §10 (pain points from
+Status: **steps 1–3 of §6 are implemented, and step 7's turn state** (2026-11-22, for native
+agents; see the status notes in §6 and §10); the rest is still a proposal. Prepared 2026-11-17; §10 (pain points from
 the OpenCode V2 server) added 2026-11-20; §11 (roadmap) added 2026-11-22.
 
 Scope: the long-standing "how do session, agent and subagent relate" question, what may change at
@@ -194,8 +194,15 @@ need to stay distinct:
 6. Connections and teams: per-connection session policy.
 7. Runtime factory: `AgentDefinition + Session → AgentRuntime`, so one definition can serve N sessions
    concurrently. This is the big one for native agents (cheap) and external agents (one process or
-   native session each). **Next** (§11). Until then, turns on one agent instance are serialized:
-   cancellation (`_current_stream_task`, `_cancelled`), staged content and modes are instance state.
+   native session each). **Turn state done for native agents (2026-11-22):**
+   `agentpool/agents/turn_state.py` keeps cancellation, the run's task, queued and injected
+   prompts, tool/subagent events and staged content per session (`TurnState`), resolved through
+   a context variable that maps each agent to its active turn (nested runs of other agents find
+   their own). `interrupt()`, `steer()` and `queue_prompt()` take a `session_id`;
+   `AgentContext` remembers its turn, so events from other tasks (MCP progress callbacks) reach
+   the right stream. Native turns of different sessions now run concurrently on one instance.
+   Still instance state: config options (a native agent's tool confirmation mode). Not done:
+   the Definition/Runtime split itself, and runtimes for external agents.
 
 Steps 1–3 already unblock a clean OpenCode V2 server (session ↔ agent binding, child sessions,
 inbox). The V2 server now exists with stopgaps for exactly these gaps. §10 lists them, with the
@@ -544,8 +551,9 @@ and the migration step (§6) that should make the stopgap unnecessary.
   it reconnects the SDK.
 - **Fix:** steps 1, 2 and 7 (session owns history, explicit sessions in `run_stream`, a runtime per
   session).
-- **Status (2026-11-22):** steps 1 and 2 done. Native agents no longer re-bind (each V2 session runs
-  on its own `Session`), but the lock stays until step 7. External agents still re-bind.
+- **Status (2026-11-22):** done for native agents: each V2 session runs on its own `Session` and
+  turn state, without a lock or re-binding, and turns of different sessions run concurrently.
+  External agents still lock and re-bind.
 
 ### 10.2 `load_session` means different things per agent type
 
@@ -698,7 +706,7 @@ and the migration step (§6) that should make the stopgap unnecessary.
 
 | Stopgap | Location | Removed by |
 |---|---|---|
-| `AgentBinder` lock + re-binding | `opencode_v2_server/runner.py` | steps 1, 2, 7 (re-binding gone for native agents; the lock waits for step 7) |
+| `AgentBinder` lock + re-binding | `opencode_v2_server/runner.py` | steps 1, 2, 7: gone for native agents; kept for external ones |
 | `BaseAgent.start_new_session()` and overrides | `agents/*` | step 7 (runtime per session) |
 | User prompt extraction from `ModelRequest` | `opencode_v2_server/history.py` | step 1 |
 | Turn-counting history cut for fork/revert | `opencode_v2_server/session_ops.py` | stable message IDs (10.4) |
@@ -716,12 +724,13 @@ and the migration step (§6) that should make the stopgap unnecessary.
 Ordered by what each step unblocks. Ideas from an architecture review are folded in (a separate
 agent's review, largely matching §3–§10).
 
-1. **Runtime per session, native agents first (§6 step 7).** Turn state (cancellation, staged
-   content, modes, injection queue) moves from the agent instance to a runtime bound to one
-   `Session`. Deletes the native path of `AgentBinder` and lets sessions on one agent run in
-   parallel. Extract it from `BaseAgent` (1,700+ lines) rather than splitting `BaseAgent` first,
-   so the same code isn't refactored twice. External agents follow (one process or native session
-   per runtime; ACP can multiplex sessions over one connection).
+1. **Runtime per session, native agents first (§6 step 7).** Turn state done (2026-11-22,
+   `TurnState`): native sessions on one agent run in parallel, and `AgentBinder`'s native path
+   is gone. Next: extract the runtime (turn execution) from `BaseAgent` (1,700+ lines) around
+   `TurnState`, rather than splitting `BaseAgent` first, so the same code isn't refactored twice;
+   per-session config options. External agents follow (one process or native session per
+   runtime; ACP can multiplex sessions over one connection). Until then their turns of different
+   sessions are serialized (`BaseAgent.session_turn()`, `capabilities.concurrent_sessions`).
 2. **Stable message identity (§10.4).** `run_stream` takes the user message ID and exposes stable
    IDs per model response from the first chunk. Removes turn counting and timestamp matching in
    the V2 server's fork/revert/diffs, and is what ACP v2 (`messageId`) and OpenCode V2 want.

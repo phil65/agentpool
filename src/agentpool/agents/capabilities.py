@@ -33,5 +33,9 @@ class AgentCapabilities:
     """``fork_session()`` forks the conversation the agent continues from (otherwise it
     raises ``UnsupportedOperationError``); some agents only fork whole sessions."""
 
+    concurrent_sessions: bool = False
+    """Runs turns of several sessions at once on one instance (each on its own history and
+    turn state). Otherwise ``session_turn()`` serializes them: one native session each."""
+
     background_events: bool = False
     """Backend streams between-turn / unsolicited events via ``BaseAgent.emit_event``."""

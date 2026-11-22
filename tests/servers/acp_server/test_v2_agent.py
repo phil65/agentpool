@@ -194,9 +194,11 @@ async def test_cancel_ends_the_turn_as_cancelled(
         return
         yield
 
-    async def interrupt() -> None:
+    async def interrupt(session_id: str | None = None) -> None:
+        assert session_id == session_id_of_turn  # Only this session's turn
         interrupted.set()
 
+    session_id_of_turn = session_id
     monkeypatch.setattr(agent, "run_stream", run_stream)
     monkeypatch.setattr(agent, "interrupt", interrupt)
     await conn.prompt(_prompt(session_id))
@@ -291,6 +293,7 @@ async def test_mid_turn_prompt_steers_without_duplicate_running_state(
     """A second v2 session/prompt during an active turn steers without a second running state."""
     conn, recorder, agent = connected
     session_id = await _new_session(conn, str(tmp_path))
+    steered_session = session_id
     started = asyncio.Event()
     release = asyncio.Event()
     steered: list[str] = []
@@ -301,7 +304,10 @@ async def test_mid_turn_prompt_steers_without_duplicate_running_state(
         return
         yield
 
-    async def steer(message: str, *, interrupt: bool = False) -> None:
+    async def steer(
+        message: str, *, interrupt: bool = False, session_id: str | None = None
+    ) -> None:
+        assert session_id == steered_session  # Into this session's turn
         steered.append(message)
         release.set()
 
