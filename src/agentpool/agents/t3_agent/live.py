@@ -38,6 +38,8 @@ class FeedUpdate:
     """Latest state of message and reasoning items that changed, in order."""
     approvals: list[TurnItem] = field(default_factory=list)
     """Approval requests that wait for an answer."""
+    questions: list[TurnItem] = field(default_factory=list)
+    """Questions (``user_input_request``) that wait for an answer."""
     changed: bool = False
     """Something else changed (tool items, runs, requests): read the thread again."""
 
@@ -88,9 +90,14 @@ class ThreadFeed:
         if item.type in TEXT_TYPES:
             texts = [t for t in self._update.texts if t.item_id != item.item_id]
             self._update.texts = [*texts, item]
-        elif item.type == "approval_request":
+        elif item.type in ("approval_request", "user_input_request"):
             if item.status == "waiting" and item.request_id:
-                self._update.approvals.append(item)
+                waiting = (
+                    self._update.approvals
+                    if item.type == "approval_request"
+                    else self._update.questions
+                )
+                waiting.append(item)
             self._update.changed = True
         else:
             if item.native_item_ref is not None:

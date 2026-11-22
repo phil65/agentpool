@@ -159,8 +159,8 @@ the input provider and are answered with `runtime-request.respond`. Tested live:
 approval of a command in `approval-required`, reasoning streamed in six steps.
 
 Open: attachments (prompts must be text); agentpool toolsets are not passed to the
-thread; answering questions over the socket too (they still use `t3_pending_request`, read on
-the next MCP read). `compact()` and `fork_session()` raise `UnsupportedOperationError` (T3 has
+thread. (Questions are answered over the socket too since 2026-11-22: the socket's
+`user_input_request` item carries them, and its request IDs are `/mcp`'s, so each is asked once.) `compact()` and `fork_session()` raise `UnsupportedOperationError` (T3 has
 no API for either over MCP).
 
 ### 3. T3 as a toolset

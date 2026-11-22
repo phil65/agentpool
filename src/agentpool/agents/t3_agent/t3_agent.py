@@ -39,6 +39,7 @@ if TYPE_CHECKING:
 
     from evented_config import EventConfig
     from exxec import ExecutionEnvironment
+    from pydantic import JsonValue
     from pydantic_ai import UserContent
     from pyt3client import T3Client
     from pyt3client.models.tools import (
@@ -55,6 +56,7 @@ if TYPE_CHECKING:
     from agentpool.agents.auth import AuthStatus
     from agentpool.agents.events import RichAgentStreamEvent
     from agentpool.agents.modes import ConfigOption
+    from agentpool.agents.t3_agent.questions import Question
     from agentpool.common_types import AnyEventHandlerType, StrPath
     from agentpool.delegation import AgentPool
     from agentpool.hooks import AgentHooks
@@ -541,6 +543,11 @@ class T3Agent[TDeps = None](BaseAgent[TDeps, str]):
                     if approval.run_id == run_id and approval.request_id not in answered:
                         answered.add(approval.request_id or "")
                         await self._decide(feed, approval, provider)
+                for asked in update.questions:
+                    # Same request IDs as /mcp's, so a question is asked once either way
+                    if asked.run_id == run_id and asked.request_id not in answered:
+                        answered.add(asked.request_id or "")
+                        await self._answer_live(feed, asked, provider)
         failed = status == "failed"
         if failed:
             yield RunErrorEvent(message="The T3 run failed", run_id=run_id, agent_name=self.name)
@@ -647,12 +654,7 @@ class T3Agent[TDeps = None](BaseAgent[TDeps, str]):
         """
         from pyt3client.models.tools import PENDING_REQUEST, PendingRequestInput
 
-        from agentpool.agents.t3_agent.questions import (
-            PendingQuestions,
-            PendingRequestIds,
-            to_answer,
-            to_elicitation,
-        )
+        from agentpool.agents.t3_agent.questions import PendingQuestions, PendingRequestIds
 
         listed = await client.call(
             PENDING_REQUEST, PendingRequestInput(action="list", thread_id=thread_id)
@@ -670,13 +672,7 @@ class T3Agent[TDeps = None](BaseAgent[TDeps, str]):
                 PendingRequestInput(action="read", thread_id=thread_id, request_id=request_id),
             )
             pending = PendingQuestions.model_validate(read.root)
-            answers: dict[str, Any] = {}
-            for question in pending.questions:
-                result = await provider.get_elicitation(
-                    to_elicitation(question), tool_call_id=request_id
-                )
-                if (answer := to_answer(question, result)) is not None:
-                    answers[question.id] = answer
+            answers = await _ask(pending.questions, provider, request_id)
             await client.call(
                 PENDING_REQUEST,
                 PendingRequestInput(
@@ -684,6 +680,24 @@ class T3Agent[TDeps = None](BaseAgent[TDeps, str]):
                 ),
             )
         return bool(request_ids)
+
+    async def _answer_live(
+        self, feed: ThreadFeed, item: TurnItem, provider: InputProvider | None
+    ) -> None:
+        """Ask a question the socket reported and answer it there (no ``/mcp`` round trip).
+
+        Without a provider the question stays open for T3 Code's own clients.
+        """
+        from pydantic import TypeAdapter
+
+        from agentpool.agents.t3_agent.questions import Question
+
+        if provider is None or self._native is None or item.request_id is None:
+            return
+        raw = (item.model_extra or {}).get("questions", [])
+        questions = TypeAdapter(list[Question]).validate_python(raw)
+        answers = await _ask(questions, provider, item.request_id)
+        await self._native.respond_to_request(feed.thread_id, item.request_id, answers=answers)
 
     async def _interrupt(self) -> None:
         from pyt3client.models.tools import THREAD_INTERRUPT, ThreadInterruptInput
@@ -820,6 +834,26 @@ class T3Agent[TDeps = None](BaseAgent[TDeps, str]):
             sdk_session_id=thread_id,
             metadata={"title": read.thread.title},
         )
+
+
+async def _ask(
+    questions: Sequence[Question], provider: InputProvider, request_id: str
+) -> dict[str, JsonValue]:
+    """Ask each question through ``provider``: T3's answers by question id (unanswered left out)."""
+    from agentpool.agents.t3_agent.questions import to_answer, to_elicitation
+
+    answers: dict[str, JsonValue] = {}
+    for question in questions:
+        result = await provider.get_elicitation(to_elicitation(question), tool_call_id=request_id)
+        match to_answer(question, result):
+            case list() as chosen:
+                values: list[JsonValue] = list(chosen)
+                answers[question.id] = values
+            case str() as text:
+                answers[question.id] = text
+            case None:
+                pass
+    return answers
 
 
 def _history_message(item: Item, session_id: str, agent_name: str) -> ChatMessage[str]:

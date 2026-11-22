@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 from typing import TYPE_CHECKING, Any
 
+from mcp import types
 from pydantic_ai import PartDeltaEvent, PartStartEvent, TextPart, TextPartDelta
 from pyt3client.native import T3NativeClient, ThreadEvent, TurnItem
 import pytest
@@ -36,6 +37,7 @@ def _turn_item(
     run_id: str = "run",
     native_id: str | None = None,
     request: tuple[str, str, str] | None = None,
+    questions: list[dict[str, JsonValue]] | None = None,
 ) -> TurnItem:
     """A native turn item; `request` is (request id, kind, prompt) of an approval."""
     data: dict[str, JsonValue] = {
@@ -50,6 +52,8 @@ def _turn_item(
         data["nativeItemRef"] = {"driver": "claudeAgent", "nativeId": native_id}
     if request is not None:
         data["requestId"], data["requestKind"], data["prompt"] = request
+    if questions is not None:
+        data["questions"] = list(questions)
     return TurnItem.model_validate(data)
 
 
@@ -93,6 +97,7 @@ class FakeNative(T3NativeClient):
         super().__init__("http://t3.test", "native-token")
         self.events = events
         self.responses: list[tuple[str, ApprovalDecision | None]] = []
+        self.answers: list[tuple[str, dict[str, JsonValue]]] = []
         self.subscribed = asyncio.Event()
 
     async def subscribe_thread(
@@ -115,7 +120,10 @@ class FakeNative(T3NativeClient):
         answers: Mapping[str, JsonValue] | None = None,
         feedback: str | None = None,
     ) -> int:
-        self.responses.append((request_id, decision))
+        if answers is not None:
+            self.answers.append((request_id, dict(answers)))
+        else:
+            self.responses.append((request_id, decision))
         return 1
 
 
@@ -176,3 +184,29 @@ async def test_live_text_streams_and_approvals_are_answered(
     assert not [e for e in streamed if isinstance(e, NoticeEvent)]
     assert isinstance(streamed[-1], StreamCompleteEvent)
     assert streamed[-1].message.content == reply
+
+
+class _ChooseBlue(MockInputProvider):
+    async def get_elicitation(
+        self, params: types.ElicitRequestParams, *, tool_call_id: str | None = None
+    ) -> types.ElicitResult | types.ErrorData:
+        return types.ElicitResult(action="accept", content={"color": "Blue"})
+
+
+async def test_live_questions_are_answered_over_the_socket(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(t3_agent, "LIVE_READ_INTERVAL", 0.01)
+    script, run_id, _, _ = _first_turn()
+    question = {
+        "id": "color",
+        "header": "Color",
+        "question": "Which color?",
+        "options": [{"label": "Red", "description": ""}, {"label": "Blue", "description": ""}],
+    }
+    item = _turn_item(
+        "turn-item:q", "user_input_request", "waiting", run_id=run_id, questions=[question]
+    ).model_copy(update={"request_id": "q7"})
+    native = FakeNative([item, item])  # Reported twice: asked once
+    client, agent = _agent(ReplayServer(script), input_provider=_ChooseBlue(), native_client=native)
+    async with client, agent:
+        await _run(agent, "Run the shell command `echo hello-from-t3`, then reply.")
+    assert native.answers == [("q7", {"color": "Blue"})]

@@ -1,5 +1,8 @@
 """Questions of a T3 thread's agent, asked through agentpool's input provider.
 
+With a native sign-in, questions come from the socket instead (``user_input_request``
+items carry them, see ``live.py``) and are answered there; the format is the same.
+
 ``t3_pending_request`` lists a thread's open questions (``list``), reads one
 (``read``: ``{requestId, questions}``) and answers it (``respond`` with
 ``answers``: question id -> answer). Approvals are not listed and cannot be given
