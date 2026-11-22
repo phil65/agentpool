@@ -283,3 +283,38 @@ def test_permission_request_and_answers_in_v2() -> None:
     cancelled = v2.RequestPermissionResponse(outcome=v2.CancelledPermissionOutcome())
     assert permission_response(selected).outcome == AllowedOutcome(option_id="allow")
     assert isinstance(permission_response(cancelled).outcome, DeniedOutcome)
+
+
+async def test_mid_turn_prompt_steers_without_duplicate_running_state(
+    connected: Any, tmp_path: Any, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A second v2 session/prompt during an active turn steers without a second running state."""
+    conn, recorder, agent = connected
+    session_id = await _new_session(conn, str(tmp_path))
+    started = asyncio.Event()
+    release = asyncio.Event()
+    steered: list[str] = []
+
+    async def run_stream(*args: Any, **kwargs: Any) -> AsyncIterator[Any]:
+        started.set()
+        await release.wait()
+        return
+        yield
+
+    async def steer(message: str, *, interrupt: bool = False) -> None:
+        steered.append(message)
+        release.set()
+
+    monkeypatch.setattr(agent, "run_stream", run_stream)
+    monkeypatch.setattr(agent, "steer", steer)
+
+    first = await conn.prompt(_prompt(session_id, "start"))
+    await asyncio.wait_for(started.wait(), TIMEOUT)
+    second = await conn.prompt(_prompt(session_id, "actually do X"))
+    idle = await recorder.wait_idle()
+
+    assert first.message_id != second.message_id
+    assert steered == ["actually do X"]
+    assert idle.stop_reason == "end_turn"
+    running_states = [u for u in recorder.updates if isinstance(u, v2.RunningStateSessionUpdate)]
+    assert len(running_states) == 1

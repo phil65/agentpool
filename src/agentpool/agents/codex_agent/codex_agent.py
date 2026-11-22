@@ -622,6 +622,29 @@ class CodexAgent[TDeps = None, OutputDataT = str](BaseAgent[TDeps, OutputDataT])
         """
         await self._set_mode(policy, "mode")
 
+    async def steer(self, message: str, *, interrupt: bool = False) -> None:
+        """Steer an active Codex turn natively via ``turn/steer``.
+
+        When a Codex turn is in progress, delivers ``message`` directly into the active
+        turn with ``expected_turn_id``. With ``interrupt=True``, interrupts the current
+        generation and queues ``message`` for immediate execution. Outside an active
+        turn, falls back to the base injection behavior.
+        """
+        if (
+            self._client
+            and self._sdk_session_id
+            and self._adapter
+            and (turn_id := self._adapter._current_turn_id)
+        ):
+            session = self._sessions[self._sdk_session_id]
+            if interrupt:
+                self.queue_prompt(message)
+                await session.turn_interrupt(turn_id)
+            else:
+                await session.turn_steer(message, expected_turn_id=turn_id)
+            return
+        await super().steer(message, interrupt=interrupt)
+
     async def _interrupt(self) -> None:
         """Call Codex turn_interrupt if there's an active turn."""
         if (

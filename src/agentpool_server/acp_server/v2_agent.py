@@ -348,15 +348,24 @@ class AgentPoolV2Agent(V2Agent):
     # --- Prompt turns -----------------------------------------------------------------
 
     async def prompt(self, params: v2.PromptRequest) -> v2.PromptResponse:
-        """Accept the prompt and run its turn in the background (v2's prompt lifecycle).
+        """Accept the prompt and run or steer its turn in the background (v2's prompt lifecycle).
 
         A JSON-RPC error here means the message was not accepted; anything that goes
-        wrong later ends the turn with ``stopReason: "error"``.
+        wrong later ends the turn with ``stopReason: "error"``. When a turn is already
+        running on the session, text prompts steer into the live run and multimodal
+        prompts queue onto it without emitting a duplicate ``running`` state.
         """
         session = await self.v1.session_for_prompt(params.session_id)
         blocks = to_v1(params, V1PromptRequest).prompt
         contents = session.convert_prompt(blocks)
         message_id = str(uuid.uuid4())
+        if session.is_running:
+            if contents and all(isinstance(c, str) for c in contents):
+                text = "\n\n".join(c for c in contents if isinstance(c, str))
+                await session.agent.steer(text)
+            elif contents:
+                session.agent.queue_prompt(*contents)
+            return v2.PromptResponse(message_id=message_id)
         self.v1.tasks.create_task(
             self._run_turn(session, contents), name=f"acp-v2-turn-{message_id[:8]}"
         )

@@ -563,6 +563,11 @@ class ACPSession:
         self.log.debug("Converted content", content=contents)
         return contents
 
+    @property
+    def is_running(self) -> bool:
+        """Whether a foreground prompt turn is currently executing on this session."""
+        return self._task_lock.locked()
+
     async def run_turn(
         self, contents: Sequence[UserContent | PathReference], output: TurnOutput
     ) -> TurnOutcome:

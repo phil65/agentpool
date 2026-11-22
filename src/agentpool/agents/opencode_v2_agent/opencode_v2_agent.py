@@ -17,7 +17,7 @@ import anyio
 import httpx
 
 from agentpool.agents.base_agent import BaseAgent
-from agentpool.agents.events import RunStartedEvent, StreamCompleteEvent
+from agentpool.agents.events import NoticeEvent, RunStartedEvent, StreamCompleteEvent
 from agentpool.agents.events.reconstructor import MessageReconstructor
 from agentpool.agents.exceptions import AgentNotInitializedError
 from agentpool.agents.opencode_v2_agent.converters import (
@@ -46,7 +46,10 @@ from opencode_v2_sdk.models import (
     PermissionAsked,
     PermissionRule,
     SessionCreateBody,
+    SessionExecutionStarted,
+    SessionPromptBody,
     SessionUpdateBody,
+    TuiToastShow,
     V2EventServerConnected,
 )
 
@@ -90,7 +93,9 @@ if TYPE_CHECKING:
 
 logger = get_logger(__name__)
 
-_SSE_CONNECT_GRACE_SECONDS = 0.5
+_SSE_CONNECT_WAIT_SECONDS = 0.5
+_SSE_RECONNECT_DELAY_SECONDS = 0.25
+_STREAM_CLOSED = object()
 
 
 def _pick_free_port() -> int:
@@ -217,6 +222,17 @@ class OpenCodeV2Agent[TDeps = None](BaseAgent[TDeps, str]):
         self._sdk_session_id: str | None = session_id
         self._cached_models: list[ModelInfo] | None = None
         self._active_model_name: str | None = model
+
+        # Persistent session-lifetime SSE listener & multiplexing state
+        self._sse_task: asyncio.Task[None] | None = None
+        self._sse_ready = asyncio.Event()
+        self._sse_error: BaseException | None = None
+        self._turn_queue: asyncio.Queue[Any] | None = None
+        self._turn_input_provider: InputProvider | None = None
+        self._interaction_tasks: set[asyncio.Task[Any]] = set()
+        self._idle_tracker: V2EventTracker | None = None
+        self._idle_reconstructor: MessageReconstructor | None = None
+        self._idle_message_id: str | None = None
 
     @classmethod
     def from_config(
@@ -395,6 +411,7 @@ class OpenCodeV2Agent[TDeps = None](BaseAgent[TDeps, str]):
         await self._register_mcp_servers(self._client)
         if self._sdk_session_id is not None:
             await self.load_session(self._sdk_session_id)
+        await self._ensure_sse_loop()
         return self
 
     async def __aexit__(
@@ -404,6 +421,7 @@ class OpenCodeV2Agent[TDeps = None](BaseAgent[TDeps, str]):
         exc_tb: TracebackType | None,
     ) -> None:
         try:
+            await self._stop_sse_loop()
             if self._client is not None:
                 for name in self._registered_mcp_names:
                     with suppress(OpenCodeV2Error, httpx.HTTPError):
@@ -572,7 +590,178 @@ class OpenCodeV2Agent[TDeps = None](BaseAgent[TDeps, str]):
         except Exception:
             self.log.exception("Failed to reply to OpenCode V2 form", form_id=form.id)
 
-    async def _stream_events(  # noqa: PLR0915
+    async def _ensure_sse_loop(self) -> None:
+        """Ensure the persistent ``GET /api/event`` SSE reader task is running."""
+        if self._sse_task is not None and not self._sse_task.done():
+            return
+        client = self._require_client()
+        self._sse_ready.clear()
+        self._sse_error = None
+        self._sse_task = asyncio.create_task(
+            self._sse_loop(client), name=f"opencode-v2-sse-{self.name}"
+        )
+        with suppress(TimeoutError):
+            await asyncio.wait_for(self._sse_ready.wait(), timeout=_SSE_CONNECT_WAIT_SECONDS)
+
+    async def _stop_sse_loop(self) -> None:
+        """Stop the persistent SSE reader and any in-flight interaction handlers."""
+        task, self._sse_task = self._sse_task, None
+        if task is not None:
+            task.cancel()
+            with suppress(asyncio.CancelledError):
+                await task
+        for interaction in list(self._interaction_tasks):
+            interaction.cancel()
+        if self._interaction_tasks:
+            await asyncio.gather(*self._interaction_tasks, return_exceptions=True)
+            self._interaction_tasks.clear()
+        self._idle_tracker = None
+        self._idle_reconstructor = None
+        self._idle_message_id = None
+
+    async def _sse_loop(self, client: OpenCodeV2Client) -> None:
+        """Maintain a session-lifetime SSE subscription and multiplex events."""
+        try:
+            while True:
+                try:
+                    async for event in client.events():
+                        if not self._sse_ready.is_set():
+                            self._sse_ready.set()
+                        self._sse_error = None
+                        if isinstance(event, V2EventServerConnected):
+                            continue
+                        await self._dispatch_sse_event(client, event)
+                except asyncio.CancelledError:
+                    raise
+                except (httpx.HTTPError, OpenCodeV2Error) as exc:
+                    self._sse_error = exc
+                    self._sse_ready.set()
+                    if self._turn_queue is not None:
+                        await self._turn_queue.put(_STREAM_CLOSED)
+                    await anyio.sleep(_SSE_RECONNECT_DELAY_SECONDS)
+                    continue
+                else:
+                    # Clean EOF from the server/mock stream
+                    self._sse_ready.set()
+                    if self._turn_queue is not None:
+                        await self._turn_queue.put(_STREAM_CLOSED)
+                    return
+        finally:
+            self._sse_ready.set()
+
+    async def _dispatch_sse_event(self, client: OpenCodeV2Client, event: Any) -> None:
+        sid = self._sdk_session_id
+        provider = self._turn_input_provider or self._input_provider
+        if isinstance(event, PermissionAsked) and sid and event.data.session_id == sid:
+            task = asyncio.create_task(self._handle_permission(client, event.data, provider))
+            self._interaction_tasks.add(task)
+            task.add_done_callback(self._interaction_tasks.discard)
+            return
+        if isinstance(event, FormCreated) and sid and event.data.form.session_id == sid:
+            task = asyncio.create_task(self._handle_form(client, event.data.form, provider))
+            self._interaction_tasks.add(task)
+            task.add_done_callback(self._interaction_tasks.discard)
+            return
+        if self._turn_queue is not None:
+            await self._turn_queue.put(event)
+            return
+        await self._handle_idle_event(event)
+
+    async def _handle_idle_event(self, event: Any) -> None:
+        """Forward unsolicited/background V2 events via ``BaseAgent.emit_event``."""
+        sid = self._sdk_session_id
+        if sid is not None and isinstance(event, SessionExecutionStarted):
+            if event.data.session_id != sid:
+                return
+            self._idle_message_id = str(uuid4())
+            self._idle_tracker = V2EventTracker(
+                session_id=sid,
+                agent_name=self.name,
+                message_id=self._idle_message_id,
+            )
+            self._idle_reconstructor = MessageReconstructor(
+                model_name=self.model_name,
+                provider_name="opencode_v2",
+            )
+            await self.emit_event(
+                RunStartedEvent(
+                    session_id=self.session_id or sid,
+                    run_id=str(uuid4()),
+                    agent_name=self.name,
+                )
+            )
+            return
+
+        if self._idle_tracker is not None and self._idle_reconstructor is not None:
+            for native_event in self._idle_tracker.handle(event):
+                self._idle_reconstructor.observe(native_event)
+                await self.emit_event(native_event)
+            if self._idle_tracker.done:
+                await self._finish_idle_turn()
+            return
+
+        if isinstance(event, TuiToastShow):
+            variant = event.data.variant
+            severity: Literal["info", "warning", "error"] = (
+                "error" if variant == "error" else "warning" if variant == "warning" else "info"
+            )
+            await self.emit_event(
+                NoticeEvent(
+                    title=event.data.title or event.data.message,
+                    description=event.data.message if event.data.title else None,
+                    severity=severity,
+                )
+            )
+
+    async def _finish_idle_turn(self) -> None:
+        tracker, self._idle_tracker = self._idle_tracker, None
+        reconstructor, self._idle_reconstructor = self._idle_reconstructor, None
+        reply_id, self._idle_message_id = self._idle_message_id, None
+        if tracker is None or reconstructor is None:
+            return
+        for open_tool_event in tracker.flush_open_tools():
+            reconstructor.observe(open_tool_event)
+            await self.emit_event(open_tool_event)
+        if tracker.last_model_name:
+            self._active_model_name = tracker.last_model_name
+        reconstructor.flush(finish_reason=tracker.finish_reason)
+        cost_info = TokenCost(total_cost=tracker.total_cost) if tracker.total_cost else None
+        complete_msg = ChatMessage[str](
+            content=reconstructor.text_content,
+            role="assistant",
+            name=self.name,
+            message_id=reply_id or str(uuid4()),
+            session_id=self.session_id or self._sdk_session_id,
+            usage=tracker.total_usage,
+            cost_info=cost_info,
+            model_name=self.model_name,
+            messages=reconstructor.model_messages,
+            finish_reason=tracker.finish_reason,
+        )
+        await self.emit_event(StreamCompleteEvent(message=complete_msg))
+
+    async def steer(self, message: str, *, interrupt: bool = False) -> None:
+        """Steer a running OpenCode V2 turn natively via ``delivery="steer"``.
+
+        With ``interrupt=True``, interrupts the generation in progress and queues the
+        message to run immediately next; otherwise enqueues the message with
+        ``delivery="steer"`` directly into the running V2 execution.
+        """
+        if (
+            self._client is not None
+            and self._sdk_session_id is not None
+            and self._turn_queue is not None
+        ):
+            if interrupt:
+                self.queue_prompt(message)
+                await self._client.interrupt_session(self._sdk_session_id, resume=False)
+            else:
+                body = SessionPromptBody(text=message, delivery="steer")
+                await self._client.send_prompt(self._sdk_session_id, body)
+            return
+        await super().steer(message, interrupt=interrupt)
+
+    async def _stream_events(
         self,
         prompts: list[UserContent],
         *,
@@ -592,6 +781,10 @@ class OpenCodeV2Agent[TDeps = None](BaseAgent[TDeps, str]):
         if final_session_id is None:
             raise ValueError("session_id must be set")
         v2_session_id = await self._ensure_session(client)
+        await self._ensure_sse_loop()
+        if self._sse_error is not None:
+            raise self._sse_error
+
         run_id = str(uuid4())
         reply_id = message_id or str(uuid4())
         yield RunStartedEvent(session_id=final_session_id, run_id=run_id, agent_name=self.name)
@@ -611,68 +804,23 @@ class OpenCodeV2Agent[TDeps = None](BaseAgent[TDeps, str]):
         prompt_body = user_content_to_prompt_body(prompts)
 
         queue: asyncio.Queue[Any] = asyncio.Queue()
-        connected = asyncio.Event()
-        sentinel = object()
-        stream_error: list[BaseException] = []
-        bg_tasks: set[asyncio.Task[Any]] = set()
-
-        async def _read_sse() -> None:
-            try:
-                async for event in client.events():
-                    if not connected.is_set():
-                        connected.set()
-                    if isinstance(event, V2EventServerConnected):
-                        continue
-                    await queue.put(event)
-            except asyncio.CancelledError:
-                raise
-            except BaseException as exc:  # noqa: BLE001
-                stream_error.append(exc)
-            finally:
-                connected.set()
-                await queue.put(sentinel)
-
-        reader = asyncio.create_task(_read_sse())
+        self._turn_queue = queue
+        self._turn_input_provider = provider
         try:
             async with self._tool_bridge.set_run_context(run_context, prompt=prompts):
-                with suppress(TimeoutError):
-                    await asyncio.wait_for(connected.wait(), timeout=_SSE_CONNECT_GRACE_SECONDS)
-                if stream_error:
-                    raise stream_error[0]
-
                 await client.send_prompt(v2_session_id, prompt_body)
-
                 while not tracker.done:
                     item = await queue.get()
-                    if item is sentinel:
-                        if stream_error:
-                            raise stream_error[0]
+                    if item is _STREAM_CLOSED:
+                        if self._sse_error is not None:
+                            raise self._sse_error
                         break
-                    if isinstance(item, PermissionAsked) and item.data.session_id == v2_session_id:
-                        task = asyncio.create_task(
-                            self._handle_permission(client, item.data, provider)
-                        )
-                        bg_tasks.add(task)
-                        task.add_done_callback(bg_tasks.discard)
-                        continue
-                    if isinstance(item, FormCreated) and item.data.form.session_id == v2_session_id:
-                        task = asyncio.create_task(
-                            self._handle_form(client, item.data.form, provider)
-                        )
-                        bg_tasks.add(task)
-                        task.add_done_callback(bg_tasks.discard)
-                        continue
                     for native_event in tracker.handle(item):
                         reconstructor.observe(native_event)
                         yield native_event
         finally:
-            reader.cancel()
-            with suppress(asyncio.CancelledError):
-                await reader
-            for task in list(bg_tasks):
-                task.cancel()
-            if bg_tasks:
-                await asyncio.gather(*bg_tasks, return_exceptions=True)
+            self._turn_queue = None
+            self._turn_input_provider = None
 
         for event in tracker.flush_open_tools():
             reconstructor.observe(event)

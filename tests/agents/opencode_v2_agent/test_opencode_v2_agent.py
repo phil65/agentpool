@@ -516,3 +516,106 @@ async def test_roundtrip_against_agentpool_opencode_v2_server(
             server.should_exit = True
             await serve_task
             sock.close()
+
+
+async def test_persistent_sse_steer_and_background_turn() -> None:
+    """Persistent SSE enables native mid-turn steer() and between-turn background events."""
+    from agentpool.agents.events import NoticeEvent
+
+    server = _FakeV2Server()
+    http = httpx.AsyncClient(
+        base_url="http://v2.test", transport=httpx.MockTransport(server.handle)
+    )
+    client = OpenCodeV2Client("http://v2.test", http_client=http)
+    agent = OpenCodeV2Agent(name="oc-live", client=client, enable_logging=False)
+    bg_events: list[Any] = []
+    agent.background_event.connect(bg_events.append)
+
+    async with http, agent, agent.subscribe() as stream:
+        await agent.submit("Start work")
+        while not any(p.endswith("/prompt") for _, p, _ in server.calls):
+            await asyncio.sleep(0.01)
+
+        # Mid-turn steer sends delivery="steer" directly to the running V2 session
+        await agent.steer("Pivot to tests")
+        prompt_bodies = [body for _, p, body in server.calls if p.endswith("/prompt")]
+        assert len(prompt_bodies) == 2
+        assert prompt_bodies[1] == {"text": "Pivot to tests", "delivery": "steer"}
+
+        # Complete foreground turn
+        server.push_event({
+            "id": "evt_100",
+            "created": 2000,
+            "durable": {"aggregateID": "ses_1", "seq": 1},
+            "type": "session.execution.started",
+            "data": {"sessionID": "ses_1"},
+        })
+        server.push_event({
+            "id": "evt_101",
+            "created": 2001,
+            "type": "session.text.delta",
+            "data": {
+                "sessionID": "ses_1",
+                "assistantMessageID": "msg_1",
+                "ordinal": 0,
+                "delta": "Pivoted!",
+            },
+        })
+        server.push_event({
+            "id": "evt_102",
+            "created": 2002,
+            "durable": {"aggregateID": "ses_1", "seq": 2},
+            "type": "session.execution.succeeded",
+            "data": {"sessionID": "ses_1"},
+        })
+        await agent.wait_idle()
+
+        # Now idle: push an unsolicited background turn + toast over the same SSE stream
+        server.push_event({
+            "id": "evt_200",
+            "created": 3000,
+            "durable": {"aggregateID": "ses_1", "seq": 3},
+            "type": "session.execution.started",
+            "data": {"sessionID": "ses_1"},
+        })
+        server.push_event({
+            "id": "evt_201",
+            "created": 3001,
+            "type": "session.text.delta",
+            "data": {
+                "sessionID": "ses_1",
+                "assistantMessageID": "msg_bg",
+                "ordinal": 0,
+                "delta": "Background done",
+            },
+        })
+        server.push_event({
+            "id": "evt_202",
+            "created": 3002,
+            "durable": {"aggregateID": "ses_1", "seq": 4},
+            "type": "session.execution.succeeded",
+            "data": {"sessionID": "ses_1"},
+        })
+        server.push_event({
+            "id": "evt_203",
+            "created": 3003,
+            "location": {"directory": "/work"},
+            "type": "tui.toast.show",
+            "data": {"title": "Saved", "message": "Checkpoint created", "variant": "info"},
+        })
+
+        seen: list[Any] = []
+        async with asyncio.timeout(5.0):
+            async for ev in stream:
+                seen.append(ev)
+                if isinstance(ev, NoticeEvent):
+                    break
+
+    completes = [e for e in seen if isinstance(e, StreamCompleteEvent)]
+    assert [c.message.content for c in completes] == ["Pivoted!", "Background done"]
+    assert any(isinstance(b.event, RunStartedEvent) for b in bg_events)
+    assert any(
+        isinstance(b.event, StreamCompleteEvent) and b.event.message.content == "Background done"
+        for b in bg_events
+    )
+    assert any(isinstance(b.event, NoticeEvent) and b.event.title == "Saved" for b in bg_events)

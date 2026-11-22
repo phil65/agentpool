@@ -5,12 +5,13 @@ from __future__ import annotations
 from abc import abstractmethod
 import asyncio
 from collections.abc import Callable
-from contextlib import suppress
+from contextlib import asynccontextmanager, suppress
 from dataclasses import dataclass, field, replace
 import os
 from pathlib import Path
 import re
 from typing import TYPE_CHECKING, Any, ClassVar, Literal, Self, assert_never, overload
+from uuid import uuid4
 
 from anyenv import MultiEventHandler, method_spawner
 from anyenv.signals import Signal
@@ -18,7 +19,7 @@ import anyio
 from pydantic_ai import ModelRequest
 from upathtools.filesystems import IsolatedMemoryFileSystem
 
-from agentpool.agents.events import StreamCompleteEvent, resolve_event_handlers
+from agentpool.agents.events import RunErrorEvent, StreamCompleteEvent, resolve_event_handlers
 from agentpool.agents.modes import ModeInfo
 from agentpool.common_types import IndividualEventHandler
 from agentpool.hooks import AgentHooks
@@ -31,8 +32,9 @@ from agentpool.utils.time_utils import get_now
 
 
 if TYPE_CHECKING:
-    from collections.abc import AsyncIterator, Sequence
+    from collections.abc import AsyncGenerator, AsyncIterator, Sequence
     from datetime import datetime
+    from types import TracebackType
 
     from aclientp.schema import AvailableCommandsUpdate
     from evented_config import EventConfig
@@ -84,6 +86,8 @@ logger = get_logger(__name__)
 type AgentTypeLiteral = Literal[
     "native", "acp", "agui", "antigravity", "claude", "codex", "opencode_v2", "t3"
 ]
+type PromptDelivery = Literal["steer", "queue"]
+type AgentState = Literal["idle", "running"]
 
 
 _SLASH_PATTERN: re.Pattern[str] = re.compile(r"^/([\w-]+)(?:\s+(.*))?$")
@@ -259,7 +263,9 @@ class BaseAgent[TDeps = None, TResult = str](MessageNode[TDeps, TResult]):
         self._infinite = False
         self.deps_type = deps_type  # or type(None)
         self._background_task: asyncio.Task[ChatMessage[Any]] | None = None
+        self._submit_task: asyncio.Task[None] | None = None
         self._event_queue: asyncio.Queue[RichAgentStreamEvent[Any]] = asyncio.Queue()
+        self._event_subscribers: set[asyncio.Queue[RichAgentStreamEvent[Any] | None]] = set()
         self._active_runs = 0
         """Number of runs currently streaming (events go to their stream)."""
         self.conversation = MessageHistory(storage=self.storage)
@@ -576,20 +582,74 @@ class BaseAgent[TDeps = None, TResult = str](MessageNode[TDeps, TResult]):
                 await self._background_task
             self._background_task = None
 
+    async def __aexit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc_val: BaseException | None,
+        exc_tb: TracebackType | None,
+    ) -> None:
+        """Stop any submitted background turn and close session stream subscribers."""
+        if self._submit_task is not None and not self._submit_task.done():
+            self._submit_task.cancel()
+            with suppress(asyncio.CancelledError):
+                await self._submit_task
+        self._submit_task = None
+        for queue in list(self._event_subscribers):
+            queue.put_nowait(None)
+        await super().__aexit__(exc_type, exc_val, exc_tb)
+
     def is_busy(self) -> bool:
         """Check if agent is currently processing tasks."""
         return bool(self.task_manager._pending_tasks or self._background_task)
+
+    @property
+    def is_running(self) -> bool:
+        """Whether a prompt turn is currently executing on this agent."""
+        submitting = self._submit_task is not None and not self._submit_task.done()
+        return self._active_runs > 0 or submitting
+
+    @property
+    def state(self) -> AgentState:
+        """Current turn lifecycle state (``idle`` or ``running``)."""
+        return "running" if self.is_running else "idle"
+
+    def _publish_stream_event(self, event: RichAgentStreamEvent[Any]) -> None:
+        """Fan out an event to all active :meth:`subscribe` consumers."""
+        for queue in list(self._event_subscribers):
+            queue.put_nowait(event)
+
+    @asynccontextmanager
+    async def subscribe(self) -> AsyncGenerator[AsyncIterator[RichAgentStreamEvent[TResult]]]:
+        """Subscribe to the live session-lifetime event stream.
+
+        Yields an async iterator receiving every event produced on this agent across
+        both foreground turns (via :meth:`run_stream` or :meth:`submit`) and
+        between-turn background activity (via :meth:`emit_event`). The stream ends
+        cleanly when the agent exits its async context manager.
+        """
+        queue: asyncio.Queue[RichAgentStreamEvent[Any] | None] = asyncio.Queue()
+        self._event_subscribers.add(queue)
+
+        async def _iter() -> AsyncIterator[RichAgentStreamEvent[TResult]]:
+            while (event := await queue.get()) is not None:
+                yield event
+
+        try:
+            yield _iter()
+        finally:
+            self._event_subscribers.discard(queue)
 
     async def emit_event(self, event: RichAgentStreamEvent[Any]) -> None:
         """Deliver an event produced by tools, subagents or the backend.
 
         While a run is streaming, the event joins its stream. Otherwise (e.g. a background
-        task finishing after its turn) it is emitted as :attr:`background_event`, instead
-        of waiting for the next run.
+        task finishing after its turn) it is emitted as :attr:`background_event` and
+        fanned out to :meth:`subscribe` consumers instead of waiting for the next run.
         """
         if self._active_runs:
             await self._event_queue.put(event)
             return
+        self._publish_stream_event(event)
         background = BaseAgent.BackgroundEvent(
             agent_name=self.name, session_id=self.session_id, event=event
         )
@@ -659,6 +719,77 @@ class BaseAgent[TDeps = None, TResult = str](MessageNode[TDeps, TResult]):
                 next step boundary
         """
         self.inject_prompt(message)
+
+    async def submit(
+        self,
+        *prompts: PromptCompatible,
+        delivery: PromptDelivery = "queue",
+        interrupt: bool = False,
+        store_history: bool = True,
+        message_id: str | None = None,
+        session_id: str | None = None,
+        parent_id: str | None = None,
+        message_history: MessageHistory | None = None,
+        input_provider: InputProvider | None = None,
+        wait_for_connections: bool | None = None,
+        deps: TDeps | None = None,
+        event_handlers: Sequence[AnyEventHandlerType] | None = None,
+    ) -> str:
+        """Accept a prompt non-blockingly and return its message ID at once.
+
+        Aligns with ACP v2 ``session/prompt`` and OpenCode V2 ``POST /prompt``:
+
+        - When idle, starts a background turn driving :meth:`run_stream`; events are
+          delivered to :meth:`subscribe` consumers and ``event_handlers``.
+        - When a turn is already running, ``delivery="steer"`` delivers text input via
+          :meth:`steer` (falling back to queueing for multimodal prompts), while
+          ``delivery="queue"`` appends the prompt to the active run's queue.
+        """
+        msg_id = message_id or str(uuid4())
+        if self.is_running:
+            if delivery == "steer" and prompts and all(isinstance(p, str) for p in prompts):
+                text = "\n\n".join(p for p in prompts if isinstance(p, str))
+                await self.steer(text, interrupt=interrupt)
+            else:
+                self.queue_prompt(*prompts)
+            return msg_id
+
+        async def _drain() -> None:
+            try:
+                async for _ in self.run_stream(
+                    *prompts,
+                    store_history=store_history,
+                    message_id=msg_id,
+                    session_id=session_id,
+                    parent_id=parent_id,
+                    message_history=message_history,
+                    input_provider=input_provider,
+                    wait_for_connections=wait_for_connections,
+                    deps=deps,
+                    event_handlers=event_handlers,
+                ):
+                    pass
+            except asyncio.CancelledError:
+                raise
+            except Exception as exc:  # noqa: BLE001
+                self._publish_stream_event(
+                    RunErrorEvent(
+                        message=str(exc),
+                        code=type(exc).__name__,
+                        agent_name=self.name,
+                    )
+                )
+            finally:
+                if self._submit_task is asyncio.current_task():
+                    self._submit_task = None
+
+        self._submit_task = asyncio.create_task(_drain(), name=f"submit_{self.name}_{msg_id[:8]}")
+        return msg_id
+
+    async def wait_idle(self) -> None:
+        """Wait until any active :meth:`submit` turn (including queued prompts) finishes."""
+        if self._submit_task is not None:
+            await asyncio.shield(self._submit_task)
 
     def has_queued_prompts(self) -> bool:
         """Check if there are queued prompts waiting to be processed."""
@@ -851,6 +982,7 @@ class BaseAgent[TDeps = None, TResult = str](MessageNode[TDeps, TResult]):
                 deps=deps,
             ):
                 await resolved_handler(context, event)
+                self._publish_stream_event(event)
                 yield event
                 # Capture final message from StreamCompleteEvent
                 if isinstance(event, StreamCompleteEvent):

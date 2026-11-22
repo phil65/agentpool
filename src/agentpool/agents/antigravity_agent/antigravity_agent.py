@@ -969,6 +969,19 @@ class AntigravityAgent[TDeps = None, OutputDataT = str](BaseAgent[TDeps, OutputD
             except Exception:
                 self.log.exception("Failed to cancel Antigravity turn")
 
+    async def steer(self, message: str, *, interrupt: bool = False) -> None:
+        """Steer a running Antigravity turn.
+
+        Antigravity's SDK drains an active turn before ``send()`` delivers a new
+        message, so ``interrupt=True`` cancels the in-flight turn and queues
+        ``message`` to run immediately next; otherwise falls back to base injection.
+        """
+        if interrupt and self._active_runs > 0:
+            self.queue_prompt(message)
+            await self._interrupt()
+            return
+        await super().steer(message, interrupt=interrupt)
+
     async def start_new_session(self) -> None:
         """Start a fresh Antigravity conversation on the next turn."""
         await super().start_new_session()
