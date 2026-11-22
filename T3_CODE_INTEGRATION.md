@@ -150,9 +150,16 @@ Findings:
 - An assistant message can appear only once complete, so text "streams" per message;
   reasoning grows in place.
 
-Open: real streaming through the native WebSocket (`orchestration.subscribeThread`);
-permission requests (need the WebSocket API too); attachments (prompts must be text);
-agentpool toolsets are not passed to the thread.
+Live updates (2026-11-22): with a native sign-in (`pyt3 login-native`, or
+`native_token`), the agent also subscribes to the thread over T3's native WebSocket
+(`pyt3client.native`, `t3_agent/live.py`). Growing reply and reasoning texts stream in
+(T3 sends updates about 0.5 s apart; `/mcp` shows a reply only once complete), other
+events trigger an MCP read (tool rendering, run status), and approval requests go to
+the input provider and are answered with `runtime-request.respond`. Tested live:
+approval of a command in `approval-required`, reasoning streamed in six steps.
+
+Open: attachments (prompts must be text); agentpool toolsets are not passed to the
+thread; answering questions over the socket too (they still use `t3_pending_request`).
 
 ### 3. T3 as a toolset
 

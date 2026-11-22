@@ -4,9 +4,10 @@ A T3 run shows up as thread items (``t3_thread_read`` with the ``activity`` view
 the user's message, the agent's messages and reasoning, tool work (commands, file
 changes, MCP and dynamic tool calls, web searches, ...), notices and checkpoints.
 Items are updated in place while they run: their status changes and their text
-grows (seen with reasoning; an assistant message may also appear only once it is
-complete). The agent polls the items; ``ItemTracker`` compares each read with the
-last one and yields the events for what changed.
+grows. ``/mcp`` shows an assistant message only once complete; the native socket
+(``live.py``) shows it growing. ``ItemTracker`` takes items from both (they share
+item ids), compares each with what it reported before and yields the events for
+what changed.
 
 Upstream (https://github.com/pingdotgg/t3code): item kinds in
 ``packages/contracts/src/providerRuntime.ts`` and ``orchestrationV2.ts``.
@@ -15,7 +16,7 @@ Upstream (https://github.com/pingdotgg/t3code): item kinds in
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Protocol
 
 from pydantic import BaseModel, Field, ValidationError
 from pydantic_ai import PartDeltaEvent, PartStartEvent, TextPart, TextPartDelta, ThinkingPart
@@ -32,17 +33,21 @@ from agentpool.agents.events import (
 if TYPE_CHECKING:
     from collections.abc import Iterator, Sequence
 
-    from pyt3client.models.tools import Item
-
     from agentpool.agents.events import RichAgentStreamEvent
     from agentpool.tools.base import ToolKind
 
 
-FINAL_STATUSES = frozenset({"completed", "failed", "cancelled", "interrupted"})
+FINAL_STATUSES = frozenset({"completed", "failed", "cancelled", "interrupted", "rolled_back"})
 """Item statuses that do not change anymore."""
 
-_IGNORED_TYPES = frozenset({"user_message", "checkpoint"})
-"""The prompt itself, and T3's own workspace snapshots."""
+_IGNORED_TYPES = frozenset({
+    "user_message",
+    "checkpoint",
+    "approval_request",
+    "user_input_request",
+})
+"""The prompt itself, T3's own workspace snapshots, and requests: an approval or a
+question reaches the user through the input provider (or a notice) instead."""
 
 _TOOL_KINDS: dict[str, ToolKind] = {
     "command_execution": "execute",
@@ -52,6 +57,21 @@ _TOOL_KINDS: dict[str, ToolKind] = {
     "collab_agent_tool_call": "think",
 }
 """ACP tool kinds of T3's tool-like items; other items are ``other``."""
+
+
+class Item(Protocol):
+    """A thread item: ``/mcp``'s ``Item`` or the native socket's ``TurnItem``."""
+
+    @property
+    def item_id(self) -> str: ...
+    @property
+    def type(self) -> str: ...
+    @property
+    def status(self) -> str: ...
+    @property
+    def title(self) -> str | None: ...
+    @property
+    def text(self) -> str | None: ...
 
 
 @dataclass
@@ -108,9 +128,9 @@ class ItemTracker:
     def _text(self, item: Item, *, thinking: bool) -> Iterator[RichAgentStreamEvent[Any]]:
         text = item.text or ""
         seen = self._seen.get(item.item_id)
-        if not thinking:
-            self._replies[item.item_id] = text
         if seen is None:
+            if not thinking:
+                self._replies[item.item_id] = text
             index = self._next_part
             self._next_part += 1
             self._seen[item.item_id] = _Seen(status=item.status, text=text, part_index=index)
@@ -119,7 +139,11 @@ class ItemTracker:
                 yield PartStartEvent(index=index, part=part)
             return
         seen.status = item.status
-        if text.startswith(seen.text) and len(text) > len(seen.text):
+        if seen.text.startswith(text):
+            return  # Nothing new: the same text, or an older or cut-off copy of it
+        if not thinking:
+            self._replies[item.item_id] = text
+        if text.startswith(seen.text):
             delta = text[len(seen.text) :]
             assert seen.part_index is not None
             if not seen.text:  # The part had no text yet: start it now

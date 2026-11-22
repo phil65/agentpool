@@ -88,7 +88,7 @@ dependencies = [
     { name = "pydantic-ai-slim", extra = ["anthropic", "google", "mistral", "openai", "retries"] },
     { name = "pydantic-monty" },
     { name = "pydocket" },
-    { name = "pyt3client" },
+    { name = "pyt3client", extra = ["native"] },
     { name = "python-dotenv" },
     { name = "rich" },
     { name = "ripgrep-rs" },
@@ -269,7 +269,7 @@ requires-dist = [
     { name = "pydantic-ai-slim", extras = ["openai", "google", "anthropic", "mistral", "retries"], specifier = ">=1.0.0" },
     { name = "pydantic-monty", specifier = ">=0.0.11" },
     { name = "pydocket", specifier = ">=0.16.1" },
-    { name = "pyt3client", specifier = ">=0.1.1" },
+    { name = "pyt3client", extras = ["native"], specifier = ">=0.2.0" },
     { name = "python-dotenv", specifier = ">=1.0.1" },
     { name = "python-telegram-bot", extras = ["socks"], marker = "extra == 'bot'", specifier = ">=21.0" },
     { name = "rich" },
@@ -5603,15 +5603,20 @@ sdist = { url = "https://files.pythonhosted.org/packages/12/a0/d0638470df605ce26
 
 [[package]]
 name = "pyt3client"
-version = "0.1.1"
+version = "0.2.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "httpx" },
     { name = "pydantic" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/0f/39/5acd78c43a95c903d9ba631d34417ddae225c289f73dcc329e6a95716121/pyt3client-0.1.1.tar.gz", hash = "sha256:bb94e255564a9c66c8fd98bd60a398932f5836093d8cea0803d065d0f04bd927", size = 44269, upload-time = "2026-11-22T06:31:17.401Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/48/ad/db7d6f68d24955448b553ac282f387776ad8e0c91e228bf176c089aaec93/pyt3client-0.2.0.tar.gz", hash = "sha256:8b2885124dd48077aff52c722527e8a4c39d3d121b4eeec1dd860c7919bc644f", size = 53859, upload-time = "2026-11-22T07:49:24.139Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/71/e8/a55b83277f6e7a55b2e2fa5577b6765044f4be1e7bd168307ac8a714b045/pyt3client-0.1.1-py3-none-any.whl", hash = "sha256:6a25308e23a0935eefef180a8676acd8df58a4b6ce4d3afece13ee1e543cac1a", size = 47375, upload-time = "2026-11-22T06:31:16.044Z" },
+    { url = "https://files.pythonhosted.org/packages/47/fd/9a65d7e04020978790e5112cf24b9fbeb6d35743c557e35dfe0b13edf393/pyt3client-0.2.0-py3-none-any.whl", hash = "sha256:c4ee97d9e0f591754f664909131e0666e422e3dee52fc6415ba1b379e06f3810", size = 58439, upload-time = "2026-11-22T07:49:22.821Z" },
+]
+
+[package.optional-dependencies]
+native = [
+    { name = "websockets" },
 ]
 
 [[package]]

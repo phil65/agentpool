@@ -13,10 +13,11 @@ approves it in T3 Code.
 
 from __future__ import annotations
 
+from contextlib import AsyncExitStack
 from datetime import UTC, datetime
 from pathlib import PurePath, PurePosixPath, PureWindowsPath
 import time
-from typing import TYPE_CHECKING, Any, ClassVar, Literal, Self
+from typing import TYPE_CHECKING, Any, ClassVar, Literal, Self, assert_never
 from uuid import uuid4
 
 import anyio
@@ -26,6 +27,7 @@ from agentpool.agents.events import NoticeEvent, RunErrorEvent, RunStartedEvent,
 from agentpool.agents.events.reconstructor import MessageReconstructor
 from agentpool.agents.exceptions import AgentNotInitializedError
 from agentpool.agents.t3_agent.items import FINAL_STATUSES, ItemTracker
+from agentpool.agents.t3_agent.live import ThreadFeed
 from agentpool.log import get_logger
 from agentpool.messaging import ChatMessage
 
@@ -45,6 +47,7 @@ if TYPE_CHECKING:
         ThreadReadInput,
         ThreadReadOutput,
     )
+    from pyt3client.native import ApprovalDecision, T3NativeClient, TurnItem
     from slashed import BaseCommand
     from tokonomics.model_discovery.model_info import ModelInfo
 
@@ -71,6 +74,9 @@ READ_PAGE_SIZE = 100
 
 CANCEL_GRACE_SECONDS = 15.0
 """How long a cancelled turn follows its run until the interrupt ends it."""
+
+LIVE_READ_INTERVAL = 5.0
+"""With live updates: the longest a turn goes without reading the thread over ``/mcp``."""
 
 MAX_ITEM_CHARS = 20_000
 """Text read per item; T3 cuts each read at about 30,000 characters in all."""
@@ -124,7 +130,10 @@ class T3Agent[TDeps = None](BaseAgent[TDeps, str]):
         interaction_mode: T3InteractionMode = "default",
         worktree: str | None = None,
         poll_interval: float = 0.5,
+        native: bool | None = None,
+        native_token: str | None = None,
         client: T3Client | None = None,
+        native_client: T3NativeClient | None = None,
         deps_type: type[TDeps] | None = None,
         name: str = "t3",
         description: str | None = None,
@@ -152,8 +161,13 @@ class T3Agent[TDeps = None](BaseAgent[TDeps, str]):
             runtime_mode: Permission mode of new threads
             interaction_mode: Interaction mode of new threads
             worktree: Base ref for a new worktree per new thread
-            poll_interval: Seconds between reads of a running turn
+            poll_interval: Seconds between reads of a running turn (without live updates)
+            native: Use the native socket for live updates and approvals: None when a
+                native sign-in exists, True to require it, False never
+            native_token: Native bearer for ``url`` (``pyt3 login-native`` saves one for
+                ``login``)
             client: Client to use instead of connecting; its owner enters and closes it
+            native_client: Native client to use the same way
             deps_type: Type of dependencies
             name: Agent name
             description: Agent description
@@ -194,6 +208,10 @@ class T3Agent[TDeps = None](BaseAgent[TDeps, str]):
         self._interaction_mode: T3InteractionMode = interaction_mode
         self._worktree = worktree
         self._poll_interval = poll_interval
+        self._native_mode = native
+        self._native_token = native_token
+        self._native = native_client
+        self._owns_native = native_client is None
         self._client = client
         self._owns_client = client is None
         self._project_id: str | None = None
@@ -231,6 +249,8 @@ class T3Agent[TDeps = None](BaseAgent[TDeps, str]):
             interaction_mode=config.interaction_mode,
             worktree=config.worktree,
             poll_interval=config.poll_interval,
+            native=config.native,
+            native_token=config.get_native_token(),
             name=config.name or "t3",
             deps_type=deps_type,
             description=config.description,
@@ -252,7 +272,11 @@ class T3Agent[TDeps = None](BaseAgent[TDeps, str]):
         if self._client is None:
             raise AgentNotInitializedError
         self._project_id = await self._resolve_project(self._client)
-        self.log.info("Connected to T3 Code", project_id=self._project_id)
+        if self._owns_native and self._native_mode is not False:
+            self._native = await self._connect_native()
+        self.log.info(
+            "Connected to T3 Code", project_id=self._project_id, live=self._native is not None
+        )
         return self
 
     async def __aexit__(
@@ -261,6 +285,9 @@ class T3Agent[TDeps = None](BaseAgent[TDeps, str]):
         exc_val: BaseException | None,
         exc_tb: TracebackType | None,
     ) -> None:
+        if self._native is not None and self._owns_native:
+            await self._native.__aexit__(exc_type, exc_val, exc_tb)
+            self._native = None
         if self._client is not None and self._owns_client:
             await self._client.aclose()
             self._client = None
@@ -280,6 +307,46 @@ class T3Agent[TDeps = None](BaseAgent[TDeps, str]):
             msg = f"T3 sign-in {self._login!r} expired; sign in again with `pyt3 login`"
             raise RuntimeError(msg)
         return T3Client.from_credentials(saved, client_name=f"agentpool:{self.name}")
+
+    def _native_credentials(self) -> T3NativeClient | None:
+        """A client for the native sign-in, if there is one (not connected yet)."""
+        from pyt3client import credentials
+        from pyt3client.native import T3NativeClient
+
+        if self._url is not None:
+            if self._native_token is None:
+                return None
+            return T3NativeClient(self._url, self._native_token)
+        try:
+            alias, _ = credentials.select(credentials.load(), self._login)
+            saved = credentials.load_native().get(alias)
+        except credentials.StoreError:
+            return None
+        if saved is None or credentials.is_expired(saved):
+            return None
+        return T3NativeClient.from_credentials(saved)
+
+    async def _connect_native(self) -> T3NativeClient | None:
+        """Connect the native socket, or None to poll (unless ``native=True`` requires it)."""
+        from pyt3client import T3Error
+        from websockets.exceptions import WebSocketException
+
+        if (native := self._native_credentials()) is None:
+            if self._native_mode:
+                msg = (
+                    f"T3 agent {self.name!r} needs a native sign-in: `pyt3 login-native <url>"
+                    " <pairing-token>` (for `login`), or `native_token` (for `url`)"
+                )
+                raise RuntimeError(msg)
+            return None
+        try:
+            await native.__aenter__()
+        except (T3Error, OSError, WebSocketException) as error:
+            if self._native_mode:
+                raise
+            self.log.warning("No T3 live updates; polling instead", error=str(error))
+            return None
+        return native
 
     async def _resolve_project(self, client: T3Client) -> str:
         """The project id: ``project`` as given, or the project in that folder on the T3 host."""
@@ -414,42 +481,64 @@ class T3Agent[TDeps = None](BaseAgent[TDeps, str]):
         status = "queued"
         told_approval = False
         cancelled_at: float | None = None
-        try:
+        async with AsyncExitStack() as stack:
+            stack.callback(self._end_run)  # Also when the loop fails
+            feed: ThreadFeed | None = None
+            if self._native is not None:
+                feed = await stack.enter_async_context(ThreadFeed.follow(self._native, thread_id))
+            read_now = True
             while True:
-                read = await self._read_items(client, thread_id, read_after)
-                items = [item for item in read.items if item.run_id == run_id]
-                for event in tracker.update(items):
-                    reconstructor.observe(event)
-                    yield event
-                if read.items:
-                    newest = max(item.position for item in read.items)
-                    self._last_position = max(self._last_position, newest)
-                    # Later reads start before the first item that may still change
-                    open_items = [i.position for i in items if i.status not in FINAL_STATUSES]
-                    read_after = min(open_items) - 1 if open_items else self._last_position
-                run = next((r for r in read.recent_runs if r.run_id == run_id), None)
-                status = run.status if run is not None else status
-                if status in RUN_FINAL_STATUSES and not tracker.pending:
-                    break
-                if read.thread.pending_request_count > 0:
-                    asked = await self._answer_questions(client, thread_id, provider, answered)
-                    if not asked and not told_approval:
-                        told_approval = True
-                        yield NoticeEvent(
-                            title="The T3 thread waits for approval in T3 Code",
-                            severity="warning",
-                            description="Approvals cannot be given through this agent;"
-                            " use a runtime mode that needs none to avoid this.",
-                        )
-                else:
-                    told_approval = False
+                if read_now:
+                    read = await self._read_items(client, thread_id, read_after)
+                    items = [item for item in read.items if item.run_id == run_id]
+                    for event in tracker.update(items):
+                        reconstructor.observe(event)
+                        yield event
+                    if read.items:
+                        newest = max(item.position for item in read.items)
+                        self._last_position = max(self._last_position, newest)
+                        # Later reads start before the first item that may still change
+                        open_items = [i.position for i in items if i.status not in FINAL_STATUSES]
+                        read_after = min(open_items) - 1 if open_items else self._last_position
+                    run = next((r for r in read.recent_runs if r.run_id == run_id), None)
+                    status = run.status if run is not None else status
+                    if status in RUN_FINAL_STATUSES and not tracker.pending:
+                        break
+                    live_approvals = feed is not None and not feed.lost and provider is not None
+                    if read.thread.pending_request_count > 0:
+                        asked = await self._answer_questions(client, thread_id, provider, answered)
+                        if not asked and not live_approvals and not told_approval:
+                            told_approval = True
+                            yield NoticeEvent(
+                                title="The T3 thread waits for approval in T3 Code",
+                                severity="warning",
+                                description="Approvals need a native sign-in"
+                                " (`pyt3 login-native`) and an input provider; or use a"
+                                " runtime mode that needs none.",
+                            )
+                    else:
+                        told_approval = False
                 if self._cancelled:
                     cancelled_at = cancelled_at or time.monotonic()
                     if time.monotonic() - cancelled_at > CANCEL_GRACE_SECONDS:
                         break  # The interrupt did not end the run: stop following it
-                await anyio.sleep(self._poll_interval)
-        finally:
-            self._run_id = None
+                if feed is None or feed.lost:
+                    await anyio.sleep(self._poll_interval)
+                    read_now = True
+                    continue
+                update = await feed.wait(LIVE_READ_INTERVAL)
+                if update is None:  # Quiet for a while: read anyway, events may be missed
+                    read_now = True
+                    continue
+                read_now = update.changed
+                texts = [item for item in update.texts if item.run_id == run_id]
+                for event in tracker.update(texts):
+                    reconstructor.observe(event)
+                    yield event
+                for approval in update.approvals:
+                    if approval.run_id == run_id and approval.request_id not in answered:
+                        answered.add(approval.request_id or "")
+                        await self._decide(feed, approval, provider)
         failed = status == "failed"
         if failed:
             yield RunErrorEvent(message="The T3 run failed", run_id=run_id, agent_name=self.name)
@@ -466,6 +555,45 @@ class T3Agent[TDeps = None](BaseAgent[TDeps, str]):
             finish_reason="error" if failed else "stop",
         )
         yield StreamCompleteEvent(message=message)
+
+    def _end_run(self) -> None:
+        self._run_id = None
+
+    async def _decide(
+        self, feed: ThreadFeed, approval: TurnItem, provider: InputProvider | None
+    ) -> None:
+        """Ask ``provider`` about an approval request and answer it over the native socket.
+
+        Without a provider the request stays open for T3 Code's own clients.
+        """
+        if provider is None or self._native is None or approval.request_id is None:
+            return
+        kind = approval.request_kind or "permission"
+        what = approval.prompt or approval.reason or approval.title or kind
+        tool_input: dict[str, Any] = {"command": what} if kind == "command" else {"request": what}
+        context = self.get_context(
+            input_provider=provider,
+            tool_call_id=feed.tool_call_id(approval),
+            tool_input=tool_input,
+            tool_name=kind,
+        )
+        result = await provider.get_tool_confirmation(
+            context, tool_description=approval.reason or ""
+        )
+        decision: ApprovalDecision
+        match result:
+            case "allow":
+                decision = "accept"
+            case "skip":
+                decision = "decline"
+            case "abort_run" | "abort_chain":
+                decision = "cancel"
+            case _ as unreachable:
+                assert_never(unreachable)
+        self.log.info("Answering a T3 approval", kind=kind, decision=decision)
+        await self._native.respond_to_request(
+            feed.thread_id, approval.request_id, decision=decision
+        )
 
     async def _read_items(
         self,

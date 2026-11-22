@@ -33,7 +33,9 @@ class T3AgentConfig(BaseAgentConfig):
     through the environment's MCP endpoint (via ``pyt3client``).
 
     Sign in once with ``pyt3 login <url> <pairing-code> --name <alias>`` and use the
-    alias as ``login``, or give ``url`` and ``token``.
+    alias as ``login``, or give ``url`` and ``token``. With a native sign-in as well
+    (``pyt3 login-native <url> <pairing-token>``, or ``native_token``), replies stream
+    in as they are written and approvals go through agentpool's input provider.
 
     Example:
         ```yaml
@@ -87,7 +89,15 @@ class T3AgentConfig(BaseAgentConfig):
     """Run each new thread in a new worktree from this base ref."""
 
     poll_interval: float = Field(default=0.5, gt=0, le=10)
-    """Seconds between reads of a running turn's progress."""
+    """Seconds between reads of a running turn's progress, without live updates."""
+
+    native: bool | None = None
+    """Use T3's native socket for live updates and approvals: by default when a native
+    sign-in exists; ``true`` requires one, ``false`` never uses it."""
+
+    native_token: str | None = Field(default=None, examples=["${T3_NATIVE_TOKEN}"])
+    """Native bearer for ``url`` (``${VAR}`` references are expanded). ``/mcp`` and the
+    native socket each refuse the other's token, so this is a second sign-in."""
 
     @model_validator(mode="after")
     def _one_way_to_sign_in(self) -> Self:
@@ -104,6 +114,14 @@ class T3AgentConfig(BaseAgentConfig):
         from agentpool.utils.env_refs import expand_env_refs
 
         return None if self.token is None else expand_env_refs({"token": self.token})["token"]
+
+    def get_native_token(self) -> str | None:
+        """The native token, with ``${VAR}`` references resolved."""
+        from agentpool.utils.env_refs import expand_env_refs
+
+        if self.native_token is None:
+            return None
+        return expand_env_refs({"token": self.native_token})["token"]
 
     def get_agent[TDeps](
         self,
