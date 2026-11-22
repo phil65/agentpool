@@ -36,22 +36,17 @@ pytestmark = [pytest.mark.integration, pytest.mark.slow]
 # --- Test Tool ---
 
 
-def create_echo_tool():
-    """Create a simple echo tool for testing."""
+def echo_tool(ctx: RunContext[None], message: str) -> str:
+    """Echo the message back.
 
-    def echo_tool(ctx: RunContext[None], message: str) -> str:
-        """Echo the message back.
+    Args:
+        ctx: Run context
+        message: Message to echo
 
-        Args:
-            ctx: Run context
-            message: Message to echo
-
-        Returns:
-            The echoed message
-        """
-        return f"Echo: {message}"
-
-    return echo_tool
+    Returns:
+        The echoed message
+    """
+    return f"Echo: {message}"
 
 
 # --- Event Collection ---
@@ -127,7 +122,7 @@ agents:
     type: native
     model: openai:gpt-4o-mini
     tools:
-      - tests.agents.test_external_agent_event_sequence:create_echo_tool
+      - tests.agents.test_external_agent_event_sequence:echo_tool
 """
     config_file = tmp_path / "test_config.yml"
     config_file.write_text(config_yaml)
@@ -144,6 +139,9 @@ agents:
         ],
         name="acp-test-agent",
         cwd=str(Path.cwd()),
+        # `uv run agentpool` starts a console script: the repo root (with `tests`, where
+        # the tool lives) is not on its import path otherwise
+        env_vars={"PYTHONPATH": str(Path.cwd())},
     )
     return config, config_file
 
@@ -153,8 +151,8 @@ def claude_code_agent_config() -> dict[str, Any]:
     """Create ClaudeCodeAgent config kwargs."""
     return {
         "name": "claude-code-test-agent",
-        "model": "claude-sonnet-4-20250514",
-        "cwd": str(Path.cwd()),
+        "model": "claude-haiku-5-5",
+        "env": str(Path.cwd()),
         "allowed_tools": ["Bash"],
         "permission_mode": "bypassPermissions",
     }
@@ -165,8 +163,7 @@ def codex_agent_config() -> dict[str, Any]:
     """Create CodexAgent config kwargs."""
     return {
         "name": "codex-test-agent",
-        "model": "gpt-5.1-codex-mini",
-        "cwd": str(Path.cwd()),
+        "env": str(Path.cwd()),  # The account's default model
         "reasoning_effort": "medium",
     }
 
@@ -189,7 +186,7 @@ async def test_native_agent_event_sequence():
     agent = Agent(
         name="native-test-agent",
         model="openai:gpt-4o-mini",
-        tools=[create_echo_tool()],
+        tools=[echo_tool],
     )
 
     async with agent:
@@ -354,7 +351,7 @@ async def test_event_sequence_consistency_across_agents(
     native_agent = Agent(
         name="native-test-agent",
         model="openai:gpt-4o-mini",
-        tools=[create_echo_tool()],
+        tools=[echo_tool],
     )
 
     async with native_agent:
@@ -462,7 +459,7 @@ async def test_tool_call_complete_event_structure():
     agent = Agent(
         name="native-test-agent",
         model="openai:gpt-4o-mini",
-        tools=[create_echo_tool()],
+        tools=[echo_tool],
     )
 
     async with agent:
