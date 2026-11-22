@@ -33,6 +33,7 @@ if TYPE_CHECKING:
     from agentpool.agents.events import RichAgentStreamEvent
     from agentpool.agents.events.events import SubAgentType
     from agentpool.common_types import PromptCompatible
+    from agentpool.sessions import Session
     from agentpool.talk import Talk
 
 
@@ -170,12 +171,14 @@ class Team[TDeps = None](BaseTeam[TDeps, Any]):
     async def run_stream(
         self,
         *prompts: PromptCompatible,
+        session: Session | None = None,
         **kwargs: Any,
     ) -> AsyncIterator[RichAgentStreamEvent[Any]]:
         """Stream responses from all team members in parallel.
 
         Args:
             prompts: Input prompts to process in parallel
+            session: The team session of the turn: members run in child sessions of it
             kwargs: Additional arguments passed to each agent
 
         Yields:
@@ -199,7 +202,7 @@ class Team[TDeps = None](BaseTeam[TDeps, Any]):
                 case _:
                     raise ValueError(f"Unexpected node type: {type(node)}")
 
-            async for event in node.run_stream(*prompts, **kwargs):
+            async for event in self.member_stream(node, prompts, session, **kwargs):
                 # Handle already-wrapped SubAgentEvents (nested teams)
                 if isinstance(event, SubAgentEvent):
                     yield SubAgentEvent(

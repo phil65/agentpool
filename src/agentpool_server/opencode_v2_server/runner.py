@@ -11,18 +11,19 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
-from contextlib import AsyncExitStack, asynccontextmanager
+from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, Literal
 
 from agentpool.agents.base_agent import BaseAgent
 from agentpool.agents.events import NoticeEvent, RunStartedEvent, StreamCompleteEvent
+from agentpool.delegation.base_team import BaseTeam, member_turns
 from agentpool.delegation.team import Team
 from agentpool.delegation.teamrun import TeamRun
 from agentpool.log import get_logger
 from agentpool.messaging.compaction import summarizing_context
 from agentpool.sessions.environment import SessionEnvironment, use_session_environment
-from agentpool_server.opencode_v2_server.catalog import leaf_agents, variant_category
+from agentpool_server.opencode_v2_server.catalog import variant_category
 from agentpool_server.opencode_v2_server.prompt_input import payload_to_prompts
 from agentpool_server.opencode_v2_server.run_converter import (
     RunEventConverter,
@@ -101,13 +102,9 @@ class ExecutionError(Exception):
 
 @dataclass
 class AgentBinder:
-    """Serializes turns per agent instance and binds instances to sessions."""
+    """Prepares nodes for a session's turns: its pool session, or the serialized instance."""
 
     catalog: Catalog
-    _locks: dict[str, asyncio.Lock] = field(default_factory=dict)
-
-    def _lock(self, agent: BaseAgent[Any, Any]) -> asyncio.Lock:
-        return self._locks.setdefault(agent.name, asyncio.Lock())
 
     @asynccontextmanager
     async def hold(
@@ -120,24 +117,28 @@ class AgentBinder:
     ) -> AsyncGenerator[Session | None]:
         """Prepare the node for a turn of ``session``.
 
-        Agents with ``capabilities.concurrent_sessions`` (native agents, T3) run each V2
-        session on its own pool :class:`Session` (history, settings, backend session) and
-        runtime, so turns of different sessions run concurrently, without a lock or
-        re-binding. Other agents keep one native session per instance: their turns are
-        serialized, and the instance is re-bound to the session of each turn
-        (``load_session`` / ``start_new_session``).
+        Agents with ``capabilities.concurrent_sessions`` run each V2 session on its own pool
+        :class:`Session` (history, settings, backend session) and runtime, so turns of
+        different sessions run concurrently. A team runs on its pool session too: its
+        members run in child sessions of it (``BaseTeam.member_session``). Other agents
+        keep one native session per instance: their turns are serialized (their
+        ``session_turn()`` lock, which team turns take too), and the instance is re-bound
+        to the session of each turn (``load_session`` / ``start_new_session``).
         """
-        if isinstance(node, BaseAgent) and node.capabilities.concurrent_sessions:
-            yield await self._pool_session(node, session, model)
-            return
-        agents = sorted(leaf_agents(node), key=lambda a: a.name)
-        async with AsyncExitStack() as stack:
-            for agent in agents:
-                await stack.enter_async_context(self._lock(agent))
-            if isinstance(node, BaseAgent):
-                await self._bind(node, session.id, has_history=has_history)
-                await self._apply_model(node, model)
-            yield None
+        match node:
+            case BaseAgent() if node.capabilities.concurrent_sessions:
+                yield await self._pool_session(node, session, model)
+            case BaseTeam():
+                yield await self.catalog.pool.sessions.open(
+                    session.id, node.name, parent_id=session.info.parent_id, cwd=session.directory
+                )
+            case BaseAgent():
+                async with node.session_turn():
+                    await self._bind(node, session.id, has_history=has_history)
+                    await self._apply_model(node, model)
+                    yield None
+            case _:
+                yield None
 
     async def _pool_session(
         self, agent: BaseAgent[Any, Any], session: V2Session, model: ModelRef | None
@@ -353,10 +354,9 @@ class SessionRunner:
             return False
         self._interrupt_reason = reason
         node = self._current_node()
-        for agent in leaf_agents(node) if node is not None else []:
+        # The agents of the turn, each in the session it runs it in (team members: theirs)
+        for agent, session_id in member_turns(node, self.session.id) if node is not None else []:
             try:
-                # A single agent runs this session's turn; team members run their own
-                session_id = self.session.id if agent is node else None
                 await agent.interrupt(session_id=session_id)
             except Exception:
                 logger.exception("Agent interrupt failed", agent=agent.name)
@@ -620,7 +620,7 @@ class SessionRunner:
                     input_provider=self.input_provider,
                 )
             case Team() | TeamRun():
-                return node.run_stream(*prompts)
+                return node.run_stream(*prompts, session=session)
             case _:
                 msg = f"Node {node.name!r} cannot run session turns"
                 raise ExecutionError(msg)

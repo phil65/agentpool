@@ -762,6 +762,15 @@ and the migration step (§6) that should make the stopgap unnecessary.
   back to queueing.
 - **Fix:** §9.6 ("a team run is a runtime whose resources are child sessions"). Members get child
   sessions of the team session.
+- **Status (2026-11-22):** `Team` / `TeamRun.run_stream(session=...)`: members run in child
+  sessions of the team's (`<session>/<member>`, in the pool registry, `parent_id` the team
+  session), nested teams recursively; so team sessions don't share their members'
+  conversations, and run concurrently. Agents with one native session per instance
+  (`concurrent_sessions` False) run in their own session under their `session_turn()` lock,
+  which the V2 binder now takes too (its own per-agent locks are gone). The V2 server gives a
+  team its pool session like an agent's, and interrupts each member in its own session
+  (`member_turns`). Not yet: `run()` / `execute()` of teams (they chain members through `Talk`
+  connections) take no session.
 
 ### 10.11 Model identity is per agent, but V2 lists models per location
 
@@ -828,7 +837,9 @@ agent's review, largely matching §3–§10).
    one wire protocol (ACP v2 isn't stable; we serve six).
 4. **Teams as sessions (§10.10, §9.6).** A team turn is a session whose members run in child
    sessions. Removes the team special cases in the ACP and V2 servers and maps to ACP v2
-   `subagent_update` and V2 children.
+   `subagent_update` and V2 children. Done for streamed team turns (§10.10 status); ACP and V2
+   still show members' events as subagent events of the team turn, not as their own child
+   sessions.
 5. **Session-scoped instructions and env (§10.9),** applied by the runtime (system instructions,
    not user prompt text; env on the runtime's exxec environment). Then `pending_context` goes.
    Done for native agents in both servers (`SessionEnvironment`: ACP client environment and

@@ -12,7 +12,6 @@ from uuid import uuid4
 import anyio
 from pydantic_ai import RunUsage
 
-from agentpool.common_types import SupportsRunStream
 from agentpool.delegation.base_team import BaseTeam
 from agentpool.log import get_logger
 from agentpool.messaging import AgentResponse, ChatMessage, TeamResponse, TokenCost
@@ -30,6 +29,7 @@ if TYPE_CHECKING:
     from agentpool.agents.events.events import SubAgentType
     from agentpool.common_types import PromptCompatible
     from agentpool.delegation import AgentPool
+    from agentpool.sessions import Session
     from agentpool_config.mcp_server import MCPServerConfig
 
 
@@ -252,6 +252,7 @@ class TeamRun[TDeps, TResult](BaseTeam[TDeps, TResult]):
     async def run_stream(
         self,
         *prompts: PromptCompatible,
+        session: Session | None = None,
         require_all: bool = True,
         **kwargs: Any,
     ) -> AsyncIterator[RichAgentStreamEvent[Any]]:
@@ -259,6 +260,7 @@ class TeamRun[TDeps, TResult](BaseTeam[TDeps, TResult]):
 
         Args:
             prompts: Input prompts to process through the chain
+            session: The team session of the turn: members run in child sessions of it
             require_all: If True, fail if any agent fails. If False,
                          continue with remaining agents.
             kwargs: Additional arguments passed to each agent
@@ -280,10 +282,7 @@ class TeamRun[TDeps, TResult](BaseTeam[TDeps, TResult]):
                     source_type = "agent"
 
             try:
-                if not isinstance(node, SupportsRunStream):
-                    raise TypeError(f"Node {node.name} does not support streaming")  # noqa: TRY301
-
-                async for event in node.run_stream(*current_message, **kwargs):
+                async for event in self.member_stream(node, current_message, session, **kwargs):
                     # Handle already-wrapped SubAgentEvents (nested teams)
                     if isinstance(event, SubAgentEvent):
                         yield SubAgentEvent(

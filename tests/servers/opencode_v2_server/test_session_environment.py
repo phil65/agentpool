@@ -109,3 +109,18 @@ def test_only_agents_without_session_instructions_get_changes_as_prompt_text() -
 
     assert _takes_session_instructions(Agent(name="native", model="test"))
     assert not _takes_session_instructions(AGUIAgent(endpoint="http://agui.test", name="agui"))
+
+
+async def test_a_team_session_runs_its_members_in_child_sessions(
+    client: AsyncClient, pool: AgentPool[Any]
+) -> None:
+    from agentpool.delegation.base_team import member_session_id
+
+    pool.create_team([pool.get_agent("helper"), pool.get_agent("other")], name="duo")
+    sid = await create_session(client, agent="duo")
+    await prompt_and_wait(client, sid, "hi")
+    for name in ("helper", "other"):
+        child = pool.sessions.get(member_session_id(sid, pool.get_agent(name)))
+        assert child is not None
+        assert child.data.parent_id == sid
+        assert child.history.get_history()  # The member's turn is in it

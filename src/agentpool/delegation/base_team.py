@@ -16,15 +16,17 @@ from agentpool.talk.stats import AggregatedMessageStats
 
 
 if TYPE_CHECKING:
-    from collections.abc import Iterator, Sequence
+    from collections.abc import AsyncIterator, Iterator, Sequence
 
     from evented_config import EventConfig
 
     from agentpool import Agent, AgentPool, Team
     from agentpool.agents.base_agent import BaseAgent
+    from agentpool.agents.events import RichAgentStreamEvent
     from agentpool.common_types import ProcessorCallback, PromptCompatible
     from agentpool.delegation.teamrun import ExtendedTeamTalk, TeamRun
     from agentpool.messaging import ChatMessage, TeamResponse
+    from agentpool.sessions import Session
     from agentpool.talk.stats import AggregatedTalkStats
     from agentpool.ui.base import InputProvider
     from agentpool_config.mcp_server import MCPServerConfig
@@ -78,6 +80,60 @@ class BaseTeam[TDeps, TResult](MessageNode[TDeps, TResult]):
     @property
     def nodes(self) -> list[MessageNode[Any, Any]]:
         return self._nodes
+
+    async def member_session(
+        self, member: MessageNode[Any, Any], session: Session | None
+    ) -> Session | None:
+        """The session ``member`` runs a turn of ``session`` in: a child session of it.
+
+        One per member and team session (``<session>/<member>``), kept in the pool's
+        registry, so it persists and resumes with the team's session. None (the member's
+        own session) without a team session, or for agents with one native session per
+        instance (``capabilities.concurrent_sessions``), whose turns are serialized.
+        """
+        from agentpool.agents.base_agent import BaseAgent as AgentBase
+
+        if session is None:
+            return None
+        if isinstance(member, AgentBase) and not member.capabilities.concurrent_sessions:
+            return None
+        pool = member.agent_pool or self.agent_pool
+        if pool is None:
+            return None
+        agent_type = member.AGENT_TYPE if isinstance(member, AgentBase) else None
+        return await pool.sessions.open(
+            member_session_id(session.session_id, member),
+            member.name,
+            parent_id=session.session_id,
+            cwd=session.data.cwd,
+            agent_type=agent_type,
+        )
+
+    async def member_stream(
+        self,
+        member: MessageNode[Any, Any],
+        prompts: Sequence[PromptCompatible],
+        session: Session | None,
+        **kwargs: Any,
+    ) -> AsyncIterator[RichAgentStreamEvent[Any]]:
+        """A member's turn of the team turn of ``session``, in its child session.
+
+        Agents that serialize their sessions' turns take their turn lock, as for any
+        caller (``BaseAgent.session_turn``).
+        """
+        from agentpool.agents.base_agent import BaseAgent as AgentBase
+
+        child = await self.member_session(member, session)
+        if isinstance(member, AgentBase):
+            async with member.session_turn():
+                async for event in member.run_stream(*prompts, session=child, **kwargs):
+                    yield event
+        elif isinstance(member, BaseTeam):
+            async for event in member.run_stream(*prompts, session=child, **kwargs):
+                yield event
+        else:
+            msg = f"Node {member.name} does not support streaming"
+            raise TypeError(msg)
 
     def add_node(self, node: MessageNode[Any, Any]) -> None:
         """Handler for adding new nodes to the team."""
@@ -342,6 +398,51 @@ class BaseTeam[TDeps, TResult](MessageNode[TDeps, TResult]):
         *prompts: PromptCompatible | None,
         **kwargs: Any,
     ) -> TeamResponse: ...
+
+    @abstractmethod
+    def run_stream(
+        self,
+        *prompts: PromptCompatible,
+        session: Session | None = None,
+        **kwargs: Any,
+    ) -> AsyncIterator[RichAgentStreamEvent[Any]]:
+        """Run the team's turn, streaming its members' events (wrapped in SubAgentEvent).
+
+        With ``session``, a turn of it: members run in child sessions of it (see
+        :meth:`member_session`). Without, in their own sessions.
+        """
+        ...
+
+
+def member_session_id(session_id: str, member: MessageNode[Any, Any]) -> str:
+    """ID of the child session ``member`` runs a team turn of session ``session_id`` in."""
+    return f"{session_id}/{member.name}"
+
+
+def member_turns(
+    node: MessageNode[Any, Any], session_id: str
+) -> list[tuple[BaseAgent, str | None]]:
+    """The agents of a turn of ``node`` in session ``session_id``, and the session each runs in.
+
+    For a team, its members' (recursively, in their child sessions; None for agents that run
+    in their own session); for an agent, itself in ``session_id``.
+    """
+    from agentpool.agents.base_agent import BaseAgent as AgentBase
+
+    match node:
+        case AgentBase():
+            return [(node, session_id)]
+        case BaseTeam():
+            turns: list[tuple[BaseAgent, str | None]] = []
+            for member in node.nodes:
+                child = member_session_id(session_id, member)
+                if isinstance(member, AgentBase) and not member.capabilities.concurrent_sessions:
+                    turns.append((member, None))
+                else:
+                    turns.extend(member_turns(member, child))
+            return turns
+        case _:
+            return []
 
 
 if __name__ == "__main__":
