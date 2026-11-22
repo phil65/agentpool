@@ -1041,8 +1041,8 @@ class Agent[TDeps = None, OutputDataT = str](BaseAgent[TDeps, OutputDataT]):
                 provider = storage.providers[0]
                 if provider.can_load_history:
                     messages = await provider.get_session_messages(session_id=session_id)
-                    self.conversation.chat_messages.clear()
-                    self.conversation.chat_messages.extend(messages)
+                    self._history.chat_messages.clear()  # The session acting's
+                    self._history.chat_messages.extend(messages)
                     msg = "Session loaded with conversation history"
                     self.log.info(msg, session_id=session_id, message_count=len(messages))
                 else:

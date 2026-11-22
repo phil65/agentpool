@@ -232,7 +232,7 @@ async def test_codex_and_opencode_v2_native_compact_and_fork() -> None:
         async def compact_start(self) -> None:
             self.compacted = True
 
-        async def fork(self) -> _FakeCodexSession:
+        async def fork(self, *, mcp_servers: Any = None) -> _FakeCodexSession:
             return _FakeCodexSession("thread_forked")
 
     codex = CodexAgent(name="codex-ops", enable_logging=False)

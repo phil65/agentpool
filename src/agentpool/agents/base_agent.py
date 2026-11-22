@@ -390,6 +390,35 @@ class BaseAgent[TDeps = None, TResult = str](MessageNode[TDeps, TResult]):
         else:
             self._own_sdk_session_id = value
 
+    def _session_mode(self, option_id: str) -> str | None:
+        """The value of config option ``option_id`` set for the session acting, if any."""
+        session = self._explicit_session
+        return session.overrides.modes.get(option_id) if session is not None else None
+
+    def _set_session_mode(self, option_id: str, value: str) -> bool:
+        """Set ``option_id`` for the session acting in this context; False without one.
+
+        Agents that run sessions concurrently keep their settings this way: within
+        ``use_session`` (or a session's turn) per session, otherwise on the agent.
+        """
+        if (session := self._explicit_session) is None:
+            return False
+        modes = {**session.overrides.modes, option_id: value}
+        session.overrides = session.overrides.model_copy(update={"modes": modes})
+        return True
+
+    def _session_model(self) -> str | None:
+        """The model set for the session acting, if any."""
+        session = self._explicit_session
+        return session.overrides.model if session is not None else None
+
+    def _set_session_model(self, model: str) -> bool:
+        """Set the model of the session acting in this context; False without one."""
+        if (session := self._explicit_session) is None:
+            return False
+        session.overrides = session.overrides.model_copy(update={"model": model})
+        return True
+
     @property
     def staged_content(self) -> StagedContent:
         """Content for the next prompt of the active turn's session."""
@@ -460,6 +489,12 @@ class BaseAgent[TDeps = None, TResult = str](MessageNode[TDeps, TResult]):
     @conversation.setter
     def conversation(self, value: MessageHistory) -> None:
         self._default_session.history = value
+
+    @property
+    def _history(self) -> MessageHistory:
+        """Conversation history of the session acting (see :meth:`use_session`)."""
+        session = self._explicit_session
+        return session.history if session is not None else self.conversation
 
     def __repr__(self) -> str:
         typ = self.__class__.__name__

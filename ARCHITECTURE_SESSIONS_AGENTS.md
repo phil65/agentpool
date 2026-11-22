@@ -211,9 +211,18 @@ need to stay distinct:
    `SessionRegistry.open()` restores a session with it after a restart. T3 is the first
    external agent with `concurrent_sessions`: a thread per session over one client and socket,
    per-session runtime mode, interaction mode and model; tested live (two sessions in parallel,
-   and an ACP `session/load` in a fresh server continuing its thread). Next: Codex (threads over
-   one app-server), ACP agents (sessions over one connection), then process-per-session ones
-   (Claude Code). **Tool bridge routes (2026-11-22):** the bridge (`ToolManagerBridge`) serves
+   and an ACP `session/load` in a fresh server continuing its thread). **Codex (2026-11-22):**
+   `concurrent_sessions` too: a thread per session over one app-server, started or resumed on
+   the session's first turn in the client, with all of agentpool's MCP servers and the bridge on
+   the session's route (a thread's `mcp_servers` replaces the client's table, so all of them);
+   the running turn, the route and the callbacks' context (approvals, elicitation, questions:
+   by `thread_id`) per thread; approval policy, effort, sandbox, personality and model per
+   session; compaction and fork of any session with an open thread (the fork's thread on its
+   own route). Tested live: two sessions in parallel, each tool call with its own session's
+   context, each approval to its own input provider. `load_session` restores into the session
+   acting (`_history`), and the ACP server loads within the session's pool session (native,
+   T3, Codex) instead of into the agent's default one. Next: ACP agents (sessions over one
+   connection), then process-per-session ones (Claude Code). **Tool bridge routes (2026-11-22):** the bridge (`ToolManagerBridge`) serves
    every session of its agent; each session reaches it through its own route
    (`url_for(session_id)`, the plain URL for the default session). A tool call runs with the
    context of the turn on its route (`set_run_context(..., route=...)`: input provider, deps,
@@ -748,8 +757,8 @@ agent's review, largely matching §3–§10).
    runs a session's turns and holds their state, config options are per session, native sessions
    on one agent run in parallel, and `AgentBinder`'s native path is gone. `BaseAgent` went from
    1,700 to 1,500 lines. Next: an `AgentDefinition` (§9.1) so the instance stops being the
-   definition; runtimes for the other external agents (T3 done; Codex and ACP multiplex over one
-   connection; Claude Code needs a process per session). Until then their turns of different
+   definition; runtimes for the other external agents (T3 and Codex done; ACP multiplexes over
+   one connection; Claude Code needs a process per session). Until then their turns of different
    sessions are serialized (`BaseAgent.session_turn()`, `capabilities.concurrent_sessions`).
 2. **Stable message identity (§10.4).** `run_stream` takes the user message ID and exposes stable
    IDs per model response from the first chunk. Removes turn counting and timestamp matching in

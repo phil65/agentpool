@@ -2,10 +2,11 @@
 
 from __future__ import annotations
 
+from contextlib import nullcontext
 from decimal import Decimal
 from pathlib import Path
 import time
-from typing import TYPE_CHECKING, Any, ClassVar, Literal, Self, assert_never
+from typing import TYPE_CHECKING, Any, ClassVar, Literal, Self, assert_never, cast
 from uuid import uuid4
 
 import anyenv
@@ -37,7 +38,9 @@ from agentpool.agents.events.reconstructor import MessageReconstructor
 from agentpool.agents.exceptions import (
     AgentNotInitializedError,
 )
+from agentpool.agents.runtime import activate
 from agentpool.log import get_logger
+from agentpool.mcp_server.tool_bridge import DEFAULT_ROUTE
 from agentpool.messaging import ChatMessage
 
 
@@ -49,7 +52,6 @@ if TYPE_CHECKING:
     from codexed.models import (
         McpServerConfig,
         McpServerElicitationRequestParams,
-        TokenUsageBreakdown,
         ToolRequestUserInputParams,
         ToolRequestUserInputResponse,
     )
@@ -59,6 +61,7 @@ if TYPE_CHECKING:
     from tokonomics.model_discovery.model_info import ModelInfo
 
     from agentpool.agents.auth import AuthStatus
+    from agentpool.agents.context import AgentContext
     from agentpool.agents.events import RichAgentStreamEvent
     from agentpool.agents.modes import ConfigOption
     from agentpool.agents.usage_limits import UsageLimits
@@ -84,8 +87,10 @@ USAGE_LIMITS_TTL = 300.0
 class CodexAgent[TDeps = None, OutputDataT = str](BaseAgent[TDeps, OutputDataT]):
     """Agent running a Codex app-server (through codexed's CodexClient).
 
-    Turns run on a Codex thread (the agent's session); agentpool toolsets are exposed
-    to Codex through an MCP bridge.
+    Turns run on a Codex thread per session, all over one app-server; agentpool
+    toolsets are exposed to Codex through an MCP bridge, which each thread reaches on its
+    session's route (Codex connects MCP servers per thread). Settings set within a
+    session (``use_session``) are that session's.
     """
 
     AGENT_TYPE: ClassVar = "codex"
@@ -96,6 +101,7 @@ class CodexAgent[TDeps = None, OutputDataT = str](BaseAgent[TDeps, OutputDataT])
         live_model_discovery=True,
         native_compaction=True,
         native_fork=True,
+        concurrent_sessions=True,
     )
 
     def __init__(
@@ -170,7 +176,7 @@ class CodexAgent[TDeps = None, OutputDataT = str](BaseAgent[TDeps, OutputDataT])
         # Codex settings
         self._base_instructions = base_instructions
         self._developer_instructions = developer_instructions
-        self._approval_policy: ApprovalPolicy = approval_policy or "never"
+        self._own_approval_policy: ApprovalPolicy = approval_policy or "never"
         self._toolsets = toolsets or []
         self._env_vars = env_vars or {}
         # Client state
@@ -179,22 +185,129 @@ class CodexAgent[TDeps = None, OutputDataT = str](BaseAgent[TDeps, OutputDataT])
         """Monotonic time of the last account/rateLimits/read."""
         self._sdk_session_id = session_id
         self._sessions: dict[str, Session] = {}
+        """Threads open in this client, by thread ID."""
+        self._thread_routes: dict[str, str] = {}
+        """Bridge route of each open thread (its session's; see ``ToolManagerBridge``)."""
+        self._adapters: dict[str, CodexStreamedResponse] = {}
+        """Stream of the turn running on each thread."""
         self._external_mcp_servers = [
             BaseMCPServerConfig.from_string(s) if isinstance(s, str) else s
             for s in mcp_servers or []
         ]
         # Extra MCP servers in Codex format (e.g., tool bridge)
         self._extra_mcp_servers: list[tuple[str, McpServerConfig]] = []
-        # Mutable settings (can change mid-session via _set_mode)
-        self._current_model: str | None = model
-        self._current_effort: ReasoningEffort | None = reasoning_effort
-        self._current_sandbox: SandboxMode | None = sandbox
-        self._current_personality: Personality | None = personality
-        self._adapter: CodexStreamedResponse | None = None
-        # Populated by capture_metadata during streaming, read after stream completes
-        self._token_usage_data: TokenUsageBreakdown | None = None
-        # Pass injection_manager for mid-run injection support
+        # Settings of the agent; a session's own where set within it (see the properties)
+        self._own_model: str | None = model
+        self._own_effort: ReasoningEffort | None = reasoning_effort
+        self._own_sandbox: SandboxMode | None = sandbox
+        self._own_personality: Personality | None = personality
         self._tool_bridge = ToolManagerBridge(node=self)
+
+    # --- Settings: per session when set within one (``use_session``), else the agent's ---
+
+    @property
+    def _approval_policy(self) -> ApprovalPolicy:
+        value = self._session_mode("mode")
+        return cast("ApprovalPolicy", value) if value is not None else self._own_approval_policy
+
+    @_approval_policy.setter
+    def _approval_policy(self, value: ApprovalPolicy) -> None:
+        if not self._set_session_mode("mode", value):
+            self._own_approval_policy = value
+
+    @property
+    def _current_effort(self) -> ReasoningEffort | None:
+        value = self._session_mode("thought_level")
+        return value if value is not None else self._own_effort
+
+    @_current_effort.setter
+    def _current_effort(self, value: ReasoningEffort) -> None:
+        if not self._set_session_mode("thought_level", value):
+            self._own_effort = value
+
+    @property
+    def _current_sandbox(self) -> SandboxMode | None:
+        value = self._session_mode("sandbox")
+        return cast("SandboxMode", value) if value is not None else self._own_sandbox
+
+    @_current_sandbox.setter
+    def _current_sandbox(self, value: SandboxMode) -> None:
+        if not self._set_session_mode("sandbox", value):
+            self._own_sandbox = value
+
+    @property
+    def _current_personality(self) -> Personality | None:
+        value = self._session_mode("personality")
+        return cast("Personality", value) if value is not None else self._own_personality
+
+    @_current_personality.setter
+    def _current_personality(self, value: Personality) -> None:
+        if not self._set_session_mode("personality", value):
+            self._own_personality = value
+
+    @property
+    def _current_model(self) -> str | None:
+        return self._session_model() or self._own_model
+
+    @_current_model.setter
+    def _current_model(self, value: str) -> None:
+        if not self._set_session_model(value):
+            self._own_model = value
+
+    # --- Threads -----------------------------------------------------------------------
+
+    @property
+    def _route(self) -> str:
+        """Bridge route of the session acting (its ID; the default session's plain URL)."""
+        session = self._explicit_session
+        return session.session_id if session is not None else DEFAULT_ROUTE
+
+    def _thread_mcp_servers(self) -> dict[str, McpServerConfig]:
+        """MCP servers of a thread of the session acting: ours, the bridge on its route.
+
+        All of them: a thread's ``mcp_servers`` replaces the ones given to the client.
+        """
+        from codexed.models import HttpMcpServer as CodexHttpMcpServer
+
+        servers = dict(self._extra_mcp_servers) | dict(
+            mcp_config_to_codex(c) for c in self._external_mcp_servers
+        )
+        if self._tool_bridge._actual_port is not None:
+            url = self._tool_bridge.url_for(self._route)
+            servers[self._tool_bridge.resolved_server_name] = CodexHttpMcpServer(url=url)
+        return servers
+
+    def _open_thread(self, session: Session) -> None:
+        """Make ``session`` (a started or resumed thread) the thread of the session acting."""
+        self._sdk_session_id = session.thread_id
+        self._sessions[session.thread_id] = session
+        self._thread_routes[session.thread_id] = self._route
+
+    async def _resume_thread(self, thread_id: str) -> Session:
+        """Resume ``thread_id`` for the session acting (its MCP servers on its route)."""
+        if self._client is None:
+            raise AgentNotInitializedError
+        session = await self._client.thread_resume(
+            thread_id, mcp_servers=self._thread_mcp_servers()
+        )
+        self._open_thread(session)
+        return session
+
+    def _run_context(self, thread_id: str | None) -> AgentContext[Any] | None:
+        """Context of the turn running on ``thread_id``.
+
+        Without a thread (skill approvals don't name one), the only turn running, if
+        just one is.
+        """
+        if thread_id is not None:
+            route = self._thread_routes.get(thread_id, DEFAULT_ROUTE)
+            return self._tool_bridge.context(route)
+        running = [
+            ctx
+            for route in set(self._thread_routes.values())
+            if (ctx := self._tool_bridge.context(route)) is not None
+        ]
+        return running[0] if len(running) == 1 else None
 
     @classmethod
     def from_config(
@@ -286,11 +399,9 @@ class CodexAgent[TDeps = None, OutputDataT = str](BaseAgent[TDeps, OutputDataT])
         # Resume existing session or start new thread
         if self._sdk_session_id:
             # Resume the specified thread
-            session = await self._client.thread_resume(self._sdk_session_id)
+            session = await self._resume_thread(self._sdk_session_id)
             thread = session.response.thread
-            self._sdk_session_id = thread.id
-            self._sessions[thread.id] = session
-            self.log.info("Codex thread resumed", sdk_session_id=self._sdk_session_id, cwd=cwd)
+            self.log.info("Codex thread resumed", sdk_session_id=thread.id, cwd=cwd)
             # Restore conversation history from resumed thread
             chat_messages = turns_to_chat_messages(thread.turns)
             self.conversation.chat_messages.clear()
@@ -301,7 +412,7 @@ class CodexAgent[TDeps = None, OutputDataT = str](BaseAgent[TDeps, OutputDataT])
         return self
 
     async def _start_thread(self) -> None:
-        """Start a new Codex thread and make it the active one."""
+        """Start a new Codex thread for the session acting."""
         if self._client is None:
             raise AgentNotInitializedError
         cwd = str(self.env.cwd or Path.cwd())
@@ -313,10 +424,10 @@ class CodexAgent[TDeps = None, OutputDataT = str](BaseAgent[TDeps, OutputDataT])
             sandbox=self._current_sandbox,
             approval_policy=self._approval_policy,
             personality=self._current_personality,
+            mcp_servers=self._thread_mcp_servers(),
         )
-        self._sdk_session_id = session.thread_id
-        self._sessions[session.thread_id] = session
-        self.log.info("Codex thread started", sdk_session_id=self._sdk_session_id, cwd=cwd)
+        self._open_thread(session)
+        self.log.info("Codex thread started", sdk_session_id=session.thread_id, cwd=cwd)
 
     async def start_new_session(self) -> None:
         """Start a fresh Codex thread instead of continuing the current one."""
@@ -347,7 +458,8 @@ class CodexAgent[TDeps = None, OutputDataT = str](BaseAgent[TDeps, OutputDataT])
         from codexed.models.responses import FileChangeRequestApprovalResponse
 
         self.log.debug("Permission request")
-        ctx = self._tool_bridge.context()
+        thread_id = None if isinstance(data, SkillRequestApprovalParams) else data.thread_id
+        ctx = self._run_context(thread_id)
         if ctx is None:
             raise RuntimeError("Permission callback invoked outside of an active run")
         input_provider = ctx.get_input_provider()
@@ -376,7 +488,7 @@ class CodexAgent[TDeps = None, OutputDataT = str](BaseAgent[TDeps, OutputDataT])
         """Ask the user for what an MCP server of Codex requests."""
         from mcp.types import ErrorData
 
-        ctx = self._tool_bridge.context()
+        ctx = self._run_context(data.thread_id)
         if ctx is None:
             raise RuntimeError("MCP elicitation callback invoked outside of an active run")
         provider = ctx.get_input_provider()
@@ -407,7 +519,7 @@ class CodexAgent[TDeps = None, OutputDataT = str](BaseAgent[TDeps, OutputDataT])
         )
         from mcp.types import ElicitRequestFormParams, ElicitResult, ErrorData
 
-        if (run_context := self._tool_bridge.context()) is None:
+        if (run_context := self._run_context(params.thread_id)) is None:
             raise RuntimeError("User input callback invoked outside of an active run")
 
         input_provider = run_context.get_input_provider()
@@ -487,6 +599,8 @@ class CodexAgent[TDeps = None, OutputDataT = str](BaseAgent[TDeps, OutputDataT])
             self._client = None
         self._sdk_session_id = None
         self._sessions.clear()
+        self._thread_routes.clear()
+        self._adapters.clear()
 
     async def _stream_events(  # noqa: PLR0915
         self,
@@ -507,8 +621,15 @@ class CodexAgent[TDeps = None, OutputDataT = str](BaseAgent[TDeps, OutputDataT])
         from agentpool.agents.events import PlanUpdateEvent
         from agentpool.messaging.messages import TokenCost
 
-        if not self._client or not self._sdk_session_id:
+        if not self._client:
             raise AgentNotInitializedError
+        # The session's thread: new, or resumed in this client (e.g. after a restart)
+        if self._sdk_session_id is None:
+            await self._start_thread()
+        elif self._sdk_session_id not in self._sessions:
+            await self._resume_thread(self._sdk_session_id)
+        thread_id = self._sdk_session_id
+        assert thread_id is not None
 
         input_items = list(user_content_to_codex(prompts))
         # Generate IDs if not provided
@@ -520,15 +641,15 @@ class CodexAgent[TDeps = None, OutputDataT = str](BaseAgent[TDeps, OutputDataT])
             raise ValueError("session_id must be set")
         yield RunStartedEvent(session_id=final_session_id, run_id=run_id)
         # Persist SDK session ID to storage for cross-referencing
-        if self.storage and self.session_id and self._sdk_session_id:
-            await self.storage.update_sdk_session_id(self.session_id, self._sdk_session_id)
+        if self.storage:
+            await self.storage.update_sdk_session_id(final_session_id, thread_id)
         # Stream turn events with bridge context set
         reconstructor = MessageReconstructor(initial_prompts=prompts, model_name=self.model_name)
         # Pass output type directly - adapter handles conversion to JSON schema
         # Resolve input provider: explicit parameter overrides agent default
         effective_input_provider = input_provider or self._input_provider
         run_context = self.get_context(data=deps, input_provider=effective_input_provider)
-        session = self._sessions[self._sdk_session_id]
+        session = self._sessions[thread_id]
         raw_stream = session.turn_stream(
             input_items,
             model=self._current_model,
@@ -539,9 +660,12 @@ class CodexAgent[TDeps = None, OutputDataT = str](BaseAgent[TDeps, OutputDataT])
             personality=self._current_personality,
         )
         adapter = CodexStreamedResponse(provider_name="codex", stream=raw_stream)
-        self._adapter = adapter
+        self._adapters[thread_id] = adapter
+        bridge_context = self._tool_bridge.set_run_context(
+            run_context, prompt=prompts, route=self._route
+        )
         try:
-            async with self._tool_bridge.set_run_context(run_context, prompt=prompts):
+            async with bridge_context:
                 # Wrap to capture metadata (turn_id, token usage), then convert
                 async for native_event in adapter:
                     reconstructor.observe(native_event)
@@ -553,8 +677,7 @@ class CodexAgent[TDeps = None, OutputDataT = str](BaseAgent[TDeps, OutputDataT])
             self.log.exception("Error during Codex turn", error=str(e))
             raise
         finally:
-            # Clear turn_id when turn completes or errors
-            self._adapter = None
+            self._adapters.pop(thread_id, None)  # The thread's turn is over
 
         # Emit completion event
         reconstructor.flush()
@@ -562,7 +685,7 @@ class CodexAgent[TDeps = None, OutputDataT = str](BaseAgent[TDeps, OutputDataT])
         cost_info: TokenCost | None = None
         run_usage = RunUsage()
 
-        if usage := self._token_usage_data:
+        if usage := adapter._token_usage_data:
             run_usage = to_run_usage(usage)
             # TODO: Calculate actual cost - for now set to 0
             cost_info = TokenCost(total_cost=Decimal(0))
@@ -643,13 +766,16 @@ class CodexAgent[TDeps = None, OutputDataT = str](BaseAgent[TDeps, OutputDataT])
         generation and queues ``message`` for immediate execution. Outside an active
         turn, falls back to the base injection behavior.
         """
+        runtimes = self._runtimes_of(session_id)
+        with activate(self, runtimes[0]) if runtimes else nullcontext():  # That session's
+            thread_id = self._sdk_session_id
         if (
             self._client
-            and self._sdk_session_id
-            and self._adapter
-            and (turn_id := self._adapter._current_turn_id)
+            and thread_id
+            and (adapter := self._adapters.get(thread_id))
+            and (turn_id := adapter._current_turn_id)
         ):
-            session = self._sessions[self._sdk_session_id]
+            session = self._sessions[thread_id]
             if interrupt:
                 self.queue_prompt(message, session_id=session_id)
                 await session.turn_interrupt(turn_id)
@@ -664,23 +790,25 @@ class CodexAgent[TDeps = None, OutputDataT = str](BaseAgent[TDeps, OutputDataT])
         *,
         session: PoolSession | None = None,
     ) -> tuple[int, int]:
-        """Compact the Codex thread of the agent's session (Codex's native compaction).
+        """Compact the Codex thread of ``session`` (or the default one) natively.
 
         Raises:
-            UnsupportedOperationError: For another session, or without a thread.
+            UnsupportedOperationError: Without a thread open in this client.
         """
         from agentpool.agents.exceptions import UnsupportedOperationError
 
+        with self.use_session(session):
+            thread_id = self._sdk_session_id
+            history = self._history
         if (
-            session is None
-            and self._client is not None
-            and self._sdk_session_id is not None
-            and (sdk_session := self._sessions.get(self._sdk_session_id)) is not None
+            self._client is not None
+            and thread_id is not None
+            and (sdk_session := self._sessions.get(thread_id)) is not None
         ):
-            before = len(self.conversation.get_history())
+            before = len(history.get_history())
             await sdk_session.compact_start()
             return (before, before)
-        reason = "only the thread of its own session, once one is running"
+        reason = "only a session whose thread is open, once one is running"
         raise UnsupportedOperationError(self.name, "compact", reason)
 
     async def fork_session(
@@ -689,45 +817,44 @@ class CodexAgent[TDeps = None, OutputDataT = str](BaseAgent[TDeps, OutputDataT])
         at_message_id: str | None = None,
         session: PoolSession | None = None,
     ) -> PoolSession:
-        """Fork the agent's session together with its Codex thread.
+        """Fork ``session`` (or the default one) together with its Codex thread.
+
+        The forked thread reaches the bridge on the fork's route.
 
         Raises:
-            UnsupportedOperationError: For another session, at a message (Codex forks
-                whole threads), or without a thread.
+            UnsupportedOperationError: At a message (Codex forks whole threads), or
+                without a thread open in this client.
         """
         from agentpool.agents.exceptions import UnsupportedOperationError
 
+        with self.use_session(session):
+            thread_id = self._sdk_session_id
         if (
-            session is not None
-            or at_message_id is not None
+            at_message_id is not None
             or self._client is None
-            or self._sdk_session_id is None
-            or (sdk_session := self._sessions.get(self._sdk_session_id)) is None
+            or thread_id is None
+            or (sdk_session := self._sessions.get(thread_id)) is None
         ):
-            reason = "only the whole thread of its own session, once one is running"
+            reason = "only the whole thread of a session, once one is open"
             raise UnsupportedOperationError(self.name, "fork this", reason)
-        forked = await self._fork_history(None, None)
-        forked_sdk = await sdk_session.fork()
-        self._sessions[forked_sdk.thread_id] = forked_sdk
-        forked.set_sdk_session_id(forked_sdk.thread_id)
+        forked = await self._fork_history(None, session)
+        with self.use_session(forked):
+            forked_sdk = await sdk_session.fork(mcp_servers=self._thread_mcp_servers())
+            self._open_thread(forked_sdk)  # Stored on the fork (its sdk_session_id)
         return forked
 
     async def _interrupt(self) -> None:
         """Call Codex turn_interrupt if there's an active turn."""
+        thread_id = self._sdk_session_id  # Of the session being interrupted
         if (
             self._client
-            and self._sdk_session_id
-            and self._adapter
-            and self._adapter._current_turn_id
+            and thread_id
+            and (adapter := self._adapters.get(thread_id))
+            and (turn_id := adapter._current_turn_id)
         ):
             try:
-                session = self._sessions[self._sdk_session_id]
-                await session.turn_interrupt(self._adapter._current_turn_id)
-                self.log.info(
-                    "Codex turn interrupted",
-                    sdk_session_id=self._sdk_session_id,
-                    turn_id=self._adapter._current_turn_id,
-                )
+                await self._sessions[thread_id].turn_interrupt(turn_id)
+                self.log.info("Codex turn interrupted", sdk_session_id=thread_id, turn_id=turn_id)
             except Exception:
                 self.log.exception("Failed to interrupt Codex turn")
 
@@ -844,22 +971,19 @@ class CodexAgent[TDeps = None, OutputDataT = str](BaseAgent[TDeps, OutputDataT])
             else session_id
         )
         try:
-            session = await self._client.thread_resume(thread_id)
+            session = await self._resume_thread(thread_id)
         except Exception:
             self.log.exception(
                 "Failed to resume Codex thread", session_id=session_id, thread_id=thread_id
             )
             return None
-        # Update current thread ID
         thread = session.response.thread
-        self._sdk_session_id = thread.id
-        self._sessions[thread.id] = session
         self.log.info("Thread resumed from Codex server", sdk_session_id=thread.id)
-        # Convert turns to ChatMessages and populate conversation
+        # Convert turns to ChatMessages and populate the session's history
         if thread.turns:
             chat_messages = turns_to_chat_messages(thread.turns)
-            self.conversation.chat_messages.clear()
-            self.conversation.chat_messages.extend(chat_messages)
+            self._history.chat_messages.clear()
+            self._history.chat_messages.extend(chat_messages)
             self.log.info(
                 "Restored conversation history",
                 session_id=session_id,

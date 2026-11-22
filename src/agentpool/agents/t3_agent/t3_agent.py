@@ -231,18 +231,6 @@ class T3Agent[TDeps = None](BaseAgent[TDeps, str]):
 
     # --- Settings: per session when set within one (``use_session``), else the agent's ---
 
-    def _session_mode(self, option_id: str) -> str | None:
-        session = self._explicit_session
-        return session.overrides.modes.get(option_id) if session is not None else None
-
-    def _set_session_mode(self, option_id: str, value: str) -> bool:
-        """Store ``value`` for the session acting in this context; False without one."""
-        if (session := self._explicit_session) is None:
-            return False
-        modes = {**session.overrides.modes, option_id: value}
-        session.overrides = session.overrides.model_copy(update={"modes": modes})
-        return True
-
     @property
     def _runtime_mode(self) -> T3RuntimeMode:
         mode = self._session_mode("mode")
@@ -266,17 +254,13 @@ class T3Agent[TDeps = None](BaseAgent[TDeps, str]):
     @property
     def _provider_model(self) -> tuple[str | None, str | None]:
         """Provider and model of new threads: the session's (``provider/model``), else ours."""
-        session = self._explicit_session
-        if session is not None and (value := session.overrides.model):
+        if value := self._session_model():
             provider, _, model = value.partition("/")
             return provider, model
         return self._own_provider, self._own_model
 
     def _set_provider_model(self, provider: str, model: str) -> None:
-        if (session := self._explicit_session) is not None:
-            value = f"{provider}/{model}"
-            session.overrides = session.overrides.model_copy(update={"model": value})
-        else:
+        if not self._set_session_model(f"{provider}/{model}"):
             self._own_provider, self._own_model = provider, model
 
     @classmethod
@@ -880,8 +864,8 @@ class T3Agent[TDeps = None](BaseAgent[TDeps, str]):
             for item in read.items
             if item.type in ("user_message", "assistant_message")
         ]
-        self.conversation.chat_messages.clear()
-        self.conversation.chat_messages.extend(messages)
+        self._history.chat_messages.clear()  # The session acting's
+        self._history.chat_messages.extend(messages)
         if pool_session is not None:
             return pool_session
         return SessionData(

@@ -82,6 +82,7 @@ if TYPE_CHECKING:
 
     from agentpool import AgentPool
     from agentpool.agents.base_agent import BaseAgent
+    from agentpool.messaging import MessageHistory
     from agentpool.storage.manager import SessionMetadataGeneratedEvent
     from agentpool_server.acp_server.output import SessionOutput
     from agentpool_server.acp_server.server import ACPServer
@@ -298,6 +299,24 @@ class AgentPoolACPAgent(ACPAgent):
             raise RequestError.resource_not_found(params.session_id)
         return await self._create_session(params, session_id=params.session_id)
 
+    async def _restore_session(self, session: ACPSession, action: str) -> MessageHistory:
+        """Have the agent restore ``session`` (its history, its backend session).
+
+        Agents that run sessions concurrently restore it on the session's own pool
+        session; the others on their own, re-bound to it. Returns its conversation.
+
+        Raises:
+            RequestError: The agent could not restore it.
+        """
+        agent = session.agent
+        pool_session = await session.pool_session()
+        with agent.use_session(pool_session):
+            loaded = await agent.load_session(session.session_id)
+        if not loaded:
+            details = f"Agent {agent.name!r} failed to {action} the session"
+            raise RequestError.internal_error({"details": details})
+        return pool_session.history if pool_session is not None else agent.conversation
+
     def _schedule_session_setup(self, session: ACPSession, *, new: bool = False) -> None:
         """Send commands, load rules and client skills once the session response is out.
 
@@ -349,15 +368,10 @@ class AgentPoolACPAgent(ACPAgent):
 
         self._require_initialized()
         session = await self._attach_stored_session(params)
-        # Load session via agent - this populates agent.conversation
-        if not await self.default_agent.load_session(params.session_id):
-            details = f"Agent {self.default_agent.name!r} failed to load the session"
-            raise RequestError.internal_error({"details": details})
+        conversation = await self._restore_session(session, "load")
         # Replay loaded conversation to client via ACP notifications
         model_messages: list[ModelMessage] = [
-            model_msg
-            for chat_msg in self.default_agent.conversation.chat_messages
-            for model_msg in chat_msg.messages
+            model_msg for chat_msg in conversation.chat_messages for model_msg in chat_msg.messages
         ]
         for update in model_messages_to_session_updates(model_messages):
             await session.notifications.send_update(update)
@@ -414,9 +428,7 @@ class AgentPoolACPAgent(ACPAgent):
         self._require_initialized()
         session = await self._attach_stored_session(params)
         # Restore the agent's state (conversation) without replaying it to the client
-        if not await self.default_agent.load_session(params.session_id):
-            details = f"Agent {self.default_agent.name!r} failed to restore the session"
-            raise RequestError.internal_error({"details": details})
+        await self._restore_session(session, "restore")
         self._schedule_session_setup(session)
         logger.info("Session resumed", session_id=params.session_id)
         return ResumeSessionResponse()

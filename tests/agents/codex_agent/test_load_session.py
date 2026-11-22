@@ -16,7 +16,7 @@ class _RecordingClient:
     def __init__(self) -> None:
         self.resumed: list[str] = []
 
-    async def thread_resume(self, thread_id: str) -> Any:
+    async def thread_resume(self, thread_id: str, *, mcp_servers: Any = None) -> Any:
         self.resumed.append(thread_id)
         msg = f"no rollout found for thread id {thread_id}"
         raise RuntimeError(msg)

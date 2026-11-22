@@ -180,6 +180,25 @@ async def test_loading_keeps_stored_session_record(server: AgentPoolACPAgent) ->
     assert _texts(server, UserMessageChunk).count("hi") == 1
 
 
+async def test_loading_restores_into_the_sessions_own_history(server: AgentPoolACPAgent) -> None:
+    """The native agent runs sessions concurrently: a load leaves its own session alone."""
+    agent = server.default_agent
+    pool = agent.agent_pool
+    assert pool is not None
+    session_id = await _new_session(server)
+    await server.prompt(_prompt(session_id))
+    await server.session_manager.close_session(session_id)
+    pool.sessions.remove(session_id)  # E.g. the server restarted
+
+    await server.load_session(LoadSessionRequest(session_id=session_id, cwd="/tmp", mcp_servers=[]))
+
+    restored = pool.sessions.get(session_id)
+    assert restored is not None
+    assert restored.history.get_history()  # Loaded into the session's own history
+    assert not agent.conversation.get_history()  # Not into the agent's default session
+    assert _texts(server, UserMessageChunk).count("hi") == 1  # Replayed from it
+
+
 async def test_prompt_for_stored_inactive_session_recreates_it(server: AgentPoolACPAgent) -> None:
     await server.session_manager.storage.save_session(
         SessionData(session_id="stored", agent_name="a", cwd="/tmp")

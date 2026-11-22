@@ -27,7 +27,7 @@ async def test_codex_agent_native_steer() -> None:
     agent._client = object()  # type: ignore[assignment]
     agent._sdk_session_id = "thread_1"
     agent._sessions["thread_1"] = fake_session  # type: ignore[assignment]
-    agent._adapter = _FakeAdapter()  # type: ignore[assignment]
+    agent._adapters["thread_1"] = _FakeAdapter()  # type: ignore[assignment]
 
     await agent.steer("use pytest")
     assert fake_session.steered == [("use pytest", "turn_42")]
