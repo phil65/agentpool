@@ -17,6 +17,7 @@ import anyio
 import httpx
 
 from agentpool.agents.base_agent import BaseAgent
+from agentpool.agents.capabilities import AgentCapabilities
 from agentpool.agents.events import NoticeEvent, RunStartedEvent, StreamCompleteEvent
 from agentpool.agents.events.reconstructor import MessageReconstructor
 from agentpool.agents.exceptions import AgentNotInitializedError
@@ -73,13 +74,14 @@ if TYPE_CHECKING:
     from agentpool.delegation import AgentPool
     from agentpool.hooks import AgentHooks
     from agentpool.messaging import MessageHistory
+    from agentpool.messaging.compaction import CompactionPipeline
     from agentpool.models.opencode_v2_agents import (
         OpenCodePermissionMode,
         OpenCodePermissionRuleConfig,
         OpenCodeV2AgentConfig,
     )
     from agentpool.resource_providers import ResourceProvider
-    from agentpool.sessions import SessionData
+    from agentpool.sessions import Session, SessionData
     from agentpool.ui.base import InputProvider
     from agentpool_config.mcp_server import MCPServerConfig
     from opencode_v2_sdk.client import PermissionDecision
@@ -115,6 +117,14 @@ class OpenCodeV2Agent[TDeps = None](BaseAgent[TDeps, str]):
     """
 
     AGENT_TYPE: ClassVar = "opencode_v2"
+    CAPABILITIES: ClassVar[AgentCapabilities] = AgentCapabilities(
+        native_steer=True,
+        multimodal_input=True,
+        live_model_discovery=True,
+        native_compaction=True,
+        native_fork=True,
+        background_events=True,
+    )
     TITLES_OWN_SESSIONS: ClassVar = True
 
     def __init__(
@@ -858,6 +868,34 @@ class OpenCodeV2Agent[TDeps = None](BaseAgent[TDeps, str]):
         """Start a fresh OpenCode V2 session on the next turn."""
         await super().start_new_session()
         self._sdk_session_id = None
+
+    async def compact(
+        self,
+        pipeline: CompactionPipeline | None = None,
+        *,
+        session: Session | None = None,
+    ) -> tuple[int, int]:
+        """Trigger native OpenCode V2 compaction (``POST /api/session/{id}/compact``)."""
+        if session is None and self._client is not None and self._sdk_session_id is not None:
+            before = len(self.conversation.get_history())
+            await self._client.compact_session(self._sdk_session_id)
+            return (before, before)
+        return await super().compact(pipeline, session=session)
+
+    async def fork_session(
+        self,
+        *,
+        at_message_id: str | None = None,
+        session: Session | None = None,
+    ) -> Session:
+        """Fork both the AgentPool session and the OpenCode V2 session on the server."""
+        forked = await super().fork_session(at_message_id=at_message_id, session=session)
+        if session is None and self._client is not None and self._sdk_session_id is not None:
+            forked_info = await self._client.fork_session(
+                self._sdk_session_id, before=at_message_id
+            )
+            forked.set_sdk_session_id(forked_info.id)
+        return forked
 
     # --- Models, modes, auth, MCP & usage limits -------------------------------------
 

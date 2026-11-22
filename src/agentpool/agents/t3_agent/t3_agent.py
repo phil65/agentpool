@@ -23,6 +23,7 @@ from uuid import uuid4
 import anyio
 
 from agentpool.agents.base_agent import BaseAgent
+from agentpool.agents.capabilities import AgentCapabilities
 from agentpool.agents.events import NoticeEvent, RunErrorEvent, RunStartedEvent, StreamCompleteEvent
 from agentpool.agents.events.reconstructor import MessageReconstructor
 from agentpool.agents.exceptions import AgentNotInitializedError
@@ -114,6 +115,7 @@ class T3Agent[TDeps = None](BaseAgent[TDeps, str]):
     """Runs its turns as a thread in a T3 Code environment."""
 
     AGENT_TYPE: ClassVar = "t3"
+    CAPABILITIES: ClassVar[AgentCapabilities] = AgentCapabilities(live_model_discovery=True)
     TITLES_OWN_SESSIONS: ClassVar = True  # T3 titles its threads
 
     def __init__(

@@ -27,6 +27,7 @@ from agentpool.agents.antigravity_agent.converters import (
 from agentpool.agents.antigravity_agent.static_info import DEFAULT_MODEL, MODELS
 from agentpool.agents.antigravity_agent.steps import StepTracker
 from agentpool.agents.base_agent import BaseAgent
+from agentpool.agents.capabilities import AgentCapabilities
 from agentpool.agents.events import RunErrorEvent, RunStartedEvent, StreamCompleteEvent
 from agentpool.agents.events.reconstructor import MessageReconstructor
 from agentpool.agents.exceptions import AgentNotInitializedError
@@ -104,6 +105,11 @@ class AntigravityAgent[TDeps = None, OutputDataT = str](BaseAgent[TDeps, OutputD
     """
 
     AGENT_TYPE: ClassVar = "antigravity"
+    CAPABILITIES: ClassVar[AgentCapabilities] = AgentCapabilities(
+        structured_output=True,
+        multimodal_input=True,
+        native_compaction=True,
+    )
 
     def __init__(  # noqa: PLR0915
         self,

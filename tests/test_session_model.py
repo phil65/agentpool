@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+from typing import Any
 
 from pydantic_ai.models.test import TestModel
 import pytest
@@ -150,3 +151,116 @@ async def test_workers_tools_delegate_via_child_session_without_mutating_worker(
         children = pool.sessions.children_of(lead.session.session_id)
         assert len(children) == 1
         assert len(children[0].history.get_history()) == 4
+
+
+async def test_agent_capabilities_and_base_fork_and_compact() -> None:
+    """Agents advertise AgentCapabilities and support first-class fork_session() / compact()."""
+    from agentpool.agents import (
+        ACPAgent,
+        AgentCapabilities,
+        AntigravityAgent,
+        ClaudeCodeAgent,
+        CodexAgent,
+        OpenCodeV2Agent,
+    )
+    from agentpool.messaging.compaction import CompactionPipeline, KeepLastMessages
+
+    expected_native = AgentCapabilities(
+        structured_output=True,
+        multimodal_input=True,
+        live_model_discovery=True,
+        native_compaction=True,
+        native_fork=True,
+    )
+    assert expected_native == Agent.CAPABILITIES
+    assert ClaudeCodeAgent.CAPABILITIES.native_steer
+    assert ClaudeCodeAgent.CAPABILITIES.background_events
+    assert CodexAgent.CAPABILITIES.native_steer
+    assert CodexAgent.CAPABILITIES.native_fork
+    assert OpenCodeV2Agent.CAPABILITIES.native_steer
+    assert OpenCodeV2Agent.CAPABILITIES.native_compaction
+    assert OpenCodeV2Agent.CAPABILITIES.native_fork
+    assert OpenCodeV2Agent.CAPABILITIES.background_events
+    assert AntigravityAgent.CAPABILITIES.structured_output
+    assert ACPAgent.CAPABILITIES.background_events
+
+    async with AgentPool() as pool:
+        agent = Agent(name="compactor", model=TestModel(custom_output_text="ok"))
+        await pool.add_agent(agent)
+        assert agent.capabilities is Agent.CAPABILITIES
+
+        await agent.run("turn 1")
+        await agent.run("turn 2")
+        await agent.run("turn 3")
+        assert len(agent.conversation.get_history()) == 6
+
+        forked = await agent.fork_session()
+        assert forked.parent_id == agent.session.session_id
+        assert forked.session_id in pool.sessions
+        assert len(forked.history.get_history()) == 6
+
+        before, after = await agent.compact(
+            CompactionPipeline([KeepLastMessages(count=2)]),
+            session=forked,
+        )
+        assert (before, after) == (6, 4)
+        assert len(forked.history.get_history()) == 2
+        # Original session untouched
+        assert len(agent.conversation.get_history()) == 6
+
+
+async def test_codex_and_opencode_v2_native_compact_and_fork() -> None:
+    """CodexAgent and OpenCodeV2Agent delegate compact() and fork_session() natively."""
+    from types import SimpleNamespace
+
+    from agentpool.agents import CodexAgent, OpenCodeV2Agent
+
+    # Codex native compact & fork
+    class _FakeCodexSession:
+        def __init__(self, thread_id: str) -> None:
+            self.thread_id = thread_id
+            self.compacted = False
+
+        async def compact_start(self) -> None:
+            self.compacted = True
+
+        async def fork(self) -> _FakeCodexSession:
+            return _FakeCodexSession("thread_forked")
+
+    codex = CodexAgent(name="codex-ops", enable_logging=False)
+    sdk_sess = _FakeCodexSession("thread_1")
+    codex._client = object()  # type: ignore[assignment]
+    codex._sdk_session_id = "thread_1"
+    codex._sessions["thread_1"] = sdk_sess  # type: ignore[assignment]
+
+    await codex.compact()
+    assert sdk_sess.compacted is True
+    codex_fork = await codex.fork_session()
+    assert codex_fork.sdk_session_id == "thread_forked"
+    assert "thread_forked" in codex._sessions
+
+    # OpenCode V2 native compact & fork
+    class _FakeV2Client:
+        def __init__(self) -> None:
+            self.compacted: list[str] = []
+            self.forked: list[tuple[str, str | None]] = []
+
+        async def compact_session(self, session_id: str) -> None:
+            self.compacted.append(session_id)
+
+        async def fork_session(self, session_id: str, *, before: str | None = None) -> Any:
+            self.forked.append((session_id, before))
+            return SimpleNamespace(id="ses_v2_fork")
+
+    v2_client = _FakeV2Client()
+    oc = OpenCodeV2Agent(
+        name="oc-ops",
+        client=v2_client,  # type: ignore[arg-type]
+        enable_logging=False,
+    )
+    oc._sdk_session_id = "ses_v2_1"
+    await oc.compact()
+    assert v2_client.compacted == ["ses_v2_1"]
+    oc_fork = await oc.fork_session()
+    assert v2_client.forked == [("ses_v2_1", None)]
+    assert oc_fork.sdk_session_id == "ses_v2_fork"

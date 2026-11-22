@@ -6,6 +6,7 @@ from agentpool.agents.native_agent import Agent
 from agentpool.agents.agui_agent import AGUIAgent
 from agentpool.agents.antigravity_agent import AntigravityAgent
 from agentpool.agents.acp_agent import ACPAgent
+from agentpool.agents.capabilities import AgentCapabilities
 from agentpool.agents.claude_code_agent import ClaudeCodeAgent
 from agentpool.agents.codex_agent import CodexAgent
 from agentpool.agents.opencode_v2_agent import OpenCodeV2Agent
@@ -25,6 +26,7 @@ __all__ = [
     "ACPAgent",
     "AGUIAgent",
     "Agent",
+    "AgentCapabilities",
     "AgentContext",
     "AntigravityAgent",
     "ClaudeCodeAgent",

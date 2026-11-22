@@ -19,6 +19,7 @@ import anyio
 from pydantic_ai import ModelRequest
 from upathtools.filesystems import IsolatedMemoryFileSystem
 
+from agentpool.agents.capabilities import AgentCapabilities
 from agentpool.agents.events import RunErrorEvent, StreamCompleteEvent, resolve_event_handlers
 from agentpool.agents.modes import ModeInfo
 from agentpool.common_types import IndividualEventHandler
@@ -70,6 +71,7 @@ if TYPE_CHECKING:
     )
     from agentpool.delegation import AgentPool, Team, TeamRun
     from agentpool.messaging import ChatMessage
+    from agentpool.messaging.compaction import CompactionPipeline
     from agentpool.sessions import Session, SessionData
     from agentpool.storage import StorageManager
     from agentpool.talk.stats import MessageStats
@@ -148,6 +150,7 @@ class BaseAgent[TDeps = None, TResult = str](MessageNode[TDeps, TResult]):
 
     # Abstract class variable - subclasses must define this
     AGENT_TYPE: ClassVar[AgentTypeLiteral]
+    CAPABILITIES: ClassVar[AgentCapabilities] = AgentCapabilities()
 
     TITLES_OWN_SESSIONS: ClassVar[bool] = False
     """Whether the agent titles its sessions itself (through its backend), instead of the
@@ -300,6 +303,11 @@ class BaseAgent[TDeps = None, TResult = str](MessageNode[TDeps, TResult]):
         # Internal filesystem for tool/session state (can get written to via AgentContext)
         self._internal_fs = IsolatedMemoryFileSystem()
         self.staged_content = StagedContent()
+
+    @property
+    def capabilities(self) -> AgentCapabilities:
+        """Declared native capabilities of this agent implementation."""
+        return type(self).CAPABILITIES
 
     @property
     def session(self) -> Session:
@@ -469,6 +477,59 @@ class BaseAgent[TDeps = None, TResult = str](MessageNode[TDeps, TResult]):
             agent_type=self.AGENT_TYPE,
         )
         self._default_session.overrides = SessionOverrides()
+
+    async def compact(
+        self,
+        pipeline: CompactionPipeline | None = None,
+        *,
+        session: Session | None = None,
+    ) -> tuple[int, int]:
+        """Compact conversation history for ``session`` (or the default session).
+
+        Returns ``(before_count, after_count)`` of messages in the compacted history.
+        External runtimes with native compaction (Codex, OpenCode V2, ...) override
+        this to trigger their backend's compaction directly.
+        """
+        from agentpool.messaging.compaction import compact_conversation, summarizing_context
+
+        target_history = session.history if session is not None else self.conversation
+        target_sid = session.session_id if session is not None else self.session_id
+        effective_pipeline = pipeline or summarizing_context()
+        counts = await compact_conversation(effective_pipeline, target_history)
+        if self.enable_db_logging and self.storage and target_sid:
+            await self.storage.replace_conversation_messages(
+                target_sid, target_history.get_history()
+            )
+        return counts
+
+    async def fork_session(
+        self,
+        *,
+        at_message_id: str | None = None,
+        session: Session | None = None,
+    ) -> Session:
+        """Fork ``session`` (or the default session) into a new child :class:`Session`.
+
+        Copies conversation history up to ``at_message_id`` (inclusive, or all history
+        when omitted), registers the forked session in ``agent_pool.sessions`` when in
+        a pool, and persists its messages to storage if logging is enabled. External
+        runtimes with native thread/session forking override this to also fork their
+        backend state.
+        """
+        source = session if session is not None else self.session
+        forked = source.fork(at_message_id=at_message_id, agent_name=self.name)
+        if self.agent_pool is not None:
+            self.agent_pool.sessions.register(forked)
+        if self.enable_db_logging and self.storage:
+            await self.storage.log_session(
+                session_id=forked.session_id,
+                node_name=self.name,
+                model=forked.overrides.model or self.model_name,
+                agent_type=self.AGENT_TYPE,
+            )
+            if messages := forked.history.get_history():
+                await self.storage.replace_conversation_messages(forked.session_id, messages)
+        return forked
 
     def get_context(
         self,

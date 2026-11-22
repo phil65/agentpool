@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import replace
 from typing import TYPE_CHECKING, Any
+from uuid import uuid4
 
 from pydantic import Field
 from schemez import Schema
@@ -202,7 +203,16 @@ class Session:
             copied = source_messages
 
         new_sid = session_id or generate_session_id()
-        retagged = [replace(m, session_id=new_sid) for m in copied]
+        id_map = {m.message_id: str(uuid4()) for m in copied}
+        retagged = [
+            replace(
+                m,
+                session_id=new_sid,
+                message_id=id_map[m.message_id],
+                parent_id=id_map.get(m.parent_id, m.parent_id) if m.parent_id else None,
+            )
+            for m in copied
+        ]
         return Session.create(
             agent_name=agent_name or self.agent_name,
             session_id=new_sid,

@@ -20,6 +20,7 @@ from pydantic import TypeAdapter
 from pydantic_ai import RunUsage
 
 from agentpool.agents.base_agent import BaseAgent
+from agentpool.agents.capabilities import AgentCapabilities
 from agentpool.agents.codex_agent.codex_converters import (
     mcp_config_to_codex,
     to_auth_status,
@@ -65,8 +66,10 @@ if TYPE_CHECKING:
     from agentpool.delegation import AgentPool
     from agentpool.hooks import AgentHooks
     from agentpool.messaging import MessageHistory
+    from agentpool.messaging.compaction import CompactionPipeline
     from agentpool.models.codex_agents import ApprovalPolicy, CodexAgentConfig
     from agentpool.resource_providers import ResourceProvider
+    from agentpool.sessions import Session as PoolSession
     from agentpool.sessions.models import SessionData
     from agentpool.ui.base import InputProvider
     from agentpool_config.mcp_server import MCPServerConfig
@@ -86,6 +89,14 @@ class CodexAgent[TDeps = None, OutputDataT = str](BaseAgent[TDeps, OutputDataT])
     """
 
     AGENT_TYPE: ClassVar = "codex"
+    CAPABILITIES: ClassVar[AgentCapabilities] = AgentCapabilities(
+        native_steer=True,
+        structured_output=True,
+        multimodal_input=True,
+        live_model_discovery=True,
+        native_compaction=True,
+        native_fork=True,
+    )
 
     def __init__(
         self,
@@ -644,6 +655,43 @@ class CodexAgent[TDeps = None, OutputDataT = str](BaseAgent[TDeps, OutputDataT])
                 await session.turn_steer(message, expected_turn_id=turn_id)
             return
         await super().steer(message, interrupt=interrupt)
+
+    async def compact(
+        self,
+        pipeline: CompactionPipeline | None = None,
+        *,
+        session: PoolSession | None = None,
+    ) -> tuple[int, int]:
+        """Trigger Codex's native thread compaction when connected."""
+        if (
+            session is None
+            and self._client is not None
+            and self._sdk_session_id is not None
+            and (sdk_session := self._sessions.get(self._sdk_session_id)) is not None
+        ):
+            before = len(self.conversation.get_history())
+            await sdk_session.compact_start()
+            return (before, before)
+        return await super().compact(pipeline, session=session)
+
+    async def fork_session(
+        self,
+        *,
+        at_message_id: str | None = None,
+        session: PoolSession | None = None,
+    ) -> PoolSession:
+        """Fork both the AgentPool session and Codex's underlying thread when active."""
+        forked = await super().fork_session(at_message_id=at_message_id, session=session)
+        if (
+            session is None
+            and self._client is not None
+            and self._sdk_session_id is not None
+            and (sdk_session := self._sessions.get(self._sdk_session_id)) is not None
+        ):
+            forked_sdk = await sdk_session.fork()
+            self._sessions[forked_sdk.thread_id] = forked_sdk
+            forked.set_sdk_session_id(forked_sdk.thread_id)
+        return forked
 
     async def _interrupt(self) -> None:
         """Call Codex turn_interrupt if there's an active turn."""

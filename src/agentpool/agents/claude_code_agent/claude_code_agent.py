@@ -18,6 +18,7 @@ from pydantic import TypeAdapter, ValidationError
 from pydantic_ai import RunUsage, TextContent
 
 from agentpool.agents.base_agent import BaseAgent
+from agentpool.agents.capabilities import AgentCapabilities
 from agentpool.agents.claude_code_agent.converters import (
     confirmation_result_to_native,
     convert_mcp_servers_to_sdk_format,
@@ -162,6 +163,14 @@ class ClaudeCodeAgent[TDeps = None, TResult = str](BaseAgent[TDeps, TResult]):
     """
 
     AGENT_TYPE: ClassVar = "claude"
+    CAPABILITIES: ClassVar[AgentCapabilities] = AgentCapabilities(
+        native_steer=True,
+        structured_output=True,
+        multimodal_input=True,
+        live_model_discovery=True,
+        native_compaction=True,
+        background_events=True,
+    )
     TITLES_OWN_SESSIONS: ClassVar = True
 
     def __init__(  # noqa: PLR0915

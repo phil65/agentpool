@@ -23,6 +23,7 @@ from pydantic_ai.capabilities import NativeTool, ProcessHistory
 from pydantic_ai.tools import ToolDefinition
 
 from agentpool.agents.base_agent import BaseAgent
+from agentpool.agents.capabilities import AgentCapabilities
 from agentpool.agents.events import (
     RunStartedEvent,
     StepCompletedEvent,
@@ -141,6 +142,13 @@ class Agent[TDeps = None, OutputDataT = str](BaseAgent[TDeps, OutputDataT]):
     """
 
     AGENT_TYPE: ClassVar = "native"
+    CAPABILITIES: ClassVar[AgentCapabilities] = AgentCapabilities(
+        structured_output=True,
+        multimodal_input=True,
+        live_model_discovery=True,
+        native_compaction=True,
+        native_fork=True,
+    )
 
     def __init__(  # noqa: PLR0915
         # we dont use AgentKwargs here so that we can work with explicit ones in the ctor

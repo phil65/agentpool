@@ -20,8 +20,12 @@ from opencode_v2_sdk.models import (
     ModelListResponse,
     ProviderListResponse,
     ServerInfo,
+    SessionCompactBody,
+    SessionCompactResponse,
     SessionCreateBody,
     SessionCreateResponse,
+    SessionForkBody,
+    SessionForkResponse,
     SessionGetResponse,
     SessionInterruptResponse,
     SessionMessagesResponse,
@@ -51,6 +55,7 @@ if TYPE_CHECKING:
         ModelInfo,
         ModelRef,
         ProviderInfo,
+        SessionInboxCompaction,
         SessionInboxUser,
         SessionInfo,
         SessionMessageInfo,
@@ -328,6 +333,36 @@ class OpenCodeV2Client:
             params={"resume": "true" if resume else "false"},
         )
         return SessionInterruptResponse.model_validate_json(resp.content).interrupted
+
+    async def compact_session(
+        self,
+        session_id: str,
+        *,
+        delivery: Literal["steer", "queue"] | None = None,
+    ) -> SessionInboxCompaction:
+        """Queue a manual compaction (``POST /api/session/{sessionID}/compact``)."""
+        body = SessionCompactBody(delivery=delivery)
+        resp = await self._request(
+            "POST",
+            f"/api/session/{quote(session_id, safe='')}/compact",
+            json_body=_dump_body(body),
+        )
+        return SessionCompactResponse.model_validate_json(resp.content).data
+
+    async def fork_session(
+        self,
+        session_id: str,
+        *,
+        before: str | None = None,
+    ) -> SessionInfo:
+        """Fork a session, optionally truncating before ``before`` message ID."""
+        body = SessionForkBody(before=before)
+        resp = await self._request(
+            "POST",
+            f"/api/session/{quote(session_id, safe='')}/fork",
+            json_body=_dump_body(body),
+        )
+        return SessionForkResponse.model_validate_json(resp.content).data
 
     async def list_messages(
         self,

@@ -43,6 +43,7 @@ from pydantic import HttpUrl
 
 from agentpool.agents.acp_agent.session_state import ACPSessionState
 from agentpool.agents.base_agent import BaseAgent
+from agentpool.agents.capabilities import AgentCapabilities as RuntimeCapabilities
 from agentpool.agents.events import RunStartedEvent, StreamCompleteEvent
 from agentpool.agents.events.reconstructor import MessageReconstructor
 from agentpool.agents.exceptions import (
@@ -129,6 +130,11 @@ class ACPAgent[TDeps = None](BaseAgent[TDeps, str]):
     """
 
     AGENT_TYPE: ClassVar = "acp"
+    CAPABILITIES: ClassVar[RuntimeCapabilities] = RuntimeCapabilities(
+        multimodal_input=True,
+        live_model_discovery=True,
+        background_events=True,
+    )
 
     def __init__(
         self,
