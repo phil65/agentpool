@@ -98,7 +98,8 @@ T3 with pyt3client.
 
 **Open**
 
-- **Failed turns look successful to T3.** `prompt()` reports agent failures as a notice
+- **Failed turns look successful to T3 over v1.** Over v2 they end with
+  `stopReason: "error"`. `prompt()` reports agent failures as a notice
   and ends with `stopReason: end_turn` (deliberate, see its docstring). T3 then marks the
   run `completed`. ACP has no error stop reason, so a JSON-RPC error from `session/prompt`
   would make T3 mark the run `failed`. That would change behaviour for every ACP client
@@ -106,9 +107,9 @@ T3 with pyt3client.
 - **ACP v2.** T3 offers `protocolVersion: 2` (the preview); agentpool answers 1. T3's v2
   path has richer usage, plans, configuration and compaction messages. Planned in
   `ACP_V2_SERVER.md`: one server answering both versions.
-- **Fidelity.** Claude Code's deferred-tool search shows up as a `dynamic_tool` named
-  `Tool`, plus a bogus `command_execution` (`$ Tool` / `present`). Also, whitespace-only
-  thinking chunks become empty `reasoning` items.
+- **Fidelity (fixed 2026-11-22):** empty reasoning items (signature-only thinking
+  deltas), shell commands shown as `$ Tool` (the streamed call's final input never
+  reached `rawInput`), and the rate limit notice repeated per request.
 - **Sign-in.** agentpool advertises no ACP auth methods (TODO in
   `acp_agent.py authenticate`), so T3's **Sign in** button has nothing to offer. Agents
   still use their own logins.
