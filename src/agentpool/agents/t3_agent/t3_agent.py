@@ -16,7 +16,7 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from pathlib import PurePath, PurePosixPath, PureWindowsPath
 import time
-from typing import TYPE_CHECKING, Any, ClassVar, Self
+from typing import TYPE_CHECKING, Any, ClassVar, Literal, Self
 from uuid import uuid4
 
 import anyio
@@ -39,6 +39,7 @@ if TYPE_CHECKING:
     from pydantic_ai import UserContent
     from pyt3client import T3Client
     from pyt3client.models.tools import (
+        Item,
         ModelSelection,
         OrchestratorCapabilitiesOutput,
         ThreadReadInput,
@@ -415,7 +416,7 @@ class T3Agent[TDeps = None](BaseAgent[TDeps, str]):
         cancelled_at: float | None = None
         try:
             while True:
-                read = await self._read_run(client, thread_id, read_after)
+                read = await self._read_items(client, thread_id, read_after)
                 items = [item for item in read.items if item.run_id == run_id]
                 for event in tracker.update(items):
                     reconstructor.observe(event)
@@ -466,28 +467,37 @@ class T3Agent[TDeps = None](BaseAgent[TDeps, str]):
         )
         yield StreamCompleteEvent(message=message)
 
-    async def _read_run(self, client: T3Client, thread_id: str, after: int) -> ThreadReadOutput:
+    async def _read_items(
+        self,
+        client: T3Client,
+        thread_id: str,
+        after: int,
+        view: Literal["activity", "messages"] = "activity",
+    ) -> ThreadReadOutput:
         """The thread's items after position ``after``, oldest first, all pages in one result.
 
+        ``activity`` has every item, ``messages`` only the user's and the agent's messages.
         ``nextPosition`` is the position of a page's last item: the next page starts after it.
         """
         from pyt3client.models.tools import THREAD_READ
 
-        read = await client.call(THREAD_READ, self._read_input(thread_id, after))
+        read = await client.call(THREAD_READ, self._read_input(thread_id, after, view))
         while read.has_more and read.next_position is not None:
             page = await client.call(
-                THREAD_READ, self._read_input(thread_id, read.next_position.root)
+                THREAD_READ, self._read_input(thread_id, read.next_position.root, view)
             )
             read = page.model_copy(update={"items": [*read.items, *page.items]})
         return read
 
     @staticmethod
-    def _read_input(thread_id: str, after: int) -> ThreadReadInput:
+    def _read_input(
+        thread_id: str, after: int, view: Literal["activity", "messages"]
+    ) -> ThreadReadInput:
         from pyt3client.models.tools import ThreadReadInput
 
         return ThreadReadInput(
             thread_id=thread_id,
-            view="activity",
+            view=view,
             after_position=after,
             limit=READ_PAGE_SIZE,
             max_chars_per_item=MAX_ITEM_CHARS,
@@ -652,8 +662,6 @@ class T3Agent[TDeps = None](BaseAgent[TDeps, str]):
         ``session_id`` is a pool session (its thread is its ``sdk_session_id``) or a
         thread listed by ``list_sessions``. The conversation is read from T3.
         """
-        from pyt3client.models.tools import THREAD_READ, ThreadReadInput
-
         from agentpool.sessions import SessionData
 
         if self._client is None:
@@ -664,21 +672,11 @@ class T3Agent[TDeps = None](BaseAgent[TDeps, str]):
             if pool_session is not None and pool_session.sdk_session_id
             else session_id
         )
-        read = await self._client.call(
-            THREAD_READ,
-            ThreadReadInput(
-                thread_id=thread_id, after_position=-1, limit=100, max_chars_per_item=MAX_ITEM_CHARS
-            ),
-        )
+        read = await self._read_items(self._client, thread_id, -1, view="messages")
         self._sdk_session_id = thread_id
         self._last_position = max((item.position for item in read.items), default=-1)
-        messages: list[ChatMessage[Any]] = [
-            ChatMessage[str](
-                content=item.text or "",
-                role="user" if item.type == "user_message" else "assistant",
-                name=self.name if item.type != "user_message" else None,
-                session_id=session_id,
-            )
+        messages = [
+            _history_message(item, session_id, self.name)
             for item in read.items
             if item.type in ("user_message", "assistant_message")
         ]
@@ -692,6 +690,29 @@ class T3Agent[TDeps = None](BaseAgent[TDeps, str]):
             sdk_session_id=thread_id,
             metadata={"title": read.thread.title},
         )
+
+
+def _history_message(item: Item, session_id: str, agent_name: str) -> ChatMessage[str]:
+    """A user or assistant message of a thread as a chat message.
+
+    It carries its model message: servers replay those to clients that load the session.
+    """
+    from pydantic_ai import ModelRequest, ModelResponse, TextPart, UserPromptPart
+
+    text = item.text or ""
+    if item.type == "user_message":
+        request = ModelRequest(parts=[UserPromptPart(content=text)])
+        return ChatMessage[str](
+            content=text, role="user", session_id=session_id, messages=[request]
+        )
+    response = ModelResponse(parts=[TextPart(content=text)])
+    return ChatMessage[str](
+        content=text,
+        role="assistant",
+        name=agent_name,
+        session_id=session_id,
+        messages=[response],
+    )
 
 
 def _timestamp(value: str) -> datetime:

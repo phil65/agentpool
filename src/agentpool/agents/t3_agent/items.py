@@ -17,6 +17,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
+from pydantic import BaseModel, Field, ValidationError
 from pydantic_ai import PartDeltaEvent, PartStartEvent, TextPart, TextPartDelta, ThinkingPart
 from pydantic_ai.messages import ThinkingPartDelta
 
@@ -186,9 +187,28 @@ def _command(item: Item) -> str | None:
     return first.removeprefix("$ ") if first.startswith("$ ") else None
 
 
+class _DynamicCall(BaseModel):
+    """Text of a ``dynamic_tool`` item: the provider tool's name and input, as JSON."""
+
+    tool_name: str = Field(alias="toolName")
+    input: dict[str, Any] = Field(default_factory=dict)
+
+
+def _dynamic_call(item: Item) -> _DynamicCall | None:
+    """The tool call of a ``dynamic_tool`` item; None until its text is complete JSON."""
+    if item.type != "dynamic_tool" or not (item.text or "").startswith("{"):
+        return None
+    try:
+        return _DynamicCall.model_validate_json(item.text or "")
+    except ValidationError:
+        return None
+
+
 def _tool_input(item: Item) -> dict[str, Any]:
     if item.type == "command_execution" and (command := _command(item)):
         return {"command": command}
+    if call := _dynamic_call(item):
+        return call.input
     return {}
 
 
@@ -197,4 +217,6 @@ def _tool_title(item: Item) -> str:
         return item.title
     if item.type == "command_execution" and (command := _command(item)):
         return f"`{command}`"
+    if call := _dynamic_call(item):
+        return call.tool_name
     return item.type.replace("_", " ").capitalize()

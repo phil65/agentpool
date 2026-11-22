@@ -89,3 +89,14 @@ def test_notices_once_and_ignored_items() -> None:
     [event] = _events(tracker, notice, _item("u", "user_message", "completed", "hi"))
     assert event == NoticeEvent(title="Rate limit close", severity="info")
     assert _events(tracker, notice, _item("k", "checkpoint", "completed", "[]")) == []
+
+
+def test_dynamic_tool_shows_the_provider_tool() -> None:
+    tracker = ItemTracker(agent_name="t3", message_id="m")
+    text = '{"toolName": "AskUserQuestion", "input": {"questions": []}}'
+    [start] = _events(tracker, _item("d", "dynamic_tool", "running", text))
+    assert isinstance(start, ToolCallStartEvent)
+    assert (start.title, start.raw_input) == ("AskUserQuestion", {"questions": []})
+    [cut] = _events(ItemTracker("t3", "m"), _item("d", "dynamic_tool", "running", '{"toolN'))
+    assert isinstance(cut, ToolCallStartEvent)
+    assert (cut.title, cut.raw_input) == ("Dynamic tool", {})
