@@ -16,6 +16,7 @@ from exxec.acp_provider import ACPExecutionEnvironment
 from exxec.local_provider import LocalExecutionEnvironment
 import pytest
 
+from agentpool.sessions.environment import use_session_environment
 from agentpool_server.acp_server.acp_agent import AgentPoolACPAgent
 from agentpool_server.acp_server.session import supports_client_execution
 
@@ -83,7 +84,9 @@ async def test_capable_client_gets_acp_environment(
 
     assert isinstance(session.env, ACPExecutionEnvironment)
     assert isinstance(session.fs, ACPFileSystem)
-    assert default_test_agent.env is session.env
+    with use_session_environment(session.environment):  # As in the session's turns
+        assert default_test_agent.env is session.env
+    assert default_test_agent.env is not session.env  # The shared agent keeps its own
 
 
 async def test_client_without_capabilities_gets_local_environment(
@@ -96,7 +99,9 @@ async def test_client_without_capabilities_gets_local_environment(
     assert isinstance(session.env, LocalExecutionEnvironment)
     assert session.env.cwd == str(tmp_path)
     assert not isinstance(session.fs, ACPFileSystem)
-    assert default_test_agent.env is session.env
+    with use_session_environment(session.environment):  # As in the session's turns
+        assert default_test_agent.env is session.env
+    assert default_test_agent.env is not session.env  # The shared agent keeps its own
     # Rules are read from the local filesystem instead of failing on terminal/create.
     assert session.rules_loading is not None
     rules = await session.rules_loading

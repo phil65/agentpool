@@ -37,6 +37,7 @@ from agentpool.agents.native_agent.helpers import (
 )
 from agentpool.log import get_logger
 from agentpool.messaging import ChatMessage, MessageHistory
+from agentpool.sessions.environment import current_session_environment
 from agentpool.storage import StorageManager
 from agentpool.tools import ToolManager
 from agentpool.tools.base import FunctionTool
@@ -680,7 +681,8 @@ class Agent[TDeps = None, OutputDataT = str](BaseAgent[TDeps, OutputDataT]):
             description=self.description,
             model=model_,
             model_settings=model_settings,
-            instructions=self._formatted_system_prompt,
+            # Ours, then the acting session's (evaluated per run: sessions share the agent)
+            instructions=[*filter(None, [self._formatted_system_prompt]), _session_instructions],
             retries=retries,
             end_strategy=self._end_strategy,
             deps_type=deps_type,
@@ -1055,6 +1057,12 @@ class Agent[TDeps = None, OutputDataT = str](BaseAgent[TDeps, OutputDataT]):
             return None
         else:
             return session_data
+
+
+def _session_instructions() -> str | None:
+    """Instructions of the session acting (working directory, the client's), if any."""
+    environment = current_session_environment()
+    return environment.instructions or None if environment is not None else None
 
 
 if __name__ == "__main__":

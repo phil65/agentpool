@@ -54,6 +54,7 @@ from agentpool.agents.exceptions import (
 from agentpool.log import get_logger
 from agentpool.mcp_server.tool_bridge import DEFAULT_ROUTE
 from agentpool.messaging import ChatMessage
+from agentpool.sessions.environment import current_session_environment
 from agentpool.utils.streams import merge_queue_into_iterator
 from agentpool.utils.subprocess_utils import SubprocessError, run_with_process_monitor
 from agentpool.utils.token_breakdown import calculate_usage_from_parts
@@ -290,7 +291,11 @@ class ACPAgent[TDeps = None](BaseAgent[TDeps, str]):
         """Make ``acp_session_id`` the ACP session of the session acting; returns its state."""
         session = self._explicit_session
         pool_session_id = session.session_id if session is not None else None
-        state = ACPSessionState(session_id=acp_session_id, pool_session_id=pool_session_id)
+        state = ACPSessionState(
+            session_id=acp_session_id,
+            pool_session_id=pool_session_id,
+            environment=current_session_environment(),
+        )
         self._states[acp_session_id] = state
         self._sdk_session_id = acp_session_id
         return state
@@ -583,6 +588,7 @@ class ACPAgent[TDeps = None](BaseAgent[TDeps, str]):
         state = self._state
         assert state is not None
         state.input_provider = effective_input_provider
+        state.environment = current_session_environment() or state.environment
         run_session_id = session_id or self.session_id
         assert run_session_id is not None
 

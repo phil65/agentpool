@@ -150,9 +150,8 @@ class ToolCallTestHarness:
                 acp_agent=self._mock_acp_agent,
                 client_capabilities=capabilities,
             )
-            # Override agent.env AFTER session creation
-            for agent in pool.get_agents().values():
-                agent.env = self.mock_env
+            # The session's environment: where its turns' tools run
+            session.env = self.mock_env
             # Clear and execute
             self.client.clear()
             content_blocks = [TextContentBlock(text=prompt)]
@@ -195,8 +194,7 @@ class ToolCallTestHarness:
                 client_capabilities=capabilities,
             )
 
-            for agent in pool.get_agents().values():
-                agent.env = self.mock_env
+            session.env = self.mock_env  # Where its turns' tools run
             self.client.clear()
             content_blocks = [TextContentBlock(text=prompt)]
             await session.process_prompt(content_blocks)

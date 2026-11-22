@@ -31,6 +31,11 @@ from pydantic_ai.models.test import TestModel
 
 from agentpool.agents import Agent
 from agentpool.log import get_logger
+from agentpool.sessions.environment import (
+    SessionEnvironment,
+    current_session_environment,
+    use_session_environment,
+)
 from agentpool.utils.signatures import filter_schema_params, get_params_matching_predicate
 
 
@@ -66,6 +71,8 @@ class BridgeRoute:
     """Context of the running turn (set by ``set_run_context``), None between turns."""
     prompt: str | Sequence[UserContent] | None = None
     """Prompt of the running turn (needed for a stub RunContext)."""
+    environment: SessionEnvironment | None = None
+    """Session environment of the running turn: its tool calls run in it."""
     tool_metadata: dict[str, dict[str, Any]] = field(default_factory=dict)
     """Metadata of tool results, by tool_call_id.
 
@@ -460,9 +467,10 @@ class ToolManagerBridge:
                 ctx = replace(base, tool_name=self._tool.name, tool_call_id=tc_id, tool_input=args_)
                 # Invoke with context - copy args since invoke_tool_with_context
                 # modifies kwargs in-place to inject context parameters
-                result = await self._bridge.invoke_tool_with_context(
-                    self._tool, ctx, args, prompt=route.prompt
-                )
+                with use_session_environment(route.environment):  # The turn's, not ours
+                    result = await self._bridge.invoke_tool_with_context(
+                        self._tool, ctx, args, prompt=route.prompt
+                    )
                 # Store metadata for agent to correlate with ToolCallCompleteEvent
                 # (works around Claude SDK stripping MCP _meta field)
                 if isinstance(result, AgentPoolToolResult) and result.metadata:
@@ -505,6 +513,7 @@ class ToolManagerBridge:
         bridge_route = self.route(route)
         bridge_route.context = context
         bridge_route.prompt = prompt
+        bridge_route.environment = current_session_environment()
         bridge_route.tool_metadata.clear()
         try:
             yield bridge_route
@@ -512,6 +521,7 @@ class ToolManagerBridge:
             if bridge_route.context is context:  # Not taken over by a later turn
                 bridge_route.context = None
                 bridge_route.prompt = None
+                bridge_route.environment = None
 
     async def invoke_tool_with_context(
         self,

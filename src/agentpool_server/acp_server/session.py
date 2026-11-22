@@ -29,6 +29,7 @@ from agentpool.agents.acp_agent import ACPAgent
 from agentpool.agents.modes import ConfigOptionChanged
 from agentpool.agents.staged_content import StagedContent
 from agentpool.log import get_logger
+from agentpool.sessions.environment import SessionEnvironment, use_session_environment
 from agentpool_commands.base import NodeCommand
 from agentpool_server.acp_server.converters import (
     convert_acp_mcp_server_to_config,
@@ -254,7 +255,7 @@ class ACPSession:
         if self.client_info and self.client_info.name and "zed" in self.client_info.name.lower():
             self.staged.add_text(ZED_CLIENT_PROMPT)
         if self.system_prompt and not isinstance(self.agent, Agent):
-            # Native agents get it via sys_prompts (see get_cwd_context)
+            # Native agents get it with the session's instructions (see `environment`)
             self.staged.add_text(self.system_prompt)
         self.notifications = ACPNotifications(client=self.client, session_id=self.session_id)
         self.output: SessionOutput = self.output_factory(self)
@@ -262,11 +263,8 @@ class ACPSession:
         self.input_provider = ACPInputProvider(self)
         self.env = self._create_execution_environment()
         self.fs = self.env.get_fs()
+        # The agents run this session's turns in its environment (see `environment`)
         for agent in self.agent_pool.all_agents.values():
-            agent.env = self.env
-            if isinstance(agent, Agent):
-                # TODO: need to inject this info for ACP agents, too.
-                agent.sys_prompts.prompts.append(self.get_cwd_context)
             if isinstance(agent, ACPAgent):
 
                 async def permission_callback(
@@ -464,6 +462,15 @@ class ACPSession:
             raise RuntimeError(msg)
         return pool
 
+    @property
+    def environment(self) -> SessionEnvironment:
+        """Where this session's turns run (the client's), and what agents should know.
+
+        Agents are shared by sessions: the session makes it current while it acts
+        (``use_session_environment``), instead of setting it on them.
+        """
+        return SessionEnvironment(env=self.env, instructions=self.get_cwd_context())
+
     def get_cwd_context(self) -> str:
         """Get workspace and client instructions context for prompts."""
         parts = [f"Working directory: {self.cwd}"] if self.cwd else []
@@ -599,7 +606,7 @@ class ACPSession:
         self, content_blocks: Sequence[ContentBlock]
     ) -> list[UserContent | PathReference]:
         """The agent's content for the content blocks of a prompt."""
-        fs = self.agent.env.get_fs()
+        fs = self.env.get_fs()  # The client's
         contents = [from_acp_content(i, fs=fs) for i in content_blocks]
         self.log.debug("Converted content", content=contents)
         return contents
@@ -628,24 +635,34 @@ class ACPSession:
             contents, lambda name: self._command_store_for(name) is not None
         )
         async with self._task_lock:
-            # Reset only once the previous turn is over, it may still be cancelling
-            self._cancelled = False
-            for command in commands:
-                self.log.info("Processing slash command", command=command)
-                # Commands may stage content for the next prompt: this session's, even
-                # on an agent other sessions share (and may switch the agent)
-                with self.agent.use_session(await self.pool_session()):
-                    await self.execute_slash_command(command)
-            if not non_command_content:
-                return TurnCompleted()
-            self.log.debug("Processing prompt", content_items=len(non_command_content))
-            await self._wait_for_rules()
-            if staged := await self.staged.consume_as_text():
-                non_command_content = [*non_command_content, staged]
-            await output.start()  # After the commands: they may switch model or agent
-            outcome = await self._stream_agent(non_command_content, output)
-            await output.finish(outcome)
-            return outcome
+            with use_session_environment(self.environment):  # Commands and turn: ours
+                return await self._run_turn_locked(commands, non_command_content, output)
+
+    async def _run_turn_locked(
+        self,
+        commands: Sequence[str],
+        non_command_content: Sequence[UserContent | PathReference],
+        output: TurnOutput,
+    ) -> TurnOutcome:
+        """The commands, then the prompt of a turn (with the turn lock held)."""
+        # Reset only once the previous turn is over, it may still be cancelling
+        self._cancelled = False
+        for command in commands:
+            self.log.info("Processing slash command", command=command)
+            # Commands may stage content for the next prompt: this session's, even
+            # on an agent other sessions share (and may switch the agent)
+            with self.agent.use_session(await self.pool_session()):
+                await self.execute_slash_command(command)
+        if not non_command_content:
+            return TurnCompleted()
+        self.log.debug("Processing prompt", content_items=len(non_command_content))
+        await self._wait_for_rules()
+        if staged := await self.staged.consume_as_text():
+            non_command_content = [*non_command_content, staged]
+        await output.start()  # After the commands: they may switch model or agent
+        outcome = await self._stream_agent(non_command_content, output)
+        await output.finish(outcome)
+        return outcome
 
     async def _wait_for_rules(self) -> None:
         """Stage the rules first, so they go into this turn's prompt and no later one."""
@@ -746,10 +763,6 @@ class ACPSession:
                 self.agent.agent_pool.sessions.remove(self.session_id)
             if self._commands_update is not None:
                 self._commands_update.cancel()
-            # Remove cwd context callable from all agents
-            for agent in self.agent_pool.get_agents(Agent).values():
-                if self.get_cwd_context in agent.sys_prompts.prompts:
-                    agent.sys_prompts.prompts.remove(self.get_cwd_context)
 
             # Note: Individual agents are managed by the pool's lifecycle
             # The pool will handle agent cleanup when it's closed

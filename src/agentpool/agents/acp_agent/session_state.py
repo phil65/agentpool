@@ -18,6 +18,7 @@ if TYPE_CHECKING:
         SessionUpdate,
     )
 
+    from agentpool.sessions.environment import SessionEnvironment
     from agentpool.ui.base import InputProvider
 
 logger = get_logger(__name__)
@@ -56,6 +57,10 @@ class ACPSessionState:
 
     prompt_task: asyncio.Task[Any] | None = None
     """The ``session/prompt`` request of the turn running on this session."""
+
+    environment: SessionEnvironment | None = None
+    """Environment of the pool session acting when this ACP session last ran (or loaded):
+    where the agent's file and terminal requests run."""
 
     updates: deque[SessionUpdate] = dataclass_field(default_factory=deque)
     """Raw ACP session updates - single source of truth for stream data."""

@@ -40,6 +40,7 @@ from aclientp.schema import (
 
 from agentpool.agents.exceptions import UnknownCategoryError, UnknownModeError
 from agentpool.log import get_logger
+from agentpool.sessions.environment import use_session_environment
 from agentpool.utils.tasks import TaskManager
 from agentpool_server.acp_server.converters import (
     system_prompt_text,
@@ -310,7 +311,7 @@ class AgentPoolACPAgent(ACPAgent):
         """
         agent = session.agent
         pool_session = await session.pool_session()
-        with agent.use_session(pool_session):
+        with agent.use_session(pool_session), use_session_environment(session.environment):
             loaded = await agent.load_session(session.session_id)
         if not loaded:
             details = f"Agent {agent.name!r} failed to {action} the session"
@@ -325,6 +326,12 @@ class AgentPoolACPAgent(ACPAgent):
             new: Whether the session starts a conversation. Only then are the rules staged:
                 a loaded or resumed conversation got them with its first prompt.
         """
+        # The tasks run in the session's environment (its client's files; tasks copy it)
+        with use_session_environment(session.environment):
+            self._start_session_tasks(session, new=new)
+
+    def _start_session_tasks(self, session: ACPSession, *, new: bool) -> None:
+        """Start the setup tasks of ``session`` (see ``_schedule_session_setup``)."""
         self.tasks.create_task(session.send_available_commands_update())
         if new:
             session.rules_loading = self.tasks.create_task(session.agent.read_rules(session.cwd))

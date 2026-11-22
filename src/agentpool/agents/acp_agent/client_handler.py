@@ -23,6 +23,7 @@ from pydantic_ai import PartDeltaEvent, TextPartDelta
 from agentpool.agents.exceptions import OperationNotAllowedError, ResourceNotFoundError
 from agentpool.log import get_logger
 from agentpool.mcp_server.tool_bridge import DEFAULT_ROUTE
+from agentpool.sessions.environment import use_session_environment
 
 
 if TYPE_CHECKING:
@@ -75,18 +76,23 @@ class ACPClientHandler(Client):
 
     def __init__(self, agent: ACPAgent[Any]) -> None:
         self._agent = agent
-        # Map ACP terminal IDs to process manager IDs (for local execution only)
-        self._terminal_to_process: dict[str, str] = {}
-        # Copy auto_approve from agent (can be updated via set_auto_approve)
+        self._terminals: dict[str, ExecutionEnvironment] = {}
+        """The environment each terminal runs in, by terminal ID."""
 
-    @property
-    def env(self) -> ExecutionEnvironment:
-        """Get execution environment for subprocess requests.
+    def _env(self, session_id: str) -> ExecutionEnvironment:
+        """Where requests of ACP session ``session_id`` run: the agent's client env.
 
-        Uses the agent's client_env which handles subprocess file/terminal
-        operations. Falls back to agent's main env if not explicitly configured.
+        By default that's the environment of the pool session the ACP session belongs to
+        (captured with its turn): requests come in outside the turn's context.
         """
-        return self._agent.client_env
+        state = self._agent._states.get(session_id)
+        with use_session_environment(state.environment if state is not None else None):
+            return self._agent.client_env
+
+    def _terminal_env(self, terminal_id: str) -> ExecutionEnvironment:
+        if (env := self._terminals.get(terminal_id)) is None:
+            raise ResourceNotFoundError("Terminal", terminal_id)
+        return env
 
     @property
     def allow_file_operations(self) -> bool:
@@ -228,7 +234,7 @@ class ACPClientHandler(Client):
         """Read text from file via ExecutionEnvironment filesystem."""
         if not self.allow_file_operations:
             raise OperationNotAllowedError("File operations")
-        fs = self.env.get_fs()
+        fs = self._env(params.session_id).get_fs()
         try:
             content_bytes = await fs._cat_file(params.path)
             content = content_bytes.decode("utf-8")
@@ -254,7 +260,7 @@ class ACPClientHandler(Client):
         """Write text to file via ExecutionEnvironment filesystem."""
         if not self.allow_file_operations:
             raise OperationNotAllowedError("File operations")
-        fs = self.env.get_fs()
+        fs = self._env(params.session_id).get_fs()
         content_bytes = params.content.encode("utf-8")
         parent = str(Path(params.path).parent)
         try:
@@ -278,8 +284,9 @@ class ACPClientHandler(Client):
         if not self.allow_terminal:
             raise OperationNotAllowedError("Terminal operations")
 
+        env = self._env(params.session_id)
         try:
-            terminal_id = await self.env.process_manager.start_process(
+            terminal_id = await env.process_manager.start_process(
                 command=params.command,
                 args=list(params.args) if params.args else None,
                 cwd=params.cwd,
@@ -291,7 +298,7 @@ class ACPClientHandler(Client):
         else:
             # Use the ID from process_manager directly - for ACPProcessManager this
             # is already the parent's terminal ID (e.g., Zed's)
-            self._terminal_to_process[terminal_id] = terminal_id
+            self._terminals[terminal_id] = env
             logger.info("Created terminal", terminal_id=terminal_id, command=params.command)
             return CreateTerminalResponse(terminal_id=terminal_id)
 
@@ -301,10 +308,8 @@ class ACPClientHandler(Client):
             raise OperationNotAllowedError("Terminal operations")
 
         terminal_id = params.terminal_id
-        if terminal_id not in self._terminal_to_process:
-            raise ResourceNotFoundError("Terminal", terminal_id)
-
-        proc_output = await self.env.process_manager.get_output(terminal_id)
+        env = self._terminal_env(terminal_id)
+        proc_output = await env.process_manager.get_output(terminal_id)
         output = proc_output.combined or proc_output.stdout or ""
         return TerminalOutputResponse(output=output, truncated=proc_output.truncated)
 
@@ -316,10 +321,8 @@ class ACPClientHandler(Client):
             raise OperationNotAllowedError("Terminal operations")
 
         terminal_id = params.terminal_id
-        if terminal_id not in self._terminal_to_process:
-            raise ResourceNotFoundError("Terminal", terminal_id)
-
-        exit_code = await self.env.process_manager.wait_for_exit(terminal_id)
+        env = self._terminal_env(terminal_id)
+        exit_code = await env.process_manager.wait_for_exit(terminal_id)
         logger.debug("Terminal exited", terminal_id=terminal_id, exit_code=exit_code)
         return WaitForTerminalExitResponse(exit_code=exit_code)
 
@@ -329,10 +332,8 @@ class ACPClientHandler(Client):
             raise OperationNotAllowedError("Terminal operations")
 
         terminal_id = params.terminal_id
-        if terminal_id not in self._terminal_to_process:
-            raise ResourceNotFoundError("Terminal", terminal_id)
-
-        await self.env.process_manager.kill_process(terminal_id)
+        env = self._terminal_env(terminal_id)
+        await env.process_manager.kill_process(terminal_id)
         logger.info("Killed terminal", terminal_id=terminal_id)
         return KillTerminalResponse()
 
@@ -342,23 +343,20 @@ class ACPClientHandler(Client):
             raise OperationNotAllowedError("Terminal operations")
 
         terminal_id = params.terminal_id
-        if terminal_id not in self._terminal_to_process:
-            raise ResourceNotFoundError("Terminal", terminal_id)
-
-        await self.env.process_manager.release_process(terminal_id)
-        del self._terminal_to_process[terminal_id]
+        env = self._terminal_env(terminal_id)
+        await env.process_manager.release_process(terminal_id)
+        del self._terminals[terminal_id]
         logger.info("Released terminal", terminal_id=terminal_id)
         return ReleaseTerminalResponse()
 
     async def cleanup(self) -> None:
         """Clean up all resources."""
-        for terminal_id, process_id in list(self._terminal_to_process.items()):
+        for terminal_id, env in list(self._terminals.items()):
             try:
-                await self.env.process_manager.release_process(process_id)
+                await env.process_manager.release_process(terminal_id)
             except Exception:
                 logger.exception("Error cleaning up terminal", terminal_id=terminal_id)
-
-        self._terminal_to_process.clear()
+        self._terminals.clear()
 
     async def ext_method(self, method: str, params: dict[str, Any]) -> dict[str, Any]:
         """Handle extension methods."""

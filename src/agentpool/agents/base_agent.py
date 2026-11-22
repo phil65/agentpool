@@ -25,6 +25,7 @@ from agentpool.agents.runtime import SessionRuntime, activate, active_runtime
 from agentpool.hooks import AgentHooks
 from agentpool.log import get_logger
 from agentpool.messaging import ChatMessage, MessageHistory, MessageNode
+from agentpool.sessions.environment import current_session_environment
 from agentpool.tools.manager import ToolManager
 from agentpool.utils.inspection import call_with_context
 from agentpool.utils.time_utils import get_now
@@ -263,11 +264,12 @@ class BaseAgent[TDeps = None, TResult = str](MessageNode[TDeps, TResult]):
         self._infinite = False
         self.deps_type = deps_type  # or type(None)
         self._background_task: asyncio.Task[ChatMessage[Any]] | None = None
+        self._env: ExecutionEnvironment
         match env:
             case ExecutionEnvironment():
-                self.env = env
+                self._env = env
             case str() | os.PathLike() | None:
-                self.env = LocalExecutionEnvironment(cwd=str(env) if env is not None else None)
+                self._env = LocalExecutionEnvironment(cwd=str(env) if env is not None else None)
             case _ as unreachable:
                 assert_never(unreachable)
         from agentpool.sessions import Session
@@ -370,6 +372,21 @@ class BaseAgent[TDeps = None, TResult = str](MessageNode[TDeps, TResult]):
         """
         active = active_runtime(self)
         return active.session if active is not None and not active.is_default else None
+
+    @property
+    def env(self) -> ExecutionEnvironment:
+        """Where the agent's tools run: the acting session's environment, else its own.
+
+        A protocol server sets the environment of the session it acts for (its client's
+        file system and terminals; see :mod:`agentpool.sessions.environment`).
+        """
+        if (environment := current_session_environment()) is not None:
+            return environment.env
+        return self._env
+
+    @env.setter
+    def env(self, value: ExecutionEnvironment) -> None:
+        self._env = value
 
     @property
     def _sdk_session_id(self) -> str | None:

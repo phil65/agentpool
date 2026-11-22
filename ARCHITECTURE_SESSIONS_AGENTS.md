@@ -230,11 +230,17 @@ need to stay distinct:
    live with `claude-agent-acp`: two sessions in parallel, each tool call with its own
    session's context. Agents' config changes carry their session
    (`ConfigOptionChanged.session_id`): an ACP server session forwards only its own, with the
-   options as it sees them. Next: Claude Code (a CLI process per session). **Still shared
-   across sessions:** the ACP server sets each new session's client environment on every pool
-   agent (`agent.env`), and adds its cwd context to every native agent's system prompts, so
-   concurrent sessions of different clients or directories see the newest's (§11: session
-   environment). **Tool bridge routes (2026-11-22):** the bridge (`ToolManagerBridge`) serves
+   options as it sees them. **Session environment (2026-11-22):** a session's execution
+   environment and instructions (`SessionEnvironment`: the client's file system and
+   terminals; working directory and the client's instructions) are current while a server
+   acts for it (`use_session_environment`, a context variable), instead of being set on the
+   pool's agents. `BaseAgent.env` returns it while set; native agents add its instructions
+   per run (they were rendered once at start, so an ACP session's cwd context and Zed's
+   instructions never reached them); the bridge and a nested ACP agent's client handler
+   capture it with the turn. Before, each new ACP session set its environment on every pool
+   agent, so all sessions' tools ran in the newest's. The OpenCode V2 server doesn't set one
+   yet: its sessions' `directory` is recorded, but agents run in their own environment.
+   Next: Claude Code (a CLI process per session). **Tool bridge routes (2026-11-22):** the bridge (`ToolManagerBridge`) serves
    every session of its agent; each session reaches it through its own route
    (`url_for(session_id)`, the plain URL for the default session). A tool call runs with the
    context of the turn on its route (`set_run_context(..., route=...)`: input provider, deps,
@@ -706,6 +712,12 @@ and the migration step (§6) that should make the stopgap unnecessary.
   others. Claude Code's `/compact` isn't wired. Session instructions and env are still open:
   `SessionOverrides` has `model` and `modes` (config options) only, since prepending
   instructions to the user prompt (tried) stored them again every turn.
+- **Status (2026-11-22, later):** the mechanism exists: `SessionEnvironment` (execution
+  environment and instructions), current while a server acts for the session. Native agents
+  take its instructions as system instructions per run (not prompt text). The ACP server uses
+  it for each session's client environment, cwd and client instructions. Not yet: V2
+  instruction entries and skills on it (`pending_context` stays), env vars on the environment,
+  and external agents (they take instructions only as staged prompt text).
 
 ### 10.10 Teams have no session or model surface
 
@@ -785,6 +797,8 @@ agent's review, largely matching §3–§10).
    `subagent_update` and V2 children.
 5. **Session-scoped instructions and env (§10.9),** applied by the runtime (system instructions,
    not user prompt text; env on the runtime's exxec environment). Then `pending_context` goes.
+   Started: `SessionEnvironment` (ACP server; native agents' instructions); next the OpenCode
+   V2 server (a session's `directory`, instruction entries) on it.
 6. **One tool display model.** Diffs, terminal output and tool kinds in one internal form that
    every agent produces and every server renders. Today `ClaudeCodeAgent` imports
    `opencode_v2_sdk.tool_metadata` (an agent depending on a protocol SDK), next to

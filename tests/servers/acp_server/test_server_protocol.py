@@ -31,7 +31,7 @@ from pydantic_ai.messages import TextPart, UserPromptPart
 from pydantic_ai.models.function import AgentInfo, FunctionModel
 import pytest
 
-from agentpool import Agent, AgentPool, AgentsManifest
+from agentpool import Agent, AgentContext, AgentPool, AgentsManifest
 from agentpool.agents.base_agent import BaseAgent
 from agentpool.agents.events import NoticeEvent, StreamCompleteEvent
 from agentpool.messaging import ChatMessage
@@ -45,6 +45,7 @@ from agentpool_server.acp_server.input_provider import ACPInputProvider
 
 if TYPE_CHECKING:
     from collections.abc import AsyncIterator
+    from pathlib import Path
 
     from aclientp.schema import SessionNotification
     from pydantic_ai import ModelMessage
@@ -479,3 +480,73 @@ async def test_a_sessions_config_change_is_reported_to_its_own_client_only(
     mode = next(o for o in update.update.config_options if o.id == "mode")
     assert mode.current_value == "always"  # As the session sees it, not the agent's own
     assert second not in {n.session_id for n in updates}
+
+
+async def test_native_agents_see_the_instructions_of_their_session() -> None:
+    """Each session's working directory reaches its own turns, not the other's."""
+    seen: list[str] = []
+
+    async def stream(messages: list[ModelMessage], info: AgentInfo) -> AsyncIterator[str]:
+        request = messages[-1]
+        assert isinstance(request, ModelRequest)
+        seen.append(request.instructions or "")
+        yield "ok"
+
+    storage = StorageConfig(providers=[SQLStorageConfig(url="sqlite+aiosqlite:///:memory:")])
+    async with AgentPool(AgentsManifest(storage=storage)) as pool:
+        agent = Agent(name="a", model=FunctionModel(stream_function=stream), agent_pool=pool)
+        pool.register("a", agent)
+        async with agent:
+            server = AgentPoolACPAgent(client=AsyncMock(), default_agent=agent)
+            await server.initialize(InitializeRequest(protocol_version=1))
+            first = await server.new_session(NewSessionRequest(cwd="/srv/one", mcp_servers=[]))
+            second = await server.new_session(NewSessionRequest(cwd="/srv/two", mcp_servers=[]))
+            await server.prompt(_prompt(first.session_id))
+            await server.prompt(_prompt(second.session_id))
+            await server.session_manager.close_all_sessions()
+    assert "/srv/one" in seen[0]
+    assert "/srv/two" not in seen[0]
+    assert "/srv/two" in seen[1]
+    assert "/srv/one" not in seen[1]
+
+
+async def test_tools_run_in_the_environment_of_their_session(tmp_path: Path) -> None:
+    """Sessions share the pool's agent; each turn's tools run where its session is."""
+    from pydantic_ai import ToolReturnPart
+    from pydantic_ai.models.function import DeltaToolCall, DeltaToolCalls
+
+    ran_in: list[str | None] = []
+
+    async def where(ctx: AgentContext) -> str:
+        """Report the working directory."""
+        ran_in.append(ctx.agent.env.cwd)
+        return "ok"
+
+    async def stream(
+        messages: list[ModelMessage], info: AgentInfo
+    ) -> AsyncIterator[str | DeltaToolCalls]:
+        request = messages[-1]
+        assert isinstance(request, ModelRequest)
+        if any(isinstance(part, ToolReturnPart) for part in request.parts):
+            yield "done"
+        else:
+            yield {0: DeltaToolCall(name="where", json_args="{}")}
+
+    one, two = tmp_path / "one", tmp_path / "two"
+    one.mkdir()
+    two.mkdir()
+    async with AgentPool(AgentsManifest()) as pool:
+        model = FunctionModel(stream_function=stream)
+        agent = Agent(name="a", model=model, agent_pool=pool, tools=[where])
+        pool.register("a", agent)
+        async with agent:
+            server = AgentPoolACPAgent(client=AsyncMock(), default_agent=agent)
+            await server.initialize(InitializeRequest(protocol_version=1))
+            first = await server.new_session(NewSessionRequest(cwd=str(one), mcp_servers=[]))
+            second = await server.new_session(NewSessionRequest(cwd=str(two), mcp_servers=[]))
+            await server.prompt(_prompt(first.session_id))
+            await server.prompt(_prompt(second.session_id))
+            own_cwd = agent.env.cwd
+            await server.session_manager.close_all_sessions()
+    assert ran_in == [str(one), str(two)]
+    assert own_cwd not in (str(one), str(two))  # The shared agent keeps its own

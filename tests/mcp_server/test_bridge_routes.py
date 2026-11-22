@@ -73,3 +73,24 @@ async def test_tool_metadata_is_kept_per_route() -> None:
             await _text(bridge.url_for(session.session_id), "tagged")
         assert [m["by"] for m in route.tool_metadata.values()] == ["S"]
         assert bridge.tool_metadata == {}  # The default route's
+
+
+async def test_tool_calls_run_in_the_session_environment_of_their_turn() -> None:
+    from exxec import LocalExecutionEnvironment
+
+    from agentpool.sessions.environment import SessionEnvironment, use_session_environment
+
+    async def where(ctx: AgentContext) -> str:
+        """Report the working directory."""
+        return str(ctx.agent.env.cwd)
+
+    agent = Agent(name="bridged", model=TestModel(), tools=[where])
+    session_env = SessionEnvironment(env=LocalExecutionEnvironment(cwd="/srv/session"))
+    async with agent, ToolManagerBridge(node=agent) as bridge:
+        session = Session.create("bridged")
+        with use_session_environment(session_env):  # As in the session's turn
+            async with bridge.set_run_context(agent.get_context(), route=session.session_id):
+                # The call runs in the bridge server's task, which the turn's context
+                # doesn't reach: the route carries the environment there
+                where_it_ran = await _text(bridge.url_for(session.session_id), "where")
+        assert where_it_ran == "/srv/session"
