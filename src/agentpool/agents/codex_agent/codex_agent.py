@@ -735,7 +735,9 @@ class CodexAgent[TDeps = None, OutputDataT = str](BaseAgent[TDeps, OutputDataT])
         for this agent. The conversation history is managed by the Codex server.
 
         Args:
-            session_id: Thread ID to resume
+            session_id: A pool session ID (as ACP `session/load` passes it), whose thread
+                is stored as its `sdk_session_id`, or the ID of a thread listed from the
+                Codex server
 
         Returns:
             SessionData if thread was resumed successfully, None otherwise
@@ -743,11 +745,20 @@ class CodexAgent[TDeps = None, OutputDataT = str](BaseAgent[TDeps, OutputDataT])
         if not self._client:
             self.log.error("Cannot load session: Codex client not initialized")
             return None
-
+        storage = self.storage
+        pool_session = await storage.load_session(session_id) if storage is not None else None
+        # Codex knows only its own thread IDs, never the pool's
+        thread_id = (
+            pool_session.sdk_session_id
+            if pool_session is not None and pool_session.sdk_session_id
+            else session_id
+        )
         try:
-            session = await self._client.thread_resume(session_id)
+            session = await self._client.thread_resume(thread_id)
         except Exception:
-            self.log.exception("Failed to resume Codex thread", session_id=session_id)
+            self.log.exception(
+                "Failed to resume Codex thread", session_id=session_id, thread_id=thread_id
+            )
             return None
         # Update current thread ID
         thread = session.response.thread

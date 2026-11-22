@@ -171,7 +171,8 @@ class MessageNode[TDeps, TResult](ABC):
         """Get storage manager (per-agent override or from pool)."""
         if self._storage is not None:
             return self._storage
-        return self.agent_pool.storage if self.agent_pool else None
+        # `is not None`: a pool is a registry, falsy while it holds no nodes
+        return self.agent_pool.storage if self.agent_pool is not None else None
 
     @property
     def name(self) -> str:

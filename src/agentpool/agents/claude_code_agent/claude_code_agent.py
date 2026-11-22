@@ -91,6 +91,7 @@ if TYPE_CHECKING:
     from agentpool.messaging import MessageHistory
     from agentpool.models.claude_code_agents import ClaudeCodeAgentConfig, SettingSource, ToolName
     from agentpool.resource_providers import ResourceProvider
+    from agentpool.storage import StorageManager
     from agentpool.ui.base import InputProvider
     from agentpool_config.mcp_server import MCPServerConfig
 
@@ -830,8 +831,28 @@ class ClaudeCodeAgent[TDeps = None, TResult = str](BaseAgent[TDeps, TResult]):
         self._sdk_session_id = sdk_session_id
         if self._idle_compaction is not None:  # Another conversation: its cache is not ours
             self._idle_compaction.reset()
-        if self.storage and self.session_id:
-            await self.storage.update_sdk_session_id(self.session_id, sdk_session_id)
+        await self._record_sdk_session_id()
+
+    @property
+    def _session_store(self) -> StorageManager | None:
+        """Where this agent's sessions are recorded under their pool IDs.
+
+        That is the pool's storage (ACP and the other servers keep their sessions there),
+        not `self.storage`: that one is Claude's own history, keyed by the CLI's session
+        IDs, and cannot record a pool session.
+        """
+        # `is not None`: a pool is a registry, falsy while it holds no nodes
+        return self.agent_pool.storage if self.agent_pool is not None else self.storage
+
+    async def _record_sdk_session_id(self) -> None:
+        """Link the current pool session to the CLI session it runs on.
+
+        Loading the pool session later (ACP `session/load`) resumes the CLI session
+        through this link: `claude --resume` takes only the CLI's own ID.
+        """
+        store = self._session_store
+        if store is not None and self.session_id and self._sdk_session_id:
+            await store.update_sdk_session_id(self.session_id, self._sdk_session_id)
 
     def _register_cli_commands(self, cli_commands: Sequence[ClaudeCodeCommandInfo]) -> None:
         """Offer the CLI's commands, replacing the ones it offered before.
@@ -915,15 +936,18 @@ class ClaudeCodeAgent[TDeps = None, TResult = str](BaseAgent[TDeps, TResult]):
                 f"invalid message type {type(first_msg)}"
             )
             self._sdk_session_id = first_msg.session_id
-            # Persist SDK session ID to storage for cross-referencing
-            if self.storage and self.session_id:
-                await self.storage.update_sdk_session_id(self.session_id, self._sdk_session_id)
-                if store_history and self._titled_session != self.session_id:
-                    self._titled_session = self.session_id
-                    self._title_task = asyncio.create_task(
-                        self._title_session(client, self.session_id, prompts),
-                        name=f"claude-code-title-{self.session_id[:8]}",
-                    )
+            await self._record_sdk_session_id()
+            if (
+                self.storage
+                and self.session_id
+                and store_history
+                and self._titled_session != self.session_id
+            ):
+                self._titled_session = self.session_id
+                self._title_task = asyncio.create_task(
+                    self._title_session(client, self.session_id, prompts),
+                    name=f"claude-code-title-{self.session_id[:8]}",
+                )
             adapter = ClaudeCodeStreamedResponse(
                 provider_name="claude_code",
                 stream=stream,
@@ -1263,33 +1287,54 @@ class ClaudeCodeAgent[TDeps = None, TResult = str](BaseAgent[TDeps, TResult]):
             await self.reconnect(resume_session=False)
 
     async def load_session(self, session_id: str) -> SessionData | None:
-        """Load a session from Claude storage and resume it in the CLI (reconnects)."""
+        """Load a session and resume its CLI session (reconnects).
+
+        `session_id` is a pool session ID (as ACP `session/load` passes it), linked to
+        its CLI session by `_record_sdk_session_id`, or the ID of a session listed from
+        Claude's history, which is the CLI's own. History is read from Claude's storage
+        under the CLI ID.
+        """
         storage = self.storage
         if not storage:
             return None
+        store = self._session_store
+        pool_session = await store.load_session(session_id) if store is not None else None
+        # `claude --resume` takes only a CLI session ID (or title), never the pool's
+        cli_session_id = (
+            pool_session.sdk_session_id
+            if pool_session is not None and pool_session.sdk_session_id
+            else session_id
+        )
         try:
-            messages = await storage.get_session_messages(session_id=session_id)
+            messages = await storage.get_session_messages(session_id=cli_session_id)
         except Exception:
-            self.log.exception("Failed to load Claude session", session_id=session_id)
+            self.log.exception("Failed to load Claude session", session_id=cli_session_id)
             return None
         if not messages:
-            self.log.warning("No messages found in session", session_id=session_id)
+            self.log.warning(
+                "No messages found in session",
+                session_id=session_id,
+                sdk_session_id=cli_session_id,
+            )
             return None
         # Restore to conversation history
         self.conversation.chat_messages.clear()
         self.conversation.chat_messages.extend(messages)
         self.log.info("Session loaded", session_id=session_id, message_count=len(messages))
-        # Set the SDK session ID so reconnect can resume this session
-        self._sdk_session_id = session_id
-        # Reconnect to Claude SDK with the loaded session to properly resume
+        self._sdk_session_id = cli_session_id
         try:
             await self.reconnect(resume_session=True)
-            self.log.info("Reconnected with loaded session", session_id=session_id)
+            self.log.info(
+                "Reconnected with loaded session",
+                session_id=session_id,
+                sdk_session_id=cli_session_id,
+            )
         except Exception:
             error_msg = "Failed to reconnect with loaded session, continuing with local history"
             self.log.exception(error_msg, session_id=session_id)
-        # Build SessionData from storage metadata
-        if session_data := await storage.load_session(session_id):
+        if pool_session is not None:
+            return pool_session
+        if session_data := await storage.load_session(cli_session_id):
             return session_data
         # Fallback: build from messages
         last_active = messages[-1].timestamp or get_now()

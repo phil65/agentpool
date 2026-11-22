@@ -303,7 +303,7 @@ class Agent[TDeps = None, OutputDataT = str](BaseAgent[TDeps, OutputDataT]):
             all_prompts.extend(system_prompt)
         elif system_prompt:
             all_prompts.append(system_prompt)
-        prompt_manager = self.agent_pool.prompt_manager if self.agent_pool else None
+        prompt_manager = self.agent_pool.prompt_manager if self.agent_pool is not None else None
         self.sys_prompts = SystemPrompts(all_prompts, prompt_manager=prompt_manager)
         self._formatted_system_prompt: str | None = None  # Set in __aenter__
         self._hook_manager = NativeAgentHookManager(
