@@ -144,3 +144,44 @@ class TestACPEventConverter:
         # Should yield nothing
         assert len(cancellations) == 0
         assert len(converter._tool_states) == 0
+
+
+@pytest.mark.anyio
+async def test_empty_thinking_content_sends_nothing() -> None:
+    """Claude sends signature-only thinking deltas; they used to become newline chunks.
+
+    T3 Code showed them as reasoning items made of nothing but newlines.
+    """
+    from aclientp.schema import AgentThoughtChunk
+    from pydantic_ai import ThinkingPart, ThinkingPartDelta
+
+    converter = ACPEventConverter()
+    events = [
+        PartStartEvent(part=ThinkingPart(content=""), index=0),
+        PartDeltaEvent(delta=ThinkingPartDelta(content_delta=""), index=0),
+        PartDeltaEvent(delta=ThinkingPartDelta(signature_delta="sig"), index=0),
+        PartDeltaEvent(delta=ThinkingPartDelta(content_delta="Let me think"), index=0),
+    ]
+    updates = [u for event in events for u in await collect_updates(converter, event)]
+    thoughts = [u for u in updates if isinstance(u, AgentThoughtChunk)]
+    assert [t.content.text for t in thoughts] == ["Let me think"]  # type: ignore[union-attr]
+
+
+@pytest.mark.anyio
+async def test_progress_with_final_input_sends_it_as_raw_input() -> None:
+    """Streamed tool calls start with empty args; the final args come with a progress event.
+
+    Clients read the command from rawInput (T3 Code showed "$ Tool" without it).
+    """
+    from agentpool.agents.events import ToolCallProgressEvent
+
+    converter = ACPEventConverter()
+    start = ToolCallStartEvent(tool_call_id="t1", tool_name="Bash", title="Terminal", raw_input={})
+    final = ToolCallProgressEvent(
+        tool_call_id="t1", tool_name="Bash", title="`echo hi`", tool_input={"command": "echo hi"}
+    )
+    await collect_updates(converter, start)
+    [update] = await collect_updates(converter, final)
+    assert isinstance(update, ToolCallProgress)
+    assert update.raw_input == {"command": "echo hi"}
+    assert update.title == "`echo hi`"

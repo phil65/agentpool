@@ -268,7 +268,9 @@ class ACPEventConverter:
                 PartStartEvent(part=ThinkingPart(content=delta))
                 | PartDeltaEvent(delta=ThinkingPartDelta(content_delta=delta))
             ):
-                yield AgentThoughtChunk.text(delta or "\n", message_id=self._current_message_id)
+                # Signature-only deltas carry no text; nothing to show
+                if delta:
+                    yield AgentThoughtChunk.text(delta, message_id=self._current_message_id)
 
             case PartStartEvent(part=part):
                 logger.debug("Received unhandled PartStartEvent", part=part)
@@ -358,10 +360,15 @@ class ACPEventConverter:
                 progress=progress,
                 total=total,
                 message=message,
+                tool_input=tool_input,
                 field_meta=meta,
             ) if tool_call_id:
                 # Get or create state - handles race where tool emits before SDK event
                 state = self._get_or_create_tool_state(tool_call_id, "unknown", {})
+                # Streamed calls start with empty args; the final ones come with a progress
+                new_input = tool_input if tool_input not in (None, state.raw_input) else None
+                if new_input is not None:
+                    state.raw_input = new_input
                 # Emit start if this is the first event for this tool call
                 if not state.started:
                     state.started = True
@@ -422,6 +429,8 @@ class ACPEventConverter:
                     status="in_progress",
                     content=acp_content or None,
                     locations=locations or None,
+                    # Clients read e.g. the command from rawInput; sent when it changed
+                    raw_input=new_input,
                     field_meta=meta,
                 )
                 if acp_content:
