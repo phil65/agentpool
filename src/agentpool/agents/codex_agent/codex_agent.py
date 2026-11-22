@@ -194,7 +194,7 @@ class CodexAgent[TDeps = None, OutputDataT = str](BaseAgent[TDeps, OutputDataT])
         # Populated by capture_metadata during streaming, read after stream completes
         self._token_usage_data: TokenUsageBreakdown | None = None
         # Pass injection_manager for mid-run injection support
-        self._tool_bridge = ToolManagerBridge(node=self, injection_manager=self._injection_manager)
+        self._tool_bridge = ToolManagerBridge(node=self)
 
     @classmethod
     def from_config(
@@ -347,7 +347,7 @@ class CodexAgent[TDeps = None, OutputDataT = str](BaseAgent[TDeps, OutputDataT])
         from codexed.models.responses import FileChangeRequestApprovalResponse
 
         self.log.debug("Permission request")
-        ctx = self._tool_bridge._current_context
+        ctx = self._tool_bridge.context()
         if ctx is None:
             raise RuntimeError("Permission callback invoked outside of an active run")
         input_provider = ctx.get_input_provider()
@@ -376,7 +376,7 @@ class CodexAgent[TDeps = None, OutputDataT = str](BaseAgent[TDeps, OutputDataT])
         """Ask the user for what an MCP server of Codex requests."""
         from mcp.types import ErrorData
 
-        ctx = self._tool_bridge._current_context
+        ctx = self._tool_bridge.context()
         if ctx is None:
             raise RuntimeError("MCP elicitation callback invoked outside of an active run")
         provider = ctx.get_input_provider()
@@ -407,10 +407,10 @@ class CodexAgent[TDeps = None, OutputDataT = str](BaseAgent[TDeps, OutputDataT])
         )
         from mcp.types import ElicitRequestFormParams, ElicitResult, ErrorData
 
-        if self._tool_bridge._current_context is None:
+        if (run_context := self._tool_bridge.context()) is None:
             raise RuntimeError("User input callback invoked outside of an active run")
 
-        input_provider = self._tool_bridge._current_context.get_input_provider()
+        input_provider = run_context.get_input_provider()
         answers: dict[str, _Answer] = {}
         for question in params.questions:
             # Build a JSON schema property for this question

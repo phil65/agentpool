@@ -15,6 +15,8 @@ from agentpool.log import get_logger
 
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
+
     from exxec import ExecutionEnvironment
 
     from agentpool.agents.prompt_injection import PromptInjectionManager
@@ -35,7 +37,7 @@ class NativeAgentHookManager:
         hook_manager = NativeAgentHookManager(
             agent_name="my-agent",
             agent_hooks=hooks,
-            injection_manager=agent._injection_manager,
+            injections=lambda: agent._injection_manager,
         )
 
         # Injections are queued via agent.inject_prompt()
@@ -49,18 +51,19 @@ class NativeAgentHookManager:
         *,
         agent_name: str,
         agent_hooks: AgentHooks | None = None,
-        injection_manager: PromptInjectionManager | None = None,
+        injections: Callable[[], PromptInjectionManager] | None = None,
     ) -> None:
         """Initialize hook manager.
 
         Args:
             agent_name: Name of the agent (for logging)
             agent_hooks: Optional AgentHooks for pre/post hooks
-            injection_manager: Shared injection manager from BaseAgent
+            injections: The injection manager of the session acting, looked up at each
+                tool call (a turn of each session has its own)
         """
         self.agent_name = agent_name
         self.agent_hooks = agent_hooks
-        self._injection_manager = injection_manager
+        self._injections = injections
 
     def has_hooks(self) -> bool:
         """Check if any hooks are configured."""
@@ -204,8 +207,8 @@ class NativeAgentHookManager:
             result = HookResult(decision="allow")
 
         # Consume pending injection from shared manager
-        if self._injection_manager:
-            injection = await self._injection_manager.consume()
+        if self._injections is not None:
+            injection = await self._injections().consume()
             if injection:
                 logger.debug(
                     "Consuming injection after tool use",

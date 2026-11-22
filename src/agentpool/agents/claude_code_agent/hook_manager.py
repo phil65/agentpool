@@ -45,7 +45,7 @@ class ClaudeCodeHookManager:
         *,
         agent_name: str,
         agent_hooks: AgentHooks,
-        injection_manager: PromptInjectionManager | None = None,
+        injections: Callable[[], PromptInjectionManager] | None = None,
         set_mode: Callable[[str, str], Awaitable[None]] | None = None,
         env: ExecutionEnvironment | None = None,
     ) -> None:
@@ -54,13 +54,14 @@ class ClaudeCodeHookManager:
         Args:
             agent_name: Name of the agent (for logging/events)
             agent_hooks: Optional AgentHooks for pre/post tool hooks
-            injection_manager: Shared injection manager from BaseAgent
+            injections: The injection manager of the turn running, looked up at each
+                tool call (the SDK runs hooks outside the turn's context)
             set_mode: Callback to set agent mode (mode_id, category_id)
             env: Agent's execution environment, passed to command hooks
         """
         self.agent_name = agent_name
         self.agent_hooks = agent_hooks
-        self._injection_manager = injection_manager
+        self._injections = injections
         self._set_mode = set_mode
         self._env = env
 
@@ -107,7 +108,7 @@ class ClaudeCodeHookManager:
         result: SyncHookJSONOutput = {"continue_": True}
         # Consume pending injection from shared manager
         tool_name = input_data.get("tool_name", "unknown")
-        if self._injection_manager and (injection := await self._injection_manager.consume()):
+        if self._injections is not None and (injection := await self._injections().consume()):
             logger.debug("Injecting context after tool use", agent=self.agent_name, tool=tool_name)
             result["hookSpecificOutput"] = PostToolUseHookSpecificOutput(
                 hookEventName="PostToolUse",

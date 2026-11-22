@@ -319,7 +319,7 @@ class Agent[TDeps = None, OutputDataT = str](BaseAgent[TDeps, OutputDataT]):
         self._hook_manager = NativeAgentHookManager(
             agent_name=self.name,
             agent_hooks=hooks,
-            injection_manager=self._injection_manager,
+            injections=lambda: self._injection_manager,
         )
         self._default_usage_limits = usage_limits
         self._providers = list(providers) if providers else None  # model discovery

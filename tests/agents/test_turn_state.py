@@ -131,3 +131,44 @@ async def test_native_config_options_are_kept_per_session() -> None:
         assert agent.tool_confirmation_mode == "never"
         with agent.use_session(first):
             assert agent.tool_confirmation_mode == "always"
+
+
+async def test_steering_an_explicit_session_reaches_its_turn() -> None:
+    """A steer into a session's running turn is taken in after its next tool call.
+
+    The agent's hooks look the injections up for the session acting, not once at
+    construction (which kept the default session's).
+    """
+    from pydantic_ai import ToolReturnPart
+    from pydantic_ai.models.function import DeltaToolCall, DeltaToolCalls
+
+    seen: list[str] = []
+    session = Session.create("steered")
+    agent: Agent[None, str]
+
+    async def work() -> str:
+        """Do some work."""
+        await agent.steer("ALSO MENTION KIWI", session_id=session.session_id)
+        return "done"
+
+    async def stream(
+        messages: list[ModelMessage], info: AgentInfo
+    ) -> AsyncIterator[str | DeltaToolCalls]:
+        returns = [
+            part
+            for message in messages
+            if isinstance(message, ModelRequest)
+            for part in message.parts
+            if isinstance(part, ToolReturnPart)
+        ]
+        if not returns:
+            yield {0: DeltaToolCall(name="work", json_args="{}")}
+            return
+        # Taken in after the tool: in the request that returns its result
+        seen.extend(str(part.content) for part in messages[-1].parts)  # type: ignore[union-attr]
+        yield "ok"
+
+    agent = Agent(name="steered", model=FunctionModel(stream_function=stream), tools=[work])
+    async with agent:
+        await asyncio.wait_for(_final(agent, session, "go"), TIMEOUT)
+    assert any("ALSO MENTION KIWI" in content for content in seen), seen

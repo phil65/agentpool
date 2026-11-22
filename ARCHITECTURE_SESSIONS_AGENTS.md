@@ -213,15 +213,15 @@ need to stay distinct:
    per-session runtime mode, interaction mode and model; tested live (two sessions in parallel,
    and an ACP `session/load` in a fresh server continuing its thread). Next: Codex (threads over
    one app-server), ACP agents (sessions over one connection), then process-per-session ones
-   (Claude Code). **Blocker for Codex and Claude Code: the tool bridge.** Their agentpool
-   toolsets run through `ToolManagerBridge`, which holds one `_current_context` per agent
-   instance; an incoming MCP tool call carries nothing that says which session it belongs to,
-   so with concurrent turns a call of session A would run with session B's context (input
-   provider, deps). Codex's approval and question callbacks read that context too. Options:
-   a bridge URL (or header) per session, where the backend takes MCP servers per thread or
-   session; or session metadata on each tool call, where the backend sends it (check codexed
-   thread/turn `_meta`, and the Claude CLI's `--mcp-config` per process). Agents without
-   bridged toolsets (T3) don't have this problem. Not done: `AgentDefinition` (the definition
+   (Claude Code). **Tool bridge routes (2026-11-22):** the bridge (`ToolManagerBridge`) serves
+   every session of its agent; each session reaches it through its own route
+   (`url_for(session_id)`, the plain URL for the default session). A tool call runs with the
+   context of the turn on its route (`set_run_context(..., route=...)`: input provider, deps,
+   runtime, so its injections) and keeps its tool metadata there. What a backend needs for
+   concurrent sessions is one MCP connection per session pointed at its route: Codex takes MCP
+   servers per thread (and builds an `McpConnectionManager` per session); ACP takes them in
+   `session/new`; Claude Code needs a CLI process per session anyway. OpenCode V2 configures
+   MCP server-wide, so it stays serialized. Not done: `AgentDefinition` (the definition
    still lives on the instance).
 
 Steps 1–3 already unblock a clean OpenCode V2 server (session ↔ agent binding, child sessions,

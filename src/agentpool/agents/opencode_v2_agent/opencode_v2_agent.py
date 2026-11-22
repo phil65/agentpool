@@ -222,7 +222,7 @@ class OpenCodeV2Agent[TDeps = None](BaseAgent[TDeps, str]):
             BaseMCPServerConfig.from_string(s) if isinstance(s, str) else s
             for s in mcp_servers or []
         ]
-        self._tool_bridge = ToolManagerBridge(node=self, injection_manager=self._injection_manager)
+        self._tool_bridge = ToolManagerBridge(node=self)
         self._bridge_started = False
         self._registered_mcp_names: list[str] = []
 

@@ -86,6 +86,7 @@ if TYPE_CHECKING:
     from agentpool.agents.auth import AuthStatus
     from agentpool.agents.events import RichAgentStreamEvent
     from agentpool.agents.modes import ConfigOption
+    from agentpool.agents.runtime import SessionRuntime
     from agentpool.agents.usage_limits import UsageLimits
     from agentpool.common_types import AnyEventHandlerType, SimpleJsonType, StrPath
     from agentpool.delegation import AgentPool
@@ -341,13 +342,13 @@ class ClaudeCodeAgent[TDeps = None, TResult = str](BaseAgent[TDeps, TResult]):
         self._sdk_session_id = session_id
         self._rate_limit_notices = RateLimitNotices()  # Across turns: once per state
         # ToolBridge state for exposing toolsets via MCP
-        self._tool_bridge = ToolManagerBridge(node=self, injection_manager=self._injection_manager)
+        self._tool_bridge = ToolManagerBridge(node=self)
         self._mcp_servers: dict[str, McpServerConfig] = {}  # Claude SDK MCP server configs
         # Claude storage provider is available via self.storage
         self._hook_manager = ClaudeCodeHookManager(
             agent_name=self.name,
             agent_hooks=self.hooks,
-            injection_manager=self._injection_manager,
+            injections=lambda: self._turn_runtime().injections,
             set_mode=self._set_mode,
             env=self.env,
         )
@@ -548,10 +549,10 @@ class ClaudeCodeAgent[TDeps = None, TResult = str](BaseAgent[TDeps, TResult]):
         tc_id = context.tool_use_id
         display_name = _strip_mcp_prefix(tool_name)
         self.log.debug("Permission request", tool_name=display_name, tool_call_id=tc_id)
-        if self._tool_bridge._current_context is None:
+        if (run_context := self._tool_bridge.context()) is None:
             raise RuntimeError("Permission callback invoked outside of an active run")
         ctx = replace(
-            self._tool_bridge._current_context,
+            run_context,
             tool_call_id=tc_id,
             tool_input=input_dict,
             tool_name=display_name,
@@ -602,7 +603,7 @@ class ClaudeCodeAgent[TDeps = None, TResult = str](BaseAgent[TDeps, TResult]):
         """Handle AskUserQuestion elicitation requests."""
         from agentpool.agents.claude_code_agent.elicitation import handle_clarifying_questions
 
-        ctx = self._tool_bridge._current_context
+        ctx = self._tool_bridge.context()
         if ctx is None:
             raise RuntimeError("User question callback invoked outside of an active run")
         with self._awaiting_user():
@@ -610,13 +611,24 @@ class ClaudeCodeAgent[TDeps = None, TResult = str](BaseAgent[TDeps, TResult]):
                 agent_ctx=ctx, input_data=input_data, context=context
             )
 
+    def _turn_runtime(self) -> SessionRuntime[Any, Any]:
+        """Runtime of the turn running on the CLI.
+
+        The SDK runs callbacks (hooks, permissions) in its own task, outside the turn's
+        context: its runtime comes with the turn's context on the bridge.
+        """
+        run_context = self._tool_bridge.context()
+        if run_context is not None and run_context.runtime is not None:
+            return run_context.runtime
+        return self._runtime
+
     async def _on_elicitation(self, request: SDKControlElicitationRequest) -> ElicitResult:
         """Handle MCP elicitation requests."""
         from mcp.types import ElicitResult, ErrorData
 
-        if self._tool_bridge._current_context is None:
+        if (run_context := self._tool_bridge.context()) is None:
             raise RuntimeError("Elicitation callback invoked outside of an active run")
-        input_provider = self._tool_bridge._current_context.get_input_provider()
+        input_provider = run_context.get_input_provider()
         params = request.to_mcp()
         with self._awaiting_user():
             response = await input_provider.get_elicitation(params=params)

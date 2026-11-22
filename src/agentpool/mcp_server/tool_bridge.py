@@ -7,6 +7,11 @@ AgentManagementTools, etc.
 
 The bridge runs in-process on the same event loop, providing direct access to
 the pool and avoiding IPC serialization overhead.
+
+One bridge serves every session of its agent. Each session reaches it through its own
+route (:meth:`ToolManagerBridge.url_for`): a tool call runs with the context of the turn
+running on its route, so turns of different sessions on one agent don't share their
+input provider, deps or injections.
 """
 
 from __future__ import annotations
@@ -17,6 +22,7 @@ from dataclasses import dataclass, field, replace
 import inspect
 import time
 from typing import TYPE_CHECKING, Any, Self, cast, get_args, get_origin
+from urllib.parse import quote
 from uuid import uuid4
 
 import anyio
@@ -38,12 +44,45 @@ if TYPE_CHECKING:
 
     from agentpool.agents import AgentContext
     from agentpool.agents.base_agent import BaseAgent
-    from agentpool.agents.prompt_injection import PromptInjectionManager
     from agentpool.resource_providers import ResourceChangeEvent
     from agentpool.tools.base import Tool
 
 
 logger = get_logger(__name__)
+
+DEFAULT_ROUTE = ""
+"""The route of the agent's default session: the bridge's plain URL."""
+
+ROUTE_PARAM = "route"
+"""Query parameter of the bridge URL naming the route (see ``url_for``)."""
+
+
+@dataclass
+class BridgeRoute:
+    """The tool calls of one session: the turn running on it, and what its tools return."""
+
+    key: str
+    context: AgentContext[Any] | None = None
+    """Context of the running turn (set by ``set_run_context``), None between turns."""
+    prompt: str | Sequence[UserContent] | None = None
+    """Prompt of the running turn (needed for a stub RunContext)."""
+    tool_metadata: dict[str, dict[str, Any]] = field(default_factory=dict)
+    """Metadata of tool results, by tool_call_id.
+
+    Agents read it to enrich ToolCallCompleteEvent with metadata the backend strips
+    (e.g. MCP _meta). Cleared at the start of each turn on the route.
+    """
+
+
+def _request_route() -> str:
+    """The route the current MCP request came in on (the default outside HTTP)."""
+    from fastmcp.server.dependencies import get_http_request
+
+    try:
+        request = get_http_request()
+    except RuntimeError:  # No HTTP request in this context
+        return DEFAULT_ROUTE
+    return request.query_params.get(ROUTE_PARAM, DEFAULT_ROUTE)
 
 
 def _is_annotation_of_type(annotation: Any, type_name: str) -> bool:
@@ -187,13 +226,8 @@ class ToolManagerBridge:
     server_name: str | None = None
     """Name for the MCP server."""
 
-    _current_context: AgentContext[Any] | None = field(default=None, init=False, repr=False)
-    """Current run-scoped context (set by set_run_context, read by WrappedTool.run)."""
-
-    _current_prompt: str | Sequence[UserContent] | None = field(
-        default=None, init=False, repr=False
-    )
-    """Current prompt for tool invocations (needed for stub RunContext)."""
+    _routes: dict[str, BridgeRoute] = field(default_factory=dict, init=False, repr=False)
+    """Routes by key (one per session reaching the bridge; see ``url_for``)."""
 
     _mcp: FastMCP | None = field(default=None, init=False, repr=False)
     """FastMCP server instance."""
@@ -207,22 +241,26 @@ class ToolManagerBridge:
     _actual_port: int | None = field(default=None, init=False, repr=False)
     """Actual port the server is bound to."""
 
-    injection_manager: PromptInjectionManager | None = field(default=None, repr=False)
-    """Optional injection manager for mid-run prompt injection.
+    def route(self, key: str = DEFAULT_ROUTE) -> BridgeRoute:
+        """The route ``key`` (created on first use; kept, so its tool metadata is too)."""
+        if (route := self._routes.get(key)) is None:
+            route = self._routes[key] = BridgeRoute(key)
+        return route
 
-    When set, the bridge will consume pending injections after each tool call
-    and append them to the tool result. This enables prompt injection for
-    ACP agents (ACPAgent, ClaudeCodeAgent, CodexAgent) that use the bridge.
-    """
+    def drop_route(self, key: str) -> None:
+        """Forget route ``key`` (its session ended)."""
+        if key != DEFAULT_ROUTE:
+            self._routes.pop(key, None)
 
-    tool_metadata: dict[str, dict[str, Any]] = field(default_factory=dict, repr=False)
-    """Metadata from tool results, keyed by tool_call_id.
+    def context(self, key: str = DEFAULT_ROUTE) -> AgentContext[Any] | None:
+        """Context of the turn running on route ``key``, if one is."""
+        route = self._routes.get(key)
+        return route.context if route is not None else None
 
-    Populated by WrappedTool.run() when a tool returns metadata.
-    Agents read this to enrich ToolCallCompleteEvent with metadata that
-    the SDK would otherwise strip (e.g. MCP _meta fields).
-    Cleared at the start of each run via set_run_context().
-    """
+    @property
+    def tool_metadata(self) -> dict[str, dict[str, Any]]:
+        """Tool result metadata of the default route (see :attr:`BridgeRoute.tool_metadata`)."""
+        return self.route().tool_metadata
 
     async def __aenter__(self) -> Self:
         """Start the MCP server."""
@@ -332,8 +370,14 @@ class ToolManagerBridge:
 
     @property
     def url(self) -> str:
-        """Get the server URL."""
+        """URL of the default route (the agent's default session)."""
         return f"http://127.0.0.1:{self.port}/mcp"
+
+    def url_for(self, key: str = DEFAULT_ROUTE) -> str:
+        """URL of route ``key``: give each session's backend connection its own."""
+        if key == DEFAULT_ROUTE:
+            return self.url
+        return f"{self.url}?{ROUTE_PARAM}={quote(key, safe='')}"
 
     @property
     def resolved_server_name(self) -> str:
@@ -409,20 +453,24 @@ class ToolManagerBridge:
                     mcp_context = None
                 # Try to get Claude's original tool_call_id from request metadata
                 tc_id = _extract_tool_call_id(mcp_context)
-                # Derive per-call context from the run-scoped base context
-                base = self._bridge._current_context or self._bridge.node.get_context()
+                # Derive per-call context from the context of the turn on this route
+                route = self._bridge.route(_request_route())
+                base = route.context or self._bridge.node.get_context()
                 args_ = args.copy()
                 ctx = replace(base, tool_name=self._tool.name, tool_call_id=tc_id, tool_input=args_)
                 # Invoke with context - copy args since invoke_tool_with_context
                 # modifies kwargs in-place to inject context parameters
-                result = await self._bridge.invoke_tool_with_context(self._tool, ctx, args)
+                result = await self._bridge.invoke_tool_with_context(
+                    self._tool, ctx, args, prompt=route.prompt
+                )
                 # Store metadata for agent to correlate with ToolCallCompleteEvent
                 # (works around Claude SDK stripping MCP _meta field)
                 if isinstance(result, AgentPoolToolResult) and result.metadata:
                     logger.info("Storing tool result metadata", tool_call_id=tc_id)
-                    self._bridge.tool_metadata[tc_id] = result.metadata
-                # Consume pending injection and append to result
-                if (m := self._bridge.injection_manager) and (injection := await m.consume()):
+                    route.tool_metadata[tc_id] = result.metadata
+                # Take in what was injected into this session's turn meanwhile
+                runtime = ctx.runtime or self._bridge.node.runtime()
+                if injection := await runtime.injections.consume():
                     result = _append_injection_to_result(result, injection)
                 # Convert AgentPool ToolResult to FastMCP ToolResult
                 if isinstance(result, AgentPoolToolResult):
@@ -442,30 +490,36 @@ class ToolManagerBridge:
         self,
         context: AgentContext[Any],
         prompt: str | Sequence[UserContent] | None = None,
-    ) -> AsyncGenerator[Self]:
-        """Context manager for setting run-scoped state.
+        *,
+        route: str = DEFAULT_ROUTE,
+    ) -> AsyncGenerator[BridgeRoute]:
+        """Make ``context`` the context of tool calls on ``route`` while a turn runs.
 
-        Stores the AgentContext for the duration of the run so that
-        WrappedTool.run() can derive per-call contexts via replace().
+        Tool calls coming in on the route derive their context from it (``replace``).
 
         Args:
-            context: Base AgentContext for this run (deps, input_provider, pool, etc.)
-            prompt: Current prompt being processed (needed for stub RunContext)
+            context: Base AgentContext of the turn (deps, input_provider, runtime, ...)
+            prompt: The turn's prompt (needed for a stub RunContext)
+            route: Route of the turn's session (see :meth:`url_for`)
         """
-        self._current_context = context
-        self._current_prompt = prompt
-        self.tool_metadata.clear()
+        bridge_route = self.route(route)
+        bridge_route.context = context
+        bridge_route.prompt = prompt
+        bridge_route.tool_metadata.clear()
         try:
-            yield self
+            yield bridge_route
         finally:
-            self._current_context = None
-            self._current_prompt = None
+            if bridge_route.context is context:  # Not taken over by a later turn
+                bridge_route.context = None
+                bridge_route.prompt = None
 
     async def invoke_tool_with_context(
         self,
         tool: Tool,
         ctx: AgentContext[Any],
         kwargs: dict[str, Any],
+        *,
+        prompt: str | Sequence[UserContent] | None = None,
     ) -> Any:
         """Invoke a tool with proper context injection and hooks.
 
@@ -496,7 +550,7 @@ class ToolManagerBridge:
         # Inject RunContext parameters (as stub since we're outside pydantic-ai)
         run_context_param_names = _get_context_param_names(fn, "RunContext")
         if run_context_param_names:
-            stub_run_ctx = _create_stub_run_context(ctx, prompt=self._current_prompt)
+            stub_run_ctx = _create_stub_run_context(ctx, prompt=prompt)
             kwargs |= {name: stub_run_ctx for name in run_context_param_names if name not in kwargs}
 
         start_time = time.perf_counter()
