@@ -2,8 +2,7 @@
 
 from __future__ import annotations
 
-import asyncio
-from asyncio import Event
+from dataclasses import replace
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, assert_never
 
@@ -23,6 +22,7 @@ from pydantic_ai import PartDeltaEvent, TextPartDelta
 
 from agentpool.agents.exceptions import OperationNotAllowedError, ResourceNotFoundError
 from agentpool.log import get_logger
+from agentpool.mcp_server.tool_bridge import DEFAULT_ROUTE
 
 
 if TYPE_CHECKING:
@@ -49,19 +49,8 @@ if TYPE_CHECKING:
     from slashed import Command
 
     from agentpool.agents.acp_agent import ACPAgent
-    from agentpool.agents.acp_agent.session_state import ACPSessionState
-    from agentpool.ui.base import InputProvider
 
 logger = get_logger(__name__)
-
-
-class TimeoutableEvent(Event):
-    """Event that can be waited on with a timeout."""
-
-    async def wait_with_timeout(self, timeout: float | None = None) -> bool:
-        if timeout:
-            return await asyncio.wait_for(super().wait(), timeout)
-        return await super().wait()
 
 
 class ACPClientHandler(Client):
@@ -73,8 +62,9 @@ class ACPClientHandler(Client):
     - Terminal operations (create, output, kill, release) via ProcessManager
     - Permission request handling via InputProvider
 
-    The handler accumulates session updates in an ACPSessionState instance,
-    allowing the ACPAgent to build the final response from streamed chunks.
+    The handler routes each ACP session's updates and requests to its state
+    (``ACPAgent._states``): the agent runs a session on the ACP server per pool session,
+    all over this one connection.
 
     Uses ExecutionEnvironment for all file and process operations, enabling
     swappable backends (local, Docker, E2B, SSH, etc.).
@@ -83,16 +73,8 @@ class ACPClientHandler(Client):
     to ensure the env stays in sync when reassigned externally.
     """
 
-    def __init__(
-        self,
-        agent: ACPAgent[Any],
-        state: ACPSessionState,
-        input_provider: InputProvider | None = None,
-    ) -> None:
+    def __init__(self, agent: ACPAgent[Any]) -> None:
         self._agent = agent
-        self.state = state
-        self._input_provider = input_provider
-        self._update_event = TimeoutableEvent()
         # Map ACP terminal IDs to process manager IDs (for local execution only)
         self._terminal_to_process: dict[str, str] = {}
         # Copy auto_approve from agent (can be updated via set_auto_approve)
@@ -133,32 +115,26 @@ class ACPClientHandler(Client):
             CurrentModeUpdate,
         )
 
-        from agentpool.agents.modes import ModeInfo
-
+        if (state := self._agent._states.get(params.session_id)) is None:
+            logger.debug("Update of an ACP session not ours", session_id=params.session_id)
+            return
         # Handle state updates - these modify session state, not stream data
         match params.update:
             case CurrentModeUpdate(current_mode_id=mode_id):
-                if self.state.modes:
-                    self.state.modes.current_mode_id = mode_id
-                    # Find ModeInfo and emit signal
-                    if acp_mode := next(
-                        (m for m in self.state.modes.available_modes if m.id == mode_id), None
-                    ):
-                        mode_info = ModeInfo(
-                            value=acp_mode.id,
-                            name=acp_mode.name,
-                            description=acp_mode.description or "",
-                            category_id="mode",  # Old modes API is for operational modes
+                if state.modes:
+                    state.modes.current_mode_id = mode_id
+                    if any(m.id == mode_id for m in state.modes.available_modes):
+                        await self._agent.update_state(
+                            "mode", mode_id, session_id=state.pool_session_id
                         )
-                        await self._agent.state_updated.emit(mode_info)
-                self.state.current_mode_id = mode_id
+                state.current_mode_id = mode_id
                 logger.debug("Mode updated", mode_id=mode_id)
-                self._update_event.set()
+                state.update_event.set()
             case ConfigOptionUpdate(config_options=new_options):
                 # Detect changes by comparing with current state
-                old_by_id = {o.id: o.current_value for o in self.state.config_options}
+                old_by_id = {o.id: o.current_value for o in state.config_options}
                 # Replace full config options list
-                self.state.config_options = list(new_options)
+                state.config_options = list(new_options)
                 # Emit change signals for each option whose value changed
                 for opt in new_options:
                     old_val = old_by_id.get(opt.id)
@@ -166,10 +142,11 @@ class ACPClientHandler(Client):
                         await self._agent.update_state(
                             config_id=str(opt.id),
                             value_id=str(opt.current_value),
+                            session_id=state.pool_session_id,
                         )
-                self._update_event.set()
+                state.update_event.set()
             case AvailableCommandsUpdate() as update:
-                self.state.available_commands = update
+                state.available_commands = update
                 # Populate command store with remote commands
                 self._populate_command_store(update.available_commands)
                 # Emit to parent session - remote commands will be merged with local ones.
@@ -177,7 +154,7 @@ class ACPClientHandler(Client):
                 # LOCAL commands; remote commands pass through to the agent prompt.
                 await self._agent.state_updated.emit(update)
                 logger.debug("Available commands updated", count=len(update.available_commands))
-                self._update_event.set()
+                state.update_event.set()
             case _:
                 # TODO: AgentPlanUpdate handling is complex and needs design work.
                 # Options:
@@ -186,8 +163,8 @@ class ACPClientHandler(Client):
                 # 3. Switch to agent-owned todos instead of pool-owned
                 # For now, AgentPlanUpdate falls through to stream data.
 
-                self.state.add_update(params.update)
-                self._update_event.set()
+                state.add_update(params.update)
+                state.update_event.set()
 
     async def request_permission(  # noqa: PLR0911
         self, params: RequestPermissionRequest
@@ -202,12 +179,13 @@ class ACPClientHandler(Client):
             option_id = params.options[0].option_id
             logger.debug("Auto-granting permission (auto_approve=True)", tool_name=name)
             return RequestPermissionResponse.allowed(option_id)
-        # Try callback second (forwards to parent session for nested ACP agents)
-        if self._agent.acp_permission_callback:
-            # return RequestPermissionResponse.allowed(option_id=params.options[0].option_id) # "acceptEdits"  # noqa: E501
+        state = self._agent._states.get(params.session_id)
+        pool_session_id = state.pool_session_id if state is not None else None
+        # Try callback second (forwards to the parent session for nested ACP agents)
+        if callback := self._agent.permission_callback(pool_session_id):
             try:
                 logger.debug("Forwarding permission via callback", tool_name=name)
-                response = await self._agent.acp_permission_callback(params)
+                response = await callback(params)
                 logger.debug(
                     "Permission response received", tool_name=name, outcome=response.outcome.outcome
                 )
@@ -216,15 +194,15 @@ class ACPClientHandler(Client):
             else:  # Fall through to old logic
                 return response
 
-        if self._input_provider:
+        # The turn of this session: its context and input provider
+        route = pool_session_id if pool_session_id is not None else DEFAULT_ROUTE
+        base = self._agent._tool_bridge.context(route) or self._agent.get_context()
+        input_provider = (state.input_provider if state else None) or base.input_provider
+        if input_provider:
             args = tc.raw_input if isinstance(tc.raw_input, dict) else {}
-            ctx = self._agent.get_context(
-                tool_call_id=tc.tool_call_id,
-                tool_name=name,
-                tool_input=args,
-            )
+            ctx = replace(base, tool_call_id=tc.tool_call_id, tool_name=name, tool_input=args)
             try:
-                result = await self._input_provider.get_tool_confirmation(
+                result = await input_provider.get_tool_confirmation(
                     ctx,
                     tool_description=name,
                 )
@@ -436,7 +414,11 @@ class ACPClientHandler(Client):
                 kwargs_str = " ".join(f"{k}={v}" for k, v in kwargs.items())
                 args_str = f"{args_str} {kwargs_str}".strip()
             # Execute via agent run_stream - the slash command goes as a prompt
-            async for event in self._agent.run_stream(f"/{cmd.name} {args_str}".strip()):
+            prompt = f"/{cmd.name} {args_str}".strip()
+            # In the session the command was run for (see BaseAgent.use_session)
+            async for event in self._agent.run_stream(
+                prompt, session=self._agent._explicit_session
+            ):
                 match event:
                     case PartDeltaEvent(delta=TextPartDelta(content_delta=delta)):
                         await ctx.print(delta)

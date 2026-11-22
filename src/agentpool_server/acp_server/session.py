@@ -26,6 +26,7 @@ from slashed import CommandStore
 
 from agentpool import Agent, AgentPool
 from agentpool.agents.acp_agent import ACPAgent
+from agentpool.agents.modes import ConfigOptionChanged
 from agentpool.agents.staged_content import StagedContent
 from agentpool.log import get_logger
 from agentpool_commands.base import NodeCommand
@@ -283,7 +284,7 @@ class ACPSession:
                     else:
                         return response
 
-                agent.acp_permission_callback = permission_callback
+                agent.set_permission_callback(permission_callback, session_id=self.session_id)
 
             # Subscribe to state change signal for all agents
             agent.state_updated.connect(self._on_state_updated)
@@ -344,7 +345,15 @@ class ACPSession:
             self.log.exception("Failed to forward background event")
 
     async def _on_state_updated(self, state: AgentStateChange) -> None:
-        """Forward an agent's changed mode, model, config option or commands."""
+        """Forward an agent's changed mode, model, config option or commands.
+
+        A config option of another session (on an agent shared by sessions) is not ours.
+        """
+        if isinstance(state, ConfigOptionChanged) and state.session_id not in (
+            None,
+            self.session_id,
+        ):
+            return
         await self.output.state_changed(state)
 
     async def run_command(
@@ -728,6 +737,10 @@ class ACPSession:
             for pool_agent in self.agent_pool.all_agents.values():
                 with contextlib.suppress(ValueError):  # Agents added after this session
                     pool_agent.background_event.disconnect(self._on_background_event)
+                with contextlib.suppress(ValueError):
+                    pool_agent.state_updated.disconnect(self._on_state_updated)
+                if isinstance(pool_agent, ACPAgent):
+                    pool_agent.set_permission_callback(None, session_id=self.session_id)
             self._watch_agent_commands(self.agent, watch=False)
             if self.agent.agent_pool is not None:
                 self.agent.agent_pool.sessions.remove(self.session_id)

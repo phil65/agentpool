@@ -14,8 +14,7 @@ from agentpool.agents.acp_agent.acp_agent import ACPAgent
 def _agent_with_prompt(prompt_task: asyncio.Task[object], cancel: AsyncMock) -> ACPAgent:
     agent = ACPAgent(command="true")
     agent._api = AsyncMock(cancel=cancel)
-    agent._sdk_session_id = "remote"
-    agent._prompt_task = prompt_task
+    agent._open_state("remote").prompt_task = prompt_task
     return agent
 
 

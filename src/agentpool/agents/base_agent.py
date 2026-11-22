@@ -560,12 +560,23 @@ class BaseAgent[TDeps = None, TResult = str](MessageNode[TDeps, TResult]):
 
         return TeamRun([self, other])
 
-    async def update_state(self, config_id: str, value_id: str | bool) -> None:
-        """Announce that config option ``config_id`` is now ``value_id`` (``state_updated``)."""
+    async def update_state(
+        self, config_id: str, value_id: str | bool, *, session_id: str | None = None
+    ) -> None:
+        """Announce that config option ``config_id`` is now ``value_id`` (``state_updated``).
+
+        Args:
+            config_id: The option that changed
+            value_id: Its new value
+            session_id: The session whose option it is; by default the session acting
+                (None outside one: the agent's own)
+        """
         from agentpool.agents.modes import ConfigOptionChanged
 
+        if session_id is None and (session := self._explicit_session) is not None:
+            session_id = session.session_id
         self.log.info("Config option changed", config_id=config_id, mode=value_id)
-        change = ConfigOptionChanged(config_id=config_id, value_id=value_id)
+        change = ConfigOptionChanged(config_id=config_id, value_id=value_id, session_id=session_id)
         await self.state_updated.emit(change)
 
     @property

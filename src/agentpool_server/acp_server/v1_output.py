@@ -70,8 +70,6 @@ class V1SessionOutput:
         )
         from tokonomics.model_discovery.model_info import ModelInfo
 
-        from agentpool_server.acp_server.acp_agent import get_session_config_options
-
         session = self._session
         update: CurrentModeUpdate | ConfigOptionUpdate
         match state:
@@ -81,7 +79,7 @@ class V1SessionOutput:
                 session.log.debug("Forwarding mode change to client", mode_id=mode_id)
             case ModelInfo(id=model_id):
                 # Model changes go through ConfigOptionUpdate (model category)
-                config_options = await get_session_config_options(session.agent)
+                config_options = await session.config_options()
                 match next((i for i in config_options if i.id == "model"), None):
                     case SelectSessionConfigOption() as model_opt:
                         model_opt.current_value = model_id
@@ -96,8 +94,8 @@ class V1SessionOutput:
                 session.log.debug("Merged and sent commands update to client")
                 return
             case ConfigOptionChanged(config_id=config_id, value_id=value_id):
-                # Get full config_options from agent (required by ACP protocol)
-                config_options = await get_session_config_options(session.agent)
+                # The full config options as this session sees them (required by ACP)
+                config_options = await session.config_options()
                 # Update the changed option's current_value
                 match next((i for i in config_options if i.id == config_id), None), value_id:
                     case SelectSessionConfigOption() as select_opt, str() as value:
@@ -109,8 +107,8 @@ class V1SessionOutput:
                 # Convert our core type to ACP type with full config_options
                 update = ConfigOptionUpdate(config_options=config_options)
                 session.log.debug("Config option change", config_id=config_id, value_id=value_id)
-                # For permissions, also send legacy CurrentModeUpdate (still needed)
-                if config_id == "permissions":
+                # For the mode (and permissions), also send legacy CurrentModeUpdate
+                if config_id in ("mode", "permissions"):
                     assert isinstance(value_id, str)
                     await session.notifications.update_session_mode(value_id)
                     session.log.debug("Also sent legacy mode update", mode_id=value_id)

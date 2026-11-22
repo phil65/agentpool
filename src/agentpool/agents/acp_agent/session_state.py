@@ -2,9 +2,10 @@
 
 from __future__ import annotations
 
+import asyncio
 from collections import deque
 from dataclasses import dataclass, field as dataclass_field
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from agentpool.log import get_logger
 
@@ -17,9 +18,20 @@ if TYPE_CHECKING:
         SessionUpdate,
     )
 
+    from agentpool.ui.base import InputProvider
+
 logger = get_logger(__name__)
 
 PROTOCOL_VERSION = 1
+
+
+class TimeoutableEvent(asyncio.Event):
+    """Event that can be waited on with a timeout."""
+
+    async def wait_with_timeout(self, timeout: float | None = None) -> bool:
+        if timeout:
+            return await asyncio.wait_for(super().wait(), timeout)
+        return await super().wait()
 
 
 @dataclass
@@ -32,6 +44,18 @@ class ACPSessionState:
 
     session_id: str
     """The session ID from the ACP server."""
+
+    pool_session_id: str | None = None
+    """The pool session this ACP session belongs to; None for the agent's default one."""
+
+    update_event: TimeoutableEvent = dataclass_field(default_factory=TimeoutableEvent)
+    """Set when an update of this session arrives (the turn's stream waits on it)."""
+
+    input_provider: InputProvider | None = None
+    """Input provider of the turn running on this session (permission requests)."""
+
+    prompt_task: asyncio.Task[Any] | None = None
+    """The ``session/prompt`` request of the turn running on this session."""
 
     updates: deque[SessionUpdate] = dataclass_field(default_factory=deque)
     """Raw ACP session updates - single source of truth for stream data."""

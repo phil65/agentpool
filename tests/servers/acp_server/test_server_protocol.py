@@ -457,3 +457,25 @@ async def test_config_options_of_a_native_agent_are_per_acp_session(
     agent = server.default_agent
     assert isinstance(agent, Agent)
     assert agent.tool_confirmation_mode == "per_tool"  # The shared agent's own value
+
+
+async def test_a_sessions_config_change_is_reported_to_its_own_client_only(
+    server: AgentPoolACPAgent,
+) -> None:
+    """The change of one session's option is that session's: others don't hear of it."""
+    from aclientp.schema import ConfigOptionUpdate, SetSessionConfigOptionRequest
+
+    first, second = await _new_session(server), await _new_session(server)
+    server.client.session_update.reset_mock()  # type: ignore[attr-defined]
+    request = SetSessionConfigOptionRequest(session_id=first, config_id="mode", value="always")
+    await server.set_session_config_option(request)
+
+    calls = server.client.session_update.call_args_list  # type: ignore[attr-defined]
+    updates = [
+        call.args[0] for call in calls if isinstance(call.args[0].update, ConfigOptionUpdate)
+    ]
+    assert {n.session_id for n in updates} == {first}
+    [update] = updates
+    mode = next(o for o in update.update.config_options if o.id == "mode")
+    assert mode.current_value == "always"  # As the session sees it, not the agent's own
+    assert second not in {n.session_id for n in updates}

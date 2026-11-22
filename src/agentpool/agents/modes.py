@@ -62,6 +62,13 @@ class ConfigOptionChanged:
     value_id: str | bool
     """New value ID for this config option."""
 
+    session_id: str | None = None
+    """The session whose option changed; None for the agent's own (every session's).
+
+    Agents that run sessions concurrently keep options per session: a change of one
+    session's is for that session only.
+    """
+
 
 @dataclass
 class ModeCategory:

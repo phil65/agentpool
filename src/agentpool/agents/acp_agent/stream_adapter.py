@@ -21,8 +21,7 @@ if TYPE_CHECKING:
 
     from aclientp.schema import SessionUpdate
 
-    from agentpool.agents.acp_agent.client_handler import TimeoutableEvent
-    from agentpool.agents.acp_agent.session_state import ACPSessionState
+    from agentpool.agents.acp_agent.session_state import ACPSessionState, TimeoutableEvent
     from agentpool.agents.events import RichAgentStreamEvent
 
 

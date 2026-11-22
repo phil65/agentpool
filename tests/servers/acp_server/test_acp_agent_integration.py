@@ -213,8 +213,6 @@ async def test_acp_agent_with_input_provider(acp_agent_config: ACPAgentConfig):
         # Test with input_provider in constructor
         async with ACPAgent.from_config(acp_agent_config, input_provider=input_provider) as agent:
             assert agent._input_provider is input_provider
-            assert agent._client_handler is not None
-            assert agent._client_handler._input_provider is input_provider
 
             # Test that input_provider can be overridden per-run
             # Note: This is scoped to the run, doesn't permanently mutate agent
@@ -223,8 +221,9 @@ async def test_acp_agent_with_input_provider(acp_agent_config: ACPAgentConfig):
                 await agent.run("Test", input_provider=new_provider)
             # Agent keeps its original input_provider
             assert agent._input_provider is input_provider
-            # But client_handler is updated for the run (implementation detail)
-            assert agent._client_handler._input_provider is new_provider
+            # But the session's ACP session uses it for the run's permission requests
+            assert agent._state is not None
+            assert agent._state.input_provider is new_provider
 
     except TimeoutError:
         pytest.skip("ACP server took too long to respond")
@@ -248,9 +247,9 @@ async def test_acp_agent_input_provider_in_run_stream(acp_agent_config: ACPAgent
 
             # Verify agent keeps original provider (input_provider is scoped to the run)
             assert agent._input_provider is original_provider
-            # Client handler may be updated during run (implementation detail)
-            assert agent._client_handler is not None
-            assert agent._client_handler._input_provider is input_provider
+            # The session's ACP session uses it for the run's permission requests
+            assert agent._state is not None
+            assert agent._state.input_provider is input_provider
 
     except TimeoutError:
         pytest.skip("ACP server took too long to respond")
