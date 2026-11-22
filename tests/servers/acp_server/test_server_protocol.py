@@ -26,7 +26,7 @@ from aclientp.schema import (
     UsageUpdate,
     UserMessageChunk,
 )
-from pydantic_ai import ModelRequest, ModelResponse, RequestUsage, RunUsage
+from pydantic_ai import ModelRequest, ModelResponse, RequestUsage, RunUsage, UsageLimitExceeded
 from pydantic_ai.messages import TextPart, UserPromptPart
 from pydantic_ai.models.function import AgentInfo, FunctionModel
 import pytest
@@ -248,6 +248,48 @@ async def test_agent_error_is_reported_within_the_turn(
     assert response.stop_reason == "end_turn"
     # Already sent when the response is returned, not scheduled for later
     assert any("model exploded" in text for text in _texts(server, AgentMessageChunk))
+
+
+async def test_usage_limit_ends_the_turn_with_its_stop_reason(
+    server: AgentPoolACPAgent, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    session_id = await _new_session(server)
+    session = server.session_manager.get_session(session_id)
+    assert session is not None
+
+    async def run_stream(*args: Any, **kwargs: Any) -> AsyncIterator[Any]:
+        raise UsageLimitExceeded("The next request would exceed the request_limit of 3")
+        yield
+
+    monkeypatch.setattr(session.agent, "run_stream", run_stream)
+    response = await server.prompt(_prompt(session_id))
+    assert response.stop_reason == "max_turn_requests"
+
+
+async def test_empty_prompt_is_refused(server: AgentPoolACPAgent) -> None:
+    session_id = await _new_session(server)
+    response = await server.prompt(PromptRequest(session_id=session_id, prompt=[]))
+    assert response.stop_reason == "refusal"
+
+
+async def test_prompt_of_only_commands_ends_without_running_the_agent(
+    server: AgentPoolACPAgent, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    session_id = await _new_session(server)
+    session = server.session_manager.get_session(session_id)
+    assert session is not None
+    ran: list[object] = []
+
+    async def run_stream(*args: Any, **kwargs: Any) -> AsyncIterator[Any]:
+        ran.append(args)
+        return
+        yield
+
+    monkeypatch.setattr(session.agent, "run_stream", run_stream)
+    prompt = PromptRequest(session_id=session_id, prompt=[TextContentBlock(text="/help")])
+    response = await server.prompt(prompt)
+    assert response.stop_reason == "end_turn"
+    assert ran == []
 
 
 async def test_cancelled_permission_request_aborts_the_run() -> None:

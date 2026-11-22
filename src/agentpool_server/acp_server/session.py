@@ -37,6 +37,13 @@ from agentpool_server.acp_server.converters import (
 )
 from agentpool_server.acp_server.event_converter import ACPEventConverter
 from agentpool_server.acp_server.input_provider import ACPInputProvider
+from agentpool_server.acp_server.turns import (
+    TurnCancelled,
+    TurnCompleted,
+    TurnFailed,
+    TurnLimitReached,
+    TurnRefused,
+)
 
 
 if TYPE_CHECKING:
@@ -57,9 +64,11 @@ if TYPE_CHECKING:
     from slashed import BaseCommand
 
     from agentpool.agents.base_agent import BaseAgent
+    from agentpool.agents.events import RichAgentStreamEvent
     from agentpool.common_types import PathReference
     from agentpool_server.acp_server.acp_agent import AgentPoolACPAgent
     from agentpool_server.acp_server.session_manager import ACPSessionManager
+    from agentpool_server.acp_server.turns import TurnOutcome, TurnOutput
 
 logger = get_logger(__name__)
 SLASH_PATTERN = re.compile(r"^/([\w-]+)(?:\s+(.*))?$")
@@ -588,94 +597,95 @@ class ACPSession:
         """Check if the session is cancelled."""
         return self._cancelled
 
-    async def process_prompt(self, content_blocks: Sequence[ContentBlock]) -> StopReason:  # noqa: PLR0911
-        """Process a prompt request and stream responses.
+    async def process_prompt(self, content_blocks: Sequence[ContentBlock]) -> StopReason:
+        """Run a v1 prompt turn: stream its updates, answer with its stop reason.
+
+        Agent failures are shown as a notice and end the turn normally; v1 has no
+        error stop reason (v2 has, see ``ACP_V2_SERVER.md``).
 
         Args:
-            content_blocks: List of content blocks from the prompt request
-
-        Returns:
-            Stop reason
+            content_blocks: Content blocks of the prompt request
         """
         fs = self.agent.env.get_fs()
         contents = [from_acp_content(i, fs=fs) for i in content_blocks]
         self.log.debug("Converted content", content=contents)
+        match await self.run_turn(contents, _V1TurnOutput(self)):
+            case TurnCompleted():
+                return "end_turn"
+            case TurnCancelled():
+                return "cancelled"
+            case TurnLimitReached(message=message):
+                return infer_stop_reason(message)
+            case TurnFailed():
+                return "end_turn"
+            case TurnRefused():
+                return "refusal"
+            case _ as unreachable:
+                assert_never(unreachable)
+
+    async def run_turn(
+        self, contents: Sequence[UserContent | PathReference], output: TurnOutput
+    ) -> TurnOutcome:
+        """Run one prompt turn, protocol-neutral: slash commands, then the agent.
+
+        Turns run one at a time. Agent events go to ``output``, which also wraps up
+        the turn (``TurnOutput.finish``) before the next one can start.
+
+        Args:
+            contents: The prompt's content
+            output: Where the turn's events go
+        """
         if not contents:
             self.log.warning("Empty prompt received")
-            return "refusal"
+            return TurnRefused(reason="empty prompt")
         commands, non_command_content = split_commands(
             contents, lambda name: self._command_store_for(name) is not None
         )
         async with self._task_lock:
             # Reset only once the previous turn is over, it may still be cancelling
             self._cancelled = False
-            if commands:  # Process commands if found
-                for command in commands:
-                    self.log.info("Processing slash command", command=command)
-                    await self.execute_slash_command(command)
-
-                # If only commands, end turn
-                if not non_command_content:
-                    return "end_turn"
-
+            for command in commands:
+                self.log.info("Processing slash command", command=command)
+                await self.execute_slash_command(command)
+            if not non_command_content:
+                return TurnCompleted()
             self.log.debug("Processing prompt", content_items=len(non_command_content))
-            event_count = 0
-            # Create a new event converter for this prompt
-            converter = ACPEventConverter(
-                subagent_display_mode=self.subagent_display_mode,
-                use_notices=self.supports_notices,
-                use_compaction_updates=self.supports_compaction,
-                use_prompt_suggestions=self.supports_prompt_suggestions,
-                context_window=await self._get_context_window(),
-                session_cost=self.total_cost,
-                background_tasks=self.background_tasks,
-            )
+            await output.start()  # After the commands: they may switch model or agent
+            outcome = await self._stream_agent(non_command_content, output)
+            await output.finish(outcome)
+            return outcome
 
-            try:  # Use the session's persistent input provider
-                # Staged content is automatically injected by run_stream
-                async for event in self.agent.run_stream(
-                    *non_command_content,
-                    input_provider=self.input_provider,
-                    deps=self,
-                    session_id=self.session_id,  # Tie agent conversation to ACP session
-                ):
-                    if self._cancelled:
-                        self.log.info("Cancelled during event loop, cleaning up tool calls")
-                        return await self._finish_cancelled_turn(converter)
-                    event_count += 1
-                    async for update in converter.convert(event):
-                        await self.notifications.send_update(update)
-                self.log.info("Streaming finished", events_processed=event_count)
-
-            except asyncio.CancelledError:
-                # Task was cancelled (e.g., via interrupt() or `$/cancel_request`). Answer
-                # with the proper stop reason instead of propagating the cancellation.
-                self.log.info("Stream cancelled via CancelledError, cleaning up tool calls")
-                return await self._finish_cancelled_turn(converter)
-            except UsageLimitExceeded as e:
-                self.log.info("Usage limit exceeded", error=str(e))
-                return infer_stop_reason(str(e))
-            except Exception as e:
-                self.log.exception("Error during streaming")
-                # Awaited so the error shows up within this turn, before the response
-                await self._send_error_notification(f"❌ Agent error: {e}")
-                return "end_turn"
-            finally:
-                self.total_cost = converter.session_cost
-            # An interrupted agent may end its stream normally without another event
-            if self._cancelled:
-                return await self._finish_cancelled_turn(converter)
-            self.last_usage = converter.last_usage
-            return "end_turn"
-
-    async def _finish_cancelled_turn(self, converter: ACPEventConverter) -> StopReason:
-        """Close the turn's pending tool calls and report it as cancelled."""
-        async for cancel_update in converter.cancel_pending_tools():
-            await self.notifications.send_update(cancel_update)
-        # Give the client time to apply the tool call updates before the PromptResponse;
-        # some clients were seen handling the response first, leaving the UI stuck.
-        await anyio.sleep(0.05)
-        return "cancelled"
+    async def _stream_agent(
+        self, contents: Sequence[UserContent | PathReference], output: TurnOutput
+    ) -> TurnOutcome:
+        event_count = 0
+        try:  # Use the session's persistent input provider
+            # Staged content is automatically injected by run_stream
+            async for event in self.agent.run_stream(
+                *contents,
+                input_provider=self.input_provider,
+                deps=self,
+                session_id=self.session_id,  # Tie agent conversation to ACP session
+            ):
+                if self._cancelled:
+                    self.log.info("Cancelled during event loop, cleaning up tool calls")
+                    return TurnCancelled()
+                event_count += 1
+                await output.event(event)
+        except asyncio.CancelledError:
+            # Task was cancelled (e.g., via interrupt() or `$/cancel_request`). Answer
+            # with the proper outcome instead of propagating the cancellation.
+            self.log.info("Stream cancelled via CancelledError, cleaning up tool calls")
+            return TurnCancelled()
+        except UsageLimitExceeded as e:
+            self.log.info("Usage limit exceeded", error=str(e))
+            return TurnLimitReached(message=str(e))
+        except Exception as e:
+            self.log.exception("Error during streaming")
+            return TurnFailed(error=e)
+        self.log.info("Streaming finished", events_processed=event_count)
+        # An interrupted agent may end its stream normally without another event
+        return TurnCancelled() if self._cancelled else TurnCompleted()
 
     async def _get_context_window(self) -> int | None:
         """Context window of the agent's current model, if it can be determined."""
@@ -841,3 +851,51 @@ class ACPSession:
     def register_update_callback(self, callback: Callable[[], None]) -> None:
         """Register callback for command updates."""
         self._update_callbacks.append(callback)
+
+
+class _V1TurnOutput:
+    """A turn's events as ACP v1 session updates (``ACPEventConverter``)."""
+
+    def __init__(self, session: ACPSession) -> None:
+        self._session = session
+        self._converter: ACPEventConverter | None = None
+
+    async def start(self) -> None:
+        session = self._session
+        self._converter = ACPEventConverter(
+            subagent_display_mode=session.subagent_display_mode,
+            use_notices=session.supports_notices,
+            use_compaction_updates=session.supports_compaction,
+            use_prompt_suggestions=session.supports_prompt_suggestions,
+            context_window=await session._get_context_window(),
+            session_cost=session.total_cost,
+            background_tasks=session.background_tasks,
+        )
+
+    async def event(self, event: RichAgentStreamEvent[Any]) -> None:
+        assert self._converter is not None, "start() comes first"
+        async for update in self._converter.convert(event):
+            await self._session.notifications.send_update(update)
+
+    async def finish(self, outcome: TurnOutcome) -> None:
+        converter = self._converter
+        assert converter is not None, "start() comes first"
+        session = self._session
+        session.total_cost = converter.session_cost
+        match outcome:
+            case TurnCompleted():
+                session.last_usage = converter.last_usage
+            case TurnCancelled():
+                async for cancel_update in converter.cancel_pending_tools():
+                    await session.notifications.send_update(cancel_update)
+                # Give the client time to apply the tool call updates before the
+                # PromptResponse; some clients were seen handling the response first,
+                # leaving the UI stuck.
+                await anyio.sleep(0.05)
+            case TurnFailed(error=error):
+                # Within the turn, so the error shows up before the response
+                await session._send_error_notification(f"❌ Agent error: {error}")
+            case TurnLimitReached() | TurnRefused():
+                pass
+            case _ as unreachable:
+                assert_never(unreachable)
