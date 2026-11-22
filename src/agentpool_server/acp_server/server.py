@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import asyncio
 import functools
-from typing import TYPE_CHECKING, Any, Self
+from typing import TYPE_CHECKING, Any, Literal, Self
 
 from aclientp import serve
 
@@ -17,6 +17,7 @@ from agentpool.log import get_logger
 from agentpool.models.manifest import AgentsManifest
 from agentpool_server import BaseServer
 from agentpool_server.acp_server.acp_agent import AgentPoolACPAgent
+from agentpool_server.acp_server.v2_agent import AgentPoolV2Agent
 
 
 if TYPE_CHECKING:
@@ -51,6 +52,7 @@ class ACPServer(BaseServer):
         load_skills: bool = True,
         config_path: str | None = None,
         transport: Transport = "stdio",
+        max_protocol: Literal[1, 2] = 2,
     ) -> None:
         """Initialize ACP server with configuration.
 
@@ -64,6 +66,9 @@ class ACPServer(BaseServer):
             load_skills: Whether to load client-side skills from .claude/skills and .agents/skills
             config_path: Path to the configuration file (for tracking/hot-switching)
             transport: Transport configuration ("stdio", "websocket", or transport object)
+            max_protocol: Highest ACP version to serve. With 2, each client gets the
+                version it asks for in ``initialize`` (v2 clients v2, others v1); 1
+                serves every client v1.
         """
         super().__init__(pool, name=name, raise_exceptions=True)
         self.debug_messages = debug_messages
@@ -73,6 +78,7 @@ class ACPServer(BaseServer):
         self.load_skills = load_skills
         self.config_path = config_path
         self.transport: Transport = transport
+        self.max_protocol: Literal[1, 2] = max_protocol
 
     @classmethod
     def from_config(
@@ -85,6 +91,7 @@ class ACPServer(BaseServer):
         agent: str | None = None,
         load_skills: bool = True,
         transport: Transport = "stdio",
+        max_protocol: Literal[1, 2] = 2,
     ) -> Self:
         """Create ACP server from configuration path or manifest.
 
@@ -96,6 +103,7 @@ class ACPServer(BaseServer):
             agent: Optional specific agent name to use (defaults to first agent)
             load_skills: Whether to load client-side skills from .claude/skills and .agents/skills
             transport: Transport configuration ("stdio", "websocket", or transport object)
+            max_protocol: Highest ACP version to serve (see ``ACPServer``)
 
         Returns:
             Configured ACP server instance with agent pool
@@ -115,6 +123,7 @@ class ACPServer(BaseServer):
             load_skills=load_skills,
             config_path=config_path,
             transport=transport,
+            max_protocol=max_protocol,
         )
         agent_names = list(server.pool.all_agents.keys())
 
@@ -161,12 +170,24 @@ class ACPServer(BaseServer):
             load_skills=self.load_skills,
             server=self,
         )
+        create_v2_agent = (
+            functools.partial(
+                AgentPoolV2Agent,
+                default_agent=default_agent,
+                debug_commands=self.debug_commands,
+                load_skills=self.load_skills,
+                server=self,
+            )
+            if self.max_protocol >= 2  # noqa: PLR2004
+            else None
+        )
         debug_file = self.debug_file if self.debug_messages else None
-        self.log.info("ACP server started")
+        self.log.info("ACP server started", max_protocol=self.max_protocol)
         try:
             await serve(
                 create_acp_agent,
                 transport=self.transport,
+                v2_agent=create_v2_agent,
                 shutdown_event=self._shutdown_event,
                 debug_file=debug_file,
             )

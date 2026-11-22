@@ -1,6 +1,6 @@
 # ACP v2 for the agentpool ACP server
 
-Status: steps 1 (aclientp, unreleased) and 2 done; step 3 next. Written
+Status: steps 1-3 done; serving v2 waits for the aclientp release (step 4). Written
 2026-11-22 against aclientp 0.1.7, which pins the v2 schema at `schema-v2.0.0-alpha.17`.
 
 ## Goal
@@ -87,10 +87,30 @@ queue, steer and background design than v1's request-scoped turn.
    for v1 notifications, which stays v1-only). For v2, `ACPSession` gets its output (and
    input provider) from the adapter instead of building `V1SessionOutput` in
    `__post_init__`.
-3. **v2 adapter**, tested against the isolated T3 setup (a real v2 client) and with Zed
-   as the v1 check; snapshot tests per version.
-4. **Offer both by default**, with `serve-acp --max-protocol 1` as the escape hatch while
-   the v2 schema is still an alpha.
+3. **v2 adapter (done).** v2 is served through the v1 handler rather than beside it:
+   - `v2_translate.py`: the event converter's v1 updates in v2 (chunks get `messageId`,
+     tool calls become one upsert whose omitted fields patch nothing, edits become diffs
+     with a git patch, config options, commands, plans). v1 location line 0 ("no line")
+     is left out, since v2 lines start at 1.
+   - `v2_client.py`: `V2ClientAdapter`, the v1 `Client` of a v2 session (translated
+     updates, permission requests with title and subject, elicitation; no fs/terminal).
+   - `v2_agent.py`: `AgentPoolV2Agent` translates each v2 request into the v1 one for an
+     inner `AgentPoolACPAgent`. The prompt is v2's own: `session/prompt` returns the
+     message id, and the turn runs via `run_turn` with `state_update` running → idle,
+     including `stopReason: "error"` with an error object. `session/resume` with
+     `replayFrom` replays (v1 load) and sends `replay_complete`.
+   - `v2_output.py`: mode changes become config option updates.
+
+   Wire-level tests: `tests/servers/acp_server/test_v2_agent.py` (a real v2 client
+   connection over in-memory streams) and `test_v2_translate.py`. Live against T3 Code
+   (2026-11-22): it negotiates v2, models and modes show, turns and T3 MCP tool calls run,
+   resume after a T3 restart replays and keeps the conversation.
+4. **Offer both by default (wired, uncommitted):** `ACPServer(max_protocol=2)` passes
+   `AgentPoolV2Agent` as `serve(v2_agent=...)`; `serve-acp --max-protocol 1` serves v1
+   only. Needs aclientp > 0.1.7 (`serve(v2_agent=...)`): release aclientp, require it,
+   then commit. Until then, test against `uv pip install -e ../aclientp` with
+   `UV_NO_SYNC=1 uv run --no-sync ...`: tests that start `uv run agentpool serve-acp`
+   otherwise re-sync the released aclientp, and the server exits at once.
 
 ## Notes
 

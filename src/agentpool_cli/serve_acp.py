@@ -92,6 +92,18 @@ def acp_command(  # noqa: PLR0915
             help="Load client-side skills from .claude/skills and .agents/skills directories",
         ),
     ] = True,
+    max_protocol: Annotated[
+        int,
+        t.Option(
+            "--max-protocol",
+            min=1,
+            max=2,
+            help=(
+                "Highest ACP version to serve: 2 gives each client the version it asks for "
+                "(v2 clients v2, others v1); 1 serves every client v1"
+            ),
+        ),
+    ] = 2,
     transport: Annotated[
         Literal["stdio", "websocket", "http"],
         t.Option(
@@ -223,6 +235,7 @@ def acp_command(  # noqa: PLR0915
         agent=agent,
         load_skills=load_skills,
         transport=transport_config,
+        max_protocol=1 if max_protocol == 1 else 2,
     )
 
     # Inject MCP servers from --mcp-config if provided
