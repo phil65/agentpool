@@ -400,15 +400,16 @@ Also, `from_config` today mixes three kinds of parameters that belong to differe
 ```python
 @dataclass(frozen=True)
 class AgentDefinition[TDeps = None, TOut = str]:
-    config: AnyAgentConfig                 # serialisable, frozen, per-type (existing models)
-    extras: PythonExtras[TDeps, TOut]      # non-serialisable additions (callable tools, Model
-                                           # instances, deps_type, output_type, processors)
-    scope: Literal["pool", "session"]      # §5 R3
-    version: str                           # content hash of config + stable identity of extras
-                                           # (import path / qualname for callables)
+    config: AnyAgentConfig  # serialisable, frozen, per-type (existing models)
+    extras: PythonExtras[TDeps, TOut]  # non-serialisable additions (callable tools, Model
+    # instances, deps_type, output_type, processors)
+    scope: Literal["pool", "session"]  # §5 R3
+    version: str  # content hash of config + stable identity of extras
+    # (import path / qualname for callables)
 
     @property
-    def name(self) -> str: return self.config.name
+    def name(self) -> str:
+        return self.config.name
 ```
 
 - YAML agents have empty `extras`. Python-constructed agents (`Agent(name=..., tools=[greet])`) build
@@ -426,12 +427,12 @@ class AgentDefinition[TDeps = None, TOut = str]:
 
 ```python
 class Session:
-    data: SessionData             # existing model (agentpool/sessions/models.py:55): id, agent_name,
-                                  # parent_id, cwd, sdk_session_id, metadata, ...
-    definition_version: str       # §5 R2
-    overrides: SessionOverrides   # model, mode / config options, extra tools, prompt addendum
-    history: MessageHistory       # moves here from BaseAgent.conversation
-    inbox: Inbox                  # queued / steered input, child-session results (§8 vocabulary)
+    data: SessionData  # existing model (agentpool/sessions/models.py:55): id, agent_name,
+    # parent_id, cwd, sdk_session_id, metadata, ...
+    definition_version: str  # §5 R2
+    overrides: SessionOverrides  # model, mode / config options, extra tools, prompt addendum
+    history: MessageHistory  # moves here from BaseAgent.conversation
+    inbox: Inbox  # queued / steered input, child-session results (§8 vocabulary)
 ```
 
 - Pure state, persisted, resumable. It knows nothing about processes or connections.
@@ -444,7 +445,7 @@ class Session:
 class AgentRuntime[TDeps, TOut]:
     definition: AgentDefinition[TDeps, TOut]
     session: Session
-    env: RuntimeEnv               # pool reference, shared resources (MCP manager, storage, fs)
+    env: RuntimeEnv  # pool reference, shared resources (MCP manager, storage, fs)
     # live, non-serialisable resources only:
     #   native: PydanticAI agent + tool manager instance
     #   claude code / codex: subprocess + native session handle
@@ -452,7 +453,7 @@ class AgentRuntime[TDeps, TOut]:
     #   input provider + event handlers (from the session's client), cancel scope
 
     @property
-    def model(self) -> ModelRef | None:   # effective value: override, else definition default
+    def model(self) -> ModelRef | None:  # effective value: override, else definition default
         return self.session.overrides.model or self.definition.config.model_ref
 
     async def run_stream(self, *prompts, delivery: Delivery = "queue") -> AsyncIterator[Event]: ...
