@@ -449,6 +449,7 @@ class ClaudeStorageProvider(StorageProvider):
         start_time: datetime | None = None,
         model: str | None = None,
         agent_type: str | None = None,
+        definition_version: str | None = None,
     ) -> None:
         """Log a conversation start.
 

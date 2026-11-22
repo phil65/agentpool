@@ -552,3 +552,18 @@ async def test_tools_run_in_the_environment_of_their_session(tmp_path: Path) -> 
             await server.session_manager.close_all_sessions()
     assert ran_in == [str(one), str(two)]
     assert own_cwd not in (str(one), str(two))  # The shared agent keeps its own
+
+
+async def test_acp_sessions_record_the_definition_version(server: AgentPoolACPAgent) -> None:
+    """The server stores a session before its first turn: the version is added to it."""
+    from agentpool.agents.definition import AgentDefinition
+    from agentpool.models.agents import NativeAgentConfig
+
+    agent = server.default_agent
+    agent.definition = AgentDefinition.from_config(NativeAgentConfig(name="a", model="test"))
+    session_id = await _new_session(server)
+    await server.prompt(_prompt(session_id))
+    stored = await server.session_manager.storage.load_session(session_id)
+    assert stored is not None
+    assert stored.definition_version == agent.definition.version
+    assert stored.metadata.get("protocol") == "acp"  # The server's record is kept

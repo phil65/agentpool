@@ -41,6 +41,9 @@ if TYPE_CHECKING:
 
 logger = get_logger(__name__)
 
+DEFINITION_VERSION_KEY = "definition_version"
+"""Key of ``SessionData.definition_version`` in a conversation's metadata (no own column)."""
+
 
 class SQLModelProvider(StorageProvider):
     """Storage provider using SQLModel.
@@ -150,6 +153,7 @@ class SQLModelProvider(StorageProvider):
         start_time: datetime | None = None,
         model: str | None = None,
         agent_type: str | None = None,
+        definition_version: str | None = None,
     ) -> None:
         """Log conversation to database (idempotent)."""
         from sqlalchemy import select
@@ -169,6 +173,9 @@ class SQLModelProvider(StorageProvider):
                 start_time=now,
                 model=model,
                 agent_type=agent_type,
+                metadata_json=(
+                    {DEFINITION_VERSION_KEY: definition_version} if definition_version else {}
+                ),
             )
             session.add(convo)
             await session.commit()
@@ -687,7 +694,10 @@ class SQLModelProvider(StorageProvider):
             convo.sdk_session_id = data.sdk_session_id
             convo.last_active = data.last_active
             # The title column is canonical; `load_session` re-adds it to the metadata.
-            convo.metadata_json = {k: v for k, v in data.metadata.items() if k != "title"}
+            metadata = {k: v for k, v in data.metadata.items() if k != "title"}
+            if data.definition_version is not None:
+                metadata[DEFINITION_VERSION_KEY] = data.definition_version
+            convo.metadata_json = metadata
             if data.title is not None:
                 convo.title = data.title
             session.add(convo)
@@ -703,6 +713,7 @@ class SQLModelProvider(StorageProvider):
             if row is None:
                 return None
             metadata = dict(row.metadata_json or {})
+            definition_version = metadata.pop(DEFINITION_VERSION_KEY, None)
             if row.title is not None:
                 metadata["title"] = row.title
             return SessionData(
@@ -715,6 +726,9 @@ class SQLModelProvider(StorageProvider):
                 cwd=row.cwd,
                 agent_type=row.agent_type,
                 sdk_session_id=row.sdk_session_id,
+                definition_version=(
+                    definition_version if isinstance(definition_version, str) else None
+                ),
                 created_at=row.start_time,
                 last_active=row.last_active,
                 metadata=metadata,

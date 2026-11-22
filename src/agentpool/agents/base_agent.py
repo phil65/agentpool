@@ -19,6 +19,7 @@ from pydantic_ai import ModelRequest
 from upathtools.filesystems import IsolatedMemoryFileSystem
 
 from agentpool.agents.capabilities import AgentCapabilities
+from agentpool.agents.definition import AgentDefinition
 from agentpool.agents.events import StreamCompleteEvent, resolve_event_handlers
 from agentpool.agents.modes import ModeInfo
 from agentpool.agents.runtime import SessionRuntime, activate, active_runtime
@@ -47,6 +48,7 @@ if TYPE_CHECKING:
 
     from agentpool.agents.auth import AuthStatus
     from agentpool.agents.context import AgentContext
+    from agentpool.agents.definition import AgentDefinition
     from agentpool.agents.events import (
         CommandCompleteEvent,
         CommandOutputEvent,
@@ -286,6 +288,8 @@ class BaseAgent[TDeps = None, TResult = str](MessageNode[TDeps, TResult]):
         """Runtime of the default session (runs without an explicit ``session``)."""
         self._runtimes: dict[str, SessionRuntime[TDeps, TResult]] = {}
         """Runtimes of explicit sessions by session ID, while they run or have input waiting."""
+        self.definition: AgentDefinition | None = None
+        """What the agent was built from (set by the pool for its manifest's agents)."""
         self._own_sdk_session_id: str | None = None
         """The backend's own session of the default session (see :attr:`_sdk_session_id`)."""
         self._session_turn_lock = asyncio.Lock()

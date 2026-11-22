@@ -233,6 +233,7 @@ class StorageManager:
         agent_type: str | None = None,
         initial_prompt: str | None = None,
         on_title_generated: Callable[[str], None] | None = None,
+        definition_version: str | None = None,
     ) -> None:
         """Log session to all providers (idempotent).
 
@@ -246,6 +247,7 @@ class StorageManager:
             model: Requested model identifier for this session
             agent_type: Type of agent backend (native, claude, codex, etc.)
             initial_prompt: Optional initial prompt to trigger title generation
+            definition_version: Version of the agent definition the session runs with
             on_title_generated: Optional callback invoked when title is generated
         """
         if not self.config.log_sessions:
@@ -264,6 +266,7 @@ class StorageManager:
                     start_time=start_time,
                     model=model,
                     agent_type=agent_type,
+                    definition_version=definition_version,
                 )
 
         # Handle title generation based on prompt length

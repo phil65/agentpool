@@ -96,6 +96,7 @@ class MessageNode[TDeps, TResult](ABC):
         agent_type: str | None = None,
         *,
         session_id: str | None = None,
+        definition_version: str | None = None,
     ) -> None:
         """Log conversation to storage if enabled.
 
@@ -108,6 +109,7 @@ class MessageNode[TDeps, TResult](ABC):
             model: Requested model identifier for this session.
             agent_type: Type of agent backend (native, claude, codex, etc.).
             session_id: Explicit session ID to log (defaults to ``self.session_id``).
+            definition_version: Version of the agent definition the session runs with.
         """
         target_session_id = session_id or self.session_id
 
@@ -124,6 +126,7 @@ class MessageNode[TDeps, TResult](ABC):
                 agent_type=agent_type,
                 initial_prompt=initial_prompt,
                 on_title_generated=_set_session_title,
+                definition_version=definition_version,
             )
 
     async def __aenter__(self) -> Self:

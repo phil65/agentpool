@@ -12,6 +12,7 @@ from anyenv import ProcessManager
 import anyio
 from upathtools import UPath
 
+from agentpool.agents.definition import AgentDefinition
 from agentpool.common_types import NodeName, SupportsStructuredOutput
 from agentpool.delegation.message_flow_tracker import MessageFlowTracker
 from agentpool.log import get_logger
@@ -145,6 +146,7 @@ class AgentPool[TPoolDeps = None](BaseRegistry[NodeName, MessageNode[Any, Any]])
                 pool=self,
                 deps_type=shared_deps_type,
             )
+            agent.definition = AgentDefinition.from_config(cfg)  # Sessions record its version
             self.register(name, agent)
 
         self._create_teams()

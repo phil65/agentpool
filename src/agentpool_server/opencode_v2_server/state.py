@@ -335,6 +335,7 @@ class ServerState:
             cwd=info.location.directory,
             agent_type=existing.agent_type if existing else None,
             sdk_session_id=existing.sdk_session_id if existing else None,
+            definition_version=existing.definition_version if existing else None,
             created_at=existing.created_at if existing else get_now(),
             metadata=metadata,
         )

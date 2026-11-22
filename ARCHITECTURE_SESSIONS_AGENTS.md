@@ -258,8 +258,7 @@ need to stay distinct:
    concurrent sessions is one MCP connection per session pointed at its route: Codex takes MCP
    servers per thread (and builds an `McpConnectionManager` per session); ACP takes them in
    `session/new`; Claude Code needs a CLI process per session anyway. OpenCode V2 configures
-   MCP server-wide, so it stays serialized. Not done: `AgentDefinition` (the definition
-   still lives on the instance).
+   MCP server-wide, so it stays serialized. `AgentDefinition`: see §9.1 status.
 
 Steps 1–3 already unblock a clean OpenCode V2 server (session ↔ agent binding, child sessions,
 inbox). The V2 server now exists with stopgaps for exactly these gaps. §10 lists them, with the
@@ -494,6 +493,15 @@ class AgentDefinition[TDeps = None, TOut = str]:
   resumed with `pinned` policy.
 - Should it turn out that every agent type always needs the same few extras, `extras` could later
   be folded into the configs as `SkipJsonSchema` fields. The wrapper keeps that option open.
+
+**Status (2026-11-22):** `AgentDefinition(config, version)` (`agents/definition.py`); the version
+hashes the resolved config, its name aside. The pool sets `agent.definition` for its manifest's
+agents; agents constructed in Python have none (no `extras` yet, so no honest version). R2 with
+policy `follow_latest`: a session records the version it runs with
+(`SessionData.definition_version`; SQL keeps it in the metadata JSON), and a resumed session whose
+agent changed since gets a notice and records the new version. Not yet: `extras`, `scope` (R3),
+the `pinned` policy (it needs old definitions kept to run on), and runtimes built from a
+definition instead of the instance being both (§6 step 7).
 
 ### 9.2 Session
 
@@ -794,9 +802,9 @@ agent's review, largely matching §3–§10).
 1. **Runtime per session, native agents first (§6 step 7).** Done (2026-11-22): `SessionRuntime`
    runs a session's turns and holds their state, config options are per session, native sessions
    on one agent run in parallel, and `AgentBinder`'s native path is gone. `BaseAgent` went from
-   1,700 to 1,500 lines. Next: an `AgentDefinition` (§9.1) so the instance stops being the
-   definition; runtimes for the other external agents (T3, Codex, ACP and Claude Code done;
-   AG-UI, OpenCode V2 and Antigravity still serialized). Until then their turns of different
+   1,700 to 1,500 lines. `AgentDefinition` exists, with R2 (§9.1 status); the instance is
+   still the definition's only runtime factory. Runtimes for the other external agents: T3,
+   Codex, ACP and Claude Code done; AG-UI, OpenCode V2 and Antigravity still serialized. Until then their turns of different
    sessions are serialized (`BaseAgent.session_turn()`, `capabilities.concurrent_sessions`).
 2. **Stable message identity (§10.4).** `run_stream` takes the user message ID and exposes stable
    IDs per model response from the first chunk. Removes turn counting and timestamp matching in

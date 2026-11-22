@@ -98,6 +98,7 @@ class MemoryStorageProvider(StorageProvider):
         start_time: datetime | None = None,
         model: str | None = None,
         agent_type: str | None = None,
+        definition_version: str | None = None,
     ) -> None:
         """Store conversation in memory (idempotent)."""
         if any(c["id"] == session_id for c in self.conversations):
@@ -108,6 +109,7 @@ class MemoryStorageProvider(StorageProvider):
             "title": None,
             "start_time": start_time or get_now(),
             "agent_type": agent_type,
+            "definition_version": definition_version,
         })
 
     async def update_session_title(self, session_id: str, title: str) -> None:
@@ -439,6 +441,7 @@ class MemoryStorageProvider(StorageProvider):
             "cwd": data.cwd,
             "agent_type": data.agent_type,
             "sdk_session_id": data.sdk_session_id,
+            "definition_version": data.definition_version,
             "last_active": data.last_active,
             # The title field is canonical; `load_session` re-adds it to the metadata.
             "metadata": {k: v for k, v in data.metadata.items() if k != "title"},
@@ -465,6 +468,7 @@ class MemoryStorageProvider(StorageProvider):
                     cwd=conv.get("cwd"),
                     agent_type=conv.get("agent_type"),
                     sdk_session_id=conv.get("sdk_session_id"),
+                    definition_version=conv.get("definition_version"),
                     created_at=conv["start_time"],
                     last_active=conv.get("last_active", conv["start_time"]),
                     metadata=metadata,

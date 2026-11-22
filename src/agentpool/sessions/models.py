@@ -86,6 +86,12 @@ class SessionData(Schema):
     sdk_session_id: str | None = None
     """External SDK session ID for cross-referencing (e.g. Claude JSONL stem, Codex thread ID)."""
 
+    definition_version: str | None = None
+    """Version of the agent definition the session last ran with (``AgentDefinition``).
+
+    None for agents without a definition (constructed in Python).
+    """
+
     created_at: datetime = Field(default_factory=get_now)
     """When the session was created."""
 

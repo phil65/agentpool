@@ -27,7 +27,7 @@ from contextvars import ContextVar
 from types import MappingProxyType
 from typing import TYPE_CHECKING, Any
 
-from agentpool.agents.events import StreamCompleteEvent
+from agentpool.agents.events import NoticeEvent, StreamCompleteEvent
 from agentpool.agents.prompt_injection import PromptInjectionManager
 from agentpool.agents.staged_content import StagedContent
 from agentpool.prompts.convert import convert_prompts
@@ -112,10 +112,13 @@ class SessionRuntime[TDeps = Any, TResult = Any]:
             effective_history = (
                 message_history if message_history is not None else self.session.history
             )
-            if not self.session.history:
+            new = not self.session.history
+            if new:
                 await self._log_new_session(
                     prompts, model=self.session.overrides.model, session_id=effective_session_id
                 )
+            if (notice := await self._follow_definition(new=new)) is not None:
+                yield notice
 
         with activate(agent, self):  # Turn state below is this session's
             # Reset cancellation state and track current task
@@ -167,11 +170,46 @@ class SessionRuntime[TDeps = Any, TResult = Any]:
             agent._default_session.set_session_id(session_id)
         return session_id
 
+    async def _follow_definition(self, *, new: bool) -> NoticeEvent | None:
+        """Run the session on the agent's current definition, and record it (rule R2).
+
+        Policy ``follow_latest``: a resumed session runs with the definition as it is now.
+        When it changed since the session last ran, a notice says so. The session records
+        the version it runs with (a new one too: a server may have stored it already, which
+        makes the storage skip ``log_session``).
+        """
+        agent = self.agent
+        if agent.definition is None:
+            return None
+        current = agent.definition.version
+        data = self.session.data
+        recorded = None if new else data.definition_version
+        if not new and recorded == current:
+            return None
+        data.definition_version = current
+        await self._store_definition_version(current)
+        if recorded is None:  # New, or recorded before versions were: nothing to compare
+            return None
+        return NoticeEvent(
+            title=f"Agent {agent.name!r} changed since this session last ran",
+            description="The session continues with its current definition.",
+        )
+
+    async def _store_definition_version(self, version: str) -> None:
+        """Store ``version`` on the session's stored record, keeping the rest of it."""
+        if (storage := self.agent.storage) is None:
+            return
+        stored = await storage.load_session(self.session.session_id)
+        if stored is not None and stored.definition_version != version:
+            await storage.save_session(stored.model_copy(update={"definition_version": version}))
+
     async def _log_new_session(
         self, prompts: Sequence[PromptCompatible], *, model: str | None, session_id: str | None
     ) -> None:
         """Record a new session in storage, titled after its last text prompt."""
         agent = self.agent
+        version = agent.definition.version if agent.definition is not None else None
+        self.session.data.definition_version = version
         user_prompts = [str(p) for p in prompts if isinstance(p, str)]
         initial_prompt = user_prompts[-1] if user_prompts else None
         # Agents that title their sessions themselves skip the storage's titles
@@ -180,6 +218,7 @@ class SessionRuntime[TDeps = Any, TResult = Any]:
             model=model or agent.model_name,
             agent_type=agent.AGENT_TYPE,
             session_id=session_id,
+            definition_version=version,
         )
 
     async def _run_once(
