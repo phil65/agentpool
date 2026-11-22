@@ -50,6 +50,25 @@ def current_session_environment() -> SessionEnvironment | None:
     return _CURRENT.get()
 
 
+def current_instructions() -> str:
+    """Instructions of the session acting in this context (empty without one)."""
+    environment = _CURRENT.get()
+    return environment.instructions if environment is not None else ""
+
+
+def instructions_update(started: str, current: str) -> str | None:
+    """Prompt text telling a backend session its instructions changed (None if they didn't).
+
+    For agents that give a backend session the session's instructions when it starts (a
+    CLI process's system prompt, a thread's developer instructions): a change after that
+    reaches the backend with the next turn's prompt, the instructions in full.
+    """
+    if current == started:
+        return None
+    body = current or "The session's instructions were cleared."
+    return f"<session-instructions>\n{body}\n</session-instructions>"
+
+
 @contextmanager
 def use_session_environment(environment: SessionEnvironment | None) -> Generator[None]:
     """Make ``environment`` current while the block runs (None: keep the current one).

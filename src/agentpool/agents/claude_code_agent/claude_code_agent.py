@@ -47,6 +47,7 @@ from agentpool.log import get_logger
 from agentpool.mcp_server.tool_bridge import DEFAULT_ROUTE
 from agentpool.messaging import ChatMessage
 from agentpool.messaging.messages import TokenCost
+from agentpool.sessions.environment import current_instructions, instructions_update
 from agentpool.sessions.models import SessionData
 from agentpool.utils.streams import merge_queue_into_iterator
 from agentpool.utils.time_utils import get_now
@@ -176,6 +177,7 @@ class ClaudeCodeAgent[TDeps = None, TResult = str](BaseAgent[TDeps, TResult]):
         native_compaction=False,  # It auto-compacts, but compact() is not wired to /compact
         background_events=True,
         concurrent_sessions=True,  # A CLI process per session (see cli_process)
+        session_instructions=True,  # The process's system prompt, changes with the next turn
     )
     TITLES_OWN_SESSIONS: ClassVar = True
 
@@ -488,7 +490,11 @@ class ClaudeCodeAgent[TDeps = None, TResult = str](BaseAgent[TDeps, TResult]):
         process = self._proc()
         process.last_used = time.monotonic()
         formatted_prompt = await self.sys_prompts.format_system_prompt(self)
-        process.client = self._get_client(system_prompt=formatted_prompt)
+        # The session's instructions (working directory, the client's) go into the system
+        # prompt; later changes into the prompt of the next turn (see _stream_turn)
+        process.instructions = current_instructions()
+        system_prompt = "\n\n".join(p for p in (formatted_prompt, process.instructions) if p)
+        process.client = self._get_client(system_prompt=system_prompt)
         process.connection_task = asyncio.create_task(self._do_connect())
         self._schedule_closing(keep=process)
         return process
@@ -1127,6 +1133,10 @@ class ClaudeCodeAgent[TDeps = None, TResult = str](BaseAgent[TDeps, TResult]):
             client = fork_client
 
         reconstructor = MessageReconstructor(initial_prompts=prompts)
+        current = current_instructions()
+        if (update := instructions_update(process.instructions, current)) is not None:
+            prompts = [update, *prompts]  # Changed since the process started
+            process.instructions = current
         claude_prompts = [*to_prompt_input(prompts)]
         prompt_uuid = str(uuid.uuid4())
         steering = RunSteering(

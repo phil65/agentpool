@@ -60,6 +60,9 @@ class CliProcess:
     pre_plan_mode: PermissionMode | None = None
     """The permission mode to return to when plan mode ends."""
 
+    instructions: str = ""
+    """The session's instructions as the process has them (its system prompt, then updates)."""
+
     last_used: float = field(default_factory=time.monotonic)
     """When a turn last started on it (closing idle processes: least recent first)."""
 

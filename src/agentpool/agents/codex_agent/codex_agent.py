@@ -42,6 +42,7 @@ from agentpool.agents.runtime import activate
 from agentpool.log import get_logger
 from agentpool.mcp_server.tool_bridge import DEFAULT_ROUTE
 from agentpool.messaging import ChatMessage
+from agentpool.sessions.environment import current_instructions, instructions_update
 
 
 if TYPE_CHECKING:
@@ -103,6 +104,7 @@ class CodexAgent[TDeps = None, OutputDataT = str](BaseAgent[TDeps, OutputDataT])
         native_compaction=True,
         native_fork=True,
         concurrent_sessions=True,
+        session_instructions=True,  # The thread's developer instructions, changes per turn
     )
 
     def __init__(
@@ -191,6 +193,9 @@ class CodexAgent[TDeps = None, OutputDataT = str](BaseAgent[TDeps, OutputDataT])
         """Bridge route of each open thread (its session's; see ``ToolManagerBridge``)."""
         self._adapters: dict[str, CodexStreamedResponse] = {}
         """Stream of the turn running on each thread."""
+        self._thread_instructions: dict[str, str] = {}
+        """The session's instructions as each thread has them (its developer instructions,
+        then updates; a thread resumed here counts as having none)."""
         self._external_mcp_servers = [
             BaseMCPServerConfig.from_string(s) if isinstance(s, str) else s
             for s in mcp_servers or []
@@ -423,17 +428,22 @@ class CodexAgent[TDeps = None, OutputDataT = str](BaseAgent[TDeps, OutputDataT])
         if self._client is None:
             raise AgentNotInitializedError
         cwd = str(self.env.cwd or Path.cwd())
+        # The session's instructions (working directory, the client's) with the agent's own;
+        # later changes go into the prompt of the next turn (see _stream_events)
+        instructions = current_instructions()
+        developer = "\n\n".join(p for p in (self._developer_instructions, instructions) if p)
         session = await self._client.thread_start(
             cwd=cwd,
             model=self._current_model,
             base_instructions=self._base_instructions,
-            developer_instructions=self._developer_instructions,
+            developer_instructions=developer or None,
             sandbox=self._current_sandbox,
             approval_policy=self._approval_policy,
             personality=self._current_personality,
             mcp_servers=self._thread_mcp_servers(),
         )
         self._open_thread(session)
+        self._thread_instructions[session.thread_id] = instructions
         self.log.info("Codex thread started", sdk_session_id=session.thread_id, cwd=cwd)
 
     async def start_new_session(self) -> None:
@@ -608,6 +618,7 @@ class CodexAgent[TDeps = None, OutputDataT = str](BaseAgent[TDeps, OutputDataT])
         self._sessions.clear()
         self._thread_routes.clear()
         self._adapters.clear()
+        self._thread_instructions.clear()
 
     async def _stream_events(  # noqa: PLR0915
         self,
@@ -637,6 +648,11 @@ class CodexAgent[TDeps = None, OutputDataT = str](BaseAgent[TDeps, OutputDataT])
             await self._resume_thread(self._sdk_session_id)
         thread_id = self._sdk_session_id
         assert thread_id is not None
+        current = current_instructions()
+        started = self._thread_instructions.get(thread_id, "")
+        if (update := instructions_update(started, current)) is not None:
+            prompts = [update, *prompts]  # Changed since the thread started
+            self._thread_instructions[thread_id] = current
 
         input_items = list(user_content_to_codex(prompts))
         # Generate IDs if not provided

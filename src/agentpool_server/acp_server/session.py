@@ -24,7 +24,6 @@ import logfire
 from pydantic_ai import UsageLimitExceeded
 from slashed import CommandStore
 
-from agentpool import Agent, AgentPool
 from agentpool.agents.acp_agent import ACPAgent
 from agentpool.agents.modes import ConfigOptionChanged
 from agentpool.agents.staged_content import StagedContent
@@ -64,6 +63,7 @@ if TYPE_CHECKING:
     from pydantic_ai import UserContent
     from slashed import BaseCommand
 
+    from agentpool import AgentPool
     from agentpool.agents.base_agent import BaseAgent
     from agentpool.common_types import PathReference
     from agentpool.sessions import Session as PoolSession
@@ -254,8 +254,8 @@ class ACPSession:
         # Inject Zed-specific instructions if client is Zed
         if self.client_info and self.client_info.name and "zed" in self.client_info.name.lower():
             self.staged.add_text(ZED_CLIENT_PROMPT)
-        if self.system_prompt and not isinstance(self.agent, Agent):
-            # Native agents get it with the session's instructions (see `environment`)
+        if self.system_prompt and not self.agent.capabilities.session_instructions:
+            # The others get it with the session's instructions (see `environment`)
             self.staged.add_text(self.system_prompt)
         self.notifications = ACPNotifications(client=self.client, session_id=self.session_id)
         self.output: SessionOutput = self.output_factory(self)

@@ -843,9 +843,14 @@ agent's review, largely matching §3–§10).
 5. **Session-scoped instructions and env (§10.9),** applied by the runtime (system instructions,
    not user prompt text; env on the runtime's exxec environment). Then `pending_context` goes.
    Done for native agents in both servers (`SessionEnvironment`: ACP client environment and
-   instructions; V2 directory, env vars, instruction entries, skills). External agents still
-   take instructions as prompt text: each would need its own channel (Claude Code's
-   `--append-system-prompt` per process, Codex `developer_instructions` per thread).
+   instructions; V2 directory, env vars, instruction entries, skills). Claude Code and Codex
+   too (2026-11-22): the session's instructions go into the CLI process's system prompt or the
+   thread's developer instructions when it starts, and a later change into the next turn's
+   prompt, in full, once (`instructions_update`; tested live: a changed code word on the same
+   process). They declare `session_instructions`, so servers no longer add the changes or the
+   ACP client's system prompt to their prompts. A Codex thread resumed in a new client counts
+   as having none (its first turn carries them). Other external agents (ACP, AG-UI, T3, OpenCode
+   V2, Antigravity) have no such channel and keep getting them as prompt text.
 6. **One tool display model.** Diffs, terminal output and tool kinds in one internal form that
    every agent produces and every server renders. Today `ClaudeCodeAgent` imports
    `opencode_v2_sdk.tool_metadata` (an agent depending on a protocol SDK), next to

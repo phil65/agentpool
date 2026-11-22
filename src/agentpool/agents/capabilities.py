@@ -38,8 +38,11 @@ class AgentCapabilities:
     turn state). Otherwise ``session_turn()`` serializes them: one native session each."""
 
     session_instructions: bool = False
-    """Takes the session's instructions (``SessionEnvironment.instructions``) as system
-    instructions with every run. Otherwise servers send changes to them as prompt text."""
+    """Takes the session's instructions (``SessionEnvironment.instructions``) itself: native
+    agents as system instructions with every run; Claude Code and Codex when their backend
+    session starts (a process's system prompt, a thread's developer instructions), and
+    changes since with the next turn's prompt. Otherwise servers put them (or their changes)
+    into prompts."""
 
     background_events: bool = False
     """Backend streams between-turn / unsolicited events via ``BaseAgent.emit_event``."""
