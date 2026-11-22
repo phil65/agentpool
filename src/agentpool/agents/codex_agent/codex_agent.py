@@ -662,7 +662,13 @@ class CodexAgent[TDeps = None, OutputDataT = str](BaseAgent[TDeps, OutputDataT])
         *,
         session: PoolSession | None = None,
     ) -> tuple[int, int]:
-        """Trigger Codex's native thread compaction when connected."""
+        """Compact the Codex thread of the agent's session (Codex's native compaction).
+
+        Raises:
+            UnsupportedOperationError: For another session, or without a thread.
+        """
+        from agentpool.agents.exceptions import UnsupportedOperationError
+
         if (
             session is None
             and self._client is not None
@@ -672,7 +678,8 @@ class CodexAgent[TDeps = None, OutputDataT = str](BaseAgent[TDeps, OutputDataT])
             before = len(self.conversation.get_history())
             await sdk_session.compact_start()
             return (before, before)
-        return await super().compact(pipeline, session=session)
+        reason = "only the thread of its own session, once one is running"
+        raise UnsupportedOperationError(self.name, "compact", reason)
 
     async def fork_session(
         self,
@@ -680,17 +687,27 @@ class CodexAgent[TDeps = None, OutputDataT = str](BaseAgent[TDeps, OutputDataT])
         at_message_id: str | None = None,
         session: PoolSession | None = None,
     ) -> PoolSession:
-        """Fork both the AgentPool session and Codex's underlying thread when active."""
-        forked = await super().fork_session(at_message_id=at_message_id, session=session)
+        """Fork the agent's session together with its Codex thread.
+
+        Raises:
+            UnsupportedOperationError: For another session, at a message (Codex forks
+                whole threads), or without a thread.
+        """
+        from agentpool.agents.exceptions import UnsupportedOperationError
+
         if (
-            session is None
-            and self._client is not None
-            and self._sdk_session_id is not None
-            and (sdk_session := self._sessions.get(self._sdk_session_id)) is not None
+            session is not None
+            or at_message_id is not None
+            or self._client is None
+            or self._sdk_session_id is None
+            or (sdk_session := self._sessions.get(self._sdk_session_id)) is None
         ):
-            forked_sdk = await sdk_session.fork()
-            self._sessions[forked_sdk.thread_id] = forked_sdk
-            forked.set_sdk_session_id(forked_sdk.thread_id)
+            reason = "only the whole thread of its own session, once one is running"
+            raise UnsupportedOperationError(self.name, "fork this", reason)
+        forked = await self._fork_history(None, None)
+        forked_sdk = await sdk_session.fork()
+        self._sessions[forked_sdk.thread_id] = forked_sdk
+        forked.set_sdk_session_id(forked_sdk.thread_id)
         return forked
 
     async def _interrupt(self) -> None:

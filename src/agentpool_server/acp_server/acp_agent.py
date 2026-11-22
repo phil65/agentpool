@@ -308,7 +308,7 @@ class AgentPoolACPAgent(ACPAgent):
         """
         self.tasks.create_task(session.send_available_commands_update())
         if new:
-            session.rules_loading = self.tasks.create_task(session.agent.load_rules(session.cwd))
+            session.rules_loading = self.tasks.create_task(session.agent.read_rules(session.cwd))
         if self.load_skills:
             coro = session.init_client_skills()
             self.tasks.create_task(coro, name=f"init_client_skills_{session.session_id}")

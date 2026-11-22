@@ -875,12 +875,19 @@ class OpenCodeV2Agent[TDeps = None](BaseAgent[TDeps, str]):
         *,
         session: Session | None = None,
     ) -> tuple[int, int]:
-        """Trigger native OpenCode V2 compaction (``POST /api/session/{id}/compact``)."""
+        """Compact the agent's OpenCode V2 session (``POST /api/session/{id}/compact``).
+
+        Raises:
+            UnsupportedOperationError: For another session, or without a server session.
+        """
+        from agentpool.agents.exceptions import UnsupportedOperationError
+
         if session is None and self._client is not None and self._sdk_session_id is not None:
             before = len(self.conversation.get_history())
             await self._client.compact_session(self._sdk_session_id)
             return (before, before)
-        return await super().compact(pipeline, session=session)
+        reason = "only its own server session, once one exists"
+        raise UnsupportedOperationError(self.name, "compact", reason)
 
     async def fork_session(
         self,
@@ -888,13 +895,26 @@ class OpenCodeV2Agent[TDeps = None](BaseAgent[TDeps, str]):
         at_message_id: str | None = None,
         session: Session | None = None,
     ) -> Session:
-        """Fork both the AgentPool session and the OpenCode V2 session on the server."""
-        forked = await super().fork_session(at_message_id=at_message_id, session=session)
-        if session is None and self._client is not None and self._sdk_session_id is not None:
-            forked_info = await self._client.fork_session(
-                self._sdk_session_id, before=at_message_id
-            )
-            forked.set_sdk_session_id(forked_info.id)
+        """Fork the agent's session together with its OpenCode V2 session on the server.
+
+        Raises:
+            UnsupportedOperationError: For another session, without a server session, or
+                at a message: the server's ``before`` takes its own message IDs, not
+                ours (``ARCHITECTURE_SESSIONS_AGENTS.md`` §10.4).
+        """
+        from agentpool.agents.exceptions import UnsupportedOperationError
+
+        if (
+            session is not None
+            or at_message_id is not None
+            or self._client is None
+            or self._sdk_session_id is None
+        ):
+            reason = "only the whole of its own server session, once one exists"
+            raise UnsupportedOperationError(self.name, "fork this", reason)
+        forked = await self._fork_history(None, None)
+        forked_info = await self._client.fork_session(self._sdk_session_id)
+        forked.set_sdk_session_id(forked_info.id)
         return forked
 
     # --- Models, modes, auth, MCP & usage limits -------------------------------------

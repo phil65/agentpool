@@ -90,10 +90,11 @@ if TYPE_CHECKING:
     from agentpool.delegation import AgentPool
     from agentpool.hooks import AgentHooks
     from agentpool.messaging import MessageNode
+    from agentpool.messaging.compaction import CompactionPipeline
     from agentpool.models.agents import NativeAgentConfig, ToolMode
     from agentpool.prompts.prompts import PromptType
     from agentpool.resource_providers import ResourceProvider
-    from agentpool.sessions import SessionData
+    from agentpool.sessions import Session, SessionData
     from agentpool.tools import Tool
     from agentpool.ui.base import InputProvider
     from agentpool_config.knowledge import Knowledge
@@ -721,7 +722,8 @@ class Agent[TDeps = None, OutputDataT = str](BaseAgent[TDeps, OutputDataT]):
         effective_session_id = session_id or self.session_id
         assert effective_session_id is not None  # Initialized by BaseAgent.run_stream()
         yield RunStartedEvent(session_id=effective_session_id, run_id=run_id, agent_name=self.name)
-        agentlet = await self.get_agentlet(None, self._output_type, input_provider)
+        model_override = self.active_session.overrides.model
+        agentlet = await self.get_agentlet(model_override, self._output_type, input_provider)
         response_msg: ChatMessage[Any] | None = None
         # Prepend pending context parts (prompts are already pydantic-ai UserContent format)
         async with agentlet.iter(
@@ -742,7 +744,8 @@ class Agent[TDeps = None, OutputDataT = str](BaseAgent[TDeps, OutputDataT]):
                         # A model request is one step: bracket it with step events
                         case ModelRequestNode():
                             step_id = str(uuid4())
-                            yield StepStartedEvent(step_id=step_id, model_name=self.model_name)
+                            step_model = model_override or self.model_name
+                            yield StepStartedEvent(step_id=step_id, model_name=step_model)
                             async for event in self._stream_node(node, agent_run, tool_events):
                                 yield event
                             history = agent_run.ctx.state.message_history
@@ -843,6 +846,24 @@ class Agent[TDeps = None, OutputDataT = str](BaseAgent[TDeps, OutputDataT]):
             self._model = model
             assert self.model_name is not None
             await self.update_state(config_id="model", value_id=self.model_name)
+
+    async def compact(
+        self,
+        pipeline: CompactionPipeline | None = None,
+        *,
+        session: Session | None = None,
+    ) -> tuple[int, int]:
+        """Compact the history of ``session`` (or the default): it is what the model sees."""
+        return await self._compact_history(pipeline, session)
+
+    async def fork_session(
+        self,
+        *,
+        at_message_id: str | None = None,
+        session: Session | None = None,
+    ) -> Session:
+        """Fork ``session`` (or the default session), up to ``at_message_id`` if given."""
+        return await self._fork_history(at_message_id, session)
 
     async def _interrupt(self) -> None:
         """Cancel the current stream task."""

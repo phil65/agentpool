@@ -318,3 +318,33 @@ async def test_mid_turn_prompt_steers_without_duplicate_running_state(
     assert idle.stop_reason == "end_turn"
     running_states = [u for u in recorder.updates if isinstance(u, v2.RunningStateSessionUpdate)]
     assert len(running_states) == 1
+
+
+async def test_two_v2_sessions_isolate_native_agent_history(connected: Any, tmp_path: Any) -> None:
+    """Two ACP v2 sessions on the same native pool agent keep isolated Session histories."""
+    conn, recorder, agent = connected
+    sid_a = await _new_session(conn, str(tmp_path))
+    sid_b = (await conn.new_session(v2.NewSessionRequest(cwd=str(tmp_path)))).session_id
+
+    await conn.prompt(_prompt(sid_a, "alpha prompt"))
+    await recorder.wait_idle()
+    recorder.updates.clear()
+
+    await conn.prompt(_prompt(sid_b, "beta prompt"))
+    await recorder.wait_idle()
+
+    pool = agent.agent_pool
+    assert pool is not None
+    sess_a = pool.sessions.get(sid_a)
+    sess_b = pool.sessions.get(sid_b)
+    assert sess_a is not None
+    assert sess_b is not None
+    # Each session's first prompt is its own and carries its own rules once (the test
+    # config has global rules); before, session A's turn took both sessions' rules
+    for session, prompt in ((sess_a, "alpha prompt"), (sess_b, "beta prompt")):
+        first = session.history.get_history()[0].content
+        assert isinstance(first, list)
+        assert first[0] == prompt
+        assert sum(str(part).count("Global Rules") for part in first) == 1
+    # The shared native agent's default conversation was never polluted
+    assert agent.conversation.get_history() == []

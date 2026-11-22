@@ -31,6 +31,8 @@ if TYPE_CHECKING:
 
     from agentpool.agents.events import RichAgentStreamEvent
     from agentpool.agents.events.events import SubAgentType
+    from agentpool.messaging import MessageNode
+    from agentpool.sessions import Session
 
 
 logger = get_logger(__name__)
@@ -249,23 +251,41 @@ class SubagentTools(StaticResourceProvider):
     def _resolve_child_session(
         self,
         ctx: AgentContext,
-        node: Any,
+        node: MessageNode[Any, Any],
         *,
         context: Literal["isolated", "fork"],
         session_id: str | None,
-    ) -> Any:
-        from agentpool.agents.base_agent import BaseAgent
+    ) -> Session | None:
+        """The child session a task on ``node`` runs in, or None to run ``node`` as is.
 
-        if ctx.pool is None or not isinstance(node, BaseAgent):
+        Only native agents get one: they run on the history they are given. External
+        agents (Claude Code, Codex, ACP, ...) continue their own native session whatever
+        history they are given, so a child session would only be bookkeeping until each
+        session gets its own runtime (``ARCHITECTURE_SESSIONS_AGENTS.md`` §6 step 7).
+
+        Raises:
+            ToolError: ``session_id`` names no child session of this conversation and
+                ``node``, or ``node`` is not a native agent.
+        """
+        from agentpool.agents.native_agent import Agent
+
+        if ctx.pool is None or not isinstance(node, Agent):
+            if session_id is not None:
+                msg = f"{node.name} cannot continue a session: only native agents run in one"
+                raise ToolError(msg)
             return None
-        if session_id is not None and (existing := ctx.pool.sessions.get(session_id)) is not None:
+        parent = ctx.agent.active_session
+        if session_id is not None:
+            existing = ctx.pool.sessions.get(session_id)
+            if (
+                existing is None
+                or existing.parent_id != parent.session_id
+                or existing.agent_name != node.name
+            ):
+                msg = f"No session {session_id!r} of {node.name} in this conversation"
+                raise ToolError(msg)
             return existing
-        child = ctx.agent.session.child(
-            node.name,
-            fork_history=context == "fork",
-            agent_type=node.AGENT_TYPE,
-            session_id=session_id,
-        )
+        child = parent.child(node.name, fork_history=context == "fork", agent_type=node.AGENT_TYPE)
         return ctx.pool.sessions.register(child)
 
     async def task(  # noqa: D417
@@ -294,8 +314,10 @@ class SubagentTools(StaticResourceProvider):
             prompt: The task instructions for the agent or team
             description: A short (3-5 words) description of the task
             async_mode: If True, run in background and return task ID immediately
-            context: History mode for a new child session ("isolated" or "fork")
-            session_id: Optional existing child session ID to continue
+            context: For native agents: start the task with an empty history ("isolated")
+                or with a copy of this conversation ("fork")
+            session_id: Continue an earlier task's session (native agents; the result of
+                that task names it)
         """
         from agentpool import Team, TeamRun
         from agentpool.agents.base_agent import BaseAgent
@@ -335,6 +357,11 @@ class SubagentTools(StaticResourceProvider):
             node.run_stream(prompt, session=child_session)
             if isinstance(node, BaseAgent) and child_session is not None
             else node.run_stream(prompt)
+        )
+        continue_note = (
+            f"\n\nSession ID: {child_session.session_id} (pass it as session_id to continue)"
+            if child_session is not None
+            else ""
         )
 
         logger.info(
@@ -384,7 +411,7 @@ class SubagentTools(StaticResourceProvider):
                 f"Task started in background.\n"
                 f"Task ID: {task_id}\n"
                 f"Output will be written to: {output_path}\n"
-                f"Use the read tool to check the output file for results."
+                f"Use the read tool to check the output file for results.{continue_note}"
             )
 
         # Synchronous mode - stream with SubAgentEvent wrapping
@@ -415,4 +442,4 @@ class SubagentTools(StaticResourceProvider):
             await ctx.events.emit_event(finished)
             raise
         await ctx.events.emit_event(TaskFinishedEvent(task_id=task_id, status="completed"))
-        return result
+        return f"{result}{continue_note}"

@@ -108,7 +108,7 @@ class AntigravityAgent[TDeps = None, OutputDataT = str](BaseAgent[TDeps, OutputD
     CAPABILITIES: ClassVar[AgentCapabilities] = AgentCapabilities(
         structured_output=True,
         multimodal_input=True,
-        native_compaction=True,
+        native_compaction=False,  # It compacts on its own threshold; compact() is not wired
     )
 
     def __init__(  # noqa: PLR0915

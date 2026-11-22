@@ -10,6 +10,7 @@ import pytest
 
 from agentpool import Agent, AgentPool
 from agentpool.sessions import Session, SessionOverrides
+from agentpool.tools.exceptions import ToolError
 
 
 async def test_agent_default_session_and_explicit_session_isolation() -> None:
@@ -104,11 +105,15 @@ async def test_subagent_task_uses_isolated_forked_and_resumed_child_sessions() -
 
         # 1. Default isolated child session does not pollute helper's default conversation
         res1 = await tools.task(ctx, "helper", "do part 1", "Part 1")
-        assert res1 == "helped"
         assert helper.conversation.get_history() == []
         children = pool.sessions.children_of(lead.session.session_id)
         assert len(children) == 1
         assert len(children[0].history.get_history()) == 2
+        # The result names the child session, so the model can continue it
+        assert (
+            res1
+            == f"helped\n\nSession ID: {children[0].session_id} (pass it as session_id to continue)"
+        )
 
         # 2. Forked child session starts with a copy of parent's history
         await tools.task(ctx, "helper", "use parent context", "Forked", context="fork")
@@ -121,6 +126,14 @@ async def test_subagent_task_uses_isolated_forked_and_resumed_child_sessions() -
         await tools.task(ctx, "helper", "follow up", "Continue", session_id=children[0].session_id)
         assert len(children[0].history.get_history()) == 4
         assert len(pool.sessions.children_of(lead.session.session_id)) == 2
+
+        # 4. Only this conversation's child sessions of that agent can be continued
+        stranger = pool.sessions.register(Session.create("helper"))
+        for foreign in ("ses_unknown", stranger.session_id):
+            with pytest.raises(ToolError, match="in this conversation"):
+                await tools.task(ctx, "helper", "x", "Foreign", session_id=foreign)
+        with pytest.raises(ToolError, match="in this conversation"):
+            await tools.task(ctx, "lead", "x", "Other agent", session_id=children[0].session_id)
 
 
 async def test_workers_tools_delegate_via_child_session_without_mutating_worker() -> None:
@@ -147,10 +160,8 @@ async def test_workers_tools_delegate_via_child_session_without_mutating_worker(
         # Worker's own default session history was never touched or swapped
         assert len(worker.conversation.get_history()) == 2
         assert worker.conversation.get_history()[0].content == ["worker own memory"]
-        # Child session was created under lead's session with lead's forked history
-        children = pool.sessions.children_of(lead.session.session_id)
-        assert len(children) == 1
-        assert len(children[0].history.get_history()) == 4
+        # The child session is not kept: nothing can continue a worker's session
+        assert pool.sessions.children_of(lead.session.session_id) == []
 
 
 async def test_agent_capabilities_and_base_fork_and_compact() -> None:
@@ -264,3 +275,56 @@ async def test_codex_and_opencode_v2_native_compact_and_fork() -> None:
     oc_fork = await oc.fork_session()
     assert v2_client.forked == [("ses_v2_1", None)]
     assert oc_fork.sdk_session_id == "ses_v2_fork"
+
+
+async def test_active_session_context_and_per_session_model_override() -> None:
+    """NativeAgent uses session.overrides.model without mutating self and tracks active_session."""
+    from agentpool.agents.events import StepStartedEvent
+
+    agent = Agent(name="multi-model", model=TestModel(custom_output_text="ok"))
+    async with agent:
+        default_model = agent.model_name
+        s1 = Session.create("multi-model", storage=agent.storage)
+        s1.overrides = SessionOverrides(model="test")
+
+        events = [e async for e in agent.run_stream("hi", session=s1)]
+        step_starts = [e for e in events if isinstance(e, StepStartedEvent)]
+        assert step_starts
+        assert step_starts[0].model_name == "test"
+        # Shared agent's configured model and default session remain untouched
+        assert agent.model_name == default_model
+        assert agent.active_session is agent.session
+
+
+def test_registry_drops_least_recently_used_and_children_go_with_parent() -> None:
+    from agentpool.sessions import SessionRegistry
+
+    registry = SessionRegistry(max_sessions=2)
+    a, b = registry.create("x"), registry.create("x")
+    assert registry.get(a.session_id) is a  # a is now used more recently than b
+    c = registry.create("x")
+    assert [s.session_id for s in registry.list_sessions()] == [a.session_id, c.session_id]
+    child = registry.register(c.child("y"))  # drops a, the least recently used
+    assert [s.session_id for s in registry.list_sessions()] == [c.session_id, child.session_id]
+    assert b.session_id not in registry
+    registry.remove(c.session_id)
+    assert len(registry) == 0
+
+
+async def test_agents_whose_backend_keeps_the_conversation_refuse_compact_and_fork() -> None:
+    """Rewriting our copy would change nothing for them: they say so instead of faking it."""
+    from agentpool.agents import ClaudeCodeAgent, CodexAgent, OpenCodeV2Agent
+    from agentpool.agents.exceptions import UnsupportedOperationError
+
+    claude = ClaudeCodeAgent(name="claude")
+    assert not claude.capabilities.native_compaction
+    with pytest.raises(UnsupportedOperationError, match="cannot compact"):
+        await claude.compact()
+    with pytest.raises(UnsupportedOperationError, match="cannot fork"):
+        await claude.fork_session()
+    # Native compaction and fork, but only of the running backend session, and whole
+    for agent in (CodexAgent(name="codex"), OpenCodeV2Agent(name="opencode")):
+        with pytest.raises(UnsupportedOperationError):
+            await agent.compact()  # Not connected: no backend session yet
+        with pytest.raises(UnsupportedOperationError):
+            await agent.fork_session(at_message_id="msg-1")

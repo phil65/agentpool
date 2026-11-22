@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections import OrderedDict
 from dataclasses import replace
 from typing import TYPE_CHECKING, Any
 from uuid import uuid4
@@ -269,16 +270,31 @@ class Session:
         return self.data.with_metadata(overrides=self.overrides.model_dump(exclude_none=True))
 
 
-class SessionRegistry:
-    """In-memory registry of active :class:`Session` objects in a pool."""
+MAX_SESSIONS = 512
+"""Sessions a registry keeps in memory by default."""
 
-    def __init__(self, storage: StorageManager | None = None) -> None:
+
+class SessionRegistry:
+    """In-memory registry of the live :class:`Session` objects in a pool.
+
+    Bounded: beyond ``max_sessions`` the least recently used sessions are dropped.
+    Servers keep the session of a running turn themselves and rebuild a missing one
+    from storage, so dropping only costs a reload (and unsaved overrides).
+    """
+
+    def __init__(
+        self, storage: StorageManager | None = None, *, max_sessions: int = MAX_SESSIONS
+    ) -> None:
         self._storage = storage
-        self._sessions: dict[str, Session] = {}
+        self._max_sessions = max_sessions
+        self._sessions: OrderedDict[str, Session] = OrderedDict()
 
     def register(self, session: Session) -> Session:
         """Register an existing session in the registry."""
         self._sessions[session.session_id] = session
+        self._sessions.move_to_end(session.session_id)
+        while len(self._sessions) > self._max_sessions:
+            self._sessions.popitem(last=False)
         return session
 
     def create(
@@ -309,7 +325,9 @@ class SessionRegistry:
 
     def get(self, session_id: str) -> Session | None:
         """Look up a registered session by ID."""
-        return self._sessions.get(session_id)
+        if (session := self._sessions.get(session_id)) is not None:
+            self._sessions.move_to_end(session_id)
+        return session
 
     def fork(
         self,
@@ -340,7 +358,12 @@ class SessionRegistry:
         return list(self._sessions.values())
 
     def remove(self, session_id: str) -> Session | None:
-        """Remove and return a session from the registry, if present."""
+        """Remove and return a session, with its child sessions, if present.
+
+        Child sessions (subagent tasks) can only be continued from their parent.
+        """
+        for child in self.children_of(session_id):
+            self.remove(child.session_id)
         return self._sessions.pop(session_id, None)
 
     def __contains__(self, session_id: object) -> bool:

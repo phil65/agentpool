@@ -385,12 +385,12 @@ async def test_rules_go_into_the_first_prompt_even_when_slow_to_load() -> None:
         pool.register("a", agent)
         loads: list[str | None] = []
 
-        async def slow_rules(project_dir: str | None = None) -> None:
+        async def slow_rules(project_dir: str | None = None) -> str:
             loads.append(project_dir)
             await asyncio.sleep(0.05)
-            agent.staged_content.add_text("RULES")
+            return "RULES"
 
-        agent.load_rules = slow_rules  # type: ignore[method-assign]
+        agent.read_rules = slow_rules  # type: ignore[method-assign]
         server = AgentPoolACPAgent(client=AsyncMock(), default_agent=agent)
         await server.initialize(InitializeRequest(protocol_version=1))
         session_id = await _new_session(server)

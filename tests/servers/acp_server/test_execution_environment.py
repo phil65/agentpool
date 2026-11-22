@@ -97,10 +97,11 @@ async def test_client_without_capabilities_gets_local_environment(
     assert session.env.cwd == str(tmp_path)
     assert not isinstance(session.fs, ACPFileSystem)
     assert default_test_agent.env is session.env
-    # Rules are loaded from the local filesystem instead of failing on terminal/create.
-    staged = await default_test_agent.staged_content.consume_as_text()
-    assert staged is not None
-    assert "Always answer in haiku." in staged
+    # Rules are read from the local filesystem instead of failing on terminal/create.
+    assert session.rules_loading is not None
+    rules = await session.rules_loading
+    assert rules is not None
+    assert "Always answer in haiku." in rules
 
 
 async def test_client_without_capabilities_loads_local_skills(

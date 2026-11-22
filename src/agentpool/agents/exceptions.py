@@ -35,6 +35,20 @@ class UnknownModeError(ValueError):
         super().__init__(msg)
 
 
+class UnsupportedOperationError(NotImplementedError):
+    """Raised when an agent cannot do an operation on its backend (e.g. compact, fork).
+
+    Not a failure of the call: for some agents the operation has no meaning, such as
+    rewriting our history of an agent whose backend keeps the conversation itself.
+    """
+
+    def __init__(self, agent: str, operation: str, reason: str) -> None:
+        super().__init__(f"{agent} cannot {operation}: {reason}")
+        self.agent = agent
+        self.operation = operation
+        self.reason = reason
+
+
 class OperationNotAllowedError(RuntimeError):
     """Raised when an operation is blocked by permission or configuration."""
 

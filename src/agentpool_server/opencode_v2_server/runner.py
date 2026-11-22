@@ -17,10 +17,11 @@ from typing import TYPE_CHECKING, Any, Literal
 
 from agentpool.agents.base_agent import BaseAgent
 from agentpool.agents.events import NoticeEvent, RunStartedEvent, StreamCompleteEvent
+from agentpool.agents.native_agent import Agent
 from agentpool.delegation.team import Team
 from agentpool.delegation.teamrun import TeamRun
 from agentpool.log import get_logger
-from agentpool.messaging.compaction import compact_conversation, summarizing_context
+from agentpool.messaging.compaction import summarizing_context
 from agentpool_server.opencode_v2_server.catalog import leaf_agents, variant_category
 from agentpool_server.opencode_v2_server.prompt_input import payload_to_prompts
 from agentpool_server.opencode_v2_server.run_converter import (
@@ -69,6 +70,7 @@ if TYPE_CHECKING:
     from agentpool.agents.events import RichAgentStreamEvent, StreamWithCommandsEvent
     from agentpool.messaging import MessageNode
     from agentpool.messaging.compaction import CompactionPipeline
+    from agentpool.sessions import Session
     from agentpool.skills.manager import SkillsManager
     from agentpool_server.opencode_v2_server.catalog import Catalog
     from agentpool_server.opencode_v2_server.interactions import SessionInputProvider
@@ -115,8 +117,20 @@ class AgentBinder:
         model: ModelRef | None,
         *,
         has_history: bool,
-    ) -> AsyncGenerator[None]:
-        """Lock the node's agents and prepare them for a turn of the given session."""
+    ) -> AsyncGenerator[Session | None]:
+        """Prepare the node for a turn of ``session``, holding its agents' locks.
+
+        Native :class:`Agent` runs use an isolated :class:`Session` from ``pool.sessions``
+        (its own history and model override), so they need no re-binding. Turns on one
+        agent instance still run one at a time: cancellation, staged content and modes
+        are state of the instance, not of a session, until each session gets its own
+        runtime (``ARCHITECTURE_SESSIONS_AGENTS.md`` §6 step 7). External agents also
+        re-bind via ``load_session`` / ``start_new_session``.
+        """
+        if isinstance(node, Agent):
+            async with self._lock(node):
+                yield await self._native_session(node, session, model, has_history=has_history)
+            return
         agents = sorted(leaf_agents(node), key=lambda a: a.name)
         async with AsyncExitStack() as stack:
             for agent in agents:
@@ -124,7 +138,45 @@ class AgentBinder:
             if isinstance(node, BaseAgent):
                 await self._bind(node, session.id, has_history=has_history)
                 await self._apply_model(node, model)
-            yield
+            yield None
+
+    async def _native_session(
+        self,
+        agent: Agent[Any, Any],
+        session: V2Session,
+        model: ModelRef | None,
+        *,
+        has_history: bool,
+    ) -> Session:
+        registry = self.catalog.pool.sessions
+        pool_session = registry.get(session.id)
+        if pool_session is None:
+            stored = (
+                await agent.storage.get_session_messages(session.id)
+                if has_history and agent.storage is not None
+                else None
+            )
+            pool_session = registry.create(
+                agent.name,
+                session_id=session.id,
+                parent_id=session.info.parent_id,
+                cwd=session.directory,
+                agent_type=agent.AGENT_TYPE,
+                messages=stored,
+            )
+        elif pool_session.agent_name != agent.name:
+            pool_session.rebind_agent(agent.name, agent_type=agent.AGENT_TYPE)
+        if model is not None:
+            target = await self.catalog.resolve_model(agent, model)
+            if target:
+                override = target if target != agent.model_name else None
+                if pool_session.overrides.model != override:
+                    pool_session.overrides = pool_session.overrides.model_copy(
+                        update={"model": override}
+                    )
+            if model.variant and (category := await variant_category(agent)):
+                await agent.set_mode(model.variant, category_id=category)
+        return pool_session
 
     async def _bind(
         self, agent: BaseAgent[Any, Any], session_id: str, *, has_history: bool
@@ -395,8 +447,10 @@ class SessionRunner:
                 emit=session.emit_sink,
             )
             prompts = await self._prompts(item)
-            async with self.binder.hold(node, session, model, has_history=has_history):
-                async for event in self._stream(node, prompts):
+            async with self.binder.hold(
+                node, session, model, has_history=has_history
+            ) as pool_session:
+                async for event in self._stream(node, prompts, session=pool_session):
                     self.tasks.observe(event)
                     self.converter.handle(event)
             self.converter.finish()
@@ -454,24 +508,28 @@ class SessionRunner:
             if not isinstance(node, BaseAgent):
                 msg = "Compaction needs a single agent (teams keep no own history)"
                 raise ExecutionError(msg)  # noqa: TRY301
+            if not node.capabilities.native_compaction:  # Before the summary turn
+                msg = f"{node.name} cannot compact on demand: its backend compacts on its own"
+                raise ExecutionError(msg)  # noqa: TRY301
             has_history = any(
                 isinstance(m, SessionMessageUser) for m in session.projection.messages
             )
             summary = ""
             tokens = None
             cost = 0.0
-            async with self.binder.hold(node, session, session.info.model, has_history=has_history):
-                async for event in node.run_stream(SUMMARIZE_PROMPT, session_id=session.id):
+            async with self.binder.hold(
+                node, session, session.info.model, has_history=has_history
+            ) as pool_session:
+                async for event in node.run_stream(
+                    SUMMARIZE_PROMPT, session=pool_session, session_id=session.id
+                ):
                     if isinstance(event, StreamCompleteEvent):
                         summary = str(event.message.content)
                         tokens = usage_to_tokens(event.message.usage)
                         if event.message.cost_info:
                             cost = float(event.message.cost_info.total_cost)
                 pipeline = self.compaction_pipeline or summarizing_context()
-                await compact_conversation(pipeline, node.conversation)
-                if node.storage is not None:
-                    history = node.conversation.get_history()
-                    await node.storage.replace_conversation_messages(session.id, history)
+                await node.compact(pipeline, session=pool_session)
             session.emit(
                 SessionCompactionEnded,
                 SessionCompactionEndedData(
@@ -521,17 +579,25 @@ class SessionRunner:
         return prompts
 
     def _stream(
-        self, node: MessageNode[Any, Any], prompts: list[UserContent]
+        self,
+        node: MessageNode[Any, Any],
+        prompts: list[UserContent],
+        *,
+        session: Session | None = None,
     ) -> AsyncIterator[StreamWithCommandsEvent[Any]]:
         match node:
             case BaseAgent():
                 first = prompts[0] if prompts else None
                 if isinstance(first, str) and first.startswith("/"):
                     return node.run_stream_with_commands(
-                        *prompts, session_id=self.session.id, input_provider=self.input_provider
+                        *prompts,
+                        session=session,
+                        session_id=self.session.id,
+                        input_provider=self.input_provider,
                     )
                 return node.run_stream(
                     *prompts,
+                    session=session,
                     session_id=self.session.id,
                     input_provider=self.input_provider,
                 )

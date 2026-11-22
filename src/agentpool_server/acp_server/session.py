@@ -26,6 +26,7 @@ from slashed import CommandStore
 
 from agentpool import Agent, AgentPool
 from agentpool.agents.acp_agent import ACPAgent
+from agentpool.agents.staged_content import StagedContent
 from agentpool.log import get_logger
 from agentpool_commands.base import NodeCommand
 from agentpool_server.acp_server.converters import (
@@ -240,14 +241,17 @@ class ACPSession:
         self.command_store._initialize_sync()
         self._update_callbacks: list[Callable[[], None]] = []
         self._commands_update: asyncio.Task[None] | None = None
-        self.rules_loading: asyncio.Task[None] | None = None
-        """Staging of the AGENTS.md / CLAUDE.md rules; the first turn waits for it."""
+        self.rules_loading: asyncio.Task[str | None] | None = None
+        """Reading of the AGENTS.md / CLAUDE.md rules; the first turn waits for it."""
+        self.staged = StagedContent()
+        """Context for this session's next prompt. Kept here, not on the agent: sessions
+        may share an agent instance, and its staged content goes to whichever turn is next."""
         # Inject Zed-specific instructions if client is Zed
         if self.client_info and self.client_info.name and "zed" in self.client_info.name.lower():
-            self.agent.staged_content.add_text(ZED_CLIENT_PROMPT)
+            self.staged.add_text(ZED_CLIENT_PROMPT)
         if self.system_prompt and not isinstance(self.agent, Agent):
             # Native agents get it via sys_prompts (see get_cwd_context)
-            self.agent.staged_content.add_text(self.system_prompt)
+            self.staged.add_text(self.system_prompt)
         self.notifications = ACPNotifications(client=self.client, session_id=self.session_id)
         self.output: SessionOutput = self.output_factory(self)
         self.requests = ACPRequests(client=self.client, session_id=self.session_id)
@@ -503,6 +507,8 @@ class ACPSession:
         self._watch_agent_commands(self.agent, watch=False)
         self.agent = agents[agent_name]
         self._watch_agent_commands(self.agent, watch=True)
+        if (pool_session := self.agent_pool.sessions.get(self.session_id)) is not None:
+            pool_session.rebind_agent(agent_name, agent_type=self.agent.AGENT_TYPE)
         self.log.info("Switched agents", from_agent=old_agent_name, to_agent=agent_name)
         # Persist the agent switch via session manager
         if self.manager:
@@ -596,20 +602,46 @@ class ACPSession:
                 return TurnCompleted()
             self.log.debug("Processing prompt", content_items=len(non_command_content))
             await self._wait_for_rules()
+            if staged := await self.staged.consume_as_text():
+                non_command_content = [*non_command_content, staged]
             await output.start()  # After the commands: they may switch model or agent
             outcome = await self._stream_agent(non_command_content, output)
             await output.finish(outcome)
             return outcome
 
     async def _wait_for_rules(self) -> None:
-        """Let the rules be staged first, so they go into this turn's prompt and no later one."""
+        """Stage the rules first, so they go into this turn's prompt and no later one."""
         if (task := self.rules_loading) is None:
             return
         self.rules_loading = None
         try:
-            await task
+            rules = await task
         except Exception:  # The turn runs without them
             self.log.exception("Failed to load the rules")
+            return
+        if rules is not None:
+            self.staged.add_text(rules)
+
+    async def _native_pool_session(self) -> Any:
+        """Resolve or create an isolated pool ``Session`` when running a native ``Agent``."""
+        if not isinstance(self.agent, Agent) or self.agent.agent_pool is None:
+            return None
+        registry = self.agent.agent_pool.sessions
+        pool_session = registry.get(self.session_id)
+        if pool_session is not None:
+            return pool_session
+        stored = (
+            await self.agent.storage.get_session_messages(self.session_id)
+            if self.agent.storage is not None
+            else None
+        )
+        return registry.create(
+            self.agent.name,
+            session_id=self.session_id,
+            cwd=self.cwd,
+            agent_type=self.agent.AGENT_TYPE,
+            messages=stored or None,
+        )
 
     async def _stream_agent(
         self, contents: Sequence[UserContent | PathReference], output: TurnOutput
@@ -617,12 +649,15 @@ class ACPSession:
         event_count = 0
         try:  # Use the session's persistent input provider
             # Staged content is automatically injected by run_stream
-            async for event in self.agent.run_stream(
-                *contents,
-                input_provider=self.input_provider,
-                deps=self,
-                session_id=self.session_id,  # Tie agent conversation to ACP session
-            ):
+            pool_session = await self._native_pool_session()
+            stream_kwargs: dict[str, Any] = {
+                "input_provider": self.input_provider,
+                "deps": self,
+                "session_id": self.session_id,
+            }
+            if pool_session is not None:
+                stream_kwargs["session"] = pool_session
+            async for event in self.agent.run_stream(*contents, **stream_kwargs):
                 if self._cancelled:
                     self.log.info("Cancelled during event loop, cleaning up tool calls")
                     return TurnCancelled()
@@ -674,6 +709,8 @@ class ACPSession:
                 with contextlib.suppress(ValueError):  # Agents added after this session
                     pool_agent.background_event.disconnect(self._on_background_event)
             self._watch_agent_commands(self.agent, watch=False)
+            if self.agent.agent_pool is not None:
+                self.agent.agent_pool.sessions.remove(self.session_id)
             if self._commands_update is not None:
                 self._commands_update.cancel()
             # Remove cwd context callable from all agents
@@ -698,7 +735,7 @@ class ACPSession:
         """Register MCP prompts as slash commands."""
         if all_prompts := await self.agent.tools.list_prompts():
             for prompt in all_prompts:
-                command = prompt.create_mcp_command(self.agent.staged_content)
+                command = prompt.create_mcp_command(self.staged)
                 self.command_store.register_command(command)
             self._notify_command_update()
             self.log.info("Registered MCP prompts as commands", prompt_count=len(all_prompts))
@@ -716,7 +753,7 @@ class ACPSession:
                 command = manager.create_prompt_hub_command(
                     provider_name,
                     prompt_name,
-                    self.agent.staged_content,
+                    self.staged,
                 )
                 self.command_store.register_command(command)
                 cmd_count += 1

@@ -26,10 +26,12 @@ class AgentCapabilities:
     """Backend queries available models dynamically at runtime."""
 
     native_compaction: bool = False
-    """Backend supports native conversation/context compaction."""
+    """``compact()`` compacts what the model sees on demand (otherwise it raises
+    ``UnsupportedOperationError``). Backends that only compact on their own don't count."""
 
     native_fork: bool = False
-    """Backend supports native session/thread forking."""
+    """``fork_session()`` forks the conversation the agent continues from (otherwise it
+    raises ``UnsupportedOperationError``); some agents only fork whole sessions."""
 
     background_events: bool = False
     """Backend streams between-turn / unsolicited events via ``BaseAgent.emit_event``."""

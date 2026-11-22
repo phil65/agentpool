@@ -6,6 +6,7 @@ from abc import abstractmethod
 import asyncio
 from collections.abc import Callable
 from contextlib import asynccontextmanager, suppress
+from contextvars import ContextVar
 from dataclasses import dataclass, field, replace
 import os
 from pathlib import Path
@@ -90,6 +91,8 @@ type AgentTypeLiteral = Literal[
 ]
 type PromptDelivery = Literal["steer", "queue"]
 type AgentState = Literal["idle", "running"]
+
+_ACTIVE_SESSION: ContextVar[Session | None] = ContextVar("_agentpool_active_session", default=None)
 
 
 _SLASH_PATTERN: re.Pattern[str] = re.compile(r"^/([\w-]+)(?:\s+(.*))?$")
@@ -317,6 +320,18 @@ class BaseAgent[TDeps = None, TResult = str](MessageNode[TDeps, TResult]):
         return self._default_session
 
     @property
+    def active_session(self) -> Session:
+        """The :class:`Session` of this agent's turn running in this context, else the default.
+
+        The context variable holds the session of the innermost running turn, which can
+        belong to another agent (e.g. a subagent's turn); only this agent's turns count.
+        """
+        active = _ACTIVE_SESSION.get()
+        if active is not None and active.agent_name == self.name:
+            return active
+        return self.session
+
+    @property
     def conversation(self) -> MessageHistory:
         """Conversation history of the agent's default session."""
         return self._default_session.history
@@ -484,12 +499,28 @@ class BaseAgent[TDeps = None, TResult = str](MessageNode[TDeps, TResult]):
         *,
         session: Session | None = None,
     ) -> tuple[int, int]:
-        """Compact conversation history for ``session`` (or the default session).
+        """Compact the conversation of ``session`` (or the default session).
 
-        Returns ``(before_count, after_count)`` of messages in the compacted history.
-        External runtimes with native compaction (Codex, OpenCode V2, ...) override
-        this to trigger their backend's compaction directly.
+        Implemented where it changes what the model sees: native agents compact their
+        history, Codex and OpenCode V2 their backend's context. Other agents keep the
+        conversation in their backend, so compacting our copy would change nothing
+        (``capabilities.native_compaction`` says which).
+
+        Returns:
+            ``(before_count, after_count)`` of messages in our history.
+
+        Raises:
+            UnsupportedOperationError: The agent cannot compact on demand.
         """
+        from agentpool.agents.exceptions import UnsupportedOperationError
+
+        reason = "its backend keeps the conversation; compacting our copy changes nothing"
+        raise UnsupportedOperationError(self.name, "compact", reason)
+
+    async def _compact_history(
+        self, pipeline: CompactionPipeline | None, session: Session | None
+    ) -> tuple[int, int]:
+        """Compact our history of ``session`` and persist it (for :meth:`compact`)."""
         from agentpool.messaging.compaction import compact_conversation, summarizing_context
 
         target_history = session.history if session is not None else self.conversation
@@ -510,12 +541,25 @@ class BaseAgent[TDeps = None, TResult = str](MessageNode[TDeps, TResult]):
     ) -> Session:
         """Fork ``session`` (or the default session) into a new child :class:`Session`.
 
-        Copies conversation history up to ``at_message_id`` (inclusive, or all history
-        when omitted), registers the forked session in ``agent_pool.sessions`` when in
-        a pool, and persists its messages to storage if logging is enabled. External
-        runtimes with native thread/session forking override this to also fork their
-        backend state.
+        Implemented where the fork continues from the forked conversation: native agents
+        (our history), Codex and OpenCode V2 (their backend's session, forked too).
+        Other agents would continue their original native session
+        (``capabilities.native_fork`` says which).
+
+        Args:
+            at_message_id: Copy history up to this message (inclusive); all when omitted.
+            session: The session to fork; the agent's default session when omitted.
+
+        Raises:
+            UnsupportedOperationError: The agent cannot fork, or not at that message.
         """
+        from agentpool.agents.exceptions import UnsupportedOperationError
+
+        reason = "its backend's session would not be forked"
+        raise UnsupportedOperationError(self.name, "fork a session", reason)
+
+    async def _fork_history(self, at_message_id: str | None, session: Session | None) -> Session:
+        """Fork our history of ``session``, register and persist it (for :meth:`fork_session`)."""
         source = session if session is not None else self.session
         forked = source.fork(at_message_id=at_message_id, agent_name=self.name)
         if self.agent_pool is not None:
@@ -1081,6 +1125,7 @@ class BaseAgent[TDeps = None, TResult = str](MessageNode[TDeps, TResult]):
         final_message = None
         await self.message_received.emit(user_msg)
         self._active_runs += 1
+        session_token = _ACTIVE_SESSION.set(session if session is not None else self.session)
         try:
             # Execute pre-run hooks
             if self.hooks:
@@ -1124,6 +1169,7 @@ class BaseAgent[TDeps = None, TResult = str](MessageNode[TDeps, TResult]):
             await self.run_failed.emit(failed_event)
             raise
         finally:
+            _ACTIVE_SESSION.reset(session_token)
             self._active_runs -= 1
 
         if final_message is not None:
@@ -1605,19 +1651,35 @@ class BaseAgent[TDeps = None, TResult = str](MessageNode[TDeps, TResult]):
         return await self.load_session(session_id)
 
     async def load_rules(self, project_dir: str | None = None) -> None:
-        """Load agent rules from global and project locations.
+        """Stage the agent rules (see :meth:`read_rules`) for the agent's next prompt.
+
+        For a server whose sessions share this agent, stage them per session instead
+        (with :meth:`read_rules`): the agent's staged content goes to whichever turn
+        runs next.
+
+        Args:
+            project_dir: Project directory to search for rules. Falls back to
+                env.cwd if not provided.
+        """
+        if (rules := await self.read_rules(project_dir)) is not None:
+            self.staged_content.add_text(rules)
+
+    async def read_rules(self, project_dir: str | None = None) -> str | None:
+        """Read agent rules from global and project locations.
 
         Searches for AGENTS.md/CLAUDE.md files in:
         1. Global: ~/.config/agentpool/AGENTS.md (user-wide rules)
         2. Project: {project_dir}/AGENTS.md (project-specific rules)
 
-        Both are merged and staged for injection into the first prompt.
         Uses the agent's execution environment for filesystem access,
         making this work across local and remote (ACP) environments.
 
         Args:
             project_dir: Project directory to search for rules. Falls back to
                 env.cwd if not provided.
+
+        Returns:
+            Both merged, or None when there are none.
         """
         from agentpool_config.resolution import get_global_config_dir
 
@@ -1665,12 +1727,11 @@ class BaseAgent[TDeps = None, TResult = str](MessageNode[TDeps, TResult]):
                 except (OSError, UnicodeDecodeError):
                     logger.debug("No project rules found", path=rules_path)
 
-        # Stage combined rules for first prompt
-        if rules_parts:
-            combined = "\n\n".join(rules_parts)
-            self.staged_content.add_text(combined)
-            logger.info(
-                "Staged agent rules",
-                global_rules=bool(any("Global" in p for p in rules_parts)),
-                project_rules=bool(any("Project" in p for p in rules_parts)),
-            )
+        if not rules_parts:
+            return None
+        logger.info(
+            "Read agent rules",
+            global_rules=bool(any("Global" in p for p in rules_parts)),
+            project_rules=bool(any("Project" in p for p in rules_parts)),
+        )
+        return "\n\n".join(rules_parts)

@@ -66,6 +66,8 @@ class WorkersTools(ResourceProvider):
         """Create tool for a regular agent worker with history management."""
 
         async def run(ctx: AgentContext, prompt: str) -> Any:
+            from agentpool.agents.native_agent import Agent
+
             if ctx.pool is None:
                 msg = "No agent pool available"
                 raise ToolError(msg)
@@ -75,13 +77,15 @@ class WorkersTools(ResourceProvider):
                 raise ToolError(msg)
 
             worker = agents[agent_name]
-            if pass_message_history or reset_history_on_run:
-                child = ctx.agent.session.child(
+            # Only native agents run on the history they are given; external ones keep
+            # their native session (see SubagentTools._resolve_child_session)
+            if isinstance(worker, Agent) and (pass_message_history or reset_history_on_run):
+                child = ctx.agent.active_session.child(
                     worker.name,
                     fork_history=pass_message_history,
                     agent_type=worker.AGENT_TYPE,
                 )
-                ctx.pool.sessions.register(child)
+                # Not registered: nothing continues a worker's session
                 result = await worker.run(prompt, session=child)
                 return result.data
             result = await worker.run(prompt)

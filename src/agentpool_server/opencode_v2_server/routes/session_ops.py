@@ -260,6 +260,7 @@ async def session_revert_commit(session: SessionDep, state: StateDep) -> Respons
     await state.storage.replace_conversation_messages(
         session.id, history_prefix(history, kept_turns)
     )
+    state.pool.sessions.remove(session.id)
     for agent in state.pool.all_agents.values():
         if agent.session_id == session.id:
             agent.session_id = None  # Reload the truncated history on the next turn.

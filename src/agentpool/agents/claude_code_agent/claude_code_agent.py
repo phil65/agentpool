@@ -168,7 +168,7 @@ class ClaudeCodeAgent[TDeps = None, TResult = str](BaseAgent[TDeps, TResult]):
         structured_output=True,
         multimodal_input=True,
         live_model_discovery=True,
-        native_compaction=True,
+        native_compaction=False,  # It auto-compacts, but compact() is not wired to /compact
         background_events=True,
     )
     TITLES_OWN_SESSIONS: ClassVar = True
