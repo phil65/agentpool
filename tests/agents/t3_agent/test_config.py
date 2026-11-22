@@ -8,6 +8,7 @@ import pytest
 
 from agentpool.agents.t3_agent import T3Agent
 from agentpool.agents.t3_agent.questions import Question, to_answer, to_elicitation
+from agentpool.agents.t3_agent.t3_agent import server_path
 from agentpool.models.manifest import AgentsManifest
 from agentpool.models.t3_agents import T3AgentConfig
 
@@ -105,3 +106,20 @@ def test_multi_select_and_free_text_questions() -> None:
     }
     assert "required" not in form.requested_schema
     assert to_answer(free, types.ElicitResult(action="accept", content={"f": "Ada"})) == "Ada"
+
+
+@pytest.mark.parametrize(
+    ("first", "second", "same"),
+    [
+        ("/srv/app/", "/srv/app", True),
+        ("C:\\src\\App", "c:\\src\\app", True),
+        ("/src/app", "C:\\src\\app", False),
+    ],
+)
+def test_server_paths(first: str, second: str, *, same: bool) -> None:
+    assert (server_path(first) == server_path(second)) is same
+
+
+@pytest.mark.parametrize("text", ["proj_123", "~/src/app", "src/app"])
+def test_project_ids_and_relative_paths_are_not_server_paths(text: str) -> None:
+    assert server_path(text) is None

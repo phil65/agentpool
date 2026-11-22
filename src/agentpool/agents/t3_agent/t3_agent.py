@@ -14,6 +14,7 @@ approves it in T3 Code.
 from __future__ import annotations
 
 from datetime import UTC, datetime
+from pathlib import PurePath, PurePosixPath, PureWindowsPath
 import time
 from typing import TYPE_CHECKING, Any, ClassVar, Self
 from uuid import uuid4
@@ -87,6 +88,19 @@ def prompt_text(prompts: Sequence[UserContent]) -> str:
             raise ValueError(msg)  # noqa: TRY004
         texts.append(prompt)
     return "\n\n".join(texts)
+
+
+def server_path(text: str) -> PurePath | None:
+    r"""``text`` as an absolute path on the T3 host, or None if it is no absolute path.
+
+    Paths keep the flavor they are written in, whatever this machine runs: ``/srv/app``
+    is POSIX, ``C:\src\app`` a Windows path (compared case-insensitively). ``~`` is not
+    expanded: the T3 host's home folder is unknown here.
+    """
+    if text.startswith("/"):
+        return PurePosixPath(text)
+    windows = PureWindowsPath(text)
+    return windows if windows.is_absolute() else None
 
 
 class T3Agent[TDeps = None](BaseAgent[TDeps, str]):
@@ -267,17 +281,24 @@ class T3Agent[TDeps = None](BaseAgent[TDeps, str]):
         return T3Client.from_credentials(saved, client_name=f"agentpool:{self.name}")
 
     async def _resolve_project(self, client: T3Client) -> str:
-        """The project id: ``project`` as given, or the project of that folder."""
+        """The project id: ``project`` as given, or the project in that folder on the T3 host."""
         from pyt3client.models.tools import PROJECT_LIST, ProjectListInput
 
-        if not self._project.startswith(("/", "~")):
+        if (folder := server_path(self._project)) is None:
             return self._project
-        folder = self._project.rstrip("/")
-        projects = await client.call(PROJECT_LIST, ProjectListInput())
-        for project in projects.projects:
-            if project.workspace_root.rstrip("/") == folder:
-                return project.id
-        msg = f"No T3 project in {folder!r} (add it in T3 Code first)"
+        cursor: int | None = None
+        while True:
+            params = ProjectListInput(limit=100)
+            if cursor is not None:
+                params.cursor = cursor
+            page = await client.call(PROJECT_LIST, params)
+            for project in page.projects:
+                if server_path(project.workspace_root) == folder:
+                    return project.id
+            if page.next_cursor is None:
+                break
+            cursor = page.next_cursor.root
+        msg = f"No T3 project in {self._project!r} (add it in T3 Code first)"
         raise RuntimeError(msg)
 
     async def get_auth_status(self) -> AuthStatus:
