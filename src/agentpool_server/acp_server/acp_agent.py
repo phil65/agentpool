@@ -298,10 +298,17 @@ class AgentPoolACPAgent(ACPAgent):
             raise RequestError.resource_not_found(params.session_id)
         return await self._create_session(params, session_id=params.session_id)
 
-    def _schedule_session_setup(self, session: ACPSession) -> None:
-        """Send commands, load rules and client skills once the session response is out."""
+    def _schedule_session_setup(self, session: ACPSession, *, new: bool = False) -> None:
+        """Send commands, load rules and client skills once the session response is out.
+
+        Args:
+            session: The session that was set up
+            new: Whether the session starts a conversation. Only then are the rules staged:
+                a loaded or resumed conversation got them with its first prompt.
+        """
         self.tasks.create_task(session.send_available_commands_update())
-        self.tasks.create_task(session.agent.load_rules(session.cwd))
+        if new:
+            session.rules_loading = self.tasks.create_task(session.agent.load_rules(session.cwd))
         if self.load_skills:
             coro = session.init_client_skills()
             self.tasks.create_task(coro, name=f"init_client_skills_{session.session_id}")
@@ -322,7 +329,7 @@ class AgentPoolACPAgent(ACPAgent):
             state = await get_session_mode_state(session.agent)
         config_options = await get_session_config_options(session.agent)
         # Schedule follow-up work to run after the response is sent
-        self._schedule_session_setup(session)
+        self._schedule_session_setup(session, new=True)
         self.tasks.create_task(session._register_prompt_hub_commands())
         logger.info("Created session", session_id=session.session_id)
         return NewSessionResponse(
@@ -394,7 +401,7 @@ class AgentPoolACPAgent(ACPAgent):
         # For now, just create a new session - full fork implementation would copy state
         session = await self._create_session(params)
         config_options = await get_session_config_options(session.agent)
-        self._schedule_session_setup(session)
+        self._schedule_session_setup(session, new=True)
         return ForkSessionResponse(session_id=session.session_id, config_options=config_options)
 
     async def resume_session(self, params: ResumeSessionRequest) -> ResumeSessionResponse:

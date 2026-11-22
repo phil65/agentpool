@@ -240,6 +240,8 @@ class ACPSession:
         self.command_store._initialize_sync()
         self._update_callbacks: list[Callable[[], None]] = []
         self._commands_update: asyncio.Task[None] | None = None
+        self.rules_loading: asyncio.Task[None] | None = None
+        """Staging of the AGENTS.md / CLAUDE.md rules; the first turn waits for it."""
         # Inject Zed-specific instructions if client is Zed
         if self.client_info and self.client_info.name and "zed" in self.client_info.name.lower():
             self.agent.staged_content.add_text(ZED_CLIENT_PROMPT)
@@ -588,10 +590,21 @@ class ACPSession:
             if not non_command_content:
                 return TurnCompleted()
             self.log.debug("Processing prompt", content_items=len(non_command_content))
+            await self._wait_for_rules()
             await output.start()  # After the commands: they may switch model or agent
             outcome = await self._stream_agent(non_command_content, output)
             await output.finish(outcome)
             return outcome
+
+    async def _wait_for_rules(self) -> None:
+        """Let the rules be staged first, so they go into this turn's prompt and no later one."""
+        if (task := self.rules_loading) is None:
+            return
+        self.rules_loading = None
+        try:
+            await task
+        except Exception:  # The turn runs without them
+            self.log.exception("Failed to load the rules")
 
     async def _stream_agent(
         self, contents: Sequence[UserContent | PathReference], output: TurnOutput

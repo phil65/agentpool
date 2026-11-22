@@ -362,3 +362,44 @@ async def test_background_events_are_sent_to_their_session(server: AgentPoolACPA
     notifications: list[SessionNotification] = [call.args[0] for call in calls]
     assert [n.session_id for n in notifications] == [session_id]
     assert "Background task finished" in str(notifications[0].update)
+
+
+# --- rules (AGENTS.md / CLAUDE.md) --------------------------------------------
+
+
+async def test_rules_go_into_the_first_prompt_even_when_slow_to_load() -> None:
+    """The first turn waits for the rules; loading a session does not stage them again."""
+    prompts: list[str] = []
+
+    async def record(messages: list[ModelMessage], info: AgentInfo) -> AsyncIterator[str]:
+        request = messages[-1]
+        assert isinstance(request, ModelRequest)
+        prompts.append(
+            "".join(str(p.content) for p in request.parts if isinstance(p, UserPromptPart))
+        )
+        yield "ok"
+
+    storage = StorageConfig(providers=[SQLStorageConfig(url="sqlite+aiosqlite:///:memory:")])
+    async with AgentPool(AgentsManifest(storage=storage)) as pool:
+        agent = Agent(name="a", model=FunctionModel(stream_function=record), agent_pool=pool)
+        pool.register("a", agent)
+        loads: list[str | None] = []
+
+        async def slow_rules(project_dir: str | None = None) -> None:
+            loads.append(project_dir)
+            await asyncio.sleep(0.05)
+            agent.staged_content.add_text("RULES")
+
+        agent.load_rules = slow_rules  # type: ignore[method-assign]
+        server = AgentPoolACPAgent(client=AsyncMock(), default_agent=agent)
+        await server.initialize(InitializeRequest(protocol_version=1))
+        session_id = await _new_session(server)
+        await server.prompt(_prompt(session_id, "first"))
+        await server.prompt(_prompt(session_id, "second"))
+        await server.session_manager.close_session(session_id)
+        await server.load_session(LoadSessionRequest(session_id=session_id, cwd="/tmp"))
+        await server.prompt(_prompt(session_id, "third"))
+    assert loads == ["/tmp"], "rules are loaded once, for the new session"
+    assert "first" in prompts[0]
+    assert "RULES" in prompts[0]
+    assert [p for p in prompts[1:] if "RULES" in p] == []
