@@ -37,7 +37,8 @@ steer, so a named result answers every message the CLI had taken in. The message
 `command_lifecycle` `started` frame; `discarded` / `refused` become a warning notice. OpenCode V2
 steering goes through it. Needs clawd-code-sdk with `steer()` and `CommandLifecycleMessage`.
 Open: ACP has no steering method yet (Zed: `_session/steering` extension, advertised in
-`initialize` `_meta`); Codex could use its native `turn/steer`.
+`initialize` `_meta`). Codex, OpenCode V2 and Antigravity now steer natively too (2026-11-22);
+the ACP v2 server steers a prompt that arrives during a turn (`ACP_V2_SERVER.md`, Open).
 
 ## 5. "Always allow" permission choices
 
@@ -172,3 +173,17 @@ through the agent's command store, so the CLI's prompt-like commands (`/review`,
 now runs only the agent's own commands; backend commands (`is_backend_command`) and unknown
 ones stay in the prompt, as in ACP. (MCP prompts already went through as turns: the `:` in
 `mcp:server:prompt` never matched the command pattern.)
+
+## Done: 19. MCP servers off the command line
+
+clawd-code-sdk 1.3.0 sends MCP server configs in the initialize request
+(`mcp_servers_delivery="initialize"`, CLI started with `--await-initialize`), so the toolset
+bridge's and configured servers' `env` / `headers` no longer show in `ps`. Connecting fails if
+the CLI doesn't report `mcp_servers_applied` (Claude Code < 2.1.261).
+
+## 20. `compact()` and `fork_session()`
+
+`AgentCapabilities` says Claude Code can't compact or fork on demand, and both raise
+`UnsupportedOperationError` (rewriting our copy changed nothing for the CLI). Wire them up:
+`compact()` as a `/compact` turn (`_compact_idle` already sends it), `fork_session()` through the
+SDK's fork (`clawd_code_sdk` `fork_session`, which copies the transcript with remapped IDs).

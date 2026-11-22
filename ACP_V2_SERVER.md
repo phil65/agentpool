@@ -1,7 +1,7 @@
 # ACP v2 for the agentpool ACP server
 
-Status: steps 1-3 done; serving v2 waits for the aclientp release (step 4). Written
-2026-11-22 against aclientp 0.1.7, which pins the v2 schema at `schema-v2.0.0-alpha.17`.
+Status: done, `serve-acp` serves v1 and v2 (steps 1-4); open points below. Written
+2026-11-22 against aclientp 0.1.7/0.1.8, which pin the v2 schema at `schema-v2.0.0-alpha.17`.
 
 ## Goal
 
@@ -18,8 +18,9 @@ for, so one binary must answer both. aclientp already has the router for this,
 `aclientp.router.RoutedAgentConnection` (it mirrors the TypeScript SDK's
 `AgentProtocolRouter`). It picks the v1 or the v2 agent on `initialize` and never re-routes.
 
-The OpenCode split (`serve-opencode` / `serve-opencode-v2`) is no precedent: those are
-two unrelated REST APIs for different clients, with nothing to negotiate. ACP v2 keeps v1's
+The OpenCode split (`serve-opencode` / `serve-opencode-v2`, until the v1 server was removed)
+was no precedent: those were two unrelated REST APIs for different clients, with nothing to
+negotiate. ACP v2 keeps v1's
 session model, and most of its methods carry over by name.
 
 ## What changes in v2 (`aclientp.schema.v2`)
@@ -105,17 +106,30 @@ queue, steer and background design than v1's request-scoped turn.
    connection over in-memory streams) and `test_v2_translate.py`. Live against T3 Code
    (2026-11-22): it negotiates v2, models and modes show, turns and T3 MCP tool calls run,
    resume after a T3 restart replays and keeps the conversation.
-4. **Offer both by default (wired, uncommitted):** `ACPServer(max_protocol=2)` passes
+4. **Offer both by default (done):** `ACPServer(max_protocol=2)` passes
    `AgentPoolV2Agent` as `serve(v2_agent=...)`; `serve-acp --max-protocol 1` serves v1
-   only. Needs aclientp > 0.1.7 (`serve(v2_agent=...)`): release aclientp, require it,
-   then commit. Until then, test against `uv pip install -e ../aclientp` with
-   `UV_NO_SYNC=1 uv run --no-sync ...`: tests that start `uv run agentpool serve-acp`
-   otherwise re-sync the released aclientp, and the server exits at once.
+   only. Requires aclientp >= 0.1.8.
+
+## Open
+
+- **v2 over v1, for now.** Every v2 update is a translated v1 update (`v2_translate.py`),
+  so v2-only features that v1 has no form for can't come through: `subagent_update`,
+  `requires_action` states, cancelling single tool calls. Flip it (v2 as the core, v1
+  adapted down) once Zed, the main v1 client, speaks v2 (as with OpenCode v1, whose
+  server is gone). A protocol-neutral core event model with stable message IDs
+  (`ARCHITECTURE_SESSIONS_AGENTS.md` §10.4, §11) makes the flip small.
+- **A prompt during a running turn is steered into it** (since 2026-11-22; before, it
+  queued as the next turn). Text prompts steer, multimodal ones queue. Not configurable
+  yet; decide whether it should be (a follow-up then lands in the current answer).
+- Several v2 sessions on one native agent run on their own `Session`, but their turns are
+  serialized: cancellation, staged content and modes are still state of the agent
+  instance (`ARCHITECTURE_SESSIONS_AGENTS.md` §6 step 7). First-turn context (rules, Zed
+  prompt) is staged per ACP session.
 
 ## Notes
 
 - aclientp is published from `~/dev/oss/aclientp`; agentpool pins it from PyPI
-  (`aclientp[...]>=0.1.7`). Develop against an editable install
+  (`aclientp[...]>=0.1.8`). Develop against an editable install
   (`uv pip install -e ../aclientp`, then `uv run --no-sync ...`), and release aclientp
   before agentpool depends on the new API.
 - aclientp's v2 models check themselves against the pinned upstream schema:

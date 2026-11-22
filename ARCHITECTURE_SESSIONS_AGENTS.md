@@ -1,7 +1,8 @@
 # Architecture: Sessions, agents, subagents, runtime dynamism, and protocol alignment
 
-Status: **thinking document, no decisions made** (prepared 2026-11-17; §10 added 2026-11-20 with
-pain points found while implementing the OpenCode V2 server).
+Status: **steps 1–3 of §6 are implemented** (2026-11-22, for native agents; see the status
+notes in §6 and §10); the rest is still a proposal. Prepared 2026-11-17; §10 (pain points from
+the OpenCode V2 server) added 2026-11-20; §11 (roadmap) added 2026-11-22.
 
 Scope: the long-standing "how do session, agent and subagent relate" question, what may change at
 runtime, and how far to align our core model with the primitives of OpenCode V2 and ACP.
@@ -178,16 +179,23 @@ need to stay distinct:
 
 1. Introduce a `Session` runtime object (on top of `SessionData`) that owns `MessageHistory`. Give
    `BaseAgent` a default session, and make `agent.conversation` delegate to it. No behaviour change.
+   **Done:** `agentpool/sessions/session.py` (`Session`, `SessionOverrides` with `model` only so
+   far, `SessionRegistry` as `pool.sessions`, bounded LRU).
 2. Make `run` / `run_stream` accept a session (or session ID). Servers (ACP first, it's closest)
-   pass explicit sessions.
+   pass explicit sessions. **Done for native agents:** `run_stream(session=...)`; the ACP and
+   OpenCode V2 servers run native agents in their own pool `Session`. External agents ignore
+   the session's history (their backend keeps the conversation) until step 7.
 3. Rework `task`: child sessions, return the child session ID, accept `session_id` to continue.
-   Remove history swapping in `workers.py` and `only_idle`.
+   Remove history swapping in `workers.py` and `only_idle`. **Done for native agents** (`task`
+   returns the ID; `session_id` must name a child of the calling conversation; history swapping is
+   gone). `only_idle` remains, since external agents still run their one native session.
 4. Definition versioning (content hash) plus recording it in session metadata.
 5. Session-scoped definitions plus promotion, with the append-only announcement mechanism.
 6. Connections and teams: per-connection session policy.
 7. Runtime factory: `AgentDefinition + Session → AgentRuntime`, so one definition can serve N sessions
    concurrently. This is the big one for native agents (cheap) and external agents (one process or
-   native session each).
+   native session each). **Next** (§11). Until then, turns on one agent instance are serialized:
+   cancellation (`_current_stream_task`, `_cancelled`), staged content and modes are instance state.
 
 Steps 1–3 already unblock a clean OpenCode V2 server (session ↔ agent binding, child sessions,
 inbox). The V2 server now exists with stopgaps for exactly these gaps. §10 lists them, with the
@@ -536,6 +544,8 @@ and the migration step (§6) that should make the stopgap unnecessary.
   it reconnects the SDK.
 - **Fix:** steps 1, 2 and 7 (session owns history, explicit sessions in `run_stream`, a runtime per
   session).
+- **Status (2026-11-22):** steps 1 and 2 done. Native agents no longer re-bind (each V2 session runs
+  on its own `Session`), but the lock stays until step 7. External agents still re-bind.
 
 ### 10.2 `load_session` means different things per agent type
 
@@ -610,6 +620,8 @@ and the migration step (§6) that should make the stopgap unnecessary.
   sessions or subagent jobs are exposed.
 - **Fix:** step 3 (child sessions, return the child session ID). The V2 server then maps child
   sessions 1:1 and reports them via the parent inbox.
+- **Status (2026-11-22):** step 3 done for native agents. The V2 server doesn't map child sessions
+  to V2 children and inbox jobs yet; subagents still show as tool progress.
 
 ### 10.8 History we can't rewrite
 
@@ -622,6 +634,10 @@ and the migration step (§6) that should make the stopgap unnecessary.
   use native fork/rewind APIs where they exist (the Claude SDK has fork sessions, Codex has thread
   forks). The runtime abstraction should expose `fork(at=…)` / `rewind(to=…)` with "unsupported" as
   a valid answer.
+- **Status (2026-11-22):** `fork_session()` exists and raises `UnsupportedOperationError` where it
+  can't fork what the agent continues from. Native agents fork their history at any message;
+  Codex and OpenCode V2 fork their whole backend session (OpenCode's `before` takes its own message
+  IDs, §10.4). Claude Code's SDK fork isn't wired. `rewind()` doesn't exist yet.
 
 ### 10.9 Missing first-class agent operations
 
@@ -636,6 +652,11 @@ and the migration step (§6) that should make the stopgap unnecessary.
   commands. There's no way to set env vars per session on an agent's execution environment.
 - **Fix:** with a runtime per session (step 7), these become runtime methods: `compact()`,
   `set_instructions()`, environment on the runtime's exxec environment.
+- **Status (2026-11-22):** `compact()` exists, with `AgentCapabilities.native_compaction` saying
+  where it works (native, Codex, OpenCode V2); the V2 server uses it and refuses up front for the
+  others. Claude Code's `/compact` isn't wired. Session instructions and env are still open:
+  `SessionOverrides` only has `model`, since prepending instructions to the user prompt (tried)
+  stored them again every turn.
 
 ### 10.10 Teams have no session or model surface
 
@@ -677,7 +698,7 @@ and the migration step (§6) that should make the stopgap unnecessary.
 
 | Stopgap | Location | Removed by |
 |---|---|---|
-| `AgentBinder` lock + re-binding | `opencode_v2_server/runner.py` | steps 1, 2, 7 |
+| `AgentBinder` lock + re-binding | `opencode_v2_server/runner.py` | steps 1, 2, 7 (re-binding gone for native agents; the lock waits for step 7) |
 | `BaseAgent.start_new_session()` and overrides | `agents/*` | step 7 (runtime per session) |
 | User prompt extraction from `ModelRequest` | `opencode_v2_server/history.py` | step 1 |
 | Turn-counting history cut for fork/revert | `opencode_v2_server/session_ops.py` | stable message IDs (10.4) |
@@ -685,6 +706,37 @@ and the migration step (§6) that should make the stopgap unnecessary.
 | Step-boundary inference, end-of-run usage | `opencode_v2_server/run_converter.py` | step events (10.5): done for native/Claude Code, inference kept for Codex/ACP/AG-UI |
 | Subagents as tool progress | `opencode_v2_server/run_converter.py` | step 3 |
 | `pending_context` for skills and instructions | `opencode_v2_server/runner.py` | runtime instructions (10.9) |
-| Manual compaction flow | `opencode_v2_server/runner.py` | `compact()` on runtimes (10.9) |
+| Manual compaction flow | `opencode_v2_server/runner.py` | `compact()` on runtimes (10.9): now calls `node.compact()`; the summary turn stays |
 | Team member locking, synthetic team model | `opencode_v2_server/runner.py`, `catalog.py` | team runtimes (10.10) |
 
+---
+
+## 11. Roadmap (2026-11-22)
+
+Ordered by what each step unblocks. Ideas from an architecture review are folded in (a separate
+agent's review, largely matching §3–§10).
+
+1. **Runtime per session, native agents first (§6 step 7).** Turn state (cancellation, staged
+   content, modes, injection queue) moves from the agent instance to a runtime bound to one
+   `Session`. Deletes the native path of `AgentBinder` and lets sessions on one agent run in
+   parallel. Extract it from `BaseAgent` (1,700+ lines) rather than splitting `BaseAgent` first,
+   so the same code isn't refactored twice. External agents follow (one process or native session
+   per runtime; ACP can multiplex sessions over one connection).
+2. **Stable message identity (§10.4).** `run_stream` takes the user message ID and exposes stable
+   IDs per model response from the first chunk. Removes turn counting and timestamp matching in
+   the V2 server's fork/revert/diffs, and is what ACP v2 (`messageId`) and OpenCode V2 want.
+3. **A protocol-neutral core event and message model.** Already done: one tool lifecycle (§10.6),
+   step events (§10.5). Still open: external agents build pydantic-ai `ModelMessage`s via
+   `MessageReconstructor` to fill `ChatMessage.messages`. Storage and session replay use those, so
+   replace them only with a neutral transcript that both can read. Don't shape the core after
+   one wire protocol (ACP v2 isn't stable; we serve six).
+4. **Teams as sessions (§10.10, §9.6).** A team turn is a session whose members run in child
+   sessions. Removes the team special cases in the ACP and V2 servers and maps to ACP v2
+   `subagent_update` and V2 children.
+5. **Session-scoped instructions and env (§10.9),** applied by the runtime (system instructions,
+   not user prompt text; env on the runtime's exxec environment). Then `pending_context` goes.
+6. **One tool display model.** Diffs, terminal output and tool kinds in one internal form that
+   every agent produces and every server renders. Today `ClaudeCodeAgent` imports
+   `opencode_v2_sdk.tool_metadata` (an agent depending on a protocol SDK), next to
+   `opencode_v2_server/tool_display.py` and the ACP converters.
+7. **ACP v2 as the core of the ACP server** once Zed speaks v2 (`ACP_V2_SERVER.md`, Open).

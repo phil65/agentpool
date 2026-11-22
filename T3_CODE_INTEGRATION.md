@@ -159,7 +159,9 @@ the input provider and are answered with `runtime-request.respond`. Tested live:
 approval of a command in `approval-required`, reasoning streamed in six steps.
 
 Open: attachments (prompts must be text); agentpool toolsets are not passed to the
-thread; answering questions over the socket too (they still use `t3_pending_request`).
+thread; answering questions over the socket too (they still use `t3_pending_request`, read on
+the next MCP read). `compact()` and `fork_session()` raise `UnsupportedOperationError` (T3 has
+no API for either over MCP).
 
 ### 3. T3 as a toolset
 
@@ -169,13 +171,14 @@ gets the ~50 T3 tools. A curated toolset on pyt3client ("delegate to machine X":
 + read, plus status) would give agents fewer, sharper tools. Item 2 covers delegation more
 naturally, though, because a T3 agent can be a team member.
 
-### 4. agentpool's OpenCode server as a T3 provider: blocked
+### 4. agentpool's OpenCode server as a T3 provider: untested
 
-T3's OpenCode provider can connect to an external server by URL and password. But it checks
-the version (≥ 1.14.19, or 2.0.18 for OpenCode 2), and `serve-opencode` reports `0.1.0`
-(`opencode_server/routes/global_routes.py`). Getting past the check would mean advertising a
-compatible version and matching the API subset T3's adapter uses (`packages/provider-opencode`).
-Item 1 reaches the same goal cleanly.
+T3's OpenCode provider can connect to an external server by URL and password, and checks the
+version (≥ 1.14.19, or 2.0.18 for OpenCode 2). This was blocked while `serve-opencode` was the
+v1 server (it reported `0.1.0`). Since 2026-11-22 `serve-opencode` is the V2 server and reports
+2.3.2 (`opencode_v2_sdk/_version.py`), so the check should pass. Whether T3's adapter
+(`packages/provider-opencode`) works against our V2 API is untested. Item 1 reaches the same
+goal and works today.
 
 ### 5. A T3 storage provider
 

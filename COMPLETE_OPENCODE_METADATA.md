@@ -122,8 +122,8 @@ Core Tools:
 Resource Providers:
   src/agentpool/resource_providers/plan_provider.py
 
-Server Documentation:
-  src/agentpool_server/opencode_server/ENDPOINTS.md
+Server Documentation (the v1 server is gone; the V2 server uses the same metadata):
+  src/agentpool_server/opencode_v2_server/README.md
 ```
 
 **Total Changes:** 236 insertions, 51 deletions across 8 files
@@ -212,9 +212,9 @@ ToolResult(
 
 ## 📚 Documentation
 
-- **Migration Guide**: [`TOOLRESULT_MIGRATION.md`](file:///home/phil65/dev/oss/agentpool/TOOLRESULT_MIGRATION.md)
-- **Quick Summary**: [`OPENCODE_METADATA_SUMMARY.md`](file:///home/phil65/dev/oss/agentpool/OPENCODE_METADATA_SUMMARY.md)  
-- **API Endpoints**: [`ENDPOINTS.md`](file:///home/phil65/dev/oss/agentpool/src/agentpool_server/opencode_server/ENDPOINTS.md)
+The tool metadata lives in `src/opencode_v2_sdk/tool_metadata.py`; the OpenCode V2 server
+(`src/agentpool_server/opencode_v2_server/README.md`) renders it. (The earlier migration notes
+and the v1 server's endpoint list are gone.)
 
 ---
 

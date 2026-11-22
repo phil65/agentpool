@@ -1,6 +1,6 @@
 ## Project Overview
 
-AgentPool is a unified agent orchestration framework that enables YAML-based configuration of heterogeneous AI agents. It bridges multiple protocols (ACP, AG-UI, OpenCode, MCP) and supports native PydanticAI agents, Claude Code agents, Goose, and other external agents.
+AgentPool is a unified agent orchestration framework that enables YAML-based configuration of heterogeneous AI agents. It bridges multiple protocols (ACP v1/v2, AG-UI, OpenCode V2, MCP, OpenAI API) and supports native PydanticAI agents, Claude Code, Codex, OpenCode V2, Google Antigravity, T3 Code threads, Goose and other ACP agents.
 
 **Core Philosophy**: Define once in YAML, expose through multiple protocols, enable seamless inter-agent collaboration.
 
@@ -72,7 +72,7 @@ agentpool run <agent_name> "prompt text"
 # Start ACP server (for IDEs like Zed)
 agentpool serve-acp config.yml
 
-# Start OpenCode server
+# Start OpenCode V2 server (clients: opencode --server http://HOST:PORT)
 agentpool serve-opencode config.yml
 
 # Start MCP server
@@ -108,7 +108,7 @@ The codebase is organized into focused packages under `src/`:
   - `storage/` - Interaction tracking and analytics
   - `mcp_server/` - MCP server integration
   - `running/` - Agent execution runtime
-  - `sessions/` - Session management
+  - `sessions/` - `Session` (owns history and overrides), `SessionRegistry` (`pool.sessions`), `SessionData`
   - `hooks/` - Event hooks system
   - `observability/` - Logging and telemetry (Logfire)
 
@@ -117,7 +117,8 @@ The codebase is organized into focused packages under `src/`:
 
 - **`agentpool_server/`** - Protocol servers
   - `acp_server/` - Agent Communication Protocol server
-  - `opencode_server/` - OpenCode TUI/Desktop server
+  - `opencode_v2_server/` - OpenCode V2 HTTP/SSE server (`serve-opencode`)
+  - `a2a_server/` - A2A protocol server
   - `agui_server/` - AG-UI protocol server
   - `openai_api_server/` - OpenAI-compatible API server
   - `mcp_server/` - Model Context Protocol server
@@ -131,7 +132,8 @@ The codebase is organized into focused packages under `src/`:
   - `sql_provider/` - SQLAlchemy-based storage
   - `zed_provider/` - Zed IDE storage integration
   - `claude_provider/` - Claude storage integration
-  - `opencode_provider/` - OpenCode storage integration
+  - `codex_provider/` - Codex storage integration
+  - `acp_provider/`, `file_provider/`, `memory_provider/`
 
 - **`agentpool_cli/`** - Command-line interface
 
@@ -139,12 +141,9 @@ The codebase is organized into focused packages under `src/`:
 
 - **`agentpool_prompts/`** - Prompt templates
 
-- **`acp/`** - Agent Communication Protocol implementation
-  - `client/` - ACP client implementations
-  - `agent/` - Agent-side protocol implementation
-  - `schema/` - Protocol schemas and types
-  - `bridge/` - ACP bridge for connecting agents
-  - `transports/` - Transport layer (stdio, websocket)
+- **`opencode_v2_sdk/`** - OpenCode V2 models and client (used by the OpenCode V2 server and agent)
+
+ACP itself comes from the external `aclientp` package (client, agent, schema, v1 and v2).
 
 ### Key Architectural Patterns
 
@@ -186,7 +185,7 @@ Tools follow PydanticAI's tool pattern with AgentPool extensions:
 
 #### Protocol Bridging
 AgentPool acts as a protocol adapter:
-1. Agent defined once in YAML (with type: native/acp/agui/claude)
+1. Agent defined once in YAML (`type: native/acp/agui/claude_code/codex/opencode_v2/antigravity/t3`)
 2. Pool loads and manages agent lifecycle
 3. Server exposes agent through chosen protocol (ACP/AG-UI/OpenCode/OpenAI API)
 4. Client interacts via standardized protocol
@@ -204,7 +203,7 @@ AgentPool acts as a protocol adapter:
 - Examples: Goose, Codex, custom ACP servers
 - Communicate via stdio or websocket
 
-**Claude Code Agents** (`type: claude`)
+**Claude Code Agents** (`type: claude_code`)
 - Direct integration with Claude Code CLI
 - Specialized for code-related tasks
 - Access to Claude Code's tool ecosystem
@@ -213,6 +212,19 @@ AgentPool acts as a protocol adapter:
 - Remote agents implementing AG-UI protocol
 - HTTP-based communication
 - Useful for distributed agent architectures
+
+**Codex Agents** (`type: codex`)
+- Codex app-server over JSON-RPC (codexed); native steer, compaction and thread fork
+
+**OpenCode V2 Agents** (`type: opencode_v2`)
+- An OpenCode V2 server (spawned or remote) over HTTP/SSE
+
+**Antigravity Agents** (`type: antigravity`, extra `antigravity`)
+- Google Antigravity SDK harness with its own tools and policies
+
+**T3 Code Agents** (`type: t3`)
+- Turns run as threads in a T3 Code environment (pyt3client); live updates and approvals
+  with a native sign-in (`T3_CODE_INTEGRATION.md`)
 
 **File Agents** (`type: file`)
 - Agent behavior defined by file content/prompts
@@ -367,8 +379,8 @@ The project uses entry points for extensibility:
 - `src/agentpool/models/manifest.py` - Configuration schema
 - `src/agentpool/tools/tool.py` - Tool framework
 - `src/agentpool_server/acp_server/acp_agent.py` - ACP server agent wrapper
-- `src/acp/client/protocol.py` - ACP client interface
-- `src/acp/agent/protocol.py` - ACP agent interface
+- `src/agentpool/sessions/session.py` - `Session`, `SessionRegistry`
+- `ARCHITECTURE_SESSIONS_AGENTS.md` - session/agent/runtime design and its status
 
 ## Documentation
 
