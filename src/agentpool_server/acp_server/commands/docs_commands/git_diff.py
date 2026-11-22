@@ -46,12 +46,6 @@ class GitDiffCommand(NodeCommand):
         assert session
         tool_call_id = f"git-diff-{uuid.uuid4().hex[:8]}"
         try:
-            # Check if client supports terminal for running git
-            if not (session.client_capabilities and session.client_capabilities.terminal):
-                msg = "❌ **Terminal access not available for git operations**"
-                await session.notifications.send_agent_text(msg)
-                return
-
             # Build git diff command
             if base_commit:
                 git_command = ["git", "diff", base_commit, commit]
@@ -61,8 +55,8 @@ class GitDiffCommand(NodeCommand):
                 display_title = f"Git diff: {commit}"
 
             # Start tool call
-            await session.notifications.tool_call_start(
-                tool_call_id=tool_call_id,
+            await session.output.command_started(
+                call_id=tool_call_id,
                 title=display_title,
                 kind="execute",
             )
@@ -74,16 +68,16 @@ class GitDiffCommand(NodeCommand):
 
             # Check if git command succeeded
             if exit_code != 0:
-                await session.notifications.tool_call_progress(
-                    tool_call_id=tool_call_id,
+                await session.output.command_updated(
+                    call_id=tool_call_id,
                     status="failed",
                     title=f"Git diff failed (exit code: {exit_code})",
                 )
                 return
             diff_content = output.strip()
             if not diff_content:
-                await session.notifications.tool_call_progress(
-                    tool_call_id=tool_call_id,
+                await session.output.command_updated(
+                    call_id=tool_call_id,
                     status="completed",
                     title="No changes found in diff",
                 )
@@ -94,16 +88,16 @@ class GitDiffCommand(NodeCommand):
             ctx.context.agent.staged_content.add([staged_part])
             # Send successful result - wrap in code block for proper display
             staged_count = len(ctx.context.agent.staged_content)
-            await session.notifications.tool_call_progress(
-                tool_call_id=tool_call_id,
+            await session.output.command_updated(
+                call_id=tool_call_id,
                 status="completed",
                 title=f"Git diff fetched and staged ({staged_count} total parts)",
-                content=[f"```diff\n{diff_content}\n```"],
+                text=f"```diff\n{diff_content}\n```",
             )
         except Exception as e:
             logger.exception("Unexpected error fetching git diff", commit=commit)
-            await session.notifications.tool_call_progress(
-                tool_call_id=tool_call_id,
+            await session.output.command_updated(
+                call_id=tool_call_id,
                 status="failed",
                 title=f"Error: {e}",
             )

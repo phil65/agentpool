@@ -48,16 +48,10 @@ class GetSourceCommand(NodeCommand):
         tool_call_id = f"get-source-{uuid.uuid4().hex[:8]}"
 
         try:
-            # Check if client supports terminal
-            if not (session.client_capabilities and session.client_capabilities.terminal):
-                msg = "❌ **Terminal access not available for source code fetching**"
-                await session.notifications.send_agent_text(msg)
-                return
-
             importing_py_path = agentpool.utils.importing.__file__
             assert isinstance(importing_py_path, str)
-            await session.notifications.tool_call_start(
-                tool_call_id=tool_call_id,
+            await session.output.command_started(
+                call_id=tool_call_id,
                 title=f"Getting source: {dot_path}",
                 kind="read",
             )
@@ -68,16 +62,16 @@ class GetSourceCommand(NodeCommand):
             # Check if command succeeded
             if exit_code != 0:
                 error_msg = output.strip() or f"Exit code: {exit_code}"
-                await session.notifications.tool_call_progress(
-                    tool_call_id=tool_call_id,
+                await session.output.command_updated(
+                    call_id=tool_call_id,
                     status="failed",
                     title=f"Failed to get source for {dot_path}: {error_msg}",
                 )
                 return
             source_content = output.strip()
             if not source_content:
-                await session.notifications.tool_call_progress(
-                    tool_call_id=tool_call_id,
+                await session.output.command_updated(
+                    call_id=tool_call_id,
                     status="completed",
                     title="No source code found",
                 )
@@ -88,17 +82,17 @@ class GetSourceCommand(NodeCommand):
             ctx.context.agent.staged_content.add([staged_part])
             # Send successful result - wrap in code block for proper display
             staged_count = len(ctx.context.agent.staged_content)
-            await session.notifications.tool_call_progress(
-                tool_call_id=tool_call_id,
+            await session.output.command_updated(
+                call_id=tool_call_id,
                 status="completed",
                 title=f"Source code fetched and staged ({staged_count} total parts)",
-                content=[f"```python\n{source_content}\n```"],
+                text=f"```python\n{source_content}\n```",
             )
 
         except Exception as e:
             logger.exception("Unexpected error fetching source code", dot_path=dot_path)
-            await session.notifications.tool_call_progress(
-                tool_call_id=tool_call_id,
+            await session.output.command_updated(
+                call_id=tool_call_id,
                 status="failed",
                 title=f"Error: {e}",
             )

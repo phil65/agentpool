@@ -8,7 +8,7 @@ between turns, a changed mode or model, the command list, an error); a
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any, Protocol
+from typing import TYPE_CHECKING, Any, Literal, Protocol
 
 
 if TYPE_CHECKING:
@@ -28,6 +28,14 @@ type AgentStateChange = ModeInfo | ModelInfo | AvailableCommandsUpdate | ConfigO
 
 ``AvailableCommandsUpdate`` comes from nested ACP agents (their command list).
 """
+
+
+type CommandToolKind = Literal[
+    "read", "edit", "delete", "move", "search", "execute", "think", "fetch", "other"
+]
+"""What a slash command's tool call does (the ACP tool kinds, in both versions)."""
+
+type CommandToolStatus = Literal["in_progress", "completed", "failed"]
 
 
 class SessionOutput(Protocol):
@@ -55,4 +63,19 @@ class SessionOutput(Protocol):
 
     async def text(self, text: str) -> None:
         """Show text to the user as agent output (e.g. a slash command's)."""
+        ...
+
+    async def command_started(self, call_id: str, title: str, kind: CommandToolKind) -> None:
+        """Show the start of a slash command's work as a tool call."""
+        ...
+
+    async def command_updated(
+        self,
+        call_id: str,
+        *,
+        status: CommandToolStatus,
+        title: str | None = None,
+        text: str | None = None,
+    ) -> None:
+        """Update a slash command's tool call; ``text`` (markdown) becomes its content."""
         ...

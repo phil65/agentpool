@@ -58,8 +58,8 @@ class UrlToMarkdownCommand(NodeCommand):
         if not clean:
             params["clean"] = "false"
         try:
-            await session.notifications.tool_call_start(
-                tool_call_id=tool_call_id,
+            await session.output.command_started(
+                call_id=tool_call_id,
                 title=f"Converting to markdown: {url}",
                 kind="fetch",
             )
@@ -75,16 +75,16 @@ class UrlToMarkdownCommand(NodeCommand):
             ctx.context.agent.staged_content.add([staged_part])
             # Send successful result - wrap in code block for proper display
             staged_count = len(ctx.context.agent.staged_content)
-            await session.notifications.tool_call_progress(
-                tool_call_id=tool_call_id,
+            await session.output.command_updated(
+                call_id=tool_call_id,
                 status="completed",
                 title=f"Webpage converted and staged ({staged_count} total parts)",
-                content=[f"```markdown\n{markdown_content}\n```"],
+                text=f"```markdown\n{markdown_content}\n```",
             )
         except Exception as e:
             logger.exception("Unexpected error converting URL", url=url)
-            await session.notifications.tool_call_progress(
-                tool_call_id=tool_call_id,
+            await session.output.command_updated(
+                call_id=tool_call_id,
                 status="failed",
                 title=f"Error: {e}",
             )

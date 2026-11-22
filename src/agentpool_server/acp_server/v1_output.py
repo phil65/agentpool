@@ -24,7 +24,11 @@ if TYPE_CHECKING:
     from slashed import BaseCommand
 
     from agentpool.agents.events import RichAgentStreamEvent
-    from agentpool_server.acp_server.output import AgentStateChange
+    from agentpool_server.acp_server.output import (
+        AgentStateChange,
+        CommandToolKind,
+        CommandToolStatus,
+    )
     from agentpool_server.acp_server.session import ACPSession
     from agentpool_server.acp_server.turns import TurnOutcome
 
@@ -136,6 +140,26 @@ class V1SessionOutput:
 
     async def text(self, text: str) -> None:
         await self._session.notifications.send_agent_text(text)
+
+    async def command_started(self, call_id: str, title: str, kind: CommandToolKind) -> None:
+        await self._session.notifications.tool_call_start(
+            tool_call_id=call_id, title=title, kind=kind
+        )
+
+    async def command_updated(
+        self,
+        call_id: str,
+        *,
+        status: CommandToolStatus,
+        title: str | None = None,
+        text: str | None = None,
+    ) -> None:
+        await self._session.notifications.tool_call_progress(
+            tool_call_id=call_id,
+            status=status,
+            title=title,
+            content=None if text is None else [text],
+        )
 
 
 class V1TurnOutput:

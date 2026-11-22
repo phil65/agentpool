@@ -53,13 +53,6 @@ class GetSchemaCommand(NodeCommand):
         tool_call_id = f"get-schema-{uuid.uuid4().hex[:8]}"
 
         try:
-            # Check if client supports terminal
-            if not (session.client_capabilities and session.client_capabilities.terminal):
-                await session.notifications.send_agent_text(
-                    "❌ **Terminal access not available for schema generation**"
-                )
-                return
-
             # Determine if input is URL or dot path
             is_url = input_path.startswith(("http://", "https://"))
 
@@ -69,8 +62,8 @@ class GetSchemaCommand(NodeCommand):
                 if is_url
                 else f"Generating schema from model: {input_path}"
             )
-            await session.notifications.tool_call_start(
-                tool_call_id=tool_call_id,
+            await session.output.command_started(
+                call_id=tool_call_id,
                 title=display_title,
                 kind="read",
             )
@@ -82,8 +75,8 @@ class GetSchemaCommand(NodeCommand):
                         openapi_to_code, input_path=input_path, class_name=class_name
                     )
                 except Exception as e:  # noqa: BLE001
-                    await session.notifications.tool_call_progress(
-                        tool_call_id=tool_call_id,
+                    await session.output.command_updated(
+                        call_id=tool_call_id,
                         status="failed",
                         title=f"Failed to generate from URL: {e!s}",
                     )
@@ -101,8 +94,8 @@ class GetSchemaCommand(NodeCommand):
 
                 if exit_code != 0:
                     error_msg = output.strip() or f"Exit code: {exit_code}"
-                    await session.notifications.tool_call_progress(
-                        tool_call_id=tool_call_id,
+                    await session.output.command_updated(
+                        call_id=tool_call_id,
                         status="failed",
                         title=f"Failed to extract schema: {error_msg}",
                     )
@@ -110,8 +103,8 @@ class GetSchemaCommand(NodeCommand):
 
                 schema_json = output.strip()
                 if not schema_json:
-                    await session.notifications.tool_call_progress(
-                        tool_call_id=tool_call_id,
+                    await session.output.command_updated(
+                        call_id=tool_call_id,
                         status="failed",
                         title="No schema extracted from model",
                     )
@@ -127,8 +120,8 @@ class GetSchemaCommand(NodeCommand):
                         input_path=input_path,
                     )
                 except Exception as e:  # noqa: BLE001
-                    await session.notifications.tool_call_progress(
-                        tool_call_id=tool_call_id,
+                    await session.output.command_updated(
+                        call_id=tool_call_id,
                         status="failed",
                         title=f"Failed to generate code: {e!s}",
                     )
@@ -137,8 +130,8 @@ class GetSchemaCommand(NodeCommand):
                 generated_code = generated_code.strip()
 
             if not generated_code:
-                await session.notifications.tool_call_progress(
-                    tool_call_id=tool_call_id,
+                await session.output.command_updated(
+                    call_id=tool_call_id,
                     status="completed",
                     title="No code generated from schema",
                 )
@@ -152,17 +145,17 @@ class GetSchemaCommand(NodeCommand):
 
             # Send successful result - wrap in code block for proper display
             staged_count = len(ctx.context.agent.staged_content)
-            await session.notifications.tool_call_progress(
-                tool_call_id=tool_call_id,
+            await session.output.command_updated(
+                call_id=tool_call_id,
                 status="completed",
                 title=f"Schema code generated and staged ({staged_count} total parts)",
-                content=[f"```python\n{generated_code}\n```"],
+                text=f"```python\n{generated_code}\n```",
             )
 
         except Exception as e:
             logger.exception("Unexpected error generating schema code", input_path=input_path)
-            await session.notifications.tool_call_progress(
-                tool_call_id=tool_call_id,
+            await session.output.command_updated(
+                call_id=tool_call_id,
                 status="failed",
                 title=f"Error: {e}",
             )

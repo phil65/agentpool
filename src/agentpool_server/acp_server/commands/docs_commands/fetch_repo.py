@@ -111,8 +111,8 @@ class FetchRepoCommand(NodeCommand):
             if path:
                 display_path += f":{path}"
 
-            await session.notifications.tool_call_start(
-                tool_call_id=tc_id,
+            await session.output.command_started(
+                call_id=tc_id,
                 title=f"Fetching repository: {display_path}",
                 kind="fetch",
             )
@@ -134,33 +134,33 @@ class FetchRepoCommand(NodeCommand):
             ctx.context.agent.staged_content.add([staged_part])
             # Send successful result - wrap in code block for proper display
             staged_count = len(ctx.context.agent.staged_content)
-            await session.notifications.tool_call_progress(
-                tool_call_id=tc_id,
+            await session.output.command_updated(
+                call_id=tc_id,
                 status="completed",
                 title=f"Repository {display_path} fetched and staged ({staged_count} total parts)",
-                content=[f"```\n{content}\n```"],
+                text=f"```\n{content}\n```",
             )
 
         except httpx.HTTPStatusError as e:
             logger.exception(
                 "HTTP error fetching repository", repo=repo, status=e.response.status_code
             )
-            await session.notifications.tool_call_progress(
-                tool_call_id=tc_id,
+            await session.output.command_updated(
+                call_id=tc_id,
                 status="failed",
                 title=f"HTTP {e.response.status_code}: Failed to fetch {repo}",
             )
         except httpx.RequestError as e:
             logger.exception("Request error fetching repository", repo=repo)
-            await session.notifications.tool_call_progress(
-                tool_call_id=tc_id,
+            await session.output.command_updated(
+                call_id=tc_id,
                 status="failed",
                 title=f"Network error: {e}",
             )
         except Exception as e:
             logger.exception("Unexpected error fetching repository", repo=repo)
-            await session.notifications.tool_call_progress(
-                tool_call_id=tc_id,
+            await session.output.command_updated(
+                call_id=tc_id,
                 status="failed",
                 title=f"Error: {e}",
             )

@@ -155,3 +155,29 @@ async def test_commands_run_in_the_client_terminal_when_it_has_one(
 
     assert exit_code == 0
     assert output.strip() == str(tmp_path)
+
+
+async def test_git_diff_command_runs_without_a_client_terminal(
+    tmp_path: Path, default_test_agent: Agent
+) -> None:
+    """/git-diff used to refuse when the client had no terminal (T3 Code); it runs here."""
+    import subprocess
+
+    def git(*args: str) -> None:
+        subprocess.run(["git", *args], cwd=tmp_path, check=True, capture_output=True)
+
+    git("init", "-q")
+    git("config", "user.email", "t@example.com")
+    git("config", "user.name", "t")
+    (tmp_path / "f.txt").write_text("one\n", encoding="utf-8")
+    git("add", "f.txt")
+    git("commit", "-qm", "first")
+    (tmp_path / "f.txt").write_text("one\ntwo\n", encoding="utf-8")
+    git("commit", "-qam", "second")
+    _, session = await _new_session(tmp_path, default_test_agent, NO_CAPS)
+
+    await session.execute_slash_command("/git-diff HEAD")
+
+    staged = await default_test_agent.staged_content.consume_as_text()
+    assert staged is not None
+    assert "+two" in staged
