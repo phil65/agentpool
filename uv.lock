@@ -269,7 +269,7 @@ requires-dist = [
     { name = "pydantic-ai-slim", extras = ["openai", "google", "anthropic", "mistral", "retries"], specifier = ">=1.0.0" },
     { name = "pydantic-monty", specifier = ">=0.0.11" },
     { name = "pydocket", specifier = ">=0.16.1" },
-    { name = "pyt3client", specifier = ">=0.1.0" },
+    { name = "pyt3client", specifier = ">=0.1.1" },
     { name = "python-dotenv", specifier = ">=1.0.1" },
     { name = "python-telegram-bot", extras = ["socks"], marker = "extra == 'bot'", specifier = ">=21.0" },
     { name = "rich" },
@@ -5603,15 +5603,15 @@ sdist = { url = "https://files.pythonhosted.org/packages/12/a0/d0638470df605ce26
 
 [[package]]
 name = "pyt3client"
-version = "0.1.0"
+version = "0.1.1"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "httpx" },
     { name = "pydantic" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/fc/0e/e61706a998684c3dd65b9e196b581cdcd066f46db1e05317cfc362052aa6/pyt3client-0.1.0.tar.gz", hash = "sha256:d2aa1361c0a5e17ed43bdc635075673f91698be9dc8ab247b59cbdb97f62bc29", size = 43981, upload-time = "2026-11-22T06:22:29.545Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/0f/39/5acd78c43a95c903d9ba631d34417ddae225c289f73dcc329e6a95716121/pyt3client-0.1.1.tar.gz", hash = "sha256:bb94e255564a9c66c8fd98bd60a398932f5836093d8cea0803d065d0f04bd927", size = 44269, upload-time = "2026-11-22T06:31:17.401Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/eb/af/04a8f57cdb61186af37c405ab7c26b203652d3fba9f12dc4cce9718ae9a0/pyt3client-0.1.0-py3-none-any.whl", hash = "sha256:c23f3096a463dc169814e860453c9afe517a3abfc98281028430fddc3815eff3", size = 47126, upload-time = "2026-11-22T06:22:28.379Z" },
+    { url = "https://files.pythonhosted.org/packages/71/e8/a55b83277f6e7a55b2e2fa5577b6765044f4be1e7bd168307ac8a714b045/pyt3client-0.1.1-py3-none-any.whl", hash = "sha256:6a25308e23a0935eefef180a8676acd8df58a4b6ce4d3afece13ee1e543cac1a", size = 47375, upload-time = "2026-11-22T06:31:16.044Z" },
 ]
 
 [[package]]
