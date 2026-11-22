@@ -50,6 +50,7 @@ if TYPE_CHECKING:
 
     from codexed import CodexClient, Session
     from codexed.models import (
+        HttpMcpServer,
         McpServerConfig,
         McpServerElicitationRequestParams,
         ToolRequestUserInputParams,
@@ -267,15 +268,24 @@ class CodexAgent[TDeps = None, OutputDataT = str](BaseAgent[TDeps, OutputDataT])
 
         All of them: a thread's ``mcp_servers`` replaces the ones given to the client.
         """
-        from codexed.models import HttpMcpServer as CodexHttpMcpServer
-
         servers = dict(self._extra_mcp_servers) | dict(
             mcp_config_to_codex(c) for c in self._external_mcp_servers
         )
         if self._tool_bridge._actual_port is not None:
-            url = self._tool_bridge.url_for(self._route)
-            servers[self._tool_bridge.resolved_server_name] = CodexHttpMcpServer(url=url)
+            servers[self._tool_bridge.resolved_server_name] = self._bridge_server(self._route)
         return servers
+
+    def _bridge_server(self, route: str) -> HttpMcpServer:
+        """The bridge as Codex MCP server, on ``route``.
+
+        Its tools run without Codex asking: they are agentpool's, configured for this
+        agent. Codex would ask for every tool not annotated read-only, and under approval
+        policy ``never`` reject them instead.
+        """
+        from codexed.models import HttpMcpServer as CodexHttpMcpServer
+
+        url = self._tool_bridge.url_for(route)
+        return CodexHttpMcpServer(url=url, default_tools_approval_mode="approve")
 
     def _open_thread(self, session: Session) -> None:
         """Make ``session`` (a started or resumed thread) the thread of the session acting."""
@@ -360,8 +370,6 @@ class CodexAgent[TDeps = None, OutputDataT = str](BaseAgent[TDeps, OutputDataT])
 
     async def _setup_toolsets(self) -> None:
         """Setup toolsets and start the tool bridge."""
-        from codexed.models import HttpMcpServer as CodexHttpMcpServer
-
         if not self._toolsets:
             return
         # Add toolset providers to tool manager
@@ -372,8 +380,7 @@ class CodexAgent[TDeps = None, OutputDataT = str](BaseAgent[TDeps, OutputDataT])
         # Add bridge's MCP server config to extra servers
         if self._tool_bridge._actual_port is None:
             raise RuntimeError("Bridge not started - call start() first")
-        mcp_server = CodexHttpMcpServer(url=self._tool_bridge.url)
-        bridge_config = (self._tool_bridge.resolved_server_name, mcp_server)
+        bridge_config = (self._tool_bridge.resolved_server_name, self._bridge_server(DEFAULT_ROUTE))
         self._extra_mcp_servers.append(bridge_config)
 
     async def __aenter__(self) -> Self:

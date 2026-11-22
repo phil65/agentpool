@@ -70,3 +70,15 @@ async def test_settings_set_within_a_session_are_its_own() -> None:
         assert (agent._current_sandbox, agent.model_name) == ("danger-full-access", "gpt-b")
     assert (agent._current_sandbox, agent.model_name) == ("read-only", "gpt-a")
     assert session.overrides.model == "gpt-b"
+
+
+async def test_the_bridges_tools_run_without_codex_asking() -> None:
+    """Codex would ask for every tool not annotated read-only (and reject them under never)."""
+    agent = CodexAgent(name="cx", approval_policy="never", enable_logging=False)
+    client = _FakeClient()
+    agent._client = client  # type: ignore[assignment]  # ty:ignore[invalid-assignment]
+    async with agent._tool_bridge:
+        await agent._start_thread()
+        [servers] = client.servers.values()
+        bridge = servers[agent._tool_bridge.resolved_server_name]
+    assert bridge.default_tools_approval_mode == "approve"

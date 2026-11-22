@@ -35,9 +35,9 @@ dependencies = [
   "alembic>=1.16.5",
   "anyenv[httpx]>=2.0.17",
   "bashkit>=0.1.11",
-  "clawd-code-sdk>=1.3.0",  # 1.3.0: MCP servers in the initialize request
+  "clawd-code-sdk>=1.4.0",  # 1.4.0: unknown JSONL entry types load
   # "clawd-code-sdk@git+https://github.com/phil65/claude-agent-sdk-python.git@efbaa798",
-  "codexed>=1.3.1",
+  "codexed>=1.4.0",  # 1.4.0: default_tools_approval_mode (the bridge's tools run)
   "pyt3client[native]>=0.2.0",  # type: t3 agents (native: live updates, approvals)
   "docler>=2.2.0",
   "docstring-parser>=0.17.0",
