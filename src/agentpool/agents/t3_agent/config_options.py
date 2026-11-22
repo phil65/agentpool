@@ -73,7 +73,7 @@ class T3ModelOption(ModelOption["AnyT3Agent"]):
         if not sep or not provider or not model:
             msg = f"T3 models are given as provider/model, not {value!r}"
             raise ValueError(msg)
-        agent._provider, agent._model = provider, model
+        agent._set_provider_model(provider, model)
 
 
 CONFIG_OPTIONS: tuple[ConfigOption[AnyT3Agent], ...] = (

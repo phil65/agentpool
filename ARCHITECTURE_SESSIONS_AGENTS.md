@@ -205,9 +205,15 @@ need to stay distinct:
    other tasks (MCP progress callbacks) reach the right stream. Config options are per session
    too: a native agent's tool confirmation and model, set within a session
    (`agent.use_session(...)`), go to `SessionOverrides` (`modes`, `model`); servers apply
-   them that way. Native turns of different sessions run concurrently on one instance. Not
-   done: the definition still lives on the instance (no `AgentDefinition`), and runtimes for
-   external agents.
+   them that way. Native turns of different sessions run concurrently on one instance.
+   **External agents over one connection (2026-11-22):** `BaseAgent._sdk_session_id` (the
+   backend's own session) resolves to the running session's `SessionData.sdk_session_id`, and
+   `SessionRegistry.open()` restores a session with it after a restart. T3 is the first
+   external agent with `concurrent_sessions`: a thread per session over one client and socket,
+   per-session runtime mode, interaction mode and model; tested live (two sessions in parallel,
+   and an ACP `session/load` in a fresh server continuing its thread). Next: Codex (threads over
+   one app-server), ACP agents (sessions over one connection), then process-per-session ones
+   (Claude Code). Not done: `AgentDefinition` (the definition still lives on the instance).
 
 Steps 1–3 already unblock a clean OpenCode V2 server (session ↔ agent binding, child sessions,
 inbox). The V2 server now exists with stopgaps for exactly these gaps. §10 lists them, with the
@@ -733,9 +739,9 @@ agent's review, largely matching §3–§10).
    runs a session's turns and holds their state, config options are per session, native sessions
    on one agent run in parallel, and `AgentBinder`'s native path is gone. `BaseAgent` went from
    1,700 to 1,500 lines. Next: an `AgentDefinition` (§9.1) so the instance stops being the
-   definition; then runtimes for external agents (one process or native session per runtime; ACP
-   can multiplex sessions over one connection). Until then their turns of different sessions are
-   serialized (`BaseAgent.session_turn()`, `capabilities.concurrent_sessions`).
+   definition; runtimes for the other external agents (T3 done; Codex and ACP multiplex over one
+   connection; Claude Code needs a process per session). Until then their turns of different
+   sessions are serialized (`BaseAgent.session_turn()`, `capabilities.concurrent_sessions`).
 2. **Stable message identity (§10.4).** `run_stream` takes the user message ID and exposes stable
    IDs per model response from the first chunk. Removes turn counting and timestamp matching in
    the V2 server's fork/revert/diffs, and is what ACP v2 (`messageId`) and OpenCode V2 want.

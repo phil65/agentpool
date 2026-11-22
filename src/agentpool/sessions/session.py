@@ -309,6 +309,42 @@ class SessionRegistry:
         )
         return self.register(session)
 
+    async def open(
+        self,
+        session_id: str,
+        agent_name: str,
+        *,
+        parent_id: str | None = None,
+        cwd: str | None = None,
+        agent_type: str | None = None,
+    ) -> Session:
+        """The live session ``session_id``: registered, else restored from storage, else new.
+
+        Restoring keeps what storage knows (``sdk_session_id``, the backend's own session to
+        resume; title; metadata) and loads the history. ``agent_name`` binds a new or
+        restored session; a registered one is re-bound if it changed.
+        """
+        if (session := self.get(session_id)) is not None:
+            if session.agent_name != agent_name:
+                session.rebind_agent(agent_name, agent_type=agent_type)
+            return session
+        stored = await self._storage.load_session(session_id) if self._storage else None
+        if stored is None:
+            return self.create(
+                agent_name,
+                session_id=session_id,
+                parent_id=parent_id,
+                cwd=cwd,
+                agent_type=agent_type,
+            )
+        assert self._storage is not None
+        messages = await self._storage.get_session_messages(session_id)
+        history = MessageHistory(storage=self._storage, messages=messages or None)
+        session = Session.from_session_data(stored, history=history, storage=self._storage)
+        if session.agent_name != agent_name:
+            session.rebind_agent(agent_name, agent_type=agent_type)
+        return self.register(session)
+
     def get(self, session_id: str) -> Session | None:
         """Look up a registered session by ID."""
         if (session := self._sessions.get(session_id)) is not None:

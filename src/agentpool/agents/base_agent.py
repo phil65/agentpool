@@ -284,6 +284,8 @@ class BaseAgent[TDeps = None, TResult = str](MessageNode[TDeps, TResult]):
         """Runtime of the default session (runs without an explicit ``session``)."""
         self._runtimes: dict[str, SessionRuntime[TDeps, TResult]] = {}
         """Runtimes of explicit sessions by session ID, while they run or have input waiting."""
+        self._own_sdk_session_id: str | None = None
+        """The backend's own session of the default session (see :attr:`_sdk_session_id`)."""
         self._session_turn_lock = asyncio.Lock()
         """Serializes turns of different sessions where they can't run concurrently."""
         self._input_provider = input_provider
@@ -368,6 +370,25 @@ class BaseAgent[TDeps = None, TResult = str](MessageNode[TDeps, TResult]):
         """
         active = active_runtime(self)
         return active.session if active is not None and not active.is_default else None
+
+    @property
+    def _sdk_session_id(self) -> str | None:
+        """The backend's own session (Claude Code session, Codex or T3 thread, ...).
+
+        Per session: within a turn of an explicit session it is that session's
+        (``SessionData.sdk_session_id``), so agents with ``concurrent_sessions`` keep one
+        backend session per session; otherwise the agent's own.
+        """
+        if (session := self._explicit_session) is not None:
+            return session.sdk_session_id
+        return self._own_sdk_session_id
+
+    @_sdk_session_id.setter
+    def _sdk_session_id(self, value: str | None) -> None:
+        if (session := self._explicit_session) is not None:
+            session.set_sdk_session_id(value)
+        else:
+            self._own_sdk_session_id = value
 
     @property
     def staged_content(self) -> StagedContent:

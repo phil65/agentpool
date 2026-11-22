@@ -260,7 +260,7 @@ class ACPAgent[TDeps = None](BaseAgent[TDeps, str]):
         self._client_handler: ACPClientHandler | None = None
         self._agent_info: Implementation | None = None
         self._caps: AgentCapabilities | None = None
-        self._sdk_session_id: str | None = session_id
+        self._sdk_session_id = session_id
         self._state: ACPSessionState | None = None
         self._extra_mcp_servers: list[McpServer] = []
         self._sessions_cache: list[SessionData] | None = None
@@ -466,7 +466,7 @@ class ACPAgent[TDeps = None](BaseAgent[TDeps, str]):
         response = await self._api.new_session(self._cwd, mcp_servers=mcp_servers or None)
         self._sdk_session_id = response.session_id
         if self._state:
-            self._state.session_id = self._sdk_session_id
+            self._state.session_id = response.session_id
             if response.config_options:
                 self._state.config_options = list(response.config_options)
             self._state.modes = response.modes

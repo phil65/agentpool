@@ -17,7 +17,6 @@ from typing import TYPE_CHECKING, Any, Literal
 
 from agentpool.agents.base_agent import BaseAgent
 from agentpool.agents.events import NoticeEvent, RunStartedEvent, StreamCompleteEvent
-from agentpool.agents.native_agent import Agent
 from agentpool.delegation.team import Team
 from agentpool.delegation.teamrun import TeamRun
 from agentpool.log import get_logger
@@ -116,15 +115,15 @@ class AgentBinder:
     ) -> AsyncGenerator[Session | None]:
         """Prepare the node for a turn of ``session``.
 
-        Native :class:`Agent` runs use an isolated :class:`Session` from ``pool.sessions``
-        (its own history and model override) and their own turn state (cancellation,
-        queued input, events: ``agentpool.agents.runtime``), so turns of different
-        sessions run concurrently, without a lock or re-binding. External agents keep one
-        native session per instance: their turns are serialized, and the instance is
-        re-bound to the session of each turn (``load_session`` / ``start_new_session``).
+        Agents with ``capabilities.concurrent_sessions`` (native agents, T3) run each V2
+        session on its own pool :class:`Session` (history, settings, backend session) and
+        runtime, so turns of different sessions run concurrently, without a lock or
+        re-binding. Other agents keep one native session per instance: their turns are
+        serialized, and the instance is re-bound to the session of each turn
+        (``load_session`` / ``start_new_session``).
         """
-        if isinstance(node, Agent):
-            yield await self._native_session(node, session, model, has_history=has_history)
+        if isinstance(node, BaseAgent) and node.capabilities.concurrent_sessions:
+            yield await self._pool_session(node, session, model)
             return
         agents = sorted(leaf_agents(node), key=lambda a: a.name)
         async with AsyncExitStack() as stack:
@@ -135,32 +134,17 @@ class AgentBinder:
                 await self._apply_model(node, model)
             yield None
 
-    async def _native_session(
-        self,
-        agent: Agent[Any, Any],
-        session: V2Session,
-        model: ModelRef | None,
-        *,
-        has_history: bool,
+    async def _pool_session(
+        self, agent: BaseAgent[Any, Any], session: V2Session, model: ModelRef | None
     ) -> Session:
-        registry = self.catalog.pool.sessions
-        pool_session = registry.get(session.id)
-        if pool_session is None:
-            stored = (
-                await agent.storage.get_session_messages(session.id)
-                if has_history and agent.storage is not None
-                else None
-            )
-            pool_session = registry.create(
-                agent.name,
-                session_id=session.id,
-                parent_id=session.info.parent_id,
-                cwd=session.directory,
-                agent_type=agent.AGENT_TYPE,
-                messages=stored,
-            )
-        elif pool_session.agent_name != agent.name:
-            pool_session.rebind_agent(agent.name, agent_type=agent.AGENT_TYPE)
+        """The pool session of ``session`` (restored with its backend session), its model set."""
+        pool_session = await self.catalog.pool.sessions.open(
+            session.id,
+            agent.name,
+            parent_id=session.info.parent_id,
+            cwd=session.directory,
+            agent_type=agent.AGENT_TYPE,
+        )
         if model is not None:
             target = await self.catalog.resolve_model(agent, model)
             if target:
@@ -170,7 +154,8 @@ class AgentBinder:
                         update={"model": override}
                     )
             if model.variant and (category := await variant_category(agent)):
-                await agent.set_mode(model.variant, category_id=category)
+                with agent.use_session(pool_session):  # This session's, not the agent's
+                    await agent.set_mode(model.variant, category_id=category)
         return pool_session
 
     async def _bind(

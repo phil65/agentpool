@@ -175,7 +175,7 @@ class AGUIAgent[TDeps = None](BaseAgent[TDeps, str]):
         self._startup_process: Process | None = None
         # Client state
         self._client: httpx.AsyncClient | None = None
-        self._sdk_session_id: str | None = None
+        self._sdk_session_id = None
         # Override tools with provided tools
         self.tools = ToolManager(tools)
 

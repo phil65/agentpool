@@ -17,7 +17,7 @@ from contextlib import AsyncExitStack
 from datetime import UTC, datetime
 from pathlib import PurePath, PurePosixPath, PureWindowsPath
 import time
-from typing import TYPE_CHECKING, Any, ClassVar, Literal, Self, assert_never
+from typing import TYPE_CHECKING, Any, ClassVar, Literal, Self, assert_never, cast
 from uuid import uuid4
 
 import anyio
@@ -117,7 +117,10 @@ class T3Agent[TDeps = None](BaseAgent[TDeps, str]):
     """Runs its turns as a thread in a T3 Code environment."""
 
     AGENT_TYPE: ClassVar = "t3"
-    CAPABILITIES: ClassVar[AgentCapabilities] = AgentCapabilities(live_model_discovery=True)
+    CAPABILITIES: ClassVar[AgentCapabilities] = AgentCapabilities(
+        live_model_discovery=True,
+        concurrent_sessions=True,  # A thread per session over one client (and socket)
+    )
     TITLES_OWN_SESSIONS: ClassVar = True  # T3 titles its threads
 
     def __init__(
@@ -205,11 +208,11 @@ class T3Agent[TDeps = None](BaseAgent[TDeps, str]):
         self._login = login
         self._url = url
         self._token = token
-        self._provider = provider
-        self._model = model
+        self._own_provider = provider
+        self._own_model = model
         self._options = dict(options or {})
-        self._runtime_mode: T3RuntimeMode = runtime_mode
-        self._interaction_mode: T3InteractionMode = interaction_mode
+        self._own_runtime_mode: T3RuntimeMode = runtime_mode
+        self._own_interaction_mode: T3InteractionMode = interaction_mode
         self._worktree = worktree
         self._poll_interval = poll_interval
         self._native_mode = native
@@ -219,12 +222,62 @@ class T3Agent[TDeps = None](BaseAgent[TDeps, str]):
         self._client = client
         self._owns_client = client is None
         self._project_id: str | None = None
-        self._sdk_session_id: str | None = None
-        """The T3 thread of the current session."""
-        self._run_id: str | None = None
-        """The run of the turn in progress."""
-        self._last_position = -1
-        """Highest item position of the thread read so far (reads start after it)."""
+        self._sdk_session_id = None
+        """The T3 thread of the session (per session, see ``BaseAgent._sdk_session_id``)."""
+        self._runs: dict[str, str] = {}
+        """The run of the turn in progress, by thread."""
+        self._positions: dict[str, int] = {}
+        """Highest item position read so far, by thread (reads start after it)."""
+
+    # --- Settings: per session when set within one (``use_session``), else the agent's ---
+
+    def _session_mode(self, option_id: str) -> str | None:
+        session = self._explicit_session
+        return session.overrides.modes.get(option_id) if session is not None else None
+
+    def _set_session_mode(self, option_id: str, value: str) -> bool:
+        """Store ``value`` for the session acting in this context; False without one."""
+        if (session := self._explicit_session) is None:
+            return False
+        modes = {**session.overrides.modes, option_id: value}
+        session.overrides = session.overrides.model_copy(update={"modes": modes})
+        return True
+
+    @property
+    def _runtime_mode(self) -> T3RuntimeMode:
+        mode = self._session_mode("mode")
+        return cast("T3RuntimeMode", mode) if mode is not None else self._own_runtime_mode
+
+    @_runtime_mode.setter
+    def _runtime_mode(self, mode: T3RuntimeMode) -> None:
+        if not self._set_session_mode("mode", mode):
+            self._own_runtime_mode = mode
+
+    @property
+    def _interaction_mode(self) -> T3InteractionMode:
+        mode = self._session_mode("interaction")
+        return cast("T3InteractionMode", mode) if mode is not None else self._own_interaction_mode
+
+    @_interaction_mode.setter
+    def _interaction_mode(self, mode: T3InteractionMode) -> None:
+        if not self._set_session_mode("interaction", mode):
+            self._own_interaction_mode = mode
+
+    @property
+    def _provider_model(self) -> tuple[str | None, str | None]:
+        """Provider and model of new threads: the session's (``provider/model``), else ours."""
+        session = self._explicit_session
+        if session is not None and (value := session.overrides.model):
+            provider, _, model = value.partition("/")
+            return provider, model
+        return self._own_provider, self._own_model
+
+    def _set_provider_model(self, provider: str, model: str) -> None:
+        if (session := self._explicit_session) is not None:
+            value = f"{provider}/{model}"
+            session.overrides = session.overrides.model_copy(update={"model": value})
+        else:
+            self._own_provider, self._own_model = provider, model
 
     @classmethod
     def from_config(
@@ -408,9 +461,10 @@ class T3Agent[TDeps = None](BaseAgent[TDeps, str]):
     def _model_selection(self) -> ModelSelection | None:
         from pyt3client.models.tools import ModelSelection, ProviderOptionSelection
 
-        if self._provider is None or self._model is None:
+        provider, model = self._provider_model
+        if provider is None or model is None:
             return None  # The project's default
-        selection = ModelSelection(instance_id=self._provider, model=self._model)
+        selection = ModelSelection(instance_id=provider, model=model)
         if self._options:  # Left out otherwise: arguments are sent as set
             selection.options = [
                 ProviderOptionSelection(id=key, value=value) for key, value in self._options.items()
@@ -445,10 +499,10 @@ class T3Agent[TDeps = None](BaseAgent[TDeps, str]):
             launch.workspace_strategy = WorkspaceStrategy(type="worktree", base_ref=self._worktree)
         launched = await client.call(THREAD_LAUNCH, launch)
         self._sdk_session_id = launched.thread_id
-        self._last_position = -1
-        if self.storage is not None and self.session_id is not None:
+        self._positions[launched.thread_id] = -1
+        if self.storage is not None and (session_id := self.active_session.session_id):
             # Loading this session later resumes the thread (see load_session)
-            await self.storage.update_sdk_session_id(self.session_id, launched.thread_id)
+            await self.storage.update_sdk_session_id(session_id, launched.thread_id)
         if launched.run_id is None:
             msg = "T3 launched the thread without a run"
             raise RuntimeError(msg)
@@ -470,15 +524,17 @@ class T3Agent[TDeps = None](BaseAgent[TDeps, str]):
         store_history: bool = True,
     ) -> AsyncIterator[RichAgentStreamEvent[str]]:
         client = self._require_client()
-        assert self.session_id is not None  # Initialized by BaseAgent.run_stream()
+        run_session_id = session_id or self.session_id
+        assert run_session_id is not None  # Initialized by BaseAgent.run_stream()
         reply_id = message_id or str(uuid4())
         reconstructor = MessageReconstructor(initial_prompts=prompts, model_name=self.model_name)
-        read_after = self._last_position
+        known_thread = self._sdk_session_id
+        read_after = self._positions.get(known_thread, -1) if known_thread else -1
         run_id = await self._start_run(client, prompt_text(prompts))
         thread_id = self._sdk_session_id
         assert thread_id is not None
-        self._run_id = run_id
-        yield RunStartedEvent(session_id=self.session_id, run_id=run_id, agent_name=self.name)
+        self._runs[thread_id] = run_id
+        yield RunStartedEvent(session_id=run_session_id, run_id=run_id, agent_name=self.name)
         tracker = ItemTracker(agent_name=self.name, message_id=reply_id)
         provider = input_provider or self._input_provider
         answered: set[str] = set()
@@ -486,7 +542,7 @@ class T3Agent[TDeps = None](BaseAgent[TDeps, str]):
         told_approval = False
         cancelled_at: float | None = None
         async with AsyncExitStack() as stack:
-            stack.callback(self._end_run)  # Also when the loop fails
+            stack.callback(self._runs.pop, thread_id, None)  # Also when the loop fails
             feed: ThreadFeed | None = None
             if self._native is not None:
                 feed = await stack.enter_async_context(ThreadFeed.follow(self._native, thread_id))
@@ -500,10 +556,11 @@ class T3Agent[TDeps = None](BaseAgent[TDeps, str]):
                         yield event
                     if read.items:
                         newest = max(item.position for item in read.items)
-                        self._last_position = max(self._last_position, newest)
+                        last = max(self._positions.get(thread_id, -1), newest)
+                        self._positions[thread_id] = last
                         # Later reads start before the first item that may still change
                         open_items = [i.position for i in items if i.status not in FINAL_STATUSES]
-                        read_after = min(open_items) - 1 if open_items else self._last_position
+                        read_after = min(open_items) - 1 if open_items else last
                     run = next((r for r in read.recent_runs if r.run_id == run_id), None)
                     status = run.status if run is not None else status
                     if status in RUN_FINAL_STATUSES and not tracker.pending:
@@ -557,16 +614,13 @@ class T3Agent[TDeps = None](BaseAgent[TDeps, str]):
             role="assistant",
             name=self.name,
             message_id=reply_id,
-            session_id=self.session_id,
+            session_id=run_session_id,
             parent_id=user_msg.message_id,
             model_name=self.model_name,
             messages=reconstructor.model_messages,
             finish_reason="error" if failed else "stop",
         )
         yield StreamCompleteEvent(message=message)
-
-    def _end_run(self) -> None:
-        self._run_id = None
 
     async def _decide(
         self, feed: ThreadFeed, approval: TurnItem, provider: InputProvider | None
@@ -702,12 +756,14 @@ class T3Agent[TDeps = None](BaseAgent[TDeps, str]):
     async def _interrupt(self) -> None:
         from pyt3client.models.tools import THREAD_INTERRUPT, ThreadInterruptInput
 
-        if self._client is None or self._sdk_session_id is None or self._run_id is None:
+        thread_id = self._sdk_session_id  # Of the session being interrupted
+        if self._client is None or thread_id is None:
+            return
+        if (run_id := self._runs.get(thread_id)) is None:
             return
         try:
             await self._client.call(
-                THREAD_INTERRUPT,
-                ThreadInterruptInput(thread_id=self._sdk_session_id, run_id=self._run_id),
+                THREAD_INTERRUPT, ThreadInterruptInput(thread_id=thread_id, run_id=run_id)
             )
         except Exception:
             self.log.exception("Failed to interrupt the T3 run")
@@ -716,16 +772,16 @@ class T3Agent[TDeps = None](BaseAgent[TDeps, str]):
         """The next prompt launches a new thread."""
         await super().start_new_session()
         self._sdk_session_id = None
-        self._last_position = -1
 
     # --- Models and modes -------------------------------------------------------------
 
     @property
     def model_name(self) -> str | None:
-        """``provider/model``, or None for the project's default."""
-        if self._provider is None or self._model is None:
+        """``provider/model`` (the session's, else the agent's), or None for the project's."""
+        provider, model = self._provider_model
+        if provider is None or model is None:
             return None
-        return f"{self._provider}/{self._model}"
+        return f"{provider}/{model}"
 
     async def set_model(self, model: str) -> None:
         """Use ``provider/model`` for new threads."""
@@ -818,7 +874,7 @@ class T3Agent[TDeps = None](BaseAgent[TDeps, str]):
         )
         read = await self._read_items(self._client, thread_id, -1, view="messages")
         self._sdk_session_id = thread_id
-        self._last_position = max((item.position for item in read.items), default=-1)
+        self._positions[thread_id] = max((item.position for item in read.items), default=-1)
         messages = [
             _history_message(item, session_id, self.name)
             for item in read.items

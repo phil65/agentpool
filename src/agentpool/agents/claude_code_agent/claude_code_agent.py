@@ -338,7 +338,7 @@ class ClaudeCodeAgent[TDeps = None, TResult = str](BaseAgent[TDeps, TResult]):
         """Names of the CLI's commands in the command store."""
         """Context window per concrete model ID (``claude-opus-5-5``), as the CLI reported it."""
         """(monotonic time of the last get_usage, limits) cache."""
-        self._sdk_session_id: str | None = session_id
+        self._sdk_session_id = session_id
         self._rate_limit_notices = RateLimitNotices()  # Across turns: once per state
         # ToolBridge state for exposing toolsets via MCP
         self._tool_bridge = ToolManagerBridge(node=self, injection_manager=self._injection_manager)

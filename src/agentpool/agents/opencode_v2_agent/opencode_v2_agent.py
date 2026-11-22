@@ -229,7 +229,7 @@ class OpenCodeV2Agent[TDeps = None](BaseAgent[TDeps, str]):
         self._client = client
         self._owns_client = client is None
         self._process: Process | None = None
-        self._sdk_session_id: str | None = session_id
+        self._sdk_session_id = session_id
         self._cached_models: list[ModelInfo] | None = None
         self._active_model_name: str | None = model
 

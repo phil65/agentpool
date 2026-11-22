@@ -325,3 +325,39 @@ async def test_agents_whose_backend_keeps_the_conversation_refuse_compact_and_fo
             await agent.compact()  # Not connected: no backend session yet
         with pytest.raises(UnsupportedOperationError):
             await agent.fork_session(at_message_id="msg-1")
+
+
+async def test_backend_session_id_is_kept_per_session() -> None:
+    """Within a session, an agent's backend session (thread) is that session's."""
+    from agentpool.agents.t3_agent import T3Agent
+
+    agent = T3Agent(project="proj_1", url="http://t3.test", token="t", enable_logging=False)
+    first, second = Session.create("t3"), Session.create("t3")
+    with agent.use_session(first):
+        agent._sdk_session_id = "thread-a"
+    with agent.use_session(second):
+        assert agent._sdk_session_id is None
+        agent._sdk_session_id = "thread-b"
+    assert (first.sdk_session_id, second.sdk_session_id) == ("thread-a", "thread-b")
+    assert agent._sdk_session_id is None  # The agent's own session has none
+    assert agent.capabilities.concurrent_sessions
+
+
+async def test_registry_open_restores_a_stored_session_with_its_backend_session() -> None:
+    from agentpool import AgentsManifest
+    from agentpool_config.storage import SQLStorageConfig, StorageConfig
+
+    storage = StorageConfig(providers=[SQLStorageConfig(url="sqlite+aiosqlite:///:memory:")])
+    async with AgentPool(AgentsManifest(storage=storage)) as pool:
+        agent = Agent(name="a", model=TestModel(custom_output_text="ok"))
+        await pool.add_agent(agent)
+        session = await pool.sessions.open("ses_x", "a")
+        await agent.run("hi", session=session)
+        await pool.storage.update_sdk_session_id("ses_x", "backend-1")
+        pool.sessions.remove("ses_x")  # E.g. the server restarted
+        restored = await pool.sessions.open("ses_x", "a")
+        assert restored is not session
+        assert restored.sdk_session_id == "backend-1"
+        # Storage keeps the turn's answer, with the prompt inside it (design section 10.3)
+        assert len(restored.history.get_history()) == 1
+        assert await pool.sessions.open("ses_x", "a") is restored  # Now registered

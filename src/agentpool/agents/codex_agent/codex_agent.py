@@ -177,7 +177,7 @@ class CodexAgent[TDeps = None, OutputDataT = str](BaseAgent[TDeps, OutputDataT])
         self._client: CodexClient | None = None
         self._rate_limits_read_at = float("-inf")
         """Monotonic time of the last account/rateLimits/read."""
-        self._sdk_session_id: str | None = session_id
+        self._sdk_session_id = session_id
         self._sessions: dict[str, Session] = {}
         self._external_mcp_servers = [
             BaseMCPServerConfig.from_string(s) if isinstance(s, str) else s
@@ -289,7 +289,7 @@ class CodexAgent[TDeps = None, OutputDataT = str](BaseAgent[TDeps, OutputDataT])
             session = await self._client.thread_resume(self._sdk_session_id)
             thread = session.response.thread
             self._sdk_session_id = thread.id
-            self._sessions[self._sdk_session_id] = session
+            self._sessions[thread.id] = session
             self.log.info("Codex thread resumed", sdk_session_id=self._sdk_session_id, cwd=cwd)
             # Restore conversation history from resumed thread
             chat_messages = turns_to_chat_messages(thread.turns)
@@ -315,7 +315,7 @@ class CodexAgent[TDeps = None, OutputDataT = str](BaseAgent[TDeps, OutputDataT])
             personality=self._current_personality,
         )
         self._sdk_session_id = session.thread_id
-        self._sessions[self._sdk_session_id] = session
+        self._sessions[session.thread_id] = session
         self.log.info("Codex thread started", sdk_session_id=self._sdk_session_id, cwd=cwd)
 
     async def start_new_session(self) -> None:
@@ -853,7 +853,7 @@ class CodexAgent[TDeps = None, OutputDataT = str](BaseAgent[TDeps, OutputDataT])
         # Update current thread ID
         thread = session.response.thread
         self._sdk_session_id = thread.id
-        self._sessions[self._sdk_session_id] = session
+        self._sessions[thread.id] = session
         self.log.info("Thread resumed from Codex server", sdk_session_id=thread.id)
         # Convert turns to ChatMessages and populate conversation
         if thread.turns:

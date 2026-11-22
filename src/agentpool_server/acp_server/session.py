@@ -652,28 +652,16 @@ class ACPSession:
             self.staged.add_text(rules)
 
     async def pool_session(self) -> PoolSession | None:
-        """The pool ``Session`` of this ACP session when it runs a native ``Agent``, else None.
+        """The pool ``Session`` of this ACP session, for agents that run sessions concurrently.
 
-        External agents keep the conversation in their backend, so they run on their own
-        (default) session instead.
+        Agents with ``capabilities.concurrent_sessions`` (native agents, T3) keep each
+        session's history, settings and backend session (``sdk_session_id``) on it. Others
+        have one native session per instance and run on their own (default) session.
         """
-        if not isinstance(self.agent, Agent) or self.agent.agent_pool is None:
+        if not self.agent.capabilities.concurrent_sessions or self.agent.agent_pool is None:
             return None
-        registry = self.agent.agent_pool.sessions
-        pool_session = registry.get(self.session_id)
-        if pool_session is not None:
-            return pool_session
-        stored = (
-            await self.agent.storage.get_session_messages(self.session_id)
-            if self.agent.storage is not None
-            else None
-        )
-        return registry.create(
-            self.agent.name,
-            session_id=self.session_id,
-            cwd=self.cwd,
-            agent_type=self.agent.AGENT_TYPE,
-            messages=stored or None,
+        return await self.agent.agent_pool.sessions.open(
+            self.session_id, self.agent.name, cwd=self.cwd, agent_type=self.agent.AGENT_TYPE
         )
 
     async def _stream_agent(

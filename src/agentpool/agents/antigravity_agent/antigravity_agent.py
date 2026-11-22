@@ -300,7 +300,7 @@ class AntigravityAgent[TDeps = None, OutputDataT = str](BaseAgent[TDeps, OutputD
         # Runtime state
         self._sdk_agent_factory = sdk_agent_factory
         self._sdk_agent: SDKAgent | None = None
-        self._sdk_session_id: str | None = session_id
+        self._sdk_session_id = session_id
         self._needs_restart = False
         self._entered = False
         self._active_input_provider: InputProvider | None = None
@@ -845,7 +845,7 @@ class AntigravityAgent[TDeps = None, OutputDataT = str](BaseAgent[TDeps, OutputD
         if conversation_id and self._sdk_session_id != conversation_id:
             self._sdk_session_id = conversation_id
             if self.storage is not None and self.session_id is not None:
-                await self.storage.update_sdk_session_id(self.session_id, self._sdk_session_id)
+                await self.storage.update_sdk_session_id(self.session_id, conversation_id)
 
     async def _stream_events(
         self,
