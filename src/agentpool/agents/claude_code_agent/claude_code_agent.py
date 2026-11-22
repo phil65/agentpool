@@ -30,6 +30,7 @@ from agentpool.agents.claude_code_agent.converters import (
 )
 from agentpool.agents.claude_code_agent.idle_compaction import IdleCompaction
 from agentpool.agents.claude_code_agent.idle_watch import IdleWatcher
+from agentpool.agents.claude_code_agent.notices import RateLimitNotices
 from agentpool.agents.claude_code_agent.slash_commands import create_claude_code_command
 from agentpool.agents.claude_code_agent.steering import RunSteering, run_messages
 from agentpool.agents.events import RunErrorEvent, RunStartedEvent, StreamCompleteEvent
@@ -329,6 +330,7 @@ class ClaudeCodeAgent[TDeps = None, TResult = str](BaseAgent[TDeps, TResult]):
         """Context window per concrete model ID (``claude-opus-5-5``), as the CLI reported it."""
         """(monotonic time of the last get_usage, limits) cache."""
         self._sdk_session_id: str | None = session_id
+        self._rate_limit_notices = RateLimitNotices()  # Across turns: once per state
         # ToolBridge state for exposing toolsets via MCP
         self._tool_bridge = ToolManagerBridge(node=self, injection_manager=self._injection_manager)
         self._mcp_servers: dict[str, McpServerConfig] = {}  # Claude SDK MCP server configs
@@ -955,6 +957,7 @@ class ClaudeCodeAgent[TDeps = None, TResult = str](BaseAgent[TDeps, TResult]):
                 agent_name=self.name,
                 session_id=self.session_id,
                 on_rate_limit=self.record_rate_limit,
+                rate_limit_notices=self._rate_limit_notices,
                 on_command_lifecycle=steering.on_lifecycle,
                 on_commands_changed=self._register_cli_commands,
                 on_request=self._note_request,

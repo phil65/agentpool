@@ -87,7 +87,7 @@ from agentpool.agents.claude_code_agent.converters import (
     to_bash_display,
     to_bash_metadata,
 )
-from agentpool.agents.claude_code_agent.notices import message_notice
+from agentpool.agents.claude_code_agent.notices import RateLimitNotices, message_notice
 from agentpool.agents.claude_code_agent.server_blocks import (
     REDACTED_THINKING,
     server_block_events,
@@ -270,6 +270,8 @@ class ClaudeCodeStreamedResponse(StreamedResponse):
     _result_message: ResultMessage | None = None
     """The SDK ResultMessage captured at end of stream (contains usage, cost, etc.)."""
     on_rate_limit: Callable[[RateLimitInfo], None] | None = None
+    rate_limit_notices: RateLimitNotices = field(default_factory=RateLimitNotices)
+    """Shows each rate limit state once; pass the agent's to keep that across turns."""
     on_command_lifecycle: Callable[[CommandLifecycleMessage], None] | None = None
     """Called with the queue progress of the messages steered into the run."""
     on_commands_changed: Callable[[list[ClaudeCodeCommandInfo]], None] | None = None
@@ -527,9 +529,13 @@ class ClaudeCodeStreamedResponse(StreamedResponse):
                     | HookResponseSystemMessage()
                     | RateLimitMessage()
                 ):
-                    if isinstance(message, RateLimitMessage) and self.on_rate_limit is not None:
-                        self.on_rate_limit(message.rate_limit_info)
-                    if (notice := message_notice(message)) is not None:
+                    if isinstance(message, RateLimitMessage):
+                        if self.on_rate_limit is not None:
+                            self.on_rate_limit(message.rate_limit_info)
+                        notice = self.rate_limit_notices.notice(message.rate_limit_info)
+                    else:
+                        notice = message_notice(message)
+                    if notice is not None:
                         yield notice
 
                 case (
