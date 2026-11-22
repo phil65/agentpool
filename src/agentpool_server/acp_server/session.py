@@ -419,7 +419,7 @@ class ACPSession:
         Returns:
             The combined output and the exit code (None if the program did not run)
         """
-        # An explicit `cd`: the local environment's execute_command ignores its cwd
+        # `cwd` may differ from the environment's, and execute_command takes none
         line = f"cd {shlex.quote(cwd or self.cwd)} && {shlex.join([command, *args])}"
         result = await self.env.execute_command(line)
         return (result.stdout or "") + (result.stderr or ""), result.exit_code

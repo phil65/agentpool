@@ -239,7 +239,7 @@ requires-dist = [
     { name = "epregistry" },
     { name = "evented", specifier = ">=1.0.5" },
     { name = "evented", extras = ["all"], marker = "extra == 'events'" },
-    { name = "exxec", specifier = ">=0.6.0" },
+    { name = "exxec", specifier = ">=0.9.1" },
     { name = "fasta2a", marker = "extra == 'a2a'" },
     { name = "fastapi" },
     { name = "fastembed", marker = "python_full_version < '3.15' and extra == 'mcp-discovery'", specifier = ">=0.7.4" },
@@ -1885,7 +1885,7 @@ wheels = [
 
 [[package]]
 name = "exxec"
-version = "0.6.0"
+version = "0.9.1"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "anyenv" },
@@ -1894,9 +1894,9 @@ dependencies = [
     { name = "schemez" },
     { name = "upathtools" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/8b/45/929bcf594e5fa92ee4e15ead0bac65da70ba1965c5bca2caf9deaf521d96/exxec-0.6.0.tar.gz", hash = "sha256:ca8ee98bd2151f090c153feb6d73bd6f080f70142265b6c7c1663bb712950590", size = 116756, upload-time = "2026-11-19T01:33:53.886Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/d0/9f/39c6d84473be4b78bc46069844e5c322ba1f1a56eae2a41fa65591305869/exxec-0.9.1.tar.gz", hash = "sha256:ceeadaaa0af738610e3ad4c8f30c25f4c8c75c9a1ec0dc7792a551842568457e", size = 116122, upload-time = "2026-11-22T02:36:08.231Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/83/49/53f6919b8536855ebfbf7a70fd3f00c5109f2dc1782a36ef200cec0d2917/exxec-0.6.0-py3-none-any.whl", hash = "sha256:26159bdffb3bb14285843443a911f0e33949a61076565c40624a5030e8c4edf0", size = 146742, upload-time = "2026-11-19T01:33:52.167Z" },
+    { url = "https://files.pythonhosted.org/packages/dd/e3/9ba9d2697037354b7667eefe643c908d4167dd23e7732b2026e40b371cc7/exxec-0.9.1-py3-none-any.whl", hash = "sha256:9069290b5211eb67e887ce5d3c9eaa30a0dddbaad1c6dfcb5932f86bd0e76d49", size = 148982, upload-time = "2026-11-22T02:36:06.688Z" },
 ]
 
 [[package]]
@@ -7264,7 +7264,7 @@ wheels = [
 
 [[package]]
 name = "upathtools"
-version = "1.20.8"
+version = "1.23.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "aiofile" },
@@ -7273,9 +7273,9 @@ dependencies = [
     { name = "ripgrep-rs" },
     { name = "universal-pathlib" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/c4/b1/2cf0f2ce64ac4876b25a93dac7ec6cb7c2e7c6e2c4a949ac1fc3e923bb97/upathtools-1.20.8.tar.gz", hash = "sha256:5b6606c4cc96c42cb64cf7e074afaeb153aed6a44b4851021f7a72c4e836c0e0", size = 215347, upload-time = "2026-11-18T20:27:00.52Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/f8/73/1716b918ae4753a70bcb76a7a9407a8e4923d338793be39255ebcd5f0f29/upathtools-1.23.0.tar.gz", hash = "sha256:e72813f62ef1dd8b41941a9e1a2db2b7802510cb8c341882aa4fb320aca0ae4f", size = 221422, upload-time = "2026-11-19T07:55:40.127Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/4a/38/3b85b2c85dc5c663df98b4d66e35360863b61f56a4e4ddda608597617a96/upathtools-1.20.8-py3-none-any.whl", hash = "sha256:6b8548831e46040d37cb5728b31e0afb7e1fc272c2f32d4b16e870677cbe25c4", size = 274432, upload-time = "2026-11-18T20:26:58.802Z" },
+    { url = "https://files.pythonhosted.org/packages/46/9a/7ea834374f7050077fa755fc606881f4d1498cf2607b98d997855fc48716/upathtools-1.23.0-py3-none-any.whl", hash = "sha256:69cc484e34b5910d7f31900c7073886148d38d80cc757ee58965526b2715ca0c", size = 280906, upload-time = "2026-11-19T07:55:38.658Z" },
 ]
 
 [package.optional-dependencies]
