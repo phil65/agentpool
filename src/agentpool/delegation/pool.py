@@ -18,7 +18,7 @@ from agentpool.delegation.message_flow_tracker import MessageFlowTracker
 from agentpool.log import get_logger
 from agentpool.messaging import MessageNode
 from agentpool.talk import TeamTalk
-from agentpool.talk.registry import ConnectionRegistry
+from agentpool.talk.router import Router
 from agentpool.tasks import TaskRegistry
 from agentpool.utils.baseregistry import BaseRegistry
 from agentpool.utils.inspection import get_fn_name
@@ -122,7 +122,9 @@ class AgentPool[TPoolDeps = None](BaseRegistry[NodeName, MessageNode[Any, Any]])
         for name, resource_config in self.manifest.resources.items():
             self.vfs_registry.register_from_config(name, resource_config)
         self.event_handlers = event_handlers or []
-        self.connection_registry = ConnectionRegistry()
+        self.router = Router()
+        """Owns the connections between the pool's nodes and routes along them."""
+        self.connection_registry = self.router.registry
         servers = self.manifest.get_mcp_servers()
         self.mcp = MCPManager(name="pool_mcp", servers=servers, owner="pool")
         self.skills = SkillsManager(name="pool_skills", owner="pool")
@@ -417,6 +419,7 @@ class AgentPool[TPoolDeps = None](BaseRegistry[NodeName, MessageNode[Any, Any]])
         if not isinstance(item, MessageNode):
             raise self._error_class(f"Item must be Agent or Team, got {type(item)}")
         item.agent_pool = self
+        _ = item.router  # Its own router's connections move to the pool's now
         return item
 
     def _create_teams(self) -> None:

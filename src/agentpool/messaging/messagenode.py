@@ -32,6 +32,7 @@ if TYPE_CHECKING:
     from agentpool.messaging.context import NodeContext
     from agentpool.storage import StorageManager
     from agentpool.talk import Talk, TeamTalk
+    from agentpool.talk.router import Router
     from agentpool.talk.stats import AggregatedMessageStats, MessageStats
     from agentpool.tools.base import FunctionTool
     from agentpool.ui.base import InputProvider
@@ -80,6 +81,7 @@ class MessageNode[TDeps, TResult](ABC):
         self.log = logger.bind(agent_name=self._name)
         self.agent_pool = agent_pool
         self.description = description
+        self._router: Router | None = None
         self.connections = ConnectionManager(self)
         cfgs = list(event_configs) if event_configs else None
         self._events = EventManager(configs=cfgs, event_callbacks=[_event_handler])
@@ -151,6 +153,23 @@ class MessageNode[TDeps, TResult](ABC):
         await self._events.__aexit__(exc_type, exc_val, exc_tb)
         await self.mcp.__aexit__(exc_type, exc_val, exc_tb)
         await self.task_manager.cleanup_tasks()
+
+    @property
+    def router(self) -> Router:
+        """The router holding this node's connections: its pool's, else its own.
+
+        A node that joins a pool hands the connections of its own router to the pool's.
+        """
+        from agentpool.talk.router import Router
+
+        if (pool := self.agent_pool) is not None:
+            if self._router is not None:
+                pool.router.adopt(self._router)
+                self._router = None
+            return pool.router
+        if self._router is None:
+            self._router = Router()
+        return self._router
 
     @property
     def connection_stats(self) -> AggregatedTalkStats:

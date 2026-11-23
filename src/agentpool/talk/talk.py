@@ -32,6 +32,7 @@ if TYPE_CHECKING:
     )
     from agentpool.messaging import MessageNode
     from agentpool.messaging.events import ConnectionEventData
+    from agentpool.talk.router import Router
     from agentpool_config.events import ConnectionEventType
     from agentpool_config.forward_targets import ConnectionType
 
@@ -120,6 +121,8 @@ class Talk[TTransmittedData = Any]:
         self.filter_condition = filter_condition
         self.stop_condition = stop_condition
         self.exit_condition = exit_condition
+        self._router: Router | None = None
+        """The router holding this connection (set as it is added to one)."""
 
     def __repr__(self) -> str:
         targets = [t.name for t in self.targets]
@@ -185,7 +188,7 @@ class Talk[TTransmittedData = Any]:
 
         if not condition:
             return default_return
-        registry = pool.connection_registry if (pool := self.source.agent_pool) else None
+        registry = self._router.registry if self._router is not None else None
         ctx = EventContext(
             message=message,
             target=target,
@@ -335,14 +338,14 @@ class Talk[TTransmittedData = Any]:
                 if self.delay is not None or self.priority != 0:
 
                     async def delayed_emit() -> None:
-                        await target.connections.route_message(message)
+                        await target.router.route(target, message)
 
                     coro = delayed_emit()
                     target.task_manager.run_background(
                         coro, priority=self.priority, delay=self.delay
                     )
                 else:
-                    await target.connections.route_message(message)
+                    await target.router.route(target, message)
                 return None
 
     async def trigger(
@@ -464,8 +467,10 @@ class Talk[TTransmittedData = Any]:
             self.active = previous
 
     def disconnect(self) -> None:
-        """Permanently disconnect the connection."""
+        """Permanently disconnect the connection (its router drops it)."""
         self.active = False
+        if self._router is not None:
+            self._router.remove(self)
 
     @property
     def stats(self) -> TalkStats:
