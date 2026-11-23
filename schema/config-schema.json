@@ -944,7 +944,7 @@
     },
     "AGUIAgentConfig": {
       "additionalProperties": false,
-      "description": "Configuration for AG-UI protocol agents.\n\nAG-UI agents connect to remote HTTP endpoints that implement the AG-UI protocol,\nenabling integration of any AG-UI compatible server into the agentpool pool.\n\nExample:\n    ```yaml\n    agents:\n      remote_assistant:\n        type: agui\n        endpoint: http://localhost:8000/agent/run\n        timeout: 30.0\n        headers:\n          X-API-Key: ${API_KEY}\n        tools:\n          - import_path: mymodule.my_tool_function\n\n      managed_agent:\n        endpoint: http://localhost:8765/agent/run\n        startup_command: \"uv run ag-ui-server config.yml\"\n        startup_delay: 3.0\n        tools:\n          - import_path: package.tool_one\n          - import_path: package.tool_two\n    ```",
+      "description": "Configuration for AG-UI protocol agents.\n\nAG-UI agents connect to remote HTTP endpoints that implement the AG-UI protocol,\nenabling integration of any AG-UI compatible server into the agentpool pool.\n\nExample:\n    ```yaml\n    agents:\n      remote_assistant:\n        type: agui\n        endpoint: http://localhost:8000/agent/run\n        timeout: 30.0\n        headers:\n          X-API-Key: ${API_KEY}\n        tools:\n          - import_path: mymodule.my_tool_function\n\n      managed_agent:\n        endpoint: http://localhost:8765/agent/run\n        startup_command: \"uv run ag-ui-server config.yml\"\n        tools:\n          - import_path: package.tool_one\n          - import_path: package.tool_two\n    ```",
       "properties": {
         "name": {
           "default": null,
@@ -1412,15 +1412,25 @@
           ]
         },
         "startup_delay": {
-          "default": 2.0,
-          "description": "Seconds to wait after starting server before connecting.\n\nOnly relevant when startup_command is provided.",
+          "default": 0.0,
+          "description": "Extra seconds to wait after starting the server.\n\nUsually not needed: the agent waits until the endpoint accepts connections\n(see ``startup_timeout``). Only relevant when startup_command is provided.",
           "examples": [
-            1.0,
-            2.0,
-            5.0
+            0.0,
+            1.0
           ],
           "minimum": 0.0,
           "title": "Startup Delay",
+          "type": "number"
+        },
+        "startup_timeout": {
+          "default": 30.0,
+          "description": "Seconds to wait until the server accepts connections on the endpoint's host and port.\n\nOnly relevant when startup_command is provided.",
+          "examples": [
+            30.0,
+            120.0
+          ],
+          "exclusiveMinimum": 0.0,
+          "title": "Startup Timeout",
           "type": "number"
         },
         "tools": {

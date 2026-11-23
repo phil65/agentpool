@@ -17,7 +17,6 @@ async def test_agui_agent_with_managed_server():
         endpoint="http://127.0.0.1:8765/agent/run",
         name="test-agent",
         startup_command="uv run python tests/test_server_agui.py",
-        startup_delay=5.0,
     )
 
     async with agent:
@@ -40,7 +39,6 @@ async def test_agui_agent_streaming_with_managed_server():
         endpoint="http://127.0.0.1:8766/agent/run",
         name="test-agent",
         startup_command="uv run python tests/test_server_agui.py --port 8766",
-        startup_delay=5.0,
     )
 
     async with agent:

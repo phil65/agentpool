@@ -178,20 +178,59 @@ async def run_with_process_monitor[T](
 
 
 async def start_process(
-    startup_command: str, startup_delay: float = 2.0
+    startup_command: str,
+    startup_delay: float = 0.0,
+    *,
+    ready_address: tuple[str, int] | None = None,
+    startup_timeout: float = 30.0,
 ) -> asyncio.subprocess.Process:
-    """Start a long-running process (+ make sure it's running)."""
+    """Start a long-running process (a server) and wait until it is up.
+
+    Args:
+        startup_command: Shell command to run.
+        startup_delay: Extra seconds to wait before checking readiness.
+        ready_address: ``(host, port)`` the process listens on. If given, wait until it
+            accepts TCP connections instead of trusting a fixed delay.
+        startup_timeout: Seconds to wait for ``ready_address`` before giving up.
+
+    The process's stdout is discarded and its stderr goes to ours: a pipe nobody reads
+    would fill up and block a chatty server.
+
+    Raises:
+        RuntimeError: The process exited during startup.
+        TimeoutError: ``ready_address`` did not accept connections in time.
+    """
     logger.info("Starting process", command=startup_command)
     process = await asyncio.create_subprocess_shell(
         startup_command,
-        stdout=asyncio.subprocess.PIPE,
-        stderr=asyncio.subprocess.PIPE,
+        stdout=asyncio.subprocess.DEVNULL,
         start_new_session=True,
     )
-    logger.debug("Waiting for startup", command=startup_command, delay=startup_delay)
-    await anyio.sleep(startup_delay)
-    if process.returncode is not None:  # Check if process is still running
-        stderr = (await process.stderr.read()).decode() if process.stderr else ""
-        raise RuntimeError(f"Startup process exited {process.returncode}: {stderr}")
+    if startup_delay:
+        await anyio.sleep(startup_delay)
+    if ready_address is not None:
+        await _wait_until_listening(process, ready_address, startup_timeout)
+    if process.returncode is not None:
+        msg = f"Startup process exited with code {process.returncode} (see its stderr)"
+        raise RuntimeError(msg)
     logger.info("Process started", command=startup_command, pid=process.pid)
     return process
+
+
+async def _wait_until_listening(
+    process: asyncio.subprocess.Process, address: tuple[str, int], timeout: float
+) -> None:
+    """Poll until ``address`` accepts a TCP connection, the process exits or time runs out."""
+    host, port = address
+    deadline = anyio.current_time() + timeout
+    while process.returncode is None:
+        try:
+            stream = await anyio.connect_tcp(host, port)
+        except OSError:
+            if anyio.current_time() >= deadline:
+                msg = f"Server did not listen on {host}:{port} within {timeout:g} s"
+                raise TimeoutError(msg) from None
+            await anyio.sleep(0.1)
+        else:
+            await stream.aclose()
+            return

@@ -40,7 +40,6 @@ class AGUIAgentConfig(BaseAgentConfig):
           managed_agent:
             endpoint: http://localhost:8765/agent/run
             startup_command: "uv run ag-ui-server config.yml"
-            startup_delay: 3.0
             tools:
               - import_path: package.tool_one
               - import_path: package.tool_two
@@ -93,8 +92,15 @@ class AGUIAgentConfig(BaseAgentConfig):
     and terminate it on exit. Useful for testing or self-contained deployments.
     """
 
-    startup_delay: float = Field(default=2.0, ge=0.0, examples=[1.0, 2.0, 5.0])
-    """Seconds to wait after starting server before connecting.
+    startup_delay: float = Field(default=0.0, ge=0.0, examples=[0.0, 1.0])
+    """Extra seconds to wait after starting the server.
+
+    Usually not needed: the agent waits until the endpoint accepts connections
+    (see ``startup_timeout``). Only relevant when startup_command is provided.
+    """
+
+    startup_timeout: float = Field(default=30.0, gt=0.0, examples=[30.0, 120.0])
+    """Seconds to wait until the server accepts connections on the endpoint's host and port.
 
     Only relevant when startup_command is provided.
     """

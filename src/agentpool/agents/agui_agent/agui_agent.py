@@ -109,7 +109,8 @@ class AGUIAgent[TDeps = None](BaseAgent[TDeps, str]):
         timeout: float = 60.0,
         headers: dict[str, str] | None = None,
         startup_command: str | None = None,
-        startup_delay: float = 2.0,
+        startup_delay: float = 0.0,
+        startup_timeout: float = 30.0,
         tools: Sequence[ToolType] | None = None,
         mcp_servers: Sequence[str | MCPServerConfig] | None = None,
         env: ExecutionEnvironment | StrPath | None = None,
@@ -135,7 +136,9 @@ class AGUIAgent[TDeps = None](BaseAgent[TDeps, str]):
             startup_command: Optional shell command to start server automatically.
                            Useful for testing - server lifecycle is managed by the agent.
                            Example: "agentpool serve-agui config.yml"
-            startup_delay: Seconds to wait after starting server before connecting (default: 2.0)
+            startup_delay: Extra seconds to wait after starting the server (default: 0)
+            startup_timeout: Seconds to wait until the server accepts connections on the
+                endpoint's host and port (default: 30)
             tools: Tools to expose to the remote agent (executed locally when called)
             mcp_servers: MCP servers to connect
             env: Execution environment
@@ -172,6 +175,7 @@ class AGUIAgent[TDeps = None](BaseAgent[TDeps, str]):
         # Startup command configuration
         self._startup_command = startup_command
         self._startup_delay = startup_delay
+        self._startup_timeout = startup_timeout
         self._startup_process: Process | None = None
         # Client state
         self._client: httpx2.AsyncClient | None = None
@@ -206,6 +210,7 @@ class AGUIAgent[TDeps = None](BaseAgent[TDeps, str]):
             headers=config.get_headers(),
             startup_command=config.startup_command,
             startup_delay=config.startup_delay,
+            startup_timeout=config.startup_timeout,
             tools=[tool_config.get_tool() for tool_config in config.tools],
             mcp_servers=config.mcp_servers,
             agent_pool=agent_pool,
@@ -220,7 +225,12 @@ class AGUIAgent[TDeps = None](BaseAgent[TDeps, str]):
         self._client = get_client(self.headers, self.timeout)
         self._sdk_session_id = self.session_id
         if self._startup_command:  # Start server if startup command is provided
-            self._startup_process = await start_process(self._startup_command, self._startup_delay)
+            self._startup_process = await start_process(
+                self._startup_command,
+                self._startup_delay,
+                ready_address=_endpoint_address(self.endpoint),
+                startup_timeout=self._startup_timeout,
+            )
         self.log.debug("AG-UI client initialized", endpoint=self.endpoint)
         return self
 
@@ -591,3 +601,12 @@ if __name__ == "__main__":
                 print(f"Event: {event}")
 
     anyio.run(main)
+
+
+def _endpoint_address(endpoint: str) -> tuple[str, int]:
+    """Host and port of an HTTP(S) endpoint URL (default ports for the scheme)."""
+    from urllib.parse import urlsplit
+
+    url = urlsplit(endpoint)
+    port = url.port or (443 if url.scheme == "https" else 80)
+    return url.hostname or "localhost", port
