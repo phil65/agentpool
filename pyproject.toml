@@ -74,7 +74,7 @@ dependencies = [
   "sqlmodel>=0.0.22",
   "structlog>=25.5.0",
   "sublime-search>=0.5.2",  # First release with Python 3.15 wheels
-  "tokonomics>=0.1.2",
+  "tokonomics>=1.4.0",
   "toprompt>=0.0.1",
   "typer",
   "upathtools[httpx2]>=1.25.0",

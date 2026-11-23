@@ -304,7 +304,7 @@ requires-dist = [
     { name = "structlog", specifier = ">=25.5.0" },
     { name = "sublime-search", specifier = ">=0.5.2" },
     { name = "tiktoken", marker = "extra == 'tiktoken'" },
-    { name = "tokonomics", specifier = ">=0.1.2" },
+    { name = "tokonomics", specifier = ">=1.4.0" },
     { name = "toprompt", specifier = ">=0.0.1" },
     { name = "tree-sitter", marker = "extra == 'coding'", specifier = ">=0.25.2" },
     { name = "tree-sitter-c", marker = "extra == 'coding'", specifier = ">=0.24.1" },
@@ -6874,18 +6874,17 @@ wheels = [
 
 [[package]]
 name = "tokonomics"
-version = "1.2.18"
+version = "1.4.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "anyenv", extra = ["httpx"] },
-    { name = "httpx" },
+    { name = "anyenv", extra = ["httpx2"] },
     { name = "platformdirs" },
     { name = "pydantic" },
     { name = "schemez" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/2e/0a/c8093f6836f898a9f587aa30786bba25f08e92c9c11f13f9e638b0b97688/tokonomics-1.2.18.tar.gz", hash = "sha256:6b40461c8c8ce71f4bc378c61a4743a55b20b5ddee50d27b9398c85c29279c17", size = 65636, upload-time = "2026-02-25T21:23:44.719Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/bd/a3/84049352619bd24cc991b12afb3dc5bbaf0ca577424d62bc3a4164605de2/tokonomics-1.4.0.tar.gz", hash = "sha256:b77af3550499083cb72ba6e65999ba54ab399c02306c93db8d9c5792973b438f", size = 103147, upload-time = "2026-11-23T16:33:26.307Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/b1/c4/fc9b68acb9d10a44b2c7121c8e02094c46244f9e7b07fa86ef47ee2d1073/tokonomics-1.2.18-py3-none-any.whl", hash = "sha256:8ff42a59c16be309a0d8d29e66a079f0b1ed72dce4380a545d8f20c32e4c9ab8", size = 103907, upload-time = "2026-02-25T21:23:43.281Z" },
+    { url = "https://files.pythonhosted.org/packages/81/5a/ed6a904bc5fdc1a9b8d22901fda01692e573b016e0f6eb333c0e04ac050d/tokonomics-1.4.0-py3-none-any.whl", hash = "sha256:e12adb5b76c800a495171f8f6e61550d008d4148a00be819e034c241fe8b1b7d", size = 134347, upload-time = "2026-11-23T16:33:25.042Z" },
 ]
 
 [[package]]
