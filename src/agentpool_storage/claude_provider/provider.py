@@ -17,6 +17,8 @@ from __future__ import annotations
 from collections import defaultdict
 from dataclasses import dataclass
 from datetime import datetime
+import mmap
+import os
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
@@ -45,6 +47,8 @@ from agentpool_storage.claude_provider.converters import (
 
 
 if TYPE_CHECKING:
+    from collections.abc import Iterator
+
     from clawd_code_sdk.storage.models import ClaudeJSONLEntry
 
     from agentpool.messaging import ChatMessage
@@ -54,6 +58,22 @@ if TYPE_CHECKING:
 
 
 logger = get_logger(__name__)
+
+
+def _file_contains(path: Path, needle: bytes) -> bool:
+    """Check whether a file's raw bytes contain ``needle``, without parsing it.
+
+    The file is memory-mapped, so even very large transcripts are searched at memory
+    speed without being read into Python objects.
+    """
+    try:
+        with path.open("rb") as f:
+            if os.fstat(f.fileno()).st_size == 0:
+                return False
+            with mmap.mmap(f.fileno(), 0, access=mmap.ACCESS_READ) as mm:
+                return mm.find(needle) != -1
+    except OSError:
+        return False
 
 
 def _build_tool_id_mapping(entries: list[ClaudeJSONLEntry]) -> dict[str, str]:
@@ -305,6 +325,17 @@ class ClaudeStorageProvider(StorageProvider):
                     session_id = f.stem
                     sessions.append((session_id, f))
         return sessions
+
+    def _sessions_containing(self, needle: str) -> Iterator[tuple[str, Path]]:
+        """Yield the sessions whose transcript contains ``needle`` (e.g. a message UUID).
+
+        A raw byte search, so only matching transcripts need to be parsed. A match is a
+        candidate, not a guarantee: the text may also appear in another field.
+        """
+        key = needle.encode()
+        for session_id, path in self._list_sessions():
+            if _file_contains(path, key):
+                yield session_id, path
 
     def list_session_metadata(self, project_path: str | None = None) -> list[SessionMetadata]:
         """List all sessions with lightweight metadata (no full message parsing).
@@ -645,11 +676,12 @@ class ClaudeStorageProvider(StorageProvider):
         Returns:
             The message if found, None otherwise
         """
-        # If session_id is provided, search only that session
+        # If session_id is provided, search only that session; otherwise only parse the
+        # transcripts that contain the UUID at all.
         sessions = (
             [(session_id, p)]
             if session_id and (p := self._find_session_path(session_id))
-            else self._list_sessions()
+            else self._sessions_containing(message_id)
         )
         for sid, session_path in sessions:
             entries = read_session(session_path)
@@ -697,11 +729,31 @@ class ClaudeStorageProvider(StorageProvider):
             ancestors.reverse()
             return ancestors
 
-        # Slow path: search all sessions
+        # Slow path: the chain may span sessions. Parse only transcripts that contain the
+        # UUID being looked up, each at most once, and index all their entries.
+        by_uuid: dict[str, tuple[str, ClaudeEntry, dict[str, str]]] = {}
+        parsed: set[Path] = set()
+        seen: set[str] = set()  # parent chains can contain cycles
         ancestors = []
         current_id = message_id
-        while current_id:
-            msg = await self.get_message(current_id)
+        while current_id and current_id not in seen:
+            seen.add(current_id)
+            if current_id not in by_uuid:
+                for sid, path in self._sessions_containing(current_id):
+                    if path in parsed:
+                        continue
+                    parsed.add(path)
+                    entries = read_session(path)
+                    mapping = _build_tool_id_mapping(entries)
+                    for entry in entries:
+                        if isinstance(entry, ClaudeEntry):
+                            by_uuid.setdefault(entry.uuid, (sid, entry, mapping))
+                    if current_id in by_uuid:
+                        break
+            if (located := by_uuid.get(current_id)) is None:
+                break
+            sid, entry, mapping = located
+            msg = entry_to_chat_message(entry, sid, mapping)
             if not msg:
                 break
             ancestors.append(msg)
