@@ -44,7 +44,7 @@ dependencies = [
   "evented>=1.0.5",
   "exxec>=0.9.1",  # 0.9.1: execute_command runs in the environment's cwd
   "fastapi",
-  "fastmcp>=4.2.0",
+  "fastmcp>=4.2.5",  # 4.2.5: fastmcp.experimental.events
   "fsspec",
   "httpx2>=2.16",
   "jinja2",
