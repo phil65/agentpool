@@ -13,7 +13,7 @@ import json
 from pathlib import Path
 from typing import Any
 
-import httpx  # pyt3client (T3Client http_client) is still built on httpx
+import httpx2
 from mcp import types
 from pyt3client import T3Client
 import pytest
@@ -39,9 +39,9 @@ class ReplayServer:
     script: list[dict[str, Any]]
     calls: list[tuple[str, dict[str, Any]]] = field(default_factory=list)
 
-    def handle(self, request: httpx.Request) -> httpx.Response:
+    def handle(self, request: httpx2.Request) -> httpx2.Response:
         if request.method == "DELETE":
-            return httpx.Response(200)
+            return httpx2.Response(200)
         body = json.loads(request.content)
         headers = {"mcp-session-id": "s"}
         match body["method"]:
@@ -52,7 +52,7 @@ class ReplayServer:
                     "serverInfo": {"name": "T3 Code", "version": "replay"},
                 }
             case "notifications/initialized":
-                return httpx.Response(202, headers=headers)
+                return httpx2.Response(202, headers=headers)
             case "tools/call":
                 name, arguments = body["params"]["name"], body["params"]["arguments"]
                 self.calls.append((name, arguments))
@@ -65,7 +65,7 @@ class ReplayServer:
             case other:
                 raise AssertionError(f"unexpected MCP method {other}")
         response = {"jsonrpc": "2.0", "id": body["id"], "result": result}
-        return httpx.Response(200, json=response, headers=headers)
+        return httpx2.Response(200, json=response, headers=headers)
 
 
 def _script() -> list[dict[str, Any]]:
@@ -73,7 +73,7 @@ def _script() -> list[dict[str, Any]]:
 
 
 def _agent(server: ReplayServer, **kwargs: Any) -> tuple[T3Client, T3Agent[None]]:
-    http = httpx.AsyncClient(transport=httpx.MockTransport(server.handle))
+    http = httpx2.AsyncClient(transport=httpx2.MockTransport(server.handle))
     client = T3Client(BASE_URL, "token", http_client=http)
     return client, T3Agent(
         project="/work/proj",

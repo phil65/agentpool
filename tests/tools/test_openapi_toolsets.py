@@ -57,9 +57,9 @@ PETSTORE_SPEC: Schema = {
 }
 
 
-# Create mock httpx response
+# Create mock httpx2 response
 class MockResponse:
-    """Mock httpx response."""
+    """Mock httpx2 response."""
 
     def __init__(self):
         self.status_code = 200
@@ -99,9 +99,9 @@ async def test_openapi_toolset_remote(mock_openapi_spec, caplog, monkeypatch):
     url = mock_openapi_spec["remote_url"]
     mock_response = MockResponse()
 
-    # Mock sync httpx.get (used by schemez load_openapi_spec, which still uses httpx)
+    # Mock sync httpx2.get (used by schemez load_openapi_spec)
     mock_sync_get = MagicMock(return_value=mock_response)
-    monkeypatch.setattr("httpx.get", mock_sync_get)
+    monkeypatch.setattr("httpx2.get", mock_sync_get)
 
     # Mock async client for runtime requests
     mock_client = MagicMock()

@@ -31,7 +31,7 @@ classifiers = [
   "Typing :: Typed",
 ]
 dependencies = [
-  "aclientp[bridge,http2,tracing,websocket]>=0.2.0",  # 0.2.0: httpx2
+  "aclientp[bridge,http2,tracing,websocket]>=0.2.1",  # 0.2.1: httpx2
   "alembic>=1.16.5",
   "anyenv[httpx2]>=2.1.0",
   "bashkit>=0.1.11",
@@ -50,7 +50,7 @@ dependencies = [
   "jinja2",
   "jinjarope>=1.0.9",
   "keyring>=25.6.0",
-  "llmling-models>=1.8.0",
+  "llmling-models>=1.8.1",
   "logfire[fastapi]",
   "mcp>=1.2.0",
   "pillow>=11.3.0",
@@ -63,11 +63,11 @@ dependencies = [
   # Only add below (Copier)
   "pydantic-monty>=0.0.11",
   "pydocket>=0.16.1",
-  "pyt3client[native]>=0.2.0",  # type: t3 agents (native: live updates, approvals)
+  "pyt3client[native]>=0.3.0",  # type: t3 agents (native: live updates, approvals)
   "python-dotenv>=1.0.1",
   "rich",
   "ripgrep-rs>=0.4.3",  # First release with Python 3.15 wheels
-  "schemez[codegen]",
+  "schemez[codegen]>=2.3.0",
   # "schemez @ file:///home/phil65/dev/oss/schemez",
   "searchly[all]>=2.0.1",
   "slashed>=0.1.0",
@@ -78,7 +78,7 @@ dependencies = [
   "tokonomics>=0.1.2",
   "toprompt>=0.0.1",
   "typer",
-  "upathtools[httpx]>=1.20.5",
+  "upathtools[httpx2]>=1.25.0",
   "uvicorn[standard]",
   "watchfiles>=1.1.1",
   "websockets>=15.0",

@@ -21,7 +21,7 @@ wheels = [
 
 [[package]]
 name = "aclientp"
-version = "0.2.0"
+version = "0.2.1"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "anyenv", extra = ["httpx2"] },
@@ -31,9 +31,9 @@ dependencies = [
     { name = "structlog" },
     { name = "upathtools" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/92/e8/07d5cd92bf6f336c275efff92f4579af732ee909d44bd47cc9001816762c/aclientp-0.2.0.tar.gz", hash = "sha256:af5a041657e7b79d0d6b2209b51878fe0edb06d699b30956ecb1709d44be6c7c", size = 177839, upload-time = "2026-11-23T07:44:16.787Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/a2/c6/33bd1144237d71673c943cea8454f898815da8410698ce6873c46993a940/aclientp-0.2.1.tar.gz", hash = "sha256:30af7ce64201f013c415d2b9b39a0bcb3ed3a352cd4978b6c86f00591a5ae5b2", size = 177881, upload-time = "2026-11-23T08:16:23.336Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/12/1b/690a3ba68a7d89915cd75314747422169fb61282ebf5c1015d7fa5ecb0bb/aclientp-0.2.0-py3-none-any.whl", hash = "sha256:47ba9df4430ee87b7f12133dadfee453b1c8a65e3f28fd671fe44219f3e980c5", size = 224725, upload-time = "2026-11-23T07:44:15.436Z" },
+    { url = "https://files.pythonhosted.org/packages/bf/cb/d90cd1c7f59b1e7438f8ce5a259bf13942ecc1437b523bde2bc634717d16/aclientp-0.2.1-py3-none-any.whl", hash = "sha256:fad249af583e929b668aa51bacccf344b40be6544ab352e01d9404a2db304100", size = 224723, upload-time = "2026-11-23T08:16:21.865Z" },
 ]
 
 [package.optional-dependencies]
@@ -114,7 +114,7 @@ dependencies = [
     { name = "tokonomics" },
     { name = "toprompt" },
     { name = "typer" },
-    { name = "upathtools", extra = ["httpx"] },
+    { name = "upathtools", extra = ["httpx2"] },
     { name = "uvicorn", extra = ["standard"] },
     { name = "watchfiles" },
     { name = "websockets" },
@@ -235,7 +235,7 @@ lint = [
 
 [package.metadata]
 requires-dist = [
-    { name = "aclientp", extras = ["bridge", "http2", "tracing", "websocket"], specifier = ">=0.2.0" },
+    { name = "aclientp", extras = ["bridge", "http2", "tracing", "websocket"], specifier = ">=0.2.1" },
     { name = "ag-ui-protocol", marker = "extra == 'ag-ui'", specifier = ">=0.1.10" },
     { name = "alembic", specifier = ">=1.16.5" },
     { name = "anyenv", extras = ["httpx2"], specifier = ">=2.1.0" },
@@ -269,7 +269,7 @@ requires-dist = [
     { name = "keyring", specifier = ">=25.6.0" },
     { name = "lancedb", marker = "extra == 'mcp-discovery'", specifier = ">=0.30.0" },
     { name = "langfuse", marker = "extra == 'langfuse'" },
-    { name = "llmling-models", specifier = ">=1.8.0" },
+    { name = "llmling-models", specifier = ">=1.8.1" },
     { name = "logfire", extras = ["fastapi"] },
     { name = "markitdown", marker = "python_full_version < '3.15' and extra == 'markitdown'" },
     { name = "mcp", specifier = ">=1.2.0" },
@@ -285,13 +285,13 @@ requires-dist = [
     { name = "pydantic-ai-slim", extras = ["openai", "google", "anthropic", "mistral", "retries"], specifier = ">=1.0.0" },
     { name = "pydantic-monty", specifier = ">=0.0.11" },
     { name = "pydocket", specifier = ">=0.16.1" },
-    { name = "pyt3client", extras = ["native"], specifier = ">=0.2.0" },
+    { name = "pyt3client", extras = ["native"], specifier = ">=0.3.0" },
     { name = "python-dotenv", specifier = ">=1.0.1" },
     { name = "python-telegram-bot", extras = ["socks"], marker = "extra == 'bot'", specifier = ">=21.0" },
     { name = "rich" },
     { name = "ripgrep-rs", specifier = ">=0.4.3" },
     { name = "rustworkx", marker = "extra == 'coding'", specifier = ">=0.17.1" },
-    { name = "schemez", extras = ["codegen"] },
+    { name = "schemez", extras = ["codegen"], specifier = ">=2.3.0" },
     { name = "searchly", extras = ["all"], specifier = ">=2.0.1" },
     { name = "slack-sdk", marker = "extra == 'bot'", specifier = ">=3.26.0" },
     { name = "slackify-markdown", marker = "extra == 'bot'", specifier = ">=0.2.0" },
@@ -316,7 +316,7 @@ requires-dist = [
     { name = "tree-sitter-typescript", marker = "extra == 'coding'", specifier = ">=0.23.0" },
     { name = "tree-sitter-yaml", marker = "extra == 'coding'", specifier = ">=0.6.0" },
     { name = "typer" },
-    { name = "upathtools", extras = ["httpx"], specifier = ">=1.20.5" },
+    { name = "upathtools", extras = ["httpx2"], specifier = ">=1.25.0" },
     { name = "uvicorn", extras = ["standard"] },
     { name = "watchfiles", specifier = ">=1.1.1" },
     { name = "websockets", specifier = ">=15.0" },
@@ -3096,7 +3096,7 @@ wheels = [
 
 [[package]]
 name = "llmling-models"
-version = "1.8.0"
+version = "1.8.1"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "anyenv", extra = ["httpx2"] },
@@ -3106,9 +3106,9 @@ dependencies = [
     { name = "schemez" },
     { name = "tokonomics" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/11/54/cc95e7542051ff7e1f6ce5a05a15d48a2d1c5876cd68c618ec660844fe95/llmling_models-1.8.0.tar.gz", hash = "sha256:58b2189952188e547cb7c2bd566cc6fe01f5f1310943c0ea9f5986fda4512e4e", size = 98562, upload-time = "2026-11-23T07:41:41.296Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/08/11/3d7d516f3332ee4a3148aa941cfc20d90a610d76deee577ad84ec1407a0c/llmling_models-1.8.1.tar.gz", hash = "sha256:2cdc3abedbbb8a63e9a31e64035657ec1a8c8babff9fc76c040459d8373600da", size = 98558, upload-time = "2026-11-23T08:21:54.422Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/44/3e/d8f7fc0f11324370e6756b3e9e6ae7fba191e1afcb4566fd6a528d2c348d/llmling_models-1.8.0-py3-none-any.whl", hash = "sha256:13a9fb3e3f02cf2047a4a1482ffd38a7d504fc9e77a891a608202fdc8f38bba8", size = 129545, upload-time = "2026-11-23T07:41:39.828Z" },
+    { url = "https://files.pythonhosted.org/packages/b3/95/ed78de7660a19327bbfffa3d21772344d69a6936aa4846dc17b405b96f7d/llmling_models-1.8.1-py3-none-any.whl", hash = "sha256:85db2f1e5d51dbad9afc58e65bf653969960430b8d7624e05adebb6d8ba70d81", size = 129544, upload-time = "2026-11-23T08:21:53.093Z" },
 ]
 
 [[package]]
@@ -5651,15 +5651,15 @@ sdist = { url = "https://files.pythonhosted.org/packages/12/a0/d0638470df605ce26
 
 [[package]]
 name = "pyt3client"
-version = "0.2.0"
+version = "0.3.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "httpx" },
+    { name = "httpx2" },
     { name = "pydantic" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/48/ad/db7d6f68d24955448b553ac282f387776ad8e0c91e228bf176c089aaec93/pyt3client-0.2.0.tar.gz", hash = "sha256:8b2885124dd48077aff52c722527e8a4c39d3d121b4eeec1dd860c7919bc644f", size = 53859, upload-time = "2026-11-22T07:49:24.139Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/c3/3c/e896625c09624418a6028d44c033d8b4ad05ee0c676f3ca6a2ea971ecb7f/pyt3client-0.3.0.tar.gz", hash = "sha256:3e681276357136e2b810c843422519fddaba643cce16f7033cbf72052be09b16", size = 53887, upload-time = "2026-11-23T07:57:16.598Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/47/fd/9a65d7e04020978790e5112cf24b9fbeb6d35743c557e35dfe0b13edf393/pyt3client-0.2.0-py3-none-any.whl", hash = "sha256:c4ee97d9e0f591754f664909131e0666e422e3dee52fc6415ba1b379e06f3810", size = 58439, upload-time = "2026-11-22T07:49:22.821Z" },
+    { url = "https://files.pythonhosted.org/packages/4d/b0/d61065a8f31f187a2db60025dc988ec31f7b0a90b75fb4348c2db9eeef44/pyt3client-0.3.0-py3-none-any.whl", hash = "sha256:2757a9bbff83c739a3c790175dda946d88ae08acdc21efb069624555a41bbc3d", size = 58448, upload-time = "2026-11-23T07:57:14.902Z" },
 ]
 
 [package.optional-dependencies]
@@ -6382,17 +6382,19 @@ wheels = [
 
 [[package]]
 name = "schemez"
-version = "2.2.29"
+version = "2.3.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "docstring-parser" },
     { name = "griffelib" },
     { name = "pydantic" },
+    { name = "pydantic-core" },
+    { name = "typing-extensions" },
     { name = "universal-pathlib" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/55/f9/394ef53eca56a08448feebd4645fc1f10719e9286faaaf19b02277ec03be/schemez-2.2.29.tar.gz", hash = "sha256:801fd18eeda003c061f43d1d8943fe206fd3d64dc2da0531bda49334c9056579", size = 76147, upload-time = "2026-03-16T01:02:52.627Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/25/35/4f09f31ea9c0e4e6f16e345439e0171cebfd0360b87ddffbdf522e211a51/schemez-2.3.0.tar.gz", hash = "sha256:d94a21071b77630d532addd35a0a49551449ca0528490d2bec9f0d855ac6184b", size = 80992, upload-time = "2026-11-23T07:57:28.815Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/d8/97/086c3f07ba3a0bbe13e553e59666bba49e7393f3a9cb451e6dc3867c2ea8/schemez-2.2.29-py3-none-any.whl", hash = "sha256:7517451ee5c0a8d3b3ebcd5327622ac3c8e9b09e3f7fad476c5ffd9e78f16d47", size = 94033, upload-time = "2026-03-16T01:02:51.055Z" },
+    { url = "https://files.pythonhosted.org/packages/06/00/b3e58b9c521672da7539a548facd30a72abcd9e3a6f349e40e628c84ac2b/schemez-2.3.0-py3-none-any.whl", hash = "sha256:765459846722353cf63452ea0806999e4bf1723415e52eef3312feaf5b200a5c", size = 92621, upload-time = "2026-11-23T07:57:27.611Z" },
 ]
 
 [package.optional-dependencies]
@@ -7332,24 +7334,29 @@ wheels = [
 
 [[package]]
 name = "upathtools"
-version = "1.23.0"
+version = "1.25.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "aiofile" },
     { name = "fsspec" },
-    { name = "python-dotenv" },
+    { name = "pydantic" },
     { name = "ripgrep-rs" },
     { name = "universal-pathlib" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/f8/73/1716b918ae4753a70bcb76a7a9407a8e4923d338793be39255ebcd5f0f29/upathtools-1.23.0.tar.gz", hash = "sha256:e72813f62ef1dd8b41941a9e1a2db2b7802510cb8c341882aa4fb320aca0ae4f", size = 221422, upload-time = "2026-11-19T07:55:40.127Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/ab/53/4295cb6a56cfe9435a8a4d71b5dee7037048be8ec338838d71fc9e2327e9/upathtools-1.25.0.tar.gz", hash = "sha256:e9fadf208574f679e9e4c530b23a130f756d7c82a2ca417b4395323f65af635c", size = 225612, upload-time = "2026-11-23T07:53:59.687Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/46/9a/7ea834374f7050077fa755fc606881f4d1498cf2607b98d997855fc48716/upathtools-1.23.0-py3-none-any.whl", hash = "sha256:69cc484e34b5910d7f31900c7073886148d38d80cc757ee58965526b2715ca0c", size = 280906, upload-time = "2026-11-19T07:55:38.658Z" },
+    { url = "https://files.pythonhosted.org/packages/75/18/f998fabefa5eee1003b66c44e7d9bafffde28974ee18d0c4b67113489795/upathtools-1.25.0-py3-none-any.whl", hash = "sha256:706b0e3de49cfc22e7e553f55aaea87c117d03772f85b0f575bce6c7c86aa189", size = 283346, upload-time = "2026-11-23T07:53:58.232Z" },
 ]
 
 [package.optional-dependencies]
 httpx = [
     { name = "brotli" },
-    { name = "httpx" },
+    { name = "httpx2" },
+    { name = "yarl" },
+]
+httpx2 = [
+    { name = "brotli" },
+    { name = "httpx2" },
     { name = "yarl" },
 ]
 
