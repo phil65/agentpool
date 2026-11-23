@@ -80,10 +80,14 @@ We report task events. Zed also stops tasks (`stop_task`), reads their output
 (`get_task_output`), and polls the output file of a backgrounded Bash command
 (`background-output.ts`).
 
-## 10. `/mcp` command
+## Done: 10. `/mcp` command
 
-We filter it out. Zed shows the server status and runs reconnect / enable / disable through
-`mcp_reconnect` / `mcp_toggle`, since the CLI refuses them in SDK mode (`mcp-command.ts`).
+Done 2026-11-24. `/mcp` shows the agent's MCP servers and reconnects, enables or disables one
+(`BaseAgent.reconnect_mcp_server` / `set_mcp_server_enabled`). Claude Code uses the SDK's
+`mcp_reconnect` / `mcp_toggle` in every session's CLI process; native agents switch the
+servers agentpool connects for them; Codex can only reload all of its servers; OpenCode V2
+connects and disconnects. The V2 server serves `POST /api/experimental/mcp/{server}/connect`
+and `/disconnect`. `/mcp` replaces `/list-mcp-servers`.
 
 ## Done: 11. Session titles
 

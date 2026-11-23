@@ -75,6 +75,7 @@ if TYPE_CHECKING:
     from agentpool.delegation import AgentPool, Team, TeamRun
     from agentpool.messaging import ChatMessage
     from agentpool.messaging.compaction import CompactionPipeline
+    from agentpool.resource_providers.mcp_provider import MCPResourceProvider
     from agentpool.sessions import Session, SessionData
     from agentpool.storage import StorageManager
     from agentpool.talk.stats import MessageStats
@@ -1326,6 +1327,37 @@ class BaseAgent[TDeps = None, TResult = str](MessageNode[TDeps, TResult]):
             Dict mapping server name to MCPServerStatus
         """
         return await self.tools.get_mcp_server_info()
+
+    async def reconnect_mcp_server(self, name: str) -> None:
+        """Drop the connection to MCP server ``name`` and connect again (enabling it).
+
+        ``name`` as :meth:`get_mcp_server_info` lists it. The default acts on the MCP
+        servers agentpool connects for this agent; agents whose backend connects its own
+        override it.
+
+        Raises:
+            KeyError: If there is no MCP server ``name``
+            UnsupportedOperationError: If the backend can't reconnect a server
+        """
+        await self._mcp_provider(name).reconnect()
+
+    async def set_mcp_server_enabled(self, name: str, enabled: bool) -> None:
+        """Enable MCP server ``name`` (connecting it) or disable it (disconnecting it).
+
+        A disabled server offers no tools, prompts or resources until it is enabled again.
+
+        Raises:
+            KeyError: If there is no MCP server ``name``
+            UnsupportedOperationError: If the backend can't switch a server on and off
+        """
+        await self._mcp_provider(name).set_enabled(enabled)
+
+    def _mcp_provider(self, name: str) -> MCPResourceProvider:
+        if (provider := self.tools.mcp_providers().get(name)) is None:
+            known = ", ".join(sorted(self.tools.mcp_providers())) or "none"
+            msg = f"No MCP server {name!r} (known: {known})"
+            raise KeyError(msg)
+        return provider
 
     @method_spawner
     async def run(

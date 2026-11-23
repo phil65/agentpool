@@ -184,8 +184,6 @@ UNSUPPORTED: list[tuple[str, str, str]] = [
     ("POST", "/api/credential/{credential_id}/activate", "credentials"),
     ("PUT", "/api/experimental/mcp/{server}", "MCP configuration"),
     ("DELETE", "/api/experimental/mcp/{server}", "MCP configuration"),
-    ("POST", "/api/experimental/mcp/{server}/connect", "MCP configuration"),
-    ("POST", "/api/experimental/mcp/{server}/disconnect", "MCP configuration"),
     ("POST", "/api/experimental/client-mcp/token", "client MCP"),
     ("GET", "/api/experimental/client-mcp", "client MCP"),
     ("GET", "/api/experimental/session/{session_id}/terminal/read", "persistent PTY"),

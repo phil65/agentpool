@@ -38,9 +38,7 @@ from agentpool.agents.claude_code_agent.slash_commands import create_claude_code
 from agentpool.agents.claude_code_agent.steering import RunSteering, run_messages
 from agentpool.agents.events import RunErrorEvent, RunStartedEvent, StreamCompleteEvent
 from agentpool.agents.events.reconstructor import MessageReconstructor
-from agentpool.agents.exceptions import (
-    AgentNotInitializedError,
-)
+from agentpool.agents.exceptions import AgentNotInitializedError, UnsupportedOperationError
 from agentpool.agents.runtime import activate
 from agentpool.common_types import MCPServerStatus
 from agentpool.log import get_logger
@@ -655,6 +653,39 @@ class ClaudeCodeAgent[TDeps = None, TResult = str](BaseAgent[TDeps, TResult]):
         for name, config in self._mcp_servers.items():
             result[name] = MCPServerStatus(name=name, status="connected", server_type=config.type)
         return result
+
+    async def reconnect_mcp_server(self, name: str) -> None:
+        """Reconnect the CLI's MCP server ``name``, in every session's CLI process."""
+        for client in await self._mcp_clients(name):
+            await client.mcp_reconnect(name)
+
+    async def set_mcp_server_enabled(self, name: str, enabled: bool) -> None:
+        """Enable or disable the CLI's MCP server ``name``, in every session's CLI process."""
+        for client in await self._mcp_clients(name):
+            await client.mcp_toggle(name, enabled=enabled)
+
+    async def _mcp_clients(self, name: str) -> list[ClaudeSDKClient]:
+        """The CLI processes' clients to act on MCP server ``name`` with.
+
+        Connects the acting session's process if none runs yet.
+
+        Raises:
+            KeyError: If the CLI has no MCP server ``name``
+            UnsupportedOperationError: If no CLI process could be started
+        """
+        if name not in (servers := await self.get_mcp_server_info()):
+            msg = f"No MCP server {name!r} (known: {', '.join(sorted(servers)) or 'none'})"
+            raise KeyError(msg)
+        clients = [p.client for p in self._processes.values() if p.client is not None]
+        if not clients:
+            await self.ensure_initialized()
+            if (client := self._client) is not None:
+                clients = [client]
+        if not clients:
+            raise UnsupportedOperationError(
+                self.name, f"act on MCP server {name!r}", "the CLI isn't running"
+            )
+        return clients
 
     def _get_client(
         self,

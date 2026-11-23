@@ -19,6 +19,7 @@ if TYPE_CHECKING:
     from agentpool.prompts.prompts import MCPClientPrompt
     from agentpool.resource_providers import ResourceProvider
     from agentpool.resource_providers.codemode.provider import CodeModeResourceProvider
+    from agentpool.resource_providers.mcp_provider import MCPResourceProvider
     from agentpool.resource_providers.resource_info import ResourceInfo
     from agentpool.tools.base import Tool
 
@@ -284,32 +285,28 @@ class ToolManager:
                     t_ = await self.get_tool(name_)
                     t_.enabled = was_enabled
 
-    async def get_mcp_server_info(self) -> dict[str, MCPServerStatus]:
-        """Get information about configured MCP servers."""
+    def mcp_providers(self) -> dict[str, MCPResourceProvider]:
+        """The MCP servers this manager's tools come from, by provider name."""
         from agentpool.mcp_server.manager import MCPManager
         from agentpool.resource_providers import AggregatingResourceProvider
         from agentpool.resource_providers.mcp_provider import MCPResourceProvider
 
-        def add_status(provider: MCPResourceProvider, result: dict[str, MCPServerStatus]) -> None:
-            result[provider.name] = provider.get_status()
+        found: list[MCPResourceProvider] = []
+        for provider in self.external_providers:
+            match provider:
+                case MCPResourceProvider():
+                    found.append(provider)
+                case AggregatingResourceProvider():
+                    found.extend(
+                        p for p in provider.providers if isinstance(p, MCPResourceProvider)
+                    )
+                case MCPManager():
+                    found.extend(provider.get_mcp_providers())
+        return {provider.name: provider for provider in found}
 
-        result: dict[str, MCPServerStatus] = {}
-        try:
-            for provider in self.external_providers:
-                match provider:
-                    case MCPResourceProvider():
-                        add_status(provider, result)
-                    case AggregatingResourceProvider():
-                        for nested in provider.providers:
-                            if isinstance(nested, MCPResourceProvider):
-                                add_status(nested, result)
-                    case MCPManager():
-                        for mcp_provider in provider.get_mcp_providers():
-                            add_status(mcp_provider, result)
-        except Exception:  # noqa: BLE001
-            pass
-
-        return result
+    async def get_mcp_server_info(self) -> dict[str, MCPServerStatus]:
+        """Get information about configured MCP servers."""
+        return {name: p.get_status() for name, p in self.mcp_providers().items()}
 
 
 if __name__ == "__main__":

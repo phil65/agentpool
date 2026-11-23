@@ -238,6 +238,10 @@ class OpenCodeV2Client:
         """Connect a registered MCP server (``POST /api/experimental/mcp/{name}/connect``)."""
         await self._request("POST", f"/api/experimental/mcp/{quote(name, safe='')}/connect")
 
+    async def disconnect_mcp_server(self, name: str) -> None:
+        """Disconnect an MCP server (``POST /api/experimental/mcp/{name}/disconnect``)."""
+        await self._request("POST", f"/api/experimental/mcp/{quote(name, safe='')}/disconnect")
+
     async def remove_mcp_server(self, name: str) -> None:
         """Remove a registered MCP server (``DELETE /api/experimental/mcp/{name}``)."""
         await self._request("DELETE", f"/api/experimental/mcp/{quote(name, safe='')}")

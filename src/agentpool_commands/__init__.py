@@ -19,7 +19,7 @@ from agentpool_commands.history import SearchHistoryCommand
 from agentpool_commands.mcp import (
     AddMCPServerCommand,
     AddRemoteMCPServerCommand,
-    ListMCPServersCommand,
+    MCPCommand,
 )
 from agentpool_commands.models import SetModelCommand
 from agentpool_commands.prompts import ListPromptsCommand, ShowPromptCommand
@@ -87,7 +87,7 @@ def get_agent_commands(**kwargs: Any) -> Sequence[BaseCommand]:
         "enable_read": ReadCommand(),
         "enable_add_mcp_server": AddMCPServerCommand(),
         "enable_add_remote_mcp_server": AddRemoteMCPServerCommand(),
-        "enable_list_mcp_servers": ListMCPServersCommand(),
+        "enable_mcp": MCPCommand(),
         "enable_search_history": SearchHistoryCommand(),
         "enable_get_logs": GetLogsCommand(),
     }
@@ -136,7 +136,7 @@ def get_commands(
     enable_read: bool = True,
     enable_add_mcp_server: bool = True,
     enable_add_remote_mcp_server: bool = True,
-    enable_list_mcp_servers: bool = True,
+    enable_mcp: bool = True,
     enable_search_history: bool = True,
     enable_get_logs: bool = True,
     enable_create_agent: bool = True,
@@ -175,7 +175,7 @@ def get_commands(
         "enable_read": enable_read,
         "enable_add_mcp_server": enable_add_mcp_server,
         "enable_add_remote_mcp_server": enable_add_remote_mcp_server,
-        "enable_list_mcp_servers": enable_list_mcp_servers,
+        "enable_mcp": enable_mcp,
         "enable_search_history": enable_search_history,
         "enable_get_logs": enable_get_logs,
     }

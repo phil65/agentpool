@@ -19,6 +19,7 @@ if TYPE_CHECKING:
 
     from mcp.types import ResourceTemplate
 
+    from agentpool.mcp_server import MCPClient
     from agentpool.mcp_server.skills_fs import MCPSkillsFileSystem
     from agentpool.prompts.prompts import MCPClientPrompt
     from agentpool.skills.skill import Skill
@@ -41,7 +42,6 @@ class MCPResourceProvider(ResourceProvider):
         owner: str | None = None,
         source: Literal["pool", "node"] = "node",
     ) -> None:
-        from agentpool.mcp_server import MCPClient
         from agentpool_config.mcp_server import BaseMCPServerConfig
 
         super().__init__(name, owner=owner)
@@ -55,12 +55,68 @@ class MCPResourceProvider(ResourceProvider):
         self._resources_cache: list[ResourceInfo] | None = None
         self._skills_cache: list[Skill] | None = None
         self._skills_fs: MCPSkillsFileSystem | None = None
-        self.client = MCPClient(
+        self.enabled = True
+        """Whether the server is used: a disabled one is disconnected and offers nothing."""
+        self._error: str | None = None
+        """Why the last connection attempt failed, if it did."""
+        self._lifecycle = asyncio.Lock()
+        self.client = self._create_client()
+
+    def _create_client(self) -> MCPClient:
+        from agentpool.mcp_server import MCPClient
+
+        return MCPClient(
             config=self.server,
             tool_change_callback=self._on_tools_changed,
             prompt_change_callback=self._on_prompts_changed,
             resource_change_callback=self._on_resources_changed,
         )
+
+    async def reconnect(self) -> None:
+        """Drop the connection and connect again with a fresh client (enables the server).
+
+        Users then see the server's tools, prompts and resources as they are now.
+
+        Raises:
+            Exception: If the server can't be reached (its status then says why)
+        """
+        async with self._lifecycle:
+            await self._close()
+            self.enabled = True
+            self.client = self._create_client()
+            try:
+                await self.exit_stack.enter_async_context(self.client)
+            except Exception as e:
+                self._error = str(e) or type(e).__name__
+                raise
+            finally:
+                await self._announce_changes()
+            self._error = None
+
+    async def set_enabled(self, enabled: bool) -> None:
+        """Enable the server (connecting it if it isn't) or disable it (disconnecting it)."""
+        if enabled:
+            if not self.enabled or not self.client.connected:
+                await self.reconnect()
+            return
+        async with self._lifecycle:
+            if not self.enabled:
+                return
+            self.enabled = False
+            await self._close()
+            await self._announce_changes()
+
+    async def _close(self) -> None:
+        """Close the current connection (the client and what it holds)."""
+        await self.exit_stack.aclose()
+        self.exit_stack = AsyncExitStack()
+        self._skills_fs = None
+
+    async def _announce_changes(self) -> None:
+        """Drop the caches and tell subscribers that everything the server offers changed."""
+        await self._on_tools_changed({})
+        await self._on_prompts_changed({})
+        await self._on_resources_changed({})
 
     def __repr__(self) -> str:
         return f"MCPResourceProvider({self.server!r}, source={self.source!r})"
@@ -147,6 +203,9 @@ class MCPResourceProvider(ResourceProvider):
 
     async def refresh_tools_cache(self) -> None:
         """Refresh the tools cache by fetching from client."""
+        if not self.enabled:
+            self._tools_cache = []
+            return
         all_tools: list[FunctionTool] = []
         try:
             for tool in await self.client.list_tools():
@@ -179,6 +238,9 @@ class MCPResourceProvider(ResourceProvider):
         """Refresh the prompts cache by fetching from client."""
         from agentpool.prompts.prompts import MCPClientPrompt
 
+        if not self.enabled:
+            self._prompts_cache = []
+            return
         all_prompts: list[MCPClientPrompt] = []
         try:
             for prompt in await self.client.list_prompts():
@@ -204,6 +266,9 @@ class MCPResourceProvider(ResourceProvider):
 
     async def refresh_resources_cache(self) -> None:
         """Refresh the resources cache by fetching from client."""
+        if not self.enabled:
+            self._resources_cache = []
+            return
         all_resources: list[ResourceInfo] = []
         try:
             for resource in await self.client.list_resources():
@@ -272,6 +337,9 @@ class MCPResourceProvider(ResourceProvider):
         from agentpool.mcp_server.skills_fs import MCPSkillsFileSystem
         from agentpool.skills.skill import Skill
 
+        if not self.enabled:
+            self._skills_cache = []
+            return
         try:
             entries = await self.client.list_skills()
         except Exception:
@@ -336,6 +404,8 @@ class MCPResourceProvider(ResourceProvider):
         Returns:
             List of ResourceTemplate objects from the server
         """
+        if not self.enabled:
+            return []
         try:
             return await self.client.list_resource_templates()
         except Exception:
@@ -343,28 +413,21 @@ class MCPResourceProvider(ResourceProvider):
             return []
 
     def get_status(self) -> MCPServerStatus:
-        """Get connection status for this MCP server.
+        """Connection status of this MCP server.
 
-        Returns:
-            Status dict with 'status' key and optionally 'error' key.
-            Status can be: 'connected', 'disabled', or 'failed'.
+        ``disabled`` (switched off), ``connected``, else ``failed`` with the last
+        connection error, or ``disconnected``.
         """
-        try:
-            if self.client.connected:
-                return MCPServerStatus(
-                    name=self.name, status="connected", server_type=self.transport_type
-                )
-        except Exception as e:  # noqa: BLE001
+        transport = self.transport_type
+        if not self.enabled:
+            return MCPServerStatus(name=self.name, status="disabled", server_type=transport)
+        if self.client.connected:
+            return MCPServerStatus(name=self.name, status="connected", server_type=transport)
+        if self._error is not None:
             return MCPServerStatus(
-                name=self.name,
-                status="failed",
-                error=str(e),
-                server_type=self.transport_type,
+                name=self.name, status="failed", error=self._error, server_type=transport
             )
-        else:
-            return MCPServerStatus(
-                name=self.name, status="disabled", server_type=self.transport_type
-            )
+        return MCPServerStatus(name=self.name, status="disconnected", server_type=transport)
 
 
 if __name__ == "__main__":

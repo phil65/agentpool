@@ -36,9 +36,7 @@ from agentpool.agents.codex_agent.codex_converters import (
 from agentpool.agents.codex_agent.stream_adapter import CodexStreamedResponse
 from agentpool.agents.events import RunStartedEvent, StreamCompleteEvent
 from agentpool.agents.events.reconstructor import MessageReconstructor
-from agentpool.agents.exceptions import (
-    AgentNotInitializedError,
-)
+from agentpool.agents.exceptions import AgentNotInitializedError, UnsupportedOperationError
 from agentpool.agents.runtime import activate
 from agentpool.log import get_logger
 from agentpool.mcp_server.tool_bridge import DEFAULT_ROUTE
@@ -601,6 +599,28 @@ class CodexAgent[TDeps = None, OutputDataT = str](BaseAgent[TDeps, OutputDataT])
                     assert_never(unreachable)
 
         return _Response(answers=answers)
+
+    async def reconnect_mcp_server(self, name: str) -> None:
+        """Reload Codex's MCP servers: Codex reloads them all, not one alone.
+
+        Raises:
+            KeyError: If Codex has no MCP server ``name``
+            UnsupportedOperationError: If Codex isn't connected
+        """
+        if self._client is None:
+            raise UnsupportedOperationError(
+                self.name, "reload MCP servers", "Codex isn't connected"
+            )
+        if name not in (servers := await self.get_mcp_server_info()):
+            msg = f"No MCP server {name!r} (known: {', '.join(sorted(servers)) or 'none'})"
+            raise KeyError(msg)
+        await self._client.mcp_server_refresh()
+
+    async def set_mcp_server_enabled(self, name: str, enabled: bool) -> None:
+        """Not supported: Codex's app-server can't switch one MCP server on or off."""
+        operation = f"{'enable' if enabled else 'disable'} MCP server {name!r}"
+        reason = "Codex's app-server only reloads all MCP servers"
+        raise UnsupportedOperationError(self.name, operation, reason)
 
     async def get_mcp_server_info(self) -> dict[str, MCPServerStatus]:
         """Get MCP server status from connected Codex client.

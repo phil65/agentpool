@@ -57,7 +57,7 @@ class AgentCliTool(Tool[str]):
         Command categories:
         - Agent/team management: create-agent, create-team, list-agents
         - Tool management: list-tools, register-tool, enable-tool, disable-tool
-        - MCP servers: add-mcp-server, add-remote-mcp-server, list-mcp-servers
+        - MCP servers: add-mcp-server, add-remote-mcp-server, mcp
         - Connections: connect, disconnect, connections
         - Workers: add-worker, remove-worker, list-workers
 

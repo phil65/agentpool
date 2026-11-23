@@ -20,8 +20,10 @@ from agentpool_server.opencode_v2_server.errors import (
     agent_not_found,
     command_not_found,
     invalid_request,
+    mcp_server_not_found,
     shell_not_found,
     skill_not_found,
+    unavailable,
 )
 from agentpool_server.opencode_v2_server.events import new_message_id
 from agentpool_server.opencode_v2_server.location import public_ref
@@ -67,6 +69,8 @@ from opencode_v2_sdk.models import (
 
 
 if TYPE_CHECKING:
+    from collections.abc import Iterable
+
     from agentpool.common_types import MCPServerStatus
     from agentpool_server.opencode_v2_server.shells import ShellProcess
     from agentpool_server.opencode_v2_server.state import ServerState
@@ -198,6 +202,35 @@ async def mcp_list(state: StateDep, directory: DirectoryDep) -> Response:
                 McpServer(name=name, status=_mcp_status(info), title=info.server_name),
             )
     return ok(McpListResponse(location=public_ref(directory), data=list(servers.values())))
+
+
+@router.post("/api/experimental/mcp/{server}/connect", status_code=204)
+async def mcp_connect(server: str, state: StateDep) -> Response:
+    """Connect (enable) MCP server ``server`` for every pool agent that has it."""
+    await _switch_mcp_server(state.pool.all_agents.values(), server, enabled=True)
+    return Response(status_code=204)
+
+
+@router.post("/api/experimental/mcp/{server}/disconnect", status_code=204)
+async def mcp_disconnect(server: str, state: StateDep) -> Response:
+    """Disconnect (disable) MCP server ``server`` for every pool agent that has it."""
+    await _switch_mcp_server(state.pool.all_agents.values(), server, enabled=False)
+    return Response(status_code=204)
+
+
+async def _switch_mcp_server(
+    agents: Iterable[BaseAgent[Any, Any]], server: str, *, enabled: bool
+) -> None:
+    from agentpool.agents.exceptions import UnsupportedOperationError
+
+    having = [agent for agent in agents if server in await agent.get_mcp_server_info()]
+    if not having:
+        raise mcp_server_not_found(server)
+    for agent in having:
+        try:
+            await agent.set_mcp_server_enabled(server, enabled)
+        except UnsupportedOperationError as e:
+            raise unavailable("MCP server switching", str(e)) from e
 
 
 @router.get("/api/mcp/resource")

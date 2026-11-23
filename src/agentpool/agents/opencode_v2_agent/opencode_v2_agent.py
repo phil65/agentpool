@@ -20,7 +20,7 @@ from agentpool.agents.base_agent import BaseAgent
 from agentpool.agents.capabilities import AgentCapabilities
 from agentpool.agents.events import NoticeEvent, RunStartedEvent, StreamCompleteEvent
 from agentpool.agents.events.reconstructor import MessageReconstructor
-from agentpool.agents.exceptions import AgentNotInitializedError
+from agentpool.agents.exceptions import AgentNotInitializedError, UnsupportedOperationError
 from agentpool.agents.opencode_v2_agent.converters import (
     elicitation_to_form_answer,
     form_to_elicitation,
@@ -975,6 +975,36 @@ class OpenCodeV2Agent[TDeps = None](BaseAgent[TDeps, str]):
             self.log.debug("Failed to read OpenCode V2 MCP servers", exc_info=True)
             return {}
         return {server.name: to_mcp_server_status(server) for server in servers}
+
+    async def reconnect_mcp_server(self, name: str) -> None:
+        """Disconnect and connect the server's MCP server ``name`` (connecting enables it)."""
+        client = await self._mcp_client(name)
+        await client.disconnect_mcp_server(name)
+        await client.connect_mcp_server(name)
+
+    async def set_mcp_server_enabled(self, name: str, enabled: bool) -> None:
+        """Connect the server's MCP server ``name``, or disconnect it."""
+        client = await self._mcp_client(name)
+        if enabled:
+            await client.connect_mcp_server(name)
+        else:
+            await client.disconnect_mcp_server(name)
+
+    async def _mcp_client(self, name: str) -> OpenCodeV2Client:
+        """The client to act on MCP server ``name`` with.
+
+        Raises:
+            KeyError: If the server has no MCP server ``name``
+            UnsupportedOperationError: If no OpenCode V2 server is connected
+        """
+        if self._client is None:
+            raise UnsupportedOperationError(
+                self.name, f"act on MCP server {name!r}", "no OpenCode V2 server is connected"
+            )
+        if name not in (servers := await self.get_mcp_server_info()):
+            msg = f"No MCP server {name!r} (known: {', '.join(sorted(servers)) or 'none'})"
+            raise KeyError(msg)
+        return self._client
 
     async def get_usage_limits(self) -> UsageLimits | None:
         """Return plan usage limits from ``GET /api/experimental/usage/limits``."""

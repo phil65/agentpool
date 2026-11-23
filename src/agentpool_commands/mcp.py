@@ -11,6 +11,7 @@ from agentpool_commands.base import NodeCommand
 
 
 if TYPE_CHECKING:
+    from agentpool.agents.base_agent import BaseAgent
     from agentpool.agents.context import AgentContext
     from agentpool.messaging import MessageNode
     from agentpool_config.mcp_server import MCPServerConfig
@@ -132,43 +133,86 @@ class AddRemoteMCPServerCommand(NodeCommand):
             raise CommandError(f"Failed to add remote MCP server: {e}") from e
 
 
-class ListMCPServersCommand(NodeCommand):
-    """List all configured MCP servers.
+class MCPCommand(NodeCommand):
+    """Show the agent's MCP servers, or reconnect, enable or disable one.
 
-    Shows server name, type, and connection status.
+    The servers are the agent's: for Claude Code, Codex and OpenCode the ones their
+    backend connects, otherwise the ones agentpool connects for the agent.
+
+    Examples:
+      /mcp                     Status of every MCP server
+      /mcp reconnect github    Drop the connection and connect again
+      /mcp disable github      Disconnect it: its tools go away until enabled
+      /mcp enable github       Connect it again
     """
 
-    name = "list-mcp-servers"
+    name = "mcp"
     category = "integrations"
 
     @classmethod
     def supports_node(cls, node: MessageNode[Any, Any]) -> bool:
-        from agentpool import Agent
+        from agentpool.agents.base_agent import BaseAgent
 
-        return isinstance(node, Agent)
+        return isinstance(node, BaseAgent)
 
-    async def execute_command(self, ctx: CommandContext[AgentContext]) -> None:
-        """List all MCP servers.
+    async def execute_command(
+        self,
+        ctx: CommandContext[AgentContext],
+        action: str | None = None,
+        server: str | None = None,
+    ) -> None:
+        """Show MCP server status, or act on one server.
 
         Args:
             ctx: Command context
+            action: reconnect, enable or disable (none: show the status)
+            server: The MCP server to act on, as the status lists it
         """
-        from agentpool_commands.markdown_utils import format_table
+        from agentpool.agents.exceptions import UnsupportedOperationError
 
-        servers = ctx.context.agent.mcp.providers
-        if not servers:
-            await ctx.print("No MCP servers configured.")
+        agent = ctx.context.agent
+        if action is None:
+            await ctx.print(await _mcp_status_table(agent))
             return
+        if action not in _ACTIONS:
+            msg = f"Unknown action {action!r}: use {', '.join(_ACTIONS)}, or none for the status"
+            raise CommandError(msg)
+        if server is None:
+            raise CommandError(f"Which server? /mcp {action} <server>")
+        try:
+            match action:
+                case "reconnect":
+                    await agent.reconnect_mcp_server(server)
+                case "enable" | "disable":
+                    await agent.set_mcp_server_enabled(server, action == "enable")
+        except KeyError as e:
+            raise CommandError(str(e.args[0])) from e
+        except UnsupportedOperationError as e:
+            raise CommandError(str(e)) from e
+        except Exception as e:
+            msg = f"Could not {action} MCP server {server!r}: {e}"
+            raise CommandError(msg) from e
+        status = (await agent.get_mcp_server_info()).get(server)
+        state = f" (now {status.status})" if status is not None else ""
+        await ctx.print(f"MCP server **{server}**: {_ACTIONS[action]}{state}")
 
-        rows = []
-        for server in servers:
-            server_type = type(server.server).__name__.replace("MCPServerConfig", "")
-            rows.append({
-                "Name": server.name,
-                "Type": server_type,
-                "Status": "connected" if server.client.connected else "disconnected",
-            })
 
-        headers = ["Name", "Type", "Status"]
-        table = format_table(headers, rows)
-        await ctx.print(f"## MCP Servers\n\n{table}")
+_ACTIONS = {"reconnect": "reconnected", "enable": "enabled", "disable": "disabled"}
+
+
+async def _mcp_status_table(agent: BaseAgent[Any, Any]) -> str:
+    from agentpool_commands.markdown_utils import format_table
+
+    servers = await agent.get_mcp_server_info()
+    if not servers:
+        return "No MCP servers configured."
+    rows = [
+        {
+            "Name": name,
+            "Status": info.status,
+            "Type": info.server_type,
+            "Error": info.error or "",
+        }
+        for name, info in sorted(servers.items())
+    ]
+    return f"## MCP Servers\n\n{format_table(['Name', 'Status', 'Type', 'Error'], rows)}"
