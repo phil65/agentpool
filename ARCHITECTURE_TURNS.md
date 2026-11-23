@@ -75,18 +75,18 @@ by their prompt's message ID (the answer's `parent_id`), which revert and fork r
 ```python
 @dataclass(kw_only=True)
 class Turn[TResult]:
-    turn_id: str                 # the prompt's message ID (already the storage key)
+    turn_id: str  # the prompt's message ID (already the storage key)
     session_id: str
-    node: str                    # agent or team name
-    parent: TurnRef | None       # what caused it: team turn, routing source, subagent call
-    prompt: ChatMessage[Any]     # role "user"
-    outcome: TurnOutcome         # how it ended (below)
-    result: ChatMessage[TResult] | None   # the final answer; None for failed/refused
-    usage: RunUsage              # the turn's, summed (children included for a team)
+    node: str  # agent or team name
+    parent: TurnRef | None  # what caused it: team turn, routing source, subagent call
+    prompt: ChatMessage[Any]  # role "user"
+    outcome: TurnOutcome  # how it ended (below)
+    result: ChatMessage[TResult] | None  # the final answer; None for failed/refused
+    usage: RunUsage  # the turn's, summed (children included for a team)
     cost: TokenCost | None
     started_at: datetime
     duration: float
-    children: list[Turn[Any]]    # member turns of a team, subagent turns
+    children: list[Turn[Any]]  # member turns of a team, subagent turns
 
 
 TurnOutcome = Completed | Cancelled | LimitReached | Failed | Refused
