@@ -95,7 +95,6 @@ dependencies = [
     { name = "platformdirs" },
     { name = "promptantic" },
     { name = "psygnal" },
-    { name = "py-key-value-aio", extra = ["disk"] },
     { name = "pydantic" },
     { name = "pydantic-ai-slim", extra = ["anthropic", "google", "mistral", "openai", "retries"] },
     { name = "pydantic-monty" },
@@ -279,7 +278,6 @@ requires-dist = [
     { name = "promptantic", specifier = ">=0.4.5" },
     { name = "promptlayer", marker = "extra == 'promptlayer'" },
     { name = "psygnal", specifier = ">=0.11.1" },
-    { name = "py-key-value-aio", extras = ["disk"] },
     { name = "pyarrow", marker = "extra == 'mcp-discovery'", specifier = ">=19.0.0" },
     { name = "pydantic", specifier = ">=2.10.0" },
     { name = "pydantic-ai-slim", extras = ["openai", "google", "anthropic", "mistral", "retries"], specifier = ">=1.0.0" },
@@ -1705,15 +1703,6 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/4c/ac/480ca726f38d1b6a8fb2af6b0b861e130dfd3e03c9bcc5a151ddedb289aa/devtools-0.13.0.tar.gz", hash = "sha256:e3a848080404bd4e10dbf535fe016c6b593fccf24a8edac863048b8cbab3d92f", size = 14625, upload-time = "2026-10-11T17:57:13.828Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/e9/2f/21e494a2ebe8ed49370edc34d38fbdcb5440a29f89ecf6b19843ecbbab41/devtools-0.13.0-py3-none-any.whl", hash = "sha256:3b325c797951b96417045b77d226d7991e2c578d711c1e7860b44a40a5b2ec4b", size = 16078, upload-time = "2026-10-11T17:57:12.899Z" },
-]
-
-[[package]]
-name = "diskcache"
-version = "5.6.3"
-source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/3f/21/1c1ffc1a039ddcc459db43cc108658f32c57d271d7289a2794e401d0fdb6/diskcache-5.6.3.tar.gz", hash = "sha256:2c3a3fa2743d8535d832ec61c2054a1641f41775aa7c556758a109941e33e4fc", size = 67916, upload-time = "2023-08-31T06:12:00.316Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/3f/27/4570e78fc0bf5ea0ca45eb1de3818a23787af9b390c0b0a0033a1b8236f9/diskcache-5.6.3-py3-none-any.whl", hash = "sha256:5e31b2d5fbad117cc363ebaf6b689474db18a1f6438bc82358b024abd4c2ca19", size = 45550, upload-time = "2023-08-31T06:11:58.822Z" },
 ]
 
 [[package]]
@@ -4578,15 +4567,6 @@ wheels = [
 ]
 
 [[package]]
-name = "pathvalidate"
-version = "3.3.1"
-source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/fa/2a/52a8da6fe965dea6192eb716b357558e103aea0a1e9a8352ad575a8406ca/pathvalidate-3.3.1.tar.gz", hash = "sha256:b18c07212bfead624345bb8e1d6141cdcf15a39736994ea0b94035ad2b1ba177", size = 63262, upload-time = "2025-06-15T09:07:20.736Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/9a/70/875f4a23bfc4731703a5835487d0d2fb999031bd415e7d17c0ae615c18b7/pathvalidate-3.3.1-py3-none-any.whl", hash = "sha256:5263baab691f8e1af96092fa5137ee17df5bdfbd6cff1fcac4d6ef4bc2e1735f", size = 24305, upload-time = "2025-06-15T09:07:19.117Z" },
-]
-
-[[package]]
 name = "pefile"
 version = "2024.8.26"
 source = { registry = "https://pypi.org/simple" }
@@ -5009,10 +4989,6 @@ wheels = [
 ]
 
 [package.optional-dependencies]
-disk = [
-    { name = "diskcache" },
-    { name = "pathvalidate" },
-]
 filetree = [
     { name = "aiofile" },
     { name = "anyio" },

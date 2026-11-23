@@ -5,11 +5,8 @@ from __future__ import annotations
 from collections import defaultdict
 from typing import TYPE_CHECKING, Any
 
-from fastmcp.server.middleware.caching import ResponseCachingMiddleware
-from key_value.aio.stores.disk import DiskStore
 import mcp
 from mcp import types
-import platformdirs
 
 import agentpool
 from agentpool.log import get_logger
@@ -34,12 +31,6 @@ if TYPE_CHECKING:
     ]
 
 logger = get_logger(__name__)
-
-
-agentpool_dir = platformdirs.user_config_dir("agentpool")
-
-store = DiskStore(directory=agentpool_dir)
-middleware = ResponseCachingMiddleware(cache_storage=store)
 
 
 class MCPServer(BaseServer):
@@ -85,7 +76,6 @@ class MCPServer(BaseServer):
             instructions=instructions,
             lifespan=lifespan,
             version=agentpool.__version__,
-            middleware=[middleware],
         )
         self.server = self.fastmcp._mcp_server
         if config.serve_skills:
