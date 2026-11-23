@@ -234,7 +234,7 @@ class SessionRuntime[TDeps = Any, TResult = Any]:
             definition_version=version,
         )
 
-    async def _run_once(
+    async def _run_once(  # noqa: PLR0915
         self,
         *prompts: PromptCompatible,
         store_history: bool,
@@ -322,6 +322,12 @@ class SessionRuntime[TDeps = Any, TResult = Any]:
                 # Capture final message from StreamCompleteEvent
                 if isinstance(event, StreamCompleteEvent):
                     final_message = event.message
+            if (task := asyncio.current_task()) is not None and task.cancelling():
+                # Cancelled from outside, and the agent ended its turn with what it had
+                await self._stop_backend()
+        except asyncio.CancelledError:
+            await self._stop_backend()
+            raise
         except Exception as e:
             agent.log.exception("Agent stream failed")
             failed_event = BaseAgent.RunFailedEvent(
@@ -402,12 +408,39 @@ class SessionRuntime[TDeps = Any, TResult = Any]:
                 session.data.touch()
         await agent.connections.route_message(final_message, wait=wait_for_connections)
 
+    async def _stop_backend(self) -> None:
+        """Tell the agent's backend to stop a turn that was cancelled from outside.
+
+        Cancelling the task that runs a turn only stops its Python side: an agent whose
+        turn runs elsewhere (a CLI subprocess, an app-server, a remote ACP or OpenCode
+        session) keeps working until its ``_interrupt`` tells it to stop. Nothing to do
+        after ``interrupt()`` (it already did) or when the agent marked the turn cancelled
+        itself (native agents: the turn was all in this task). ``_interrupt`` runs shielded,
+        so the cancellation in progress doesn't cut it short.
+        """
+        if self.cancelled:
+            return
+        self.cancelled = True
+        self.task = None  # No turn task left for ``_interrupt`` to cancel: it is cancelled
+        stop = asyncio.create_task(self.agent._interrupt(), name=f"stop-{self.agent.name}")
+        _STOPPING.add(stop)
+        stop.add_done_callback(_STOPPING.discard)
+        try:
+            await asyncio.shield(stop)
+        except asyncio.CancelledError:
+            pass  # Cancelled again while waiting: the stop goes on in its own task
+        except Exception:
+            self.agent.log.exception("Stopping the cancelled turn's backend failed")
+
     async def interrupt(self) -> None:
         """Cancel this session's running turn (the agent's ``_interrupt`` acts on it)."""
         with activate(self.agent, self):
             self.cancelled = True
             await self.agent._interrupt()
 
+
+_STOPPING: set[asyncio.Task[None]] = set()
+"""Backend stops of cancelled turns still running (a reference keeps each task alive)."""
 
 _ACTIVE: ContextVar[Mapping[int, SessionRuntime[Any, Any]]] = ContextVar(
     "agentpool_active_runtimes", default=MappingProxyType({})

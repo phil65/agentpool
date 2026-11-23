@@ -13,10 +13,12 @@ Status: step 1 done on 2026-11-23 with fastmcp 4.2.5 / fastmcp-tasks 4.2.5. Writ
   shared by every `serve-mcp` on the machine. The `py-key-value-aio[disk]` dependency went with it.
 - Progress (point 3 below) turned out to be moot: `MCPServer.report_progress` has no callers,
   so served agent tools report no progress, with or without tasks.
-- Cancellation (point 5): a cancelled task cancels the tool coroutine, and the native agent run
-  gets `CancelledError`, as the tests check. Subprocess agents (Claude Code, Codex, ...) behave the
-  same as on a cancelled synchronous call, and whether they interrupt the subprocess is still
-  unverified.
+- Cancellation (point 5): a cancelled task cancels the tool coroutine. Since 2026-11-23 the
+  turn loop (`SessionRuntime._stop_backend`) then calls the agent's `_interrupt()` for a turn
+  that was cancelled from outside, not through `interrupt()`, so Claude Code, Codex, OpenCode V2,
+  T3, Antigravity and ACP backends stop too. Checked against a real Claude Code CLI: idle 0.3 s
+  after the cancel, against 95 s of generating on before the change.
+  Tests: `tests/agents/test_turn_cancellation.py`.
 - Client side (point 4 of the order): importing `fastmcp_tasks` registers task support on every
   FastMCP `Client` in the process. So far that only happens when `serve-mcp` runs with
   background tasks. Our `MCPClient` still doesn't import it, so external task-required tools
