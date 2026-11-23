@@ -6,147 +6,64 @@ icon: material/connection
 
 # MCP Server
 
-The MCP (Model Context Protocol) server exposes AgentPool tools and resources to external MCP clients, enabling other agents and applications to use your capabilities.
+The MCP (Model Context Protocol) server makes the agents and teams of a pool callable from any
+MCP client: Claude Code, other agents, or another AgentPool.
 
-## What is MCP?
+## What it Serves
 
-MCP is a standardized protocol for AI tool integration:
-
-- **Tools** - Functions that agents can call
-- **Resources** - Data and files agents can read
-- **Prompts** - Reusable prompt templates (not served by AgentPool)
+- **A tool per agent and team**, `ask_<name>`, taking a `prompt` and returning the node's
+  answer. By default all teams and the agents that are not team members.
+- **The pool's skills**, through the MCP Skills extension (SEP-2640).
 
 ## Quick Start
 
 ```bash
-# Expose tools from a pool
+# Serve over stdio (for clients that spawn the server)
 agentpool serve-mcp config.yml
 
-# Or expose specific toolsets
-agentpool serve-mcp config.yml --toolset file_access --toolset search
+# Serve over HTTP
+agentpool serve-mcp config.yml --transport streamable-http --port 3001
 ```
 
 See [`serve-mcp`](../cli/serve-mcp.md) for all CLI options.
 
-## Use Cases
+## Configuration
 
-### 1. Share Tools with Claude Code
-
-Expose your custom tools to Claude Code:
-
-```bash
-# Start MCP server
-agentpool serve-mcp tools.yml --transport sse --port 3001
-```
-
-Configure Claude Code's `mcp.json`:
-
-```json
-{
-  "mcpServers": {
-    "agentpool": {
-      "url": "http://localhost:3001/sse"
-    }
-  }
-}
-```
-
-### 2. Agent Composition
-
-Let external agents use your pool's capabilities:
+The manifest's `pool_server` section sets the server up; options given to `serve-mcp`
+override it:
 
 ```yaml
-# config.yml - Your pool with specialized agents
+pool_server:
+  type: mcp
+  transport: streamable-http
+  host: localhost
+  port: 3001
+  serve_nodes: [data_expert, api_expert]  # true: all (default), false: none
+  serve_skills: true
+  background_tasks: false                 # see Background Tasks below
+
 agents:
   data_expert:
     type: native
-    model: openai:gpt-4o
+    model: openai:gpt-5-nano
     system_prompt: "Expert in data processing"
-    
   api_expert:
     type: native
-    model: anthropic:claude-sonnet
+    model: openai:gpt-5-nano
     system_prompt: "Expert in API design"
-    
-tools:
-  - type: subagent  # Exposes task, list_available_nodes
 ```
 
-External agents can now delegate to your experts via MCP.
+A `serve_nodes` list serves exactly the nodes it names, team members included.
 
-### 3. Share Custom Tools
-
-Expose custom Python functions:
-
-```python
-from agentpool import Agent
-from agentpool.tools import tool
-
-@tool
-def analyze_data(data: str) -> str:
-    """Analyze the provided data."""
-    # Your analysis logic
-    return f"Analysis result: {result}"
-
-agent = Agent("analyzer", model="...", tools=[analyze_data])
-```
+## Use with Claude Code
 
 ```bash
-agentpool serve-mcp --config agent.yml
+agentpool serve-mcp config.yml --transport streamable-http --port 3001
+claude mcp add --transport http agentpool http://localhost:3001/mcp
 ```
 
-## Exposed Capabilities
-
-### Tools
-
-All enabled tools from configured toolsets:
-
-```yaml
-tools:
-  - type: file_access    # read, write, list_directory
-  - type: process_management      # run_command, run_python
-  - type: search         # web_search, news_search
-  - type: subagent       # task, list_available_nodes
-```
-
-### Resources
-
-Resources from configured resource providers:
-
-```yaml
-resources:
-  - type: file
-    path: /data
-    pattern: "*.json"
-```
-
-## Architecture
-
-```mermaid
-graph LR
-    subgraph Clients["MCP Clients"]
-        Claude["Claude Code"]
-        Other["Other Agents"]
-    end
-    
-    subgraph Server["AgentPool MCP Server"]
-        MCP["MCP Protocol"]
-        Tools["Tool Manager"]
-        Resources["Resources"]
-    end
-    
-    subgraph Pool["Agent Pool"]
-        Agents["Agents"]
-        Toolsets["Toolsets"]
-    end
-    
-    Claude <-->|MCP| MCP
-    Other <-->|MCP| MCP
-    MCP --> Tools
-    MCP --> Resources
-    Tools --> Toolsets
-    Resources --> Pool
-```
+Claude Code can then ask `data_expert` and `api_expert` through `ask_data_expert` and
+`ask_api_expert`.
 
 ## Transport Types
 
@@ -189,9 +106,8 @@ Task state lives in memory by default and is lost on restart. Pass `--tasks-url
 redis://localhost:6379/0` (or set `FASTMCP_DOCKET_URL`) to keep it in Redis or Valkey.
 A task's state and result are kept for 15 minutes by default, counted from when the task
 starts, so the limit has to cover the run plus the time until the client fetches the result.
-Raise it with `--tasks-ttl 7200` (seconds), or `tasks_ttl` on `MCPPoolServerConfig` when
-building the server in Python. Tasks always run in the server's own process, because each
-run needs the pool.
+Raise it with `--tasks-ttl 7200` (seconds), or `tasks_ttl: PT2H` in `pool_server`. Tasks
+always run in the server's own process, because each run needs the pool.
 
 ## Consuming MCP Servers
 

@@ -17,28 +17,58 @@ TransportType = Literal["stdio", "sse", "streamable-http"]
 
 if TYPE_CHECKING:
     from agentpool import ChatMessage
+    from agentpool_config.pool_server import MCPPoolServerConfig
 
 
 logger = log.get_logger(__name__)
 
 
+def resolve_server_config(
+    base: MCPPoolServerConfig,
+    *,
+    transport: TransportType | None = None,
+    host: str | None = None,
+    port: int | None = None,
+    background_tasks: bool | None = None,
+    tasks_url: str | None = None,
+    tasks_ttl: int | None = None,
+) -> MCPPoolServerConfig:
+    """The manifest's ``pool_server`` settings, with the options given on the command line."""
+    given: dict[str, Any] = {
+        "transport": transport,
+        "host": host,
+        "port": port,
+        "background_tasks": background_tasks,
+        "tasks_url": tasks_url,
+        "tasks_ttl": timedelta(seconds=tasks_ttl) if tasks_ttl is not None else None,
+    }
+    updates = {key: value for key, value in given.items() if value is not None}
+    return base.model_copy(update={"enabled": True, **updates})
+
+
 def serve_command(
     config: Annotated[str, t.Argument(help="Path to agent configuration")],
-    transport: Annotated[TransportType, t.Option(help="Transport type")] = "stdio",
+    transport: Annotated[
+        TransportType | None, t.Option(help="Transport type (default: stdio)")
+    ] = None,
     host: Annotated[
-        str, t.Option(help="Host to bind server to (sse/streamable-http only)")
-    ] = "localhost",
-    port: Annotated[int, t.Option(help="Port to listen on (sse/streamable-http only)")] = 3001,
+        str | None,
+        t.Option(help="Host to bind server to, sse/streamable-http only (default: localhost)"),
+    ] = None,
+    port: Annotated[
+        int | None,
+        t.Option(help="Port to listen on, sse/streamable-http only (default: 3001)"),
+    ] = None,
     show_messages: Annotated[
         bool, t.Option("--show-messages", help="Show message activity")
     ] = False,
     background_tasks: Annotated[
-        bool,
+        bool | None,
         t.Option(
-            "--background-tasks",
+            "--background-tasks/--no-background-tasks",
             help="Let clients run agent tools as MCP background tasks (needs mcp-tasks extra)",
         ),
-    ] = False,
+    ] = None,
     tasks_url: Annotated[
         str | None,
         t.Option(help="Task backend: memory:// (default) or a Redis URL to survive restarts"),
@@ -50,8 +80,8 @@ def serve_command(
 ) -> None:
     """Run agents as an MCP server.
 
-    This makes agents available as tools to other applications, regardless of
-    whether pool_server is configured in the manifest.
+    Settings come from the manifest's ``pool_server`` section (type ``mcp``), and the
+    options given here override them. Without the section, the defaults apply.
     """
 
     def on_message(message: ChatMessage[Any]) -> None:
@@ -60,22 +90,19 @@ def serve_command(
     async def run_server() -> None:
 
         from agentpool import AgentPool, AgentsManifest
-        from agentpool_config.pool_server import MCPPoolServerConfig
         from agentpool_server.mcp_server.server import MCPServer
 
         logger.info("Server PID", pid=os.getpid())
-        # Load manifest and create pool (without server config)
         manifest = AgentsManifest.from_file(config)
         pool = AgentPool(manifest)
-        # Create server config and server externally
-        server_config = MCPPoolServerConfig(
-            enabled=True,
+        server_config = resolve_server_config(
+            manifest.pool_server,
             transport=transport,
             host=host,
             port=port,
             background_tasks=background_tasks,
             tasks_url=tasks_url,
-            tasks_ttl=timedelta(seconds=tasks_ttl) if tasks_ttl is not None else None,
+            tasks_ttl=tasks_ttl,
         )
         server = MCPServer(pool, server_config)
         async with pool, server:

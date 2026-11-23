@@ -65,7 +65,14 @@ class MCPServer(BaseServer):
         from agentpool.resource_providers.pool import PoolResourceProvider
 
         super().__init__(pool, name=name, raise_exceptions=raise_exceptions)
-        self.provider = PoolResourceProvider(pool)
+        match config.serve_nodes:
+            case True:
+                nodes: list[str] | None = None
+            case False:
+                nodes = []
+            case list() as names:
+                nodes = names
+        self.provider = PoolResourceProvider(pool, nodes=nodes)
         self.config = config
 
         self._subscriptions: defaultdict[str, set[mcp.ServerSession]] = defaultdict(set)

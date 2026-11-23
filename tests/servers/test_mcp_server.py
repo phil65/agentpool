@@ -47,3 +47,23 @@ async def test_repeated_calls_run_the_agent_again() -> None:
             second = await client.call_tool("ask_helper", {"prompt": prompt})
     assert calls == 2
     assert [_text(first), _text(second)] == ["answer 1", "answer 2"]
+
+
+async def _tool_names(serve_nodes: list[str] | bool) -> list[str]:
+    async with AgentPool() as pool:
+        for name in ("a", "b"):
+            await pool.add_agent(Agent(name, model=FunctionModel(stream_function=_echo)))
+        server = MCPServer(pool, MCPPoolServerConfig(serve_nodes=serve_nodes))
+        await server._register_pool_tools()
+        async with Client(server.fastmcp) as client:
+            return sorted(tool.name for tool in await client.list_tools())
+
+
+async def _echo(messages: list[ModelMessage], info: AgentInfo) -> AsyncIterator[str]:
+    yield "echo"
+
+
+async def test_serve_nodes_picks_the_served_agents() -> None:
+    assert await _tool_names(True) == ["ask_a", "ask_b"]
+    assert await _tool_names(["b"]) == ["ask_b"]
+    assert await _tool_names(False) == []
