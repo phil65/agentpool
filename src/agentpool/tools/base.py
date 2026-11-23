@@ -8,7 +8,10 @@ import inspect
 from typing import TYPE_CHECKING, Any, Literal, cast, get_type_hints
 
 import logfire
-from pydantic_ai import RunContext, Tool as PydanticAiTool, ToolReturn
+
+# UserContent at runtime (not under TYPE_CHECKING): pydantic-ai builds a JSON schema
+# from the ToolResult return annotation of every tool and needs its field types.
+from pydantic_ai import RunContext, Tool as PydanticAiTool, ToolReturn, UserContent
 import schemez
 
 from agentpool.log import get_logger
@@ -25,7 +28,6 @@ if TYPE_CHECKING:
     from collections.abc import Awaitable, Callable
 
     from mcp.types import Tool as MCPTool
-    from pydantic_ai import UserContent
     from schemez import FunctionSchema, Property
 
     from agentpool.common_types import ToolSource
