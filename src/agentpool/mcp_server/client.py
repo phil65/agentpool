@@ -13,7 +13,10 @@ from __future__ import annotations
 import asyncio
 import base64
 import contextlib
+import functools
+import importlib
 from importlib.metadata import version
+import importlib.util
 import logging
 from typing import TYPE_CHECKING, Any, Self, assert_never
 
@@ -68,6 +71,20 @@ logger = get_logger(__name__)
 
 MAX_LISTEN_RECONNECTS = 5
 """Times a lost change stream is reopened in a row before giving up."""
+
+
+@functools.cache
+def _enable_task_support() -> None:
+    """Let clients drive servers' background tasks (SEP-2663) if fastmcp-tasks is installed.
+
+    Importing ``fastmcp_tasks`` registers its client half for every FastMCP client
+    created afterwards: tools a server runs only as tasks can then be called, and
+    ``call_tool`` waits for their result.
+    """
+    if importlib.util.find_spec("fastmcp_tasks") is not None:
+        importlib.import_module("fastmcp_tasks")
+
+
 MetaDict = dict[str, Any]
 
 
@@ -324,6 +341,7 @@ class MCPClient:
                 icons=icons,
             )
 
+        _enable_task_support()
         extensions: list[ClientExtension] = []
         if config.skills:
             from fastmcp.skills import SkillsClientExtension
