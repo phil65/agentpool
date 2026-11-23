@@ -12,10 +12,11 @@ import agentpool
 from agentpool.log import get_logger
 from agentpool.mcp_server import constants
 from agentpool_server import BaseServer
+from agentpool_server.mcp_server.asking import ServedRuns
 
 
 if TYPE_CHECKING:
-    from collections.abc import Callable
+    from collections.abc import Awaitable, Callable
     from contextlib import AbstractAsyncContextManager
 
     from fastmcp import FastMCP
@@ -23,7 +24,7 @@ if TYPE_CHECKING:
     from mcp.server.context import ServerRequestContext
     from mcp.server.lowlevel.server import LifespanResultT
 
-    from agentpool import AgentPool
+    from agentpool import AgentPool, MessageNode
     from agentpool.sessions.activity import ActivityKind
     from agentpool_config.pool_server import MCPPoolServerConfig
 
@@ -102,6 +103,8 @@ class MCPServer(BaseServer):
             case list() as names:
                 nodes = names
         self.provider = PoolResourceProvider(pool, nodes=nodes)
+        self.runs = ServedRuns()
+        """Runs of the served nodes, and the ones waiting for the user's answer."""
         self.config = config
 
         self._subscriptions: defaultdict[str, set[mcp.ServerSession]] = defaultdict(set)
@@ -194,19 +197,35 @@ class MCPServer(BaseServer):
         if self._tools_registered:
             return
 
-        tools = await self.provider.get_tools()
-
-        for tool in tools:
-            # TODO: previously there was code to filter private attributes using a wrapper.
-            # comment said it was to remove _meta params, but not sure if it was required at all.
-            tool_annotations = tool.hints.to_mcp()
+        nodes = self.provider.served_nodes()
+        for node in nodes:
+            tool = node.to_tool()
             # Optional task mode: clients that opt in get a task, all others a normal call
-            self.fastmcp.tool(annotations=tool_annotations, task=self.config.background_tasks)(
-                tool.fn
-            )
+            self.fastmcp.tool(
+                name=tool.name,
+                description=tool.description,
+                annotations=tool.hints.to_mcp(),
+                task=self.config.background_tasks,
+            )(self._ask_function(node, tool.fn.__annotations__.get("return", Any)))
 
         self._tools_registered = True
-        logger.info("Registered MCP tools", count=len(tools))
+        logger.info("Registered MCP tools", count=len(nodes))
+
+    def _ask_function(
+        self, node: MessageNode[Any, Any], returns: Any
+    ) -> Callable[..., Awaitable[Any]]:
+        """The tool function of ``node``: its runs can ask the client's user (``asking``)."""
+        from fastmcp import Context
+
+        async def ask(prompt: str, ctx: Context) -> Any:
+            return await self.runs.call(node, prompt, ctx)
+
+        ask.__annotations__ = {
+            "prompt": str,
+            "ctx": Context,
+            "return": returns | types.InputRequiredResult,
+        }
+        return ask
 
     def _register_resource_handlers(self) -> None:
         """Register resource subscription handlers."""

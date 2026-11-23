@@ -10,6 +10,7 @@ be swapped per tool call (allowing AgentContext.handle_elicitation to be used).
 
 from __future__ import annotations
 
+import asyncio
 import base64
 import contextlib
 from importlib.metadata import version
@@ -44,6 +45,7 @@ if TYPE_CHECKING:
     from fastmcp.client.messages import MessageHandler, MessageHandlerT
     from fastmcp.skills import MCPSkill
     from mcp.client.extension import ClientExtension
+    from mcp.shared.subscriptions import ServerEvent
     from mcp.types import (
         BlobResourceContents,
         ElicitRequestParams,
@@ -63,6 +65,9 @@ if TYPE_CHECKING:
 
 
 logger = get_logger(__name__)
+
+MAX_LISTEN_RECONNECTS = 5
+"""Times a lost change stream is reopened in a row before giving up."""
 MetaDict = dict[str, Any]
 
 
@@ -96,6 +101,7 @@ class MCPClient:
         self._client_website_url = client_website_url
         self._client_icon_path = client_icon_path
         self._client = self._get_client(self.config)
+        self._listen_task: asyncio.Task[None] | None = None
 
     @property
     def fastmcp_client(self) -> fastmcp.Client[Any]:
@@ -131,15 +137,99 @@ class MCPClient:
                     raise first_error from None
             else:
                 raise
-
+        self._start_listening()
         return self
 
     async def __aexit__(self, *args: object) -> None:
         """Exit context manager and cleanup."""
+        if (task := self._listen_task) is not None:
+            self._listen_task = None
+            task.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await task
         try:
             await self._client.__aexit__(None, None, None)  # type: ignore[no-untyped-call]
         except Exception as e:  # noqa: BLE001
             logger.warning("Error during FastMCP client cleanup", error=e)
+
+    def _start_listening(self) -> None:
+        """Follow the server's list changes on a ``subscriptions/listen`` stream.
+
+        On 2026-07-28 connections a change a server announces outside a request (say,
+        tools reloaded in the background) reaches only a stream the client opens.
+        Notifications sent within a request, and every notification on earlier protocol
+        versions, go to the message handler as before. Only the changes someone handles
+        are asked for.
+        """
+        wanted = (
+            self._tool_change_callback,
+            self._prompt_change_callback,
+            self._resource_change_callback,
+        )
+        if any(callback is not None for callback in wanted):
+            name = f"mcp-listen-{self.config.client_id}"
+            self._listen_task = asyncio.create_task(self._listen_for_changes(), name=name)
+
+    async def _listen_for_changes(self) -> None:
+        from mcp.client.subscriptions import ListenNotSupportedError, SubscriptionLost
+
+        lost = 0
+        while True:
+            try:
+                async with self._client.listen(
+                    tools_list_changed=self._tool_change_callback is not None,
+                    prompts_list_changed=self._prompt_change_callback is not None,
+                    resources_list_changed=self._resource_change_callback is not None,
+                ) as subscription:
+                    lost = 0
+                    async for event in subscription:
+                        await self._on_change(event)
+            except ListenNotSupportedError:
+                return  # Handshake-era connection: the message handler gets the changes
+            except SubscriptionLost:
+                lost += 1
+                if lost > MAX_LISTEN_RECONNECTS:
+                    logger.warning("MCP change stream lost for good", server=self.config.client_id)
+                    return
+                await self._on_all_changed()  # Changes may have been missed: refetch
+                await asyncio.sleep(min(2**lost, 30))
+            except Exception:
+                logger.exception("MCP change stream failed", server=self.config.client_id)
+                return
+            else:
+                return  # The server closed the stream gracefully
+
+    async def _on_change(self, event: ServerEvent) -> None:
+        from mcp.shared.subscriptions import (
+            PromptsListChanged,
+            ResourcesListChanged,
+            ResourceUpdated,
+            ToolsListChanged,
+        )
+
+        match event:
+            case ToolsListChanged() if (callback := self._tool_change_callback) is not None:
+                logger.info("MCP tool list changed", server=self.config.client_id)
+                await callback({})
+            case PromptsListChanged() if (callback := self._prompt_change_callback) is not None:
+                logger.info("MCP prompt list changed", server=self.config.client_id)
+                await callback({})
+            case ResourcesListChanged() if (callback := self._resource_change_callback) is not None:
+                logger.info("MCP resource list changed", server=self.config.client_id)
+                await callback({})
+            case ResourceUpdated(uri=uri):
+                logger.info("MCP resource updated", server=self.config.client_id, uri=uri)
+            case _:
+                pass
+
+    async def _on_all_changed(self) -> None:
+        for callback in (
+            self._tool_change_callback,
+            self._prompt_change_callback,
+            self._resource_change_callback,
+        ):
+            if callback is not None:
+                await callback({})
 
     def get_resource_fs(self) -> MCPFileSystem:
         """Get a filesystem for accessing MCP resources."""

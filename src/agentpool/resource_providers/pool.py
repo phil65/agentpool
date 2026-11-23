@@ -11,7 +11,7 @@ from agentpool.resource_providers import ResourceProvider
 if TYPE_CHECKING:
     from collections.abc import Sequence
 
-    from agentpool import AgentPool
+    from agentpool import AgentPool, MessageNode
     from agentpool.resource_providers.resource_info import ResourceInfo
     from agentpool.tools import FunctionTool
 
@@ -45,21 +45,23 @@ class PoolResourceProvider(ResourceProvider):
         self.include_team_members = include_team_members
         self.nodes = list(nodes) if nodes is not None else None
 
-    async def get_tools(self) -> Sequence[FunctionTool]:
-        """Get a tool per node: ``nodes``, else all teams and the agents outside them."""
+    def served_nodes(self) -> list[MessageNode[Any, Any]]:
+        """The nodes served: ``nodes``, else all teams and the agents outside them."""
         if self.nodes is not None:
             if unknown := [name for name in self.nodes if name not in self.pool.nodes]:
                 msg = f"Unknown nodes to serve: {unknown} (pool has {sorted(self.pool.nodes)})"
                 raise ValueError(msg)
-            return [self.pool.nodes[name].to_tool() for name in self.nodes]
-        team_tools = [team.to_tool() for team in self.pool.teams.values()]
+            return [self.pool.nodes[name] for name in self.nodes]
+        teams: list[MessageNode[Any, Any]] = list(self.pool.teams.values())
         agents = list(self.pool.get_agents().values())
-        team_members = {member for t in self.pool.teams.values() for member in t.nodes}
         if self.include_team_members:
-            agent_tools = [agent.to_tool() for agent in agents]
-        else:
-            agent_tools = [agent.to_tool() for agent in agents if agent not in team_members]
-        return team_tools + agent_tools
+            return [*teams, *agents]
+        members = {member for team in self.pool.teams.values() for member in team.nodes}
+        return [*teams, *(agent for agent in agents if agent not in members)]
+
+    async def get_tools(self) -> Sequence[FunctionTool]:
+        """Get a tool per served node (see :meth:`served_nodes`)."""
+        return [node.to_tool() for node in self.served_nodes()]
 
     async def get_resources(self) -> list[ResourceInfo]:
         """Get resources from pool's manifest."""
