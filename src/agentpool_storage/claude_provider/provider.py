@@ -24,7 +24,12 @@ from typing import TYPE_CHECKING, Any
 
 import anyenv
 from clawd_code_sdk.models import ToolUseBlock as ClaudeToolUseBlock
-from clawd_code_sdk.storage.chain import index_chain_entries, walk_ancestry
+from clawd_code_sdk.storage.chain import (
+    RawEntry,
+    read_raw_chain_entries,
+    validate_chain_entries,
+    walk_raw_ancestry,
+)
 from clawd_code_sdk.storage.helpers import (
     count_session_messages,
     encode_project_path,
@@ -34,7 +39,6 @@ from clawd_code_sdk.storage.helpers import (
 )
 from clawd_code_sdk.storage.models import (
     ClaudeAssistantEntry,
-    ClaudeChainEntry,
     ClaudeEntry,
 )
 from pydantic_ai import RunUsage
@@ -52,7 +56,7 @@ from agentpool_storage.claude_provider.converters import (
 
 
 if TYPE_CHECKING:
-    from collections.abc import Iterator
+    from collections.abc import Iterable, Iterator
 
     from clawd_code_sdk.storage.models import ClaudeJSONLEntry
 
@@ -79,6 +83,41 @@ def _file_contains(path: Path, needle: bytes) -> bool:
                 return mm.find(needle) != -1
     except OSError:
         return False
+
+
+def _tool_names_from_raw(entries: Iterable[RawEntry]) -> dict[str, str]:
+    """Map tool_call_id to tool name from the ``tool_use`` blocks of parsed assistant entries."""
+    mapping: dict[str, str] = {}
+    for raw in entries:
+        message = raw.get("message")
+        if raw.get("type") != "assistant" or not isinstance(message, dict):
+            continue
+        content = message.get("content")
+        if not isinstance(content, list):
+            continue
+        for block in content:
+            if not isinstance(block, dict) or block.get("type") != "tool_use":
+                continue
+            if isinstance(tool_id := block.get("id"), str) and isinstance(
+                name := block.get("name"), str
+            ):
+                mapping[tool_id] = name
+    return mapping
+
+
+def _raw_messages_to_chat(
+    raw_entries: Iterable[RawEntry], session_id: str, tool_mapping: dict[str, str]
+) -> list[ChatMessage[str]]:
+    """Validate the user and assistant entries among parsed ones and convert them."""
+    messages = validate_chain_entries(
+        raw for raw in raw_entries if raw.get("type") in ("user", "assistant")
+    )
+    return [
+        msg
+        for entry in messages
+        if isinstance(entry, ClaudeEntry)
+        and (msg := entry_to_chat_message(entry, session_id, tool_mapping))
+    ]
 
 
 def _build_tool_id_mapping(entries: list[ClaudeJSONLEntry]) -> dict[str, str]:
@@ -715,26 +754,23 @@ class ClaudeStorageProvider(StorageProvider):
         Returns:
             List of messages from oldest ancestor to the specified message
         """
-        # Parent chains run through attachments and system entries, not only messages:
-        # follow every chain entry, return the user and assistant messages on the way.
-        # Fast path: if we know the session, load it once and walk in memory.
+        # Parent chains run through attachments and system entries, not only messages.
+        # Walk the parsed JSON (validating every entry of a large transcript costs far
+        # more than the walk) and validate only the user and assistant messages on it.
+        # Fast path: if we know the session, read it once and walk in memory.
         if session_id and (session_path := self._find_session_path(session_id)):
-            entries = read_session(session_path)
-            tool_mapping = _build_tool_id_mapping(entries)
-            chain = walk_ancestry(index_chain_entries(entries), message_id)
-            return [
-                msg
-                for entry in reversed(chain)
-                if isinstance(entry, ClaudeEntry)
-                and (msg := entry_to_chat_message(entry, session_id, tool_mapping))
-            ]
+            index = read_raw_chain_entries(session_path)
+            tool_mapping = _tool_names_from_raw(index.values())
+            chain = walk_raw_ancestry(index, message_id)
+            return _raw_messages_to_chat(reversed(chain), session_id, tool_mapping)
 
-        # Slow path: the chain may span sessions. Parse only transcripts that contain the
-        # UUID being looked up, each at most once, and index all their chain entries.
-        by_uuid: dict[str, tuple[str, ClaudeChainEntry, dict[str, str]]] = {}
+        # Slow path: the chain may span sessions. Read only transcripts that contain the
+        # UUID being looked up, each at most once.
+        by_uuid: dict[str, tuple[str, RawEntry]] = {}
+        tool_mappings: dict[str, dict[str, str]] = {}
         parsed: set[Path] = set()
         seen: set[str] = set()  # parent chains can contain cycles
-        ancestors: list[ChatMessage[str]] = []
+        found: list[tuple[str, RawEntry]] = []
         current_id = message_id
         while current_id and current_id not in seen:
             seen.add(current_id)
@@ -743,21 +779,20 @@ class ClaudeStorageProvider(StorageProvider):
                     if path in parsed:
                         continue
                     parsed.add(path)
-                    entries = read_session(path)
-                    mapping = _build_tool_id_mapping(entries)
-                    for uuid, entry in index_chain_entries(entries).items():
-                        by_uuid.setdefault(uuid, (sid, entry, mapping))
+                    index = read_raw_chain_entries(path)
+                    tool_mappings[sid] = _tool_names_from_raw(index.values())
+                    for uuid, raw in index.items():
+                        by_uuid.setdefault(uuid, (sid, raw))
                     if current_id in by_uuid:
                         break
             if (located := by_uuid.get(current_id)) is None:
                 break
-            sid, entry, mapping = located
-            if isinstance(entry, ClaudeEntry) and (
-                msg := entry_to_chat_message(entry, sid, mapping)
-            ):
-                ancestors.append(msg)
-            current_id = entry.parent_uuid
-        ancestors.reverse()
+            found.append(located)
+            parent = located[1].get("parentUuid")
+            current_id = parent if isinstance(parent, str) else None
+        ancestors: list[ChatMessage[str]] = []
+        for sid, raw in reversed(found):
+            ancestors.extend(_raw_messages_to_chat([raw], sid, tool_mappings.get(sid, {})))
         return ancestors
 
     async def fork_conversation(
