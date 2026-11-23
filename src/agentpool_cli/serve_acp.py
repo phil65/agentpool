@@ -190,6 +190,9 @@ def acp_command(  # noqa: PLR0915
     # stdio is the protocol's: pydantic-ai's first-run banner (to stderr) is only noise
     # in the client's agent log
     os.environ.setdefault("PYDANTIC_AI_NO_BANNER", "1")
+    # Without logfire.configure(), each instrumented call would warn on stderr once; a
+    # configured logfire is unaffected (the variable only silences that warning)
+    os.environ.setdefault("LOGFIRE_IGNORE_NO_CONFIG", "1")
 
     # Build transport config
     bind_host = host or ws_host
