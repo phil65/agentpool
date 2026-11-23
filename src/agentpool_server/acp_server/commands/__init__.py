@@ -12,9 +12,9 @@ if TYPE_CHECKING:
     from slashed import SlashedCommand
 
 
-def get_commands() -> list[SlashedCommand]:
-    """Get all ACP-specific commands."""
-    cmds = [*get_debug_commands(), *get_docs_commands()]
+def get_commands(*, debug: bool = False) -> list[SlashedCommand]:
+    """Get the ACP-specific commands (the debug ones only with ``debug``)."""
+    cmds = [*(get_debug_commands() if debug else []), *get_docs_commands()]
     return [i() for i in cmds]
 
 

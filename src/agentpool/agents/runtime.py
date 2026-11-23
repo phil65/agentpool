@@ -282,12 +282,18 @@ class SessionRuntime[TDeps = Any, TResult = Any]:
     async def _log_new_session(
         self, prompts: Sequence[PromptCompatible], *, model: str | None, session_id: str | None
     ) -> None:
-        """Record a new session in storage, titled after its last text prompt."""
+        """Record a new session in storage, titled after the first text the user wrote.
+
+        Injected context (rules, staged content; ``is_injected``) is not the user's:
+        alone, it gives no title.
+        """
+        from agentpool.agents.staged_content import is_injected
+
         agent = self.agent
         version = agent.definition.version if agent.definition is not None else None
         self.session.data.definition_version = version
-        user_prompts = [str(p) for p in prompts if isinstance(p, str)]
-        initial_prompt = user_prompts[-1] if user_prompts else None
+        user_prompts = [p for p in prompts if isinstance(p, str) and not is_injected(p)]
+        initial_prompt = next((p for p in user_prompts if p.strip()), None)
         # Agents that title their sessions themselves skip the storage's titles
         await agent.log_session(
             None if agent.TITLES_OWN_SESSIONS else initial_prompt,
@@ -322,7 +328,7 @@ class SessionRuntime[TDeps = Any, TResult = Any]:
         # Convert prompts to standard UserContent format
         converted_prompts = await convert_prompts(prompts)
         # Append any staged content
-        if staged := await self.staged.consume_as_text():
+        if staged := await self.staged.consume_as_context():
             converted_prompts = [*converted_prompts, staged]
         # Get message history (explicit > session > agent default)
         conversation = (

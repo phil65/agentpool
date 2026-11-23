@@ -14,6 +14,7 @@ from __future__ import annotations
 import base64
 from collections.abc import Sequence
 from dataclasses import dataclass, field
+import re
 from typing import TYPE_CHECKING, Any, Literal, assert_never, overload
 from uuid import uuid4
 
@@ -87,6 +88,7 @@ from agentpool.agents.events import (
     ToolCallProgressEvent,
     ToolCallStartEvent,
 )
+from agentpool.agents.staged_content import is_injected
 from agentpool.utils.pydantic_ai_helpers import safe_args_as_dict
 
 
@@ -144,8 +146,20 @@ def model_messages_to_session_updates(
     """
     tool_call_inputs: dict[str, dict[str, Any]] = {}
     for message in messages:
+        # A user prompt next to tool returns is the tools' content (pydantic-ai's
+        # ``ToolReturn.content``), with the messages the user sent mid-turn in it
+        returns_tools = any(
+            isinstance(part, ToolReturnPart | NativeToolReturnPart) for part in message.parts
+        )
         for part in message.parts:
             match part:
+                case UserPromptPart(content=content) if returns_tools:
+                    items = [content] if isinstance(content, str) else content
+                    for text in _steered_messages(items):
+                        yield UserMessageChunk.text(text=text)
+
+                case UserPromptPart(content=str(content)) if is_injected(content):
+                    pass
                 case TextPart(content=content):
                     yield AgentMessageChunk.text(text=content)
 
@@ -184,7 +198,9 @@ def model_messages_to_session_updates(
                     yield UserMessageChunk.text(text=content)
 
                 case UserPromptPart(content=content):
-                    yield from _user_content_to_updates(content)
+                    # Without the context agentpool added (rules, staged content)
+                    user_items = [c for c in content if not is_injected(c)]
+                    yield from _user_content_to_updates(user_items)
 
                 case (
                     ToolReturnPart(content=content, tool_name=tool_name, tool_call_id=tool_call_id)
@@ -227,6 +243,20 @@ def model_messages_to_session_updates(
                     pass
                 case _ as unreachable:
                     assert_never(unreachable)
+
+
+_STEERED = re.compile(r"<injected-context>\n(.*?)\n</injected-context>", re.DOTALL)
+"""A message the user sent during a turn, as tool content (``PromptInjectionManager``)."""
+
+
+def _steered_messages(items: Sequence[UserContent]) -> Iterator[str]:
+    """The user's mid-turn messages in tool-return content (the rest is the tools')."""
+    for item in items:
+        match item:
+            case str(text) | TextContent(content=text):
+                yield from _STEERED.findall(text)
+            case _:
+                pass
 
 
 def _user_content_to_updates(content: Sequence[UserContent]) -> Iterator[SessionUpdate]:

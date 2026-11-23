@@ -187,6 +187,10 @@ def acp_command(  # noqa: PLR0915
     from agentpool_config.resolution import resolve_config
     from agentpool_server.acp_server import ACPServer
 
+    # stdio is the protocol's: pydantic-ai's first-run banner (to stderr) is only noise
+    # in the client's agent log
+    os.environ.setdefault("PYDANTIC_AI_NO_BANNER", "1")
+
     # Build transport config
     bind_host = host or ws_host
     bind_port = port or ws_port

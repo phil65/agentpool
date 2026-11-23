@@ -33,6 +33,14 @@ if TYPE_CHECKING:
     from agentpool_server.acp_server.turns import TurnOutcome
 
 
+def acp_commands(commands: Sequence[BaseCommand]) -> list[AvailableCommand]:
+    """Slash commands as ACP commands."""
+    return [
+        AvailableCommand.create(name=cmd.name, description=cmd.description, input_hint=cmd.usage)
+        for cmd in commands
+    ]
+
+
 class V1SessionOutput:
     """``SessionOutput`` for ACP v1 clients."""
 
@@ -120,12 +128,7 @@ class V1SessionOutput:
 
     def available_commands(self, commands: Sequence[BaseCommand]) -> list[AvailableCommand]:
         """``commands`` as ACP commands, with the remote agent's that they don't shadow."""
-        available = [
-            AvailableCommand.create(
-                name=cmd.name, description=cmd.description, input_hint=cmd.usage
-            )
-            for cmd in commands
-        ]
+        available = acp_commands(commands)
         names = {command.name for command in available}
         return available + [c for c in self._remote_commands if c.name not in names]
 

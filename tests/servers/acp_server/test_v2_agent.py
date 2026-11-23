@@ -14,7 +14,7 @@ from anyio.abc import ByteReceiveStream, ByteSendStream
 from pydantic_ai.models.function import AgentInfo, DeltaToolCall, FunctionModel
 import pytest
 
-from agentpool import Agent, AgentPool, AgentsManifest
+from agentpool import Agent, AgentContext, AgentPool, AgentsManifest
 from agentpool_config.storage import SQLStorageConfig, StorageConfig
 from agentpool_server.acp_server.v2_agent import AgentPoolV2Agent
 
@@ -100,7 +100,7 @@ async def connected(
 
 @asynccontextmanager
 async def _serve(
-    model: FunctionModel, tools: Sequence[Callable[..., Any]] = ()
+    model: FunctionModel, tools: Sequence[Callable[..., Any]] = (), *, debug_commands: bool = False
 ) -> AsyncGenerator[tuple[ClientSideConnection, RecordingClient, Agent[None, str]]]:
     """A v2 connection to an agent with ``model`` (and ``tools``) in a pool."""
     storage = StorageConfig(providers=[SQLStorageConfig(url="sqlite+aiosqlite:///:memory:")])
@@ -110,7 +110,7 @@ async def _serve(
         to_agent_send, to_agent_recv = anyio.create_memory_object_stream[bytes](100)
         to_client_send, to_client_recv = anyio.create_memory_object_stream[bytes](100)
         agent_conn = AgentSideConnection(
-            lambda conn: AgentPoolV2Agent(conn, default_agent=agent),
+            lambda conn: AgentPoolV2Agent(conn, default_agent=agent, debug_commands=debug_commands),
             _Writer(to_client_send),
             _Reader(to_agent_recv),
         )
@@ -243,9 +243,141 @@ async def test_cancel_during_a_tool_call_ends_the_turn(tmp_path: Any) -> None:
         idle = await recorder.wait_idle()
 
         assert idle.stop_reason == "cancelled"
+        statuses = [u.status for u in recorder.of(v2.ToolCallSessionUpdate)]
+        assert statuses[-1] == "cancelled"  # v2 has the status; not "completed"
+        assert "completed" not in statuses
         # The session takes the next prompt
         await conn.prompt(_prompt(session_id))
         assert (await recorder.wait_idle()).stop_reason == "end_turn"
+
+
+async def test_processes_show_as_v2_terminals(tmp_path: Any) -> None:
+    """A tool's process reaches the client as a terminal with its command, output and exit."""
+
+    async def run_command(ctx: AgentContext) -> str:
+        """Run a command."""
+        await ctx.events.process_started("p1", "echo hi")
+        await ctx.events.process_output("p1", "hi\n")
+        await ctx.events.process_exit("p1", 0, final_output="hi\n")
+        return "hi"
+
+    async def stream(messages: list[ModelMessage], info: AgentInfo) -> AsyncIterator[Any]:
+        if len(messages) == 1:
+            yield {0: DeltaToolCall(name="run_command", json_args="{}", tool_call_id="c1")}
+        else:
+            yield "ran it"
+
+    model = FunctionModel(stream_function=stream)
+    async with _serve(model, [run_command]) as (conn, recorder, _):
+        session_id = await _new_session(conn, str(tmp_path))
+        await conn.prompt(_prompt(session_id))
+        await recorder.wait_idle()
+
+    terminals = recorder.of(v2.TerminalUpdate)
+    assert terminals[0].command == "echo hi"
+    assert terminals[0].cwd == str(tmp_path)
+    assert [c.decode() for c in recorder.of(v2.TerminalOutputChunk)] == [b"hi\n"]
+    texts = [
+        c
+        for u in recorder.of(v2.ToolCallSessionUpdate)
+        if v2.is_set(u.content)
+        for c in u.content or []
+        if isinstance(c, v2.Content)
+    ]
+    assert not texts  # The output is in the terminal, not repeated as text
+    exit_status = terminals[-1].exit_status
+    assert isinstance(exit_status, v2.TerminalExitStatus)
+    assert exit_status.exit_code == 0
+    # The terminal is known before the tool call showing it
+    first_terminal = next(
+        i for i, u in enumerate(recorder.updates) if isinstance(u, v2.TerminalUpdate)
+    )
+    showing = next(
+        i
+        for i, u in enumerate(recorder.updates)
+        if isinstance(u, v2.ToolCallSessionUpdate)
+        and v2.is_set(u.content)
+        and any(isinstance(c, v2.Terminal) for c in u.content or [])
+    )
+    assert first_terminal < showing
+
+
+async def test_titles_and_replay_leave_out_the_injected_rules(
+    tmp_path: Any, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The model gets the rules; the title model and the replayed history don't."""
+    from agentpool.storage.manager import StorageManager
+
+    seen_by_model: list[str] = []
+    seen_by_title_model: list[str] = []
+
+    async def stream(messages: list[ModelMessage], info: AgentInfo) -> AsyncIterator[str]:
+        seen_by_model.append(str(messages[-1]))
+        yield "Done"
+
+    async def title_model(self: StorageManager, session_id: str, prompt_text: str) -> None:
+        seen_by_title_model.append(prompt_text)  # Instead of a real model call
+
+    async def rules(project_dir: str | None = None) -> str:
+        return "# Rules\n\nRULES-TEXT"
+
+    monkeypatch.setattr(StorageManager, "_generate_title_core", title_model)
+    monkeypatch.delenv("PYTEST_CURRENT_TEST")  # Titles are skipped in tests otherwise
+    prompt = "Please read the README and tell me what this project is about, briefly"
+    async with _serve(FunctionModel(stream_function=stream)) as (conn, recorder, agent):
+        monkeypatch.setattr(agent, "read_rules", rules)
+        session_id = await _new_session(conn, str(tmp_path))
+        await conn.prompt(_prompt(session_id, prompt))
+        await recorder.wait_idle()
+
+        async def titled() -> None:
+            while not seen_by_title_model:
+                await asyncio.sleep(0.01)
+
+        await asyncio.wait_for(titled(), TIMEOUT)
+        assert "RULES-TEXT" in seen_by_model[0]  # Injected for the model
+        assert seen_by_title_model == [f"user: {prompt}"]
+
+        await conn.close_session(v2.CloseSessionRequest(session_id=session_id))
+        recorder.updates.clear()
+        request = v2.ResumeSessionRequest(
+            session_id=session_id, cwd=str(tmp_path), replay_from=v2.ReplayFromStart()
+        )
+        await conn.resume_session(request)
+
+    replayed = "".join(
+        u.content.text
+        for u in recorder.updates
+        if isinstance(u, v2.UserMessageChunk) and isinstance(u.content, v2.TextContent)
+    )
+    assert replayed == prompt
+
+
+async def test_debug_commands_only_with_the_flag(tmp_path: Any) -> None:
+    def names(response: v2.NewSessionResponse) -> set[str]:
+        commands = response.available_commands if v2.is_set(response.available_commands) else []
+        return {c.name for c in commands if isinstance(c, v2.Command)}
+
+    request = v2.NewSessionRequest(cwd=str(tmp_path))
+    async with _serve(FunctionModel(stream_function=_reply)) as (conn, _, _):
+        await _initialize(conn)
+        plain = names(await conn.new_session(request))
+    async with _serve(FunctionModel(stream_function=_reply), debug_commands=True) as (conn, _, _):
+        await _initialize(conn)
+        debug = names(await conn.new_session(request))
+
+    assert "help" in plain
+    assert not any(name.startswith("debug-") for name in plain)
+    assert "debug-send-text" in debug
+
+
+async def test_options_without_a_session_list_the_commands(connected: Any, tmp_path: Any) -> None:
+    """``session/options`` for a session yet to start: the commands it would have."""
+    conn, _, _ = connected
+    await _initialize(conn)
+    options = await conn.session_options(v2.SessionOptionsRequest(cwd=str(tmp_path)))
+    assert v2.is_set(options.available_commands)
+    assert "help" in {c.name for c in options.available_commands if isinstance(c, v2.Command)}
 
 
 async def test_session_responses_carry_the_commands(connected: Any, tmp_path: Any) -> None:

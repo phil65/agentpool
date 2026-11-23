@@ -46,7 +46,11 @@ from pydantic import BaseModel, ValidationError
 
 from agentpool.log import get_logger
 from agentpool_server.acp_server.acp_agent import AgentPoolACPAgent
-from agentpool_server.acp_server.session import infer_stop_reason
+from agentpool_server.acp_server.session import (
+    get_all_commands,
+    infer_stop_reason,
+    merge_commands,
+)
 from agentpool_server.acp_server.turns import (
     TurnCancelled,
     TurnCompleted,
@@ -54,7 +58,7 @@ from agentpool_server.acp_server.turns import (
     TurnLimitReached,
     TurnRefused,
 )
-from agentpool_server.acp_server.v1_output import V1SessionOutput
+from agentpool_server.acp_server.v1_output import V1SessionOutput, acp_commands
 from agentpool_server.acp_server.v2_client import V2ClientAdapter
 from agentpool_server.acp_server.v2_output import V2SessionOutput
 from agentpool_server.acp_server.v2_translate import UpdateTranslator, command, config_option
@@ -339,9 +343,16 @@ class AgentPoolV2Agent(V2Agent):
     async def session_options(self, params: v2.SessionOptionsRequest) -> v2.SessionOptionsResponse:
         response = await self.v1.session_options(to_v1(params, V1SessionOptionsRequest))
         session_id = params.session_id if v2.is_set(params.session_id) else None
+        if self.v1.session_manager.get_session(session_id or "") is None:
+            # The commands a new session would have
+            debug = self.v1.debug_commands
+            commands = merge_commands(get_all_commands(debug=debug), self.v1.default_agent)
+            available: Any = [command(c) for c in acp_commands(commands)]
+        else:
+            available = self._commands(session_id)
         return v2.SessionOptionsResponse(
             config_options=_config_options(response.config_options),
-            available_commands=self._commands(session_id),
+            available_commands=available,
         )
 
     async def set_session_title(

@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
-from pydantic_ai import UserPromptPart
+from pydantic_ai import TextContent, UserPromptPart
 
 from agentpool.log import get_logger
 
@@ -15,6 +15,32 @@ if TYPE_CHECKING:
 
 
 logger = get_logger(__name__)
+
+INJECTED_KEY = "agentpool_injected"
+"""Metadata key of prompt content agentpool added (rules, staged context), not the user."""
+
+
+def injected_context(text: str) -> TextContent:
+    """``text`` as prompt content that agentpool injected (the model sees it as text).
+
+    Marked so that what shows the user's messages (history replay, titles) can leave it
+    out; the mark survives storage (``TextContent.metadata``).
+    """
+    return TextContent(content=text, metadata={INJECTED_KEY: True})
+
+
+def is_injected(item: object) -> bool:
+    """Whether prompt content is agentpool's injected context rather than the user's.
+
+    Also recognizes the plain-text form stored before content was marked.
+    """
+    match item:
+        case TextContent(metadata={**meta}):
+            return bool(meta.get(INJECTED_KEY))
+        case str():
+            return item.startswith("\n<context>\n") and item.endswith("\n</context>\n")
+        case _:
+            return False
 
 
 @dataclass
@@ -53,6 +79,11 @@ class StagedContent:
         self._parts.clear()
         content = "\n\n".join(texts) if texts else None
         return f"\n<context>\n{content}\n</context>\n" if content else None
+
+    async def consume_as_context(self) -> TextContent | None:
+        """All staged content as injected context (see ``injected_context``), clearing it."""
+        text = await self.consume_as_text()
+        return injected_context(text) if text is not None else None
 
     def __len__(self) -> int:
         """Return count of staged parts."""

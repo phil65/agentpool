@@ -942,10 +942,12 @@ class ClaudeCodeAgent[TDeps = None, TResult = str](BaseAgent[TDeps, TResult]):
         assert storage is not None
         if await storage.get_session_title(session_id):
             return
-        text = "\n".join(
+        from agentpool.agents.staged_content import is_injected
+
+        text = "\n".join(  # What the user wrote: not the injected rules and context
             item if isinstance(item, str) else item.content
             for item in prompts
-            if isinstance(item, str | TextContent)
+            if isinstance(item, str | TextContent) and not is_injected(item)
         ).strip()
         if not text:
             return

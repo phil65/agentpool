@@ -118,7 +118,8 @@ Query params must be URL-encoded (spaces → `%20`). Paths must be absolute.
 """
 
 
-def get_all_commands() -> Sequence[BaseCommand]:
+def get_all_commands(*, debug: bool = False) -> Sequence[BaseCommand]:
+    """The session's slash commands (the debug ones only with ``debug``)."""
     from agentpool_commands import get_commands
     from agentpool_server.acp_server.commands import get_commands as get_acp_commands
 
@@ -129,8 +130,27 @@ def get_all_commands() -> Sequence[BaseCommand]:
             enable_add_resource=False,
             enable_show_resource=False,
         ),
-        *get_acp_commands(),
+        *get_acp_commands(debug=debug),
     ]
+
+
+def merge_commands(
+    session_commands: Sequence[BaseCommand], agent: BaseAgent[Any, Any]
+) -> list[BaseCommand]:
+    """A session's commands and its agent's (the session's win on a name clash).
+
+    Commands that do not support the agent are left out.
+    """
+    commands: list[BaseCommand] = []
+    names: set[str] = set()
+    for cmd in [*session_commands, *agent.command_store.list_commands()]:
+        if cmd.name in names:
+            continue
+        if isinstance(cmd, NodeCommand) and not cmd.supports_node(agent):
+            continue
+        names.add(cmd.name)
+        commands.append(cmd)
+    return commands
 
 
 def _is_slash_command(text: str) -> bool:
@@ -244,7 +264,8 @@ class ACPSession:
         self.last_usage: Usage | None = None
         self.total_cost = Decimal(0)  # Cumulative cost of this session's turns
         self.background_tasks: dict[str, str] = {}  # Running background tasks (ID -> description)
-        self.command_store = CommandStore(commands=get_all_commands())
+        commands = get_all_commands(debug=self.acp_agent.debug_commands)
+        self.command_store = CommandStore(commands=commands)
         self.command_store._initialize_sync()
         self._update_callbacks: list[Callable[[], None]] = []
         self._commands_update: asyncio.Task[None] | None = None
@@ -664,7 +685,7 @@ class ACPSession:
             return TurnCompleted()
         self.log.debug("Processing prompt", content_items=len(non_command_content))
         await self._wait_for_rules()
-        if staged := await self.staged.consume_as_text():
+        if staged := await self.staged.consume_as_context():
             non_command_content = [*non_command_content, staged]
         await output.start()  # After the commands: they may switch model or agent
         outcome = await self._stream_agent(non_command_content, output)
@@ -821,16 +842,7 @@ class ACPSession:
 
         Commands that do not support the session's agent are left out.
         """
-        commands: list[BaseCommand] = []
-        names: set[str] = set()
-        for cmd in [*self.command_store.list_commands(), *self.agent.command_store.list_commands()]:
-            if cmd.name in names:
-                continue
-            if isinstance(cmd, NodeCommand) and not cmd.supports_node(self.agent):
-                continue
-            names.add(cmd.name)
-            commands.append(cmd)
-        return commands
+        return merge_commands(self.command_store.list_commands(), self.agent)
 
     @logfire.instrument(r"Execute Slash Command {command_text}")
     async def execute_slash_command(self, command_text: str) -> None:

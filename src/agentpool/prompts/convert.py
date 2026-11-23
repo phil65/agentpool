@@ -6,7 +6,15 @@ import os
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from pydantic_ai import AudioUrl, BinaryContent, BinaryImage, DocumentUrl, ImageUrl, VideoUrl
+from pydantic_ai import (
+    AudioUrl,
+    BinaryContent,
+    BinaryImage,
+    DocumentUrl,
+    ImageUrl,
+    TextContent,
+    VideoUrl,
+)
 from toprompt import to_prompt
 from upathtools import UPath, read_path, to_upath
 
@@ -89,6 +97,7 @@ async def convert_prompts(prompts: Sequence[PromptCompatible]) -> list[UserConte
 
             case (
                 str()
+                | TextContent()
                 | ImageUrl()
                 | AudioUrl()
                 | DocumentUrl()
