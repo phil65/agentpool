@@ -164,10 +164,15 @@ async def test_commands_run_in_the_client_terminal_when_it_has_one(
 
 
 async def test_git_diff_command_runs_without_a_client_terminal(
-    tmp_path: Path, default_test_agent: Agent
+    tmp_path: Path, default_test_agent: Agent, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """/git-diff used to refuse when the client had no terminal (T3 Code); it runs here."""
+    import os
     import subprocess
+
+    # Drop GIT_DIR & co. that git exports to hooks (pre-commit runs this test).
+    for key in [k for k in os.environ if k.startswith("GIT_")]:
+        monkeypatch.delenv(key)
 
     def git(*args: str) -> None:
         subprocess.run(["git", *args], cwd=tmp_path, check=True, capture_output=True)
