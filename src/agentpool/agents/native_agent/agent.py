@@ -966,8 +966,15 @@ class Agent[TDeps = None, OutputDataT = str](BaseAgent[TDeps, OutputDataT]):
         """
         from agentpool.agents.native_agent.model_catalog import discover_models
 
+        # Pickers leave out models older than this: old ones can be costly (OpenRouter)
         delta = timedelta(days=200)
         return await discover_models(self._providers or ["models.dev"], max_age=delta)
+
+    async def models_for_lookup(self) -> list[ModelInfo] | None:
+        """The whole catalogue: a model's details are found whatever its age."""
+        from agentpool.agents.native_agent.model_catalog import discover_models
+
+        return await discover_models(self._providers or ["models.dev"])
 
     @property
     def config_options(self) -> Sequence[ConfigOption[Self]]:

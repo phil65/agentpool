@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import asyncio
-from datetime import timedelta
+from datetime import datetime, timedelta
 from typing import TYPE_CHECKING
 
 from pydantic_ai import RunUsage
@@ -135,3 +135,37 @@ async def test_function_model_usage_is_not_priced(monkeypatch: pytest.MonkeyPatc
     cost = await TokenCost.from_usage(usage, "function::stream")
     assert cost is not None
     assert cost.total_cost == 0
+
+
+async def test_one_fetch_serves_pickers_and_lookups(discovery: FakeDiscovery) -> None:
+    old = datetime.now() - timedelta(days=400)
+    discovery.models = [
+        ModelInfo(id="new", name="New"),
+        ModelInfo(id="old", name="Old", created_at=old),
+    ]
+    recent = await discover_models(["models.dev"], max_age=MAX_AGE)
+    everything = await discover_models(["models.dev"])
+    assert [m.id for m in recent] == ["new"]  # Pickers leave old models out
+    assert [m.id for m in everything] == ["new", "old"]
+    assert discovery.calls == [("models.dev",)]
+
+
+async def test_old_models_context_window_is_found(discovery: FakeDiscovery) -> None:
+    old = datetime.now() - timedelta(days=400)
+    discovery.models = [
+        ModelInfo(id="test", name="Old", provider="test", created_at=old, context_window=5000)
+    ]
+    agent = Agent(name="a", model="test")
+    picker = await agent.get_available_models()
+    assert picker == []  # Too old for the picker
+    assert await agent.context_window() == 5000  # Still found for the lookup
+    assert agent.known_context_window == 5000
+
+
+def test_bundled_price_data_knows_context_windows() -> None:
+    from agentpool.utils.model_capabilities import context_window_of
+
+    assert context_window_of("openai:gpt-4o") == 128_000
+    assert context_window_of("anthropic:claude-sonnet-4-5-20250929") == 200_000  # Dated name
+    assert context_window_of("gpt-4o-mini") == 128_000  # No provider
+    assert context_window_of("function:stream") is None

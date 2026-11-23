@@ -1377,15 +1377,18 @@ class BaseAgent[TDeps = None, TResult = str](MessageNode[TDeps, TResult]):
         return final_message
 
     async def context_window(self) -> int | None:
-        """Context window of the current model in tokens, if model discovery knows it.
+        """Context window of the current model in tokens, if it can be determined.
 
-        Looked up once per model (discovery may be a network request).
+        From the bundled price data first (no network), else the agent's model list
+        (:meth:`models_for_lookup`), looked up once per model.
         """
         if not (model := self.model_name):
             return None
+        if (window := self.known_context_window) is not None:
+            return window
         if model not in self._model_context_windows:
             try:
-                models = await self.get_available_models()
+                models = await self.models_for_lookup()
             except Exception:
                 self.log.debug("Could not fetch models for context window lookup", exc_info=True)
                 models = None
@@ -1401,9 +1404,25 @@ class BaseAgent[TDeps = None, TResult = str](MessageNode[TDeps, TResult]):
 
     @property
     def known_context_window(self) -> int | None:
-        """The current model's context window if already looked up (no lookup)."""
-        model = self.model_name
-        return self._model_context_windows.get(model) if model is not None else None
+        """The current model's context window, as far as known without a request.
+
+        From the bundled price data, else an earlier :meth:`context_window` lookup.
+        """
+        from agentpool.utils.model_capabilities import context_window_of
+
+        if not (model := self.model_name):
+            return None
+        if (window := context_window_of(model)) is not None:
+            return window
+        return self._model_context_windows.get(model)
+
+    async def models_for_lookup(self) -> list[ModelInfo] | None:
+        """Models to look a model's details up in (default: :meth:`get_available_models`).
+
+        Agents whose model list leaves models out (a picker hiding old ones) return
+        the complete list here.
+        """
+        return await self.get_available_models()
 
     @abstractmethod
     async def get_available_models(self) -> list[ModelInfo] | None:
