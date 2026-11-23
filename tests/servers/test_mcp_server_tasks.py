@@ -14,7 +14,7 @@ from mcp import types
 from pydantic_ai.models.function import AgentInfo, FunctionModel
 import pytest
 
-from agentpool import Agent, AgentPool
+from agentpool import Agent, AgentContext, AgentPool  # Tools' annotations resolve at runtime
 from agentpool_config.pool_server import MCPPoolServerConfig
 from agentpool_server.mcp_server.server import MCPServer
 
@@ -128,3 +128,32 @@ async def test_tasks_ttl_sets_the_task_lifetime() -> None:
             task = await call_tool_task(client, "ask_helper", {"prompt": "hi"})
             await asyncio.wait_for(task.result(), timeout=10)
     assert task.create_result.ttl_ms == 2 * 60 * 60 * 1000
+
+
+async def test_a_running_task_shows_the_agents_progress() -> None:
+    from pydantic_ai.models.test import TestModel
+
+    gate = asyncio.Event()
+
+    async def build(ctx: AgentContext) -> str:
+        """Build the project."""
+        await ctx.report_progress(1, 2, "compiling")
+        await gate.wait()
+        return "built"
+
+    model = TestModel(call_tools=["build"], custom_output_text="done")
+    async with AgentPool() as pool:
+        await pool.add_agent(Agent(name="builder", model=model, tools=[build]))
+        server = MCPServer(pool, MCPPoolServerConfig(background_tasks=True))
+        await server._register_pool_tools()
+        async with Client(server.fastmcp) as client:
+            task = await call_tool_task(client, "ask_builder", {"prompt": "build it"})
+            message = None
+            for _ in range(100):
+                if (message := (await task.status()).status_message) == "builder: compiling":
+                    break
+                await asyncio.sleep(0.05)
+            gate.set()
+            result = await task.result()
+    assert message == "builder: compiling"
+    assert _text(result) == "done"

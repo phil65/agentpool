@@ -10,7 +10,7 @@ from mcp import types
 from pydantic_ai.models.test import TestModel
 import pytest
 
-from agentpool import Agent, AgentPool
+from agentpool import Agent, AgentContext, AgentPool  # Tools' annotations resolve at runtime
 from agentpool.tools.base import FunctionTool
 from agentpool_config.pool_server import MCPPoolServerConfig
 from agentpool_server.mcp_server.server import MCPServer
@@ -148,3 +148,35 @@ async def test_an_unanswered_question_expires(monkeypatch: pytest.MonkeyPatch) -
     finally:
         await pool.__aexit__(None, None, None)
     assert calls == []
+
+
+@pytest.mark.parametrize("mode", ["legacy", "auto"], ids=["handshake-era", "2026-07-28"])
+async def test_served_runs_report_their_progress(mode: str) -> None:
+    async def build(ctx: AgentContext) -> str:
+        """Build the project."""
+        await ctx.report_progress(1, 2, "compiling")
+        return "built"
+
+    model = TestModel(call_tools=["build"], custom_output_text="done")
+    pool = AgentPool()
+    await pool.__aenter__()
+    reported: list[tuple[float, str | None]] = []
+
+    async def on_progress(progress: float, total: float | None, message: str | None) -> None:
+        reported.append((progress, message))
+
+    try:
+        await pool.add_agent(Agent("builder", model=model, tools=[build]))
+        server = MCPServer(pool, MCPPoolServerConfig())
+        await server._register_pool_tools()
+        async with Client(server.fastmcp, mode=mode, progress_handler=on_progress) as client:
+            result = await client.call_tool("ask_builder", {"prompt": "build it"})
+    finally:
+        await pool.__aexit__(None, None, None)
+    assert _text(result) == "done"
+    messages = [message for _, message in reported]
+    assert messages[0] is not None
+    assert messages[0].startswith("builder: ")
+    assert "build" in messages[0]
+    assert messages[1:] == ["builder: compiling"]
+    assert [progress for progress, _ in reported] == [1, 2]

@@ -11,7 +11,8 @@ depends on the connection:
   with the answer. The run therefore lives outside the tool call, keyed by the request
   state the client echoes back, and the next call resumes waiting on it.
 
-A run whose question goes unanswered for ``PENDING_TTL`` is cancelled.
+A run whose question goes unanswered for ``PENDING_TTL`` is cancelled. Meanwhile the run
+reports what it does (tool calls starting, tools' own progress) as the call's progress.
 """
 
 from __future__ import annotations
@@ -25,6 +26,7 @@ import uuid
 from mcp import types
 from mcp_types.version import MODERN_PROTOCOL_VERSIONS
 
+from agentpool.agents.events import SubAgentEvent, ToolCallProgressEvent, ToolCallStartEvent
 from agentpool.log import get_logger
 from agentpool.tools.decisions import Approve, Deny
 from agentpool.ui.base import InputProvider
@@ -35,6 +37,7 @@ if TYPE_CHECKING:
     from pydantic import BaseModel
 
     from agentpool.agents.context import AgentContext
+    from agentpool.agents.events import RichAgentStreamEvent
     from agentpool.messaging import ChatMessage, MessageNode
     from agentpool.messaging.context import NodeContext
     from agentpool.tools.decisions import ToolDecision
@@ -104,6 +107,37 @@ class ServedRun:
     questions: asyncio.Queue[_Question] = field(default_factory=asyncio.Queue)
     pending: _Question | None = None
     expiry: asyncio.TimerHandle | None = None
+    steps: int = 0
+    """Progress reported so far (MCP progress only grows)."""
+
+    async def report(self, context: AgentContext[Any], event: RichAgentStreamEvent[Any]) -> None:
+        """Report what the run does as the progress of its current tool call.
+
+        Tool calls starting and the progress tools report themselves, each named after the
+        agent doing it (a team's member, a subagent). fastmcp sends it as a progress
+        notification when the client asked for progress, and as the task's status in a
+        background task. A run waiting for its user's answer has no call to report to.
+        """
+        if (message := _progress_message(context.node_name, event)) is None:
+            return
+        self.steps += 1
+        try:
+            await self.context.report_progress(self.steps, None, message)
+        except Exception:  # Progress is a courtesy: never disturb the run for it
+            logger.debug("Could not report progress", run_id=self.run_id, exc_info=True)
+
+
+def _progress_message(agent: str, event: RichAgentStreamEvent[Any]) -> str | None:
+    """What an event of ``agent`` tells about the run's progress, if anything."""
+    match event:
+        case ToolCallStartEvent(title=title):
+            return f"{agent}: {title}"
+        case ToolCallProgressEvent(message=str(message)) if message:
+            return f"{agent}: {message}"
+        case SubAgentEvent(source_name=source, event=inner):
+            return _progress_message(source, inner)
+        case _:
+            return None
 
 
 class ServedRunInputProvider(InputProvider):
@@ -216,7 +250,8 @@ class ServedRuns:
             run = ServedRun(run_id=uuid.uuid4().hex, deferred=_deferred(context), context=context)
             provider = ServedRunInputProvider(run)
             run.task = asyncio.create_task(
-                node.run(prompt, input_provider=provider), name=f"served-{node.name}"
+                node.run(prompt, input_provider=provider, event_handlers=[run.report]),
+                name=f"served-{node.name}",
             )
         return await self._advance(run)
 
