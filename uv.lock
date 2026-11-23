@@ -21,7 +21,7 @@ wheels = [
 
 [[package]]
 name = "aclientp"
-version = "0.2.1"
+version = "0.4.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "anyenv", extra = ["httpx2"] },
@@ -31,9 +31,9 @@ dependencies = [
     { name = "structlog" },
     { name = "upathtools" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/a2/c6/33bd1144237d71673c943cea8454f898815da8410698ce6873c46993a940/aclientp-0.2.1.tar.gz", hash = "sha256:30af7ce64201f013c415d2b9b39a0bcb3ed3a352cd4978b6c86f00591a5ae5b2", size = 177881, upload-time = "2026-11-23T08:16:23.336Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/4f/94/dc8b3ba58efc3590431855f3ab4d7f0f758eaa185af617d0ddac510eb6d6/aclientp-0.4.0.tar.gz", hash = "sha256:82048d3eec48d75c12700f470e3af2b196fcb32912ba54c71d8358e8aaeef10e", size = 182056, upload-time = "2026-11-23T18:08:18.044Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/bf/cb/d90cd1c7f59b1e7438f8ce5a259bf13942ecc1437b523bde2bc634717d16/aclientp-0.2.1-py3-none-any.whl", hash = "sha256:fad249af583e929b668aa51bacccf344b40be6544ab352e01d9404a2db304100", size = 224723, upload-time = "2026-11-23T08:16:21.865Z" },
+    { url = "https://files.pythonhosted.org/packages/d0/32/a11ed55b8ae7e053a778a906949a2f02f08ad08665504d31f820a6a34775/aclientp-0.4.0-py3-none-any.whl", hash = "sha256:cf2fe84bb70011dd884b968c50216ab08f2f412a2366247eca82a9bec42b27d4", size = 228182, upload-time = "2026-11-23T18:08:16.846Z" },
 ]
 
 [package.optional-dependencies]
@@ -257,7 +257,7 @@ requires-dist = [
     { name = "epregistry" },
     { name = "evented", specifier = ">=1.0.5" },
     { name = "evented", extras = ["all"], marker = "extra == 'events'" },
-    { name = "exxec", specifier = ">=0.9.1" },
+    { name = "exxec", specifier = ">=0.10.1" },
     { name = "fasta2a", marker = "extra == 'a2a'" },
     { name = "fastapi" },
     { name = "fastembed", marker = "python_full_version < '3.15' and extra == 'mcp-discovery'", specifier = ">=0.7.4" },
@@ -1899,18 +1899,19 @@ wheels = [
 
 [[package]]
 name = "exxec"
-version = "0.9.1"
+version = "0.10.1"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "anyenv" },
-    { name = "ptyprocess" },
+    { name = "fsspec" },
+    { name = "packaging" },
     { name = "pydantic" },
     { name = "schemez" },
     { name = "upathtools" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/d0/9f/39c6d84473be4b78bc46069844e5c322ba1f1a56eae2a41fa65591305869/exxec-0.9.1.tar.gz", hash = "sha256:ceeadaaa0af738610e3ad4c8f30c25f4c8c75c9a1ec0dc7792a551842568457e", size = 116122, upload-time = "2026-11-22T02:36:08.231Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/a3/02/e4d577ff109c1d7592e586f3899470d43f7995faea4013935fe2b93fb563/exxec-0.10.1.tar.gz", hash = "sha256:98797cbb3d535ec3ad2aae47ec2d476b56f2f0c938319694bd89387d89b767f6", size = 116981, upload-time = "2026-11-23T18:07:45.333Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/dd/e3/9ba9d2697037354b7667eefe643c908d4167dd23e7732b2026e40b371cc7/exxec-0.9.1-py3-none-any.whl", hash = "sha256:9069290b5211eb67e887ce5d3c9eaa30a0dddbaad1c6dfcb5932f86bd0e76d49", size = 148982, upload-time = "2026-11-22T02:36:06.688Z" },
+    { url = "https://files.pythonhosted.org/packages/62/ac/5286176538e32e18c39d99bfa923a64b9763853413303ca4b2bcc81bcaa9/exxec-0.10.1-py3-none-any.whl", hash = "sha256:5cc5b1221d2e36e61706a53e6c4698ede1d1bd9aea90e3b4836ce5ce44c52c2c", size = 149435, upload-time = "2026-11-23T18:07:44Z" },
 ]
 
 [[package]]
@@ -4983,15 +4984,6 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/46/70/54b7cb0599dc1801157dc50f2846c8fb86583e56123022b1a9dc338eb0b0/psygnal-0.16.1-cp315-cp315-musllinux_1_2_x86_64.whl", hash = "sha256:6c0c0083f5d1fda072432c48f4ebc9c13e48c9bb3fbf9fb63789ab397a39b0a2", size = 553481, upload-time = "2026-09-11T08:30:12.656Z" },
     { url = "https://files.pythonhosted.org/packages/5a/58/11a9f98db54a6f27183db831a9f8fcde778f1cbb988e16e8374de70c8208/psygnal-0.16.1-cp315-cp315-win_amd64.whl", hash = "sha256:bfb351f35c6c35dcd6d9ea3971ac295e9f40f00822a66638239aaa1e207cf0ea", size = 430505, upload-time = "2026-09-11T08:30:14.488Z" },
     { url = "https://files.pythonhosted.org/packages/be/f2/973c1280f035cd825af70582bbee776c69545e24534b324cf135eabef57e/psygnal-0.16.1-py3-none-any.whl", hash = "sha256:93b96894d8c46f0a3c0bfaaf8abe73f0d6db2c20cc6d303624cf08f85abc3c92", size = 94049, upload-time = "2026-09-11T08:30:16.039Z" },
-]
-
-[[package]]
-name = "ptyprocess"
-version = "0.7.0"
-source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/20/e5/16ff212c1e452235a90aeb09066144d0c5a6a8c0834397e03f5224495c4e/ptyprocess-0.7.0.tar.gz", hash = "sha256:5c5d0a3b48ceee0b48485e0c26037c0acd7d29765ca3fbb5cb3831d347423220", size = 70762, upload-time = "2020-12-28T15:15:30.155Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/22/a6/858897256d0deac81a172289110f31629fc4cee19b6f01283303e18c8db3/ptyprocess-0.7.0-py2.py3-none-any.whl", hash = "sha256:4b41f3967fce3af57cc7e94b888626c18bf37a083e3651ca8feeb66d492fef35", size = 13993, upload-time = "2020-12-28T15:15:28.35Z" },
 ]
 
 [[package]]

@@ -42,7 +42,7 @@ dependencies = [
   "docstring-parser>=0.17.0",
   "epregistry",
   "evented>=1.0.5",
-  "exxec>=0.9.1",  # 0.9.1: execute_command runs in the environment's cwd
+  "exxec>=0.10.1",  # 0.10.1: killing a process ends its tree on Windows too
   "fastapi",
   "fastmcp>=4.2.5",  # 4.2.5: fastmcp.experimental.events
   "fsspec",

@@ -19,6 +19,7 @@ from agentpool.agents.context import AgentContext  # noqa: TC001
 from agentpool.log import get_logger
 from agentpool.tool_impls.bash.helpers import format_output, truncate_output
 from agentpool.tools.base import Tool, ToolResult
+from agentpool.utils.streams import closing
 
 
 if TYPE_CHECKING:
@@ -100,28 +101,32 @@ class BashTool(Tool[ToolResult]):
         try:
             env = self._get_env(ctx)
             is_acp = isinstance(env, ACPExecutionEnvironment)
-            async for event in env.stream_command(command, timeout=effective_timeout):
-                match event:
-                    case ProcessStartedEvent(process_id=pid, command=cmd):
-                        process_id = pid
-                        await ctx.events.process_started(pid, cmd, success=True)
-                    case OutputEvent(process_id=pid, data=data, stream=stream):
-                        if stream == "stderr":
-                            stderr_parts.append(data)
-                        else:
-                            stdout_parts.append(data)
-                        # Skip progress events for ACP - terminal streams client-side
-                        if not is_acp:
-                            await ctx.events.process_output(pid, data)
-                    case ProcessCompletedEvent(process_id=pid, exit_code=code_):
-                        exit_code = code_
-                        # Skip exit event for ACP - completion handled by ToolCallCompleteEvent
-                        if not is_acp:
-                            combined = "".join(stdout_parts) + "".join(stderr_parts)
-                            await ctx.events.process_exit(pid, exit_code, final_output=combined)
-                    case ProcessErrorEvent(error=err, exit_code=code_):
-                        error_msg = err
-                        exit_code = code_
+            # Closed here also when the call is cancelled: that kills the process tree;
+            # an unclosed stream would leave the command running
+            events = env.stream_command(command, timeout=effective_timeout)
+            async with closing(events):
+                async for event in events:
+                    match event:
+                        case ProcessStartedEvent(process_id=pid, command=cmd):
+                            process_id = pid
+                            await ctx.events.process_started(pid, cmd, success=True)
+                        case OutputEvent(process_id=pid, data=data, stream=stream):
+                            if stream == "stderr":
+                                stderr_parts.append(data)
+                            else:
+                                stdout_parts.append(data)
+                            # Skip progress events for ACP - terminal streams client-side
+                            if not is_acp:
+                                await ctx.events.process_output(pid, data)
+                        case ProcessCompletedEvent(process_id=pid, exit_code=code_):
+                            exit_code = code_
+                            # Skip exit event for ACP - completion handled by ToolCallCompleteEvent
+                            if not is_acp:
+                                combined = "".join(stdout_parts) + "".join(stderr_parts)
+                                await ctx.events.process_exit(pid, exit_code, final_output=combined)
+                        case ProcessErrorEvent(error=err, exit_code=code_):
+                            error_msg = err
+                            exit_code = code_
         except Exception as e:  # noqa: BLE001
             error_id = process_id or f"cmd_{uuid.uuid4().hex[:8]}"
             await ctx.events.process_started(error_id, command, success=False, error=str(e))

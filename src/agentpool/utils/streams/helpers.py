@@ -110,3 +110,18 @@ async def merge_queue_into_iterator[T, V](  # noqa: PLR0915
         primary_task_obj.cancel()
         secondary_task_obj.cancel()
         await asyncio.gather(primary_task_obj, secondary_task_obj, return_exceptions=True)
+
+
+@asynccontextmanager
+async def closing[T](stream: AsyncIterator[T]) -> AsyncGenerator[AsyncIterator[T]]:
+    """Use ``stream``, closing it when the block ends: also on errors and cancellation.
+
+    Like ``contextlib.aclosing``, for streams typed as plain iterators. A stream left
+    open (the consumer cancelled mid-iteration) is closed by the garbage collector in
+    another task, too late, e.g. for a command that keeps running until it is.
+    """
+    try:
+        yield stream
+    finally:
+        if (aclose := getattr(stream, "aclose", None)) is not None:
+            await aclose()

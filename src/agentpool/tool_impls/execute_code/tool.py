@@ -18,6 +18,7 @@ from exxec.events import (
 from agentpool.agents.context import AgentContext  # noqa: TC001
 from agentpool.log import get_logger
 from agentpool.tools.base import Tool
+from agentpool.utils.streams import closing
 
 
 if TYPE_CHECKING:
@@ -52,7 +53,7 @@ class ExecuteCodeTool(Tool[str]):
             return self.env
         return ctx.agent.env
 
-    async def _execute(
+    async def _execute(  # noqa: PLR0915
         self,
         ctx: AgentContext,
         code: str,
@@ -77,33 +78,38 @@ class ExecuteCodeTool(Tool[str]):
         is_acp = isinstance(env, ACPExecutionEnvironment)
 
         try:
-            async for event in env.stream_code(code):
-                match event:
-                    case ProcessStartedEvent(process_id=pid, command=cmd):
-                        process_id = pid
-                        await ctx.events.process_started(pid, cmd, success=True)
+            # Closed here also when the call is cancelled (kills the process)
+            events = env.stream_code(code)
+            async with closing(events):
+                async for event in events:
+                    match event:
+                        case ProcessStartedEvent(process_id=pid, command=cmd):
+                            process_id = pid
+                            await ctx.events.process_started(pid, cmd, success=True)
 
-                    case OutputEvent(data=data):
-                        output_parts.append(data)
-                        # Skip progress events for ACP - terminal streams client-side
-                        if process_id and not is_acp:
-                            await ctx.events.process_output(process_id, data)
+                        case OutputEvent(data=data):
+                            output_parts.append(data)
+                            # Skip progress events for ACP - terminal streams client-side
+                            if process_id and not is_acp:
+                                await ctx.events.process_output(process_id, data)
 
-                    case ProcessCompletedEvent(exit_code=code_):
-                        exit_code = code_
-                        # Skip exit event for ACP - completion handled by ToolCallCompleteEvent
-                        if process_id and not is_acp:
-                            out = "".join(output_parts)
-                            await ctx.events.process_exit(process_id, exit_code, final_output=out)
+                        case ProcessCompletedEvent(exit_code=code_):
+                            exit_code = code_
+                            # Skip exit event for ACP - completion handled by ToolCallCompleteEvent
+                            if process_id and not is_acp:
+                                out = "".join(output_parts)
+                                await ctx.events.process_exit(
+                                    process_id, exit_code, final_output=out
+                                )
 
-                    case ProcessErrorEvent(error=err, exit_code=code_):
-                        error_msg = err
-                        exit_code = code_
-                        # Skip exit event for ACP - completion handled by ToolCallCompleteEvent
-                        if process_id and not is_acp:
-                            await ctx.events.process_exit(
-                                process_id, exit_code or 1, final_output=err
-                            )
+                        case ProcessErrorEvent(error=err, exit_code=code_):
+                            error_msg = err
+                            exit_code = code_
+                            # Skip exit event for ACP - completion handled by ToolCallCompleteEvent
+                            if process_id and not is_acp:
+                                await ctx.events.process_exit(
+                                    process_id, exit_code or 1, final_output=err
+                                )
 
             combined_output = "".join(output_parts)
 
