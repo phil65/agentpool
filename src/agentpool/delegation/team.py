@@ -126,7 +126,6 @@ class Team[TDeps = None](BaseTeam[TDeps, Any]):
     async def run(
         self,
         *prompts: PromptCompatible | None,
-        wait_for_connections: bool | None = None,
         store_history: bool = False,
         **kwargs: Any,
     ) -> ChatMessage[list[Any]]:
@@ -166,7 +165,7 @@ class Team[TDeps = None](BaseTeam[TDeps, Any]):
             # Teams could implement their own history management here if needed
             pass
         # Finalize and route message
-        return await finalize_message(message, self, self.connections, wait_for_connections)
+        return await finalize_message(message, self)
 
     async def run_stream(
         self,

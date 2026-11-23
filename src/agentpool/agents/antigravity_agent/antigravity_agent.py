@@ -860,7 +860,6 @@ class AntigravityAgent[TDeps = None, OutputDataT = str](BaseAgent[TDeps, OutputD
         parent_id: str | None = None,
         input_provider: InputProvider | None = None,
         deps: TDeps | None = None,
-        wait_for_connections: bool | None = None,
         store_history: bool = True,
     ) -> AsyncIterator[RichAgentStreamEvent[OutputDataT]]:
         from google.antigravity.types import (

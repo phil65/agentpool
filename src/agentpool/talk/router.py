@@ -12,7 +12,7 @@ from agentpool.utils.inspection import get_fn_name
 
 
 if TYPE_CHECKING:
-    from collections.abc import AsyncGenerator
+    from collections.abc import AsyncGenerator, Awaitable, Callable
 
     from agentpool.messaging import ChatMessage, MessageNode
     from agentpool.talk.talk import Talk
@@ -27,12 +27,18 @@ class Router:
     A pool has one (``pool.router``); a node outside a pool makes its own on first use
     (``MessageNode.router``) and hands its connections to the pool's when it joins one.
     Nodes don't hold connections: ``node.connections`` is a view of the router's.
+
+    Nodes don't route either: they announce each response on ``message_sent``, and the
+    router, subscribed there for every node with a connection, sends it on.
     """
 
     def __init__(self) -> None:
         self._outgoing: defaultdict[MessageNode[Any, Any], list[Talk[Any]]] = defaultdict(list)
         self.registry = ConnectionRegistry()
         """Every connection by name (named ones under theirs, the others auto-named)."""
+        self._subscriptions: dict[
+            MessageNode[Any, Any], Callable[[ChatMessage[Any]], Awaitable[None]]
+        ] = {}
 
     def __repr__(self) -> str:
         return f"Router({sum(len(talks) for talks in self._outgoing.values())} connections)"
@@ -43,6 +49,7 @@ class Router:
         """Add a connection, registering it under ``name`` (else an auto-generated one)."""
         self._outgoing[talk.source].append(talk)
         talk._router = self
+        self._subscribe(talk.source)
         if name:
             self.registry.register(name, talk)
         else:
@@ -57,6 +64,7 @@ class Router:
             talks.remove(talk)
             if not talks:
                 del self._outgoing[talk.source]
+                self._unsubscribe(talk.source)
         if talk.name in self.registry and self.registry[talk.name] is talk:
             del self.registry[talk.name]
         talk._router = None
@@ -112,6 +120,20 @@ class Router:
                 talk.wait_for_connections = wait
 
     # --- Routing ----------------------------------------------------------------------
+
+    def _subscribe(self, source: MessageNode[Any, Any]) -> None:
+        if source in self._subscriptions:
+            return
+
+        async def on_sent(message: ChatMessage[Any]) -> None:
+            await self.route(source, message)
+
+        source.message_sent.connect(on_sent)
+        self._subscriptions[source] = on_sent
+
+    def _unsubscribe(self, source: MessageNode[Any, Any]) -> None:
+        if (on_sent := self._subscriptions.pop(source, None)) is not None:
+            source.message_sent.disconnect(on_sent)
 
     async def route(self, source: MessageNode[Any, Any], message: ChatMessage[Any]) -> None:
         """Send ``message`` from ``source`` along its connections.

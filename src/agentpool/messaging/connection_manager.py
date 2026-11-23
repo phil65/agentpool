@@ -136,21 +136,6 @@ class ConnectionManager:
         """Remove the connections from the owner that reach ``node``."""
         self.owner.router.disconnect(self.owner, node)
 
-    async def route_message(self, message: ChatMessage[Any], wait: bool | None = None) -> None:
-        """Send ``message`` along the owner's connections.
-
-        ``wait`` overrides the connections' own wait setting for this message.
-        """
-        router = self.owner.router
-        if wait is None:
-            await router.route(self.owner, message)
-            return
-        talks = router.outgoing(self.owner)
-        for talk in talks:
-            await talk._handle_message(message, None)
-        if wait:
-            await router.wait_for(self.owner)
-
     @asynccontextmanager
     async def paused_routing(self) -> AsyncGenerator[Self]:
         """Hold back the owner's routing (its connections stay, inactive)."""

@@ -822,14 +822,12 @@ class BaseAgent[TDeps = None, TResult = str](MessageNode[TDeps, TResult]):
         self,
         *prompt_groups: Sequence[PromptCompatible],
         store_history: bool = True,
-        wait_for_connections: bool | None = None,
     ) -> AsyncIterator[ChatMessage[TResult]]:
         """Run agent sequentially on multiple prompt groups.
 
         Args:
             prompt_groups: Groups of prompts to process sequentially
             store_history: Whether to store in conversation history
-            wait_for_connections: Whether to wait for connected agents
 
         Yields:
             Response messages in sequence
@@ -847,7 +845,6 @@ class BaseAgent[TDeps = None, TResult = str](MessageNode[TDeps, TResult]):
             response = await self.run(
                 *prompts,
                 store_history=store_history,
-                wait_for_connections=wait_for_connections,
             )
             yield response
 
@@ -1031,7 +1028,6 @@ class BaseAgent[TDeps = None, TResult = str](MessageNode[TDeps, TResult]):
         parent_id: str | None = None,
         message_history: MessageHistory | None = None,
         input_provider: InputProvider | None = None,
-        wait_for_connections: bool | None = None,
         deps: TDeps | None = None,
         event_handlers: Sequence[AnyEventHandlerType] | None = None,
     ) -> AsyncIterator[RichAgentStreamEvent[TResult]]:
@@ -1054,7 +1050,6 @@ class BaseAgent[TDeps = None, TResult = str](MessageNode[TDeps, TResult]):
             parent_id: Optional parent message ID
             message_history: Optional message history
             input_provider: Optional input provider
-            wait_for_connections: Whether to wait for connected agents
             deps: Optional dependencies
             event_handlers: Optional event handlers
 
@@ -1070,7 +1065,6 @@ class BaseAgent[TDeps = None, TResult = str](MessageNode[TDeps, TResult]):
             parent_id=parent_id,
             message_history=message_history,
             input_provider=input_provider,
-            wait_for_connections=wait_for_connections,
             deps=deps,
             event_handlers=event_handlers,
         ):
@@ -1200,7 +1194,6 @@ class BaseAgent[TDeps = None, TResult = str](MessageNode[TDeps, TResult]):
         parent_id: str | None = None,
         input_provider: InputProvider | None = None,
         deps: TDeps | None = None,
-        wait_for_connections: bool | None = None,
         store_history: bool = True,
     ) -> AsyncIterator[RichAgentStreamEvent[TResult]]:
         """Agent-specific streaming implementation.
@@ -1218,7 +1211,6 @@ class BaseAgent[TDeps = None, TResult = str](MessageNode[TDeps, TResult]):
             input_provider: Optional input provider
             message_history: Optional message history
             deps: Optional dependencies
-            wait_for_connections: Whether to wait for connected agents
             store_history: Whether to store in history
 
         Yields:
@@ -1308,7 +1300,6 @@ class BaseAgent[TDeps = None, TResult = str](MessageNode[TDeps, TResult]):
         deps: TDeps | None = None,
         input_provider: InputProvider | None = None,
         event_handlers: Sequence[AnyEventHandlerType] | None = None,
-        wait_for_connections: bool | None = None,
     ) -> ChatMessage[TResult]:
         """Run agent with prompt and get response.
 
@@ -1330,7 +1321,6 @@ class BaseAgent[TDeps = None, TResult = str](MessageNode[TDeps, TResult]):
             deps: Optional dependencies for the agent
             input_provider: Optional input provider for the agent
             event_handlers: Optional event handlers for this run (overrides agent's handlers)
-            wait_for_connections: Whether to wait for connected agents to complete
 
         Returns:
             ChatMessage containing response and run information
@@ -1353,7 +1343,6 @@ class BaseAgent[TDeps = None, TResult = str](MessageNode[TDeps, TResult]):
             deps=deps,
             input_provider=input_provider,
             event_handlers=event_handlers,
-            wait_for_connections=wait_for_connections,
         ):
             if isinstance(event, StreamCompleteEvent):
                 final_message = event.message

@@ -137,7 +137,6 @@ class TeamRun[TDeps, TResult](BaseTeam[TDeps, TResult]):
     async def run(
         self,
         *prompts: PromptCompatible | None,
-        wait_for_connections: bool | None = None,
         store_history: bool = False,
         **kwargs: Any,
     ) -> ChatMessage[TResult]:
@@ -184,7 +183,7 @@ class TeamRun[TDeps, TResult](BaseTeam[TDeps, TResult]):
 
         if store_history:
             pass  # Teams could implement their own history management here if needed
-        return await finalize_message(message, self, self.connections, wait_for_connections)
+        return await finalize_message(message, self)
 
     async def execute(
         self,

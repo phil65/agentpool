@@ -567,7 +567,6 @@ class ACPAgent[TDeps = None](BaseAgent[TDeps, str]):
         parent_id: str | None = None,
         input_provider: InputProvider | None = None,
         deps: TDeps | None = None,
-        wait_for_connections: bool | None = None,
         store_history: bool = True,
     ) -> AsyncIterator[RichAgentStreamEvent[str]]:
         from agentpool.agents.acp_agent.acp_converters import (

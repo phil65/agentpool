@@ -36,17 +36,22 @@ When agents are connected, messages flow between them asynchronously:
 # Messages flow automatically
 analyzer >> summarizer  # analyzer's outputs go to summarizer
 
-# Optionally wait for connected agents to complete
-# If wai_for_connections is set, also the connected agents get awaited.
-# Otherwise, the follow-up runs will run concurrently (async)
-await analyzer.run("Analyze", wait_for_connections=False)  # waits for summarizer
+# The summarizer runs as analyzer's turn ends; analyzer.run() returns after it
+await analyzer.run("Analyze")
 
-# Since we didnt wait for connected agents, we can trigger the waiting manually:
-await summarizer.complete_tasks()
+# A connection with a delay or priority runs in the background instead
+talk = analyzer.connect_to(summarizer, delay=timedelta(seconds=5))
+await analyzer.run("Analyze")  # returns before the summarizer ran
 
+# Make analyzer's runs wait for that background work (and what it routes on)
+analyzer.connections.set_wait_state(summarizer)
+
+# Or wait for it once, without the flag
+await analyzer.connections.wait_for_connections()
 ```
 
-By default, connections operate independently. Use `wait_for_connections=True` when you need to ensure all downstream processing is complete.
+Waiting is a setting of the connection, not of a run. In YAML it is `wait_for_completion`
+on a connection.
 
 ## Parallel Initialization
 

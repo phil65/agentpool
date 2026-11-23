@@ -13,7 +13,6 @@ if TYPE_CHECKING:
 
     from agentpool.common_types import PromptCompatible
     from agentpool.messaging import MessageNode
-    from agentpool.messaging.connection_manager import ConnectionManager
 
 
 async def prepare_prompts(
@@ -39,24 +38,17 @@ async def prepare_prompts(
 
 
 async def finalize_message(
-    message: ChatMessage[Any],
-    node: MessageNode[Any, Any],
-    connections: ConnectionManager,
-    wait_for_connections: bool | None = None,
+    message: ChatMessage[Any], node: MessageNode[Any, Any]
 ) -> ChatMessage[Any]:
-    """Handle message finalization and routing.
+    """Log a node's response, then announce it (the router routes it on ``message_sent``).
 
     Args:
         message: The response message to finalize
         node: The message node that produced the message
-        connections: Connection manager for routing
-        wait_for_connections: Whether to wait for connected nodes
 
     Returns:
         The finalized message
     """
-    await node.message_sent.emit(message)  # Emit signals
-    await node.log_message(message)  # Log message if enabled
-    # Route to connections
-    await connections.route_message(message, wait=wait_for_connections)
+    await node.log_message(message)
+    await node.message_sent.emit(message)
     return message

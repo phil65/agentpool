@@ -249,8 +249,10 @@ talk = agent_a.connect_to(
     agent_b,
     priority=1,  # Lower numbers = higher priority
     delay=timedelta(seconds=5),  # Delay before processing
-    wait_for_connections=True,  # Wait for completion
 )
+# With a delay agent_b runs in the background: make agent_a's runs wait for it
+# (YAML: wait_for_completion)
+agent_a.connections.set_wait_state(agent_b)
 ```
 
 ### Stop and Exit Conditions

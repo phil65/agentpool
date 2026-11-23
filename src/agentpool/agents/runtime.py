@@ -102,7 +102,6 @@ class SessionRuntime[TDeps = Any, TResult = Any]:
         parent_id: str | None = None,
         message_history: MessageHistory | None = None,
         input_provider: InputProvider | None = None,
-        wait_for_connections: bool | None = None,
         deps: TDeps | None = None,
         event_handlers: Sequence[AnyEventHandlerType] | None = None,
     ) -> AsyncIterator[RichAgentStreamEvent[TResult]]:
@@ -152,7 +151,6 @@ class SessionRuntime[TDeps = Any, TResult = Any]:
                         parent_id=parent_id,
                         message_history=effective_history,
                         input_provider=input_provider,
-                        wait_for_connections=wait_for_connections,
                         deps=deps,
                         event_handlers=event_handlers,
                     ):
@@ -244,7 +242,6 @@ class SessionRuntime[TDeps = Any, TResult = Any]:
         parent_id: str | None,
         message_history: MessageHistory | None,
         input_provider: InputProvider | None,
-        wait_for_connections: bool | None,
         deps: TDeps | None,
         event_handlers: Sequence[AnyEventHandlerType] | None,
     ) -> AsyncIterator[RichAgentStreamEvent[TResult]]:
@@ -313,7 +310,6 @@ class SessionRuntime[TDeps = Any, TResult = Any]:
                 parent_id=parent_id,
                 message_history=conversation,
                 input_provider=input_provider,
-                wait_for_connections=wait_for_connections,
                 deps=deps,
             ):
                 await resolved_handler(context, event)
@@ -355,7 +351,6 @@ class SessionRuntime[TDeps = Any, TResult = Any]:
                 conversation=conversation,
                 session_id=effective_session_id,
                 store_history=store_history,
-                wait_for_connections=wait_for_connections,
             )
 
     def _record_file_changes(self, event: RichAgentStreamEvent[Any]) -> None:
@@ -386,9 +381,12 @@ class SessionRuntime[TDeps = Any, TResult = Any]:
         conversation: MessageHistory,
         session_id: str | None,
         store_history: bool,
-        wait_for_connections: bool | None,
     ) -> None:
-        """Run post-run hooks, emit signals, persist history, and route connections."""
+        """Run post-run hooks, persist history, then announce the message.
+
+        ``message_sent`` comes last: the router routes the message on it, to a history
+        that already holds it.
+        """
         from agentpool.agents.base_agent import split_exchange
 
         agent = self.agent
@@ -400,13 +398,12 @@ class SessionRuntime[TDeps = Any, TResult = Any]:
                 session_id=session_id,
                 env=agent.env,
             )
-        await agent.message_sent.emit(final_message)
         if store_history:
             await agent.log_message(final_message)
             conversation.add_chat_messages(split_exchange(user_msg, final_message))
             if (session := self._explicit_session) is not None:
                 session.data.touch()
-        await agent.connections.route_message(final_message, wait=wait_for_connections)
+        await agent.message_sent.emit(final_message)
 
     async def _stop_backend(self) -> None:
         """Tell the agent's backend to stop a turn that was cancelled from outside.

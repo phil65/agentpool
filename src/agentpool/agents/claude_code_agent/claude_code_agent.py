@@ -1059,7 +1059,6 @@ class ClaudeCodeAgent[TDeps = None, TResult = str](BaseAgent[TDeps, TResult]):
         parent_id: str | None = None,
         input_provider: InputProvider | None = None,
         deps: TDeps | None = None,
-        wait_for_connections: bool | None = None,
         store_history: bool = True,
     ) -> AsyncIterator[RichAgentStreamEvent[TResult]]:
         """A turn on the session's CLI process (counted on it: it isn't idle meanwhile)."""
@@ -1076,7 +1075,6 @@ class ClaudeCodeAgent[TDeps = None, TResult = str](BaseAgent[TDeps, TResult]):
                 parent_id=parent_id,
                 input_provider=input_provider,
                 deps=deps,
-                wait_for_connections=wait_for_connections,
                 store_history=store_history,
             ):
                 yield event
@@ -1095,7 +1093,6 @@ class ClaudeCodeAgent[TDeps = None, TResult = str](BaseAgent[TDeps, TResult]):
         parent_id: str | None = None,
         input_provider: InputProvider | None = None,
         deps: TDeps | None = None,
-        wait_for_connections: bool | None = None,
         store_history: bool = True,
     ) -> AsyncIterator[RichAgentStreamEvent[TResult]]:
         from clawd_code_sdk import AssistantMessage, ResultSuccessMessage, UserMessage

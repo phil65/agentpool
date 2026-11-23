@@ -734,7 +734,6 @@ class Agent[TDeps = None, OutputDataT = str](BaseAgent[TDeps, OutputDataT]):
         session_id: str | None = None,
         parent_id: str | None = None,
         input_provider: InputProvider | None = None,
-        wait_for_connections: bool | None = None,
         deps: TDeps | None = None,
     ) -> AsyncIterator[RichAgentStreamEvent[OutputDataT]]:
         from pydantic_graph import End
