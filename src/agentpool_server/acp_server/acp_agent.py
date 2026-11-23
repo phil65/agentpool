@@ -137,6 +137,26 @@ async def get_session_config_options(agent: BaseAgent) -> list[SessionConfigOpti
     #         break
 
 
+async def _copy_config_options(source: ACPSession, target: ACPSession) -> None:
+    """Give ``target`` the config option values of ``source`` (mode, model, ...)."""
+    from aclientp.schema import BooleanSessionConfigOption, SelectSessionConfigOption
+
+    current = {o.id: o for o in await target.config_options()}
+    for option in await source.config_options():
+        match option, current.get(option.id):
+            case (
+                SelectSessionConfigOption(current_value=value)
+                | BooleanSessionConfigOption(current_value=value),
+                SelectSessionConfigOption() | BooleanSessionConfigOption() as mine,
+            ) if mine.current_value != value:
+                try:
+                    await target.set_mode(value, category_id=option.id)
+                except (UnknownModeError, UnknownCategoryError):
+                    logger.warning("Fork could not take an option", option=option.id)
+            case _:
+                pass
+
+
 async def _set_mode(session: ACPSession, mode_id: str, *, category_id: str) -> None:
     """Switch a mode for ``session``, reporting unknown modes/categories as invalid params."""
     try:
@@ -419,11 +439,42 @@ class AgentPoolACPAgent(ACPAgent):
         """
         self._require_initialized()
         logger.info("Forking session", session_id=params.session_id)
-        # For now, just create a new session - full fork implementation would copy state
-        session = await self._create_session(params)
+        source = self.session_manager.get_session(params.session_id)
+        if source is None and not await self.session_manager.storage.load_session(
+            params.session_id
+        ):
+            raise RequestError.resource_not_found(params.session_id)
+        forked_id = await self._fork_history(params)
+        session = await self._create_session(params, session_id=forked_id)
+        if source is not None:
+            await _copy_config_options(source, session)
         config_options = await session.config_options()
-        self._schedule_session_setup(session, new=True)
+        # A fork with the history got the rules with it: they are not staged again
+        self._schedule_session_setup(session, new=forked_id is None)
         return ForkSessionResponse(session_id=session.session_id, config_options=config_options)
+
+    async def _fork_history(self, params: ForkSessionRequest) -> str | None:
+        """Have the agent fork the source's history (and per-session settings).
+
+        Returns the fork's session id, or None when the agent cannot fork (the fork then
+        starts empty, with the source's options).
+        """
+        from agentpool.agents.exceptions import UnsupportedOperationError
+
+        agent = self.default_agent
+        if not agent.capabilities.native_fork or agent.agent_pool is None:
+            return None
+        sessions = agent.agent_pool.sessions
+        source = await sessions.open(
+            params.session_id, agent.name, cwd=params.cwd, agent_type=agent.AGENT_TYPE
+        )
+        try:
+            with agent.use_session(source):
+                forked = await agent.fork_session(session=source)
+        except (UnsupportedOperationError, ValueError):
+            logger.exception("Agent could not fork the session", session_id=params.session_id)
+            return None
+        return forked.session_id
 
     async def resume_session(self, params: ResumeSessionRequest) -> ResumeSessionResponse:
         """Resume an existing session without replaying history.

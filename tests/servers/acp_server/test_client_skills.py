@@ -82,7 +82,9 @@ async def test_forked_session_loads_client_skills(
     acp_agent = AgentPoolACPAgent(client=client, default_agent=default_test_agent)
     await acp_agent.initialize(InitializeRequest(protocol_version=1))
 
-    await acp_agent.fork_session(ForkSessionRequest(session_id="original", cwd=str(tmp_path)))
+    source = await acp_agent.new_session(NewSessionRequest(cwd=str(tmp_path)))
+    request = ForkSessionRequest(session_id=source.session_id, cwd=str(tmp_path))
+    await acp_agent.fork_session(request)
     await acp_agent.tasks.complete_tasks()
 
     names = _skill_names(default_test_agent)

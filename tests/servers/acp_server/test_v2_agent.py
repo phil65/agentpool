@@ -4,6 +4,9 @@ from __future__ import annotations
 
 import asyncio
 from contextlib import asynccontextmanager
+import json
+import os
+import sys
 from typing import TYPE_CHECKING, Any
 
 from aclientp.schema import v2
@@ -27,6 +30,8 @@ if TYPE_CHECKING:
 
 
 TIMEOUT = 5
+WAIT_TIMEOUT = 0x102
+SYNCHRONIZE_AND_QUERY = 0x00100000 | 0x1000
 
 
 class _Reader(ByteReceiveStream):
@@ -251,6 +256,66 @@ async def test_cancel_during_a_tool_call_ends_the_turn(tmp_path: Any) -> None:
         assert (await recorder.wait_idle()).stop_reason == "end_turn"
 
 
+def _process_alive(pid: int) -> bool:
+    """Whether a process runs (``os.kill(pid, 0)`` would kill it on Windows)."""
+    if sys.platform == "win32":
+        import ctypes
+
+        kernel32 = ctypes.windll.kernel32
+        handle = kernel32.OpenProcess(SYNCHRONIZE_AND_QUERY, False, pid)
+        if not handle:
+            return False
+        try:
+            return kernel32.WaitForSingleObject(handle, 0) == WAIT_TIMEOUT
+        finally:
+            kernel32.CloseHandle(handle)
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return False
+    return True
+
+
+async def test_cancelling_a_command_kills_its_process(tmp_path: Any) -> None:
+    """The bash tool's process (and what it started) does not outlive a cancelled turn."""
+    from exxec import LocalExecutionEnvironment
+
+    from agentpool.tool_impls.bash import create_bash_tool
+
+    pid_file = tmp_path / "pid"
+    script = tmp_path / "sleeper.py"
+    script.write_text(
+        "import os, pathlib, sys, time\n"
+        "pathlib.Path(sys.argv[1]).write_text(str(os.getpid()))\n"
+        "time.sleep(30)\n"
+    )
+    command = f'"{sys.executable}" "{script}" "{pid_file}"'
+
+    async def stream(messages: list[ModelMessage], info: AgentInfo) -> AsyncIterator[Any]:
+        if len(messages) == 1:
+            args = json.dumps({"command": command})
+            yield {0: DeltaToolCall(name="bash", json_args=args, tool_call_id="c1")}
+        else:
+            yield "done"
+
+    env = LocalExecutionEnvironment(default_command_timeout=None)
+    bash = create_bash_tool(env=env)
+    async with _serve(FunctionModel(stream_function=stream), [bash]) as (conn, recorder, _):
+        session_id = await _new_session(conn, str(tmp_path))
+        await conn.prompt(_prompt(session_id))
+        async with asyncio.timeout(TIMEOUT * 2):
+            while not pid_file.exists() or not pid_file.read_text():
+                await asyncio.sleep(0.05)
+        pid = int(pid_file.read_text())
+        assert _process_alive(pid)
+        await conn.cancel(v2.CancelSessionNotification(session_id=session_id))
+        assert (await recorder.wait_idle()).stop_reason == "cancelled"
+
+    async with asyncio.timeout(TIMEOUT):
+        while _process_alive(pid):
+            await asyncio.sleep(0.1)
+
+
 async def test_processes_show_as_v2_terminals(tmp_path: Any) -> None:
     """A tool's process reaches the client as a terminal with its command, output and exit."""
 
@@ -378,6 +443,36 @@ async def test_options_without_a_session_list_the_commands(connected: Any, tmp_p
     options = await conn.session_options(v2.SessionOptionsRequest(cwd=str(tmp_path)))
     assert v2.is_set(options.available_commands)
     assert "help" in {c.name for c in options.available_commands if isinstance(c, v2.Command)}
+
+
+async def test_a_fork_has_the_history_and_the_options(connected: Any, tmp_path: Any) -> None:
+    """The fork continues the conversation, with the source's mode (and model)."""
+    conn, recorder, _ = connected
+    session_id = await _new_session(conn, str(tmp_path))
+    await conn.prompt(_prompt(session_id, "remember this"))
+    await recorder.wait_idle()
+    request = v2.SetConfigOptionIdRequest(session_id=session_id, config_id="mode", value="always")
+    await conn.set_session_config_option(request)
+
+    fork = await conn.fork_session(v2.ForkSessionRequest(session_id=session_id, cwd=str(tmp_path)))
+
+    options = fork.config_options if v2.is_set(fork.config_options) else []
+    mode = next(
+        o for o in options if isinstance(o, v2.SelectSessionConfigOption) and o.config_id == "mode"
+    )
+    assert mode.current_value == "always"
+    await conn.close_session(v2.CloseSessionRequest(session_id=fork.session_id))
+    recorder.updates.clear()
+    resume = v2.ResumeSessionRequest(
+        session_id=fork.session_id, cwd=str(tmp_path), replay_from=v2.ReplayFromStart()
+    )
+    await conn.resume_session(resume)
+    replayed = "".join(
+        u.content.text
+        for u in recorder.updates
+        if isinstance(u, v2.UserMessageChunk) and isinstance(u.content, v2.TextContent)
+    )
+    assert replayed == "remember this"
 
 
 async def test_session_responses_carry_the_commands(connected: Any, tmp_path: Any) -> None:
