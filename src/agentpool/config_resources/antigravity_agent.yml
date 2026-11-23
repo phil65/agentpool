@@ -1,0 +1,20 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/phil65/agentpool/refs/heads/main/schema/config-schema.json
+
+# Needs the `antigravity` extra (pip install "agentpool[antigravity]") and GEMINI_API_KEY,
+# or `vertex: true` with GOOGLE_CLOUD_PROJECT / GOOGLE_CLOUD_LOCATION.
+
+agents:
+  antigravity:
+    type: antigravity
+    display_name: "Antigravity Assistant"
+    description: "Google Antigravity agent with its coding tools and AgentPool extras"
+    # model: gemini-4-hydrogen  # The SDK default when unset
+    thinking_level: medium
+    policy_mode: confirm_run_command # Asks before running shell commands
+    # Antigravity brings its own file, search, shell, question and subagent tools;
+    # these add what it lacks.
+    tools:
+      - type: subagent
+      - type: agent_cli
+      - type: process_management
+      - type: plan

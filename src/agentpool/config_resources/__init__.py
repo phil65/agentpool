@@ -21,6 +21,9 @@ AGENTS: Final[str] = str(_RESOURCES / "agents.yml")
 AGUI_TEST: Final[str] = str(_RESOURCES / "agui_test.yml")
 """Path to AGUI test configuration."""
 
+ANTIGRAVITY_ASSISTANT: Final[str] = str(_RESOURCES / "antigravity_agent.yml")
+"""Path to default Antigravity assistant configuration."""
+
 CLAUDE_CODE_ASSISTANT: Final[str] = str(_RESOURCES / "claude_code_agent.yml")
 """Path to default Claude code assistant configuration."""
 
@@ -38,6 +41,7 @@ ALL_POOL_CONFIGS: Final[tuple[str, ...]] = (
     ACP_ASSISTANT,
     AGENTS,
     AGUI_TEST,
+    ANTIGRAVITY_ASSISTANT,
     CLAUDE_CODE_ASSISTANT,
     CODEX_ASSISTANT,
     EXTERNAL_ACP_AGENTS,
@@ -51,6 +55,7 @@ __all__ = [
     "AGENTS_TEMPLATE",
     "AGUI_TEST",
     "ALL_POOL_CONFIGS",
+    "ANTIGRAVITY_ASSISTANT",
     "CLAUDE_CODE_ASSISTANT",
     "CODEX_ASSISTANT",
     "EXTERNAL_ACP_AGENTS",
