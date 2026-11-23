@@ -57,9 +57,11 @@ class MCPPoolServerConfig(BasePoolServerConfig):
     serve_events: bool = Field(default=False, title="Serve events")
     """Publish the pool's session activity as MCP events (Events extension, SEP-3415).
 
-    ``session.state_update`` (a session's turn runs, waits for the user, or stopped) and
-    ``session.info_update`` (a session was created or got its title), as ACP v2 reports
-    them. Clients subscribe with the optional arguments ``agent`` and ``session_id``.
+    ``session.state_update`` (a session's turn runs, waits for the user, or stopped),
+    ``session.info_update`` (a session was created or got its title),
+    ``session.usage_update`` (context fill and cost), ``session.notice`` and
+    ``session.compaction_update``, as ACP v2 reports them. Clients subscribe with the
+    optional arguments ``agent`` and ``session_id``.
     Experimental, as the extension is.
     """
 

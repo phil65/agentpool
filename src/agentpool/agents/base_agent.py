@@ -291,6 +291,8 @@ class BaseAgent[TDeps = None, TResult = str](MessageNode[TDeps, TResult]):
         self.definition: AgentDefinition | None = None
         """What the agent was built from (set by the pool for its manifest's agents)."""
         self._own_sdk_session_id: str | None = None
+        self._model_context_windows: dict[str, int | None] = {}
+        """Context window per model name, as model discovery reported it."""
         """The backend's own session of the default session (see :attr:`_sdk_session_id`)."""
         self._session_turn_lock = asyncio.Lock()
         """Serializes turns of different sessions where they can't run concurrently."""
@@ -949,6 +951,8 @@ class BaseAgent[TDeps = None, TResult = str](MessageNode[TDeps, TResult]):
         background = BaseAgent.BackgroundEvent(
             agent_name=self.name, session_id=self.session_id, event=event
         )
+        if (pool := self.agent_pool) is not None and self.session_id is not None:
+            pool.activity.observe(self.session_id, self.name, event)
         await self.background_event.emit(background)
 
     async def wait(self) -> ChatMessage[TResult]:
@@ -1372,6 +1376,35 @@ class BaseAgent[TDeps = None, TResult = str](MessageNode[TDeps, TResult]):
 
         return final_message
 
+    async def context_window(self) -> int | None:
+        """Context window of the current model in tokens, if model discovery knows it.
+
+        Looked up once per model (discovery may be a network request).
+        """
+        if not (model := self.model_name):
+            return None
+        if model not in self._model_context_windows:
+            try:
+                models = await self.get_available_models()
+            except Exception:
+                self.log.debug("Could not fetch models for context window lookup", exc_info=True)
+                models = None
+            self._model_context_windows[model] = next(
+                (
+                    info.context_window
+                    for info in models or []
+                    if model in (info.id, info.pydantic_ai_id)
+                ),
+                None,
+            )
+        return self._model_context_windows[model]
+
+    @property
+    def known_context_window(self) -> int | None:
+        """The current model's context window if already looked up (no lookup)."""
+        model = self.model_name
+        return self._model_context_windows.get(model) if model is not None else None
+
     @abstractmethod
     async def get_available_models(self) -> list[ModelInfo] | None:
         """Get available models for this agent.
@@ -1385,7 +1418,6 @@ class BaseAgent[TDeps = None, TResult = str](MessageNode[TDeps, TResult]):
         Returns:
             List of tokonomics ModelInfo, or None if not supported
         """
-        ...
 
     @property
     def config_options(self) -> Sequence[ConfigOption[Self]]:

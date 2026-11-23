@@ -35,7 +35,6 @@ from pydantic_ai import (
     FinalResultEvent,
     FunctionToolCallEvent,
     FunctionToolResultEvent,
-    ModelResponse,
     PartDeltaEvent,
     PartEndEvent,
     PartStartEvent,
@@ -84,24 +83,11 @@ if TYPE_CHECKING:
 
     from agentpool.agents.events import RichAgentStreamEvent
     from agentpool.agents.events.events import NoticeSeverity, SubAgentType
-    from agentpool.messaging import ChatMessage
+
+from agentpool.messaging.message_utils import context_tokens
+
 
 logger = get_logger(__name__)
-
-
-def context_tokens(message: ChatMessage[Any]) -> int | None:
-    """Tokens in the model's context after a run: the size of its last request.
-
-    The run usage sums every request of a tool loop, so it overcounts the context;
-    it is only used when the run consisted of a single request.
-    """
-    for model_message in reversed(message.messages):
-        if isinstance(model_message, ModelResponse) and model_message.usage.total_tokens:
-            return model_message.usage.input_tokens + model_message.usage.output_tokens
-    usage = message.usage
-    if usage.requests <= 1 and usage.total_tokens:
-        return usage.input_tokens + usage.output_tokens
-    return None
 
 
 @dataclass

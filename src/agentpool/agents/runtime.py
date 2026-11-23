@@ -24,6 +24,7 @@ from __future__ import annotations
 import asyncio
 from contextlib import contextmanager
 from contextvars import ContextVar
+from decimal import Decimal
 from types import MappingProxyType
 from typing import TYPE_CHECKING, Any
 
@@ -78,6 +79,8 @@ class SessionRuntime[TDeps = Any, TResult = Any]:
         self.events: asyncio.Queue[RichAgentStreamEvent[Any]] = asyncio.Queue()
         self.staged = StagedContent()
         self.turn_message_id: str | None = None
+        self.cost = Decimal(0)
+        """Cost of this session's turns on this runtime so far (USD)."""
         """ID of the user message of the prompt group running (e.g. file changes record it)."""
 
     @property
@@ -163,6 +166,7 @@ class SessionRuntime[TDeps = Any, TResult = Any]:
                     ):
                         if isinstance(event, StreamCompleteEvent):
                             usage.incr(event.message.usage)
+                        self._report_event(event)
                         yield event
                     # After each iteration, flush unconsumed injections to queue
                     self.injections.flush_pending_to_queue()
@@ -178,6 +182,27 @@ class SessionRuntime[TDeps = Any, TResult = Any]:
                 self.injections.clear()  # Clean slate for next run
                 if not self.is_default and self.idle:
                     agent._runtimes.pop(self.session.session_id, None)
+
+    def _report_event(self, event: RichAgentStreamEvent[Any]) -> None:
+        """Report what a turn's event says about the session to the pool's activity feed."""
+        from agentpool.messaging.message_utils import context_tokens
+
+        if (pool := self.agent.agent_pool) is None:
+            return
+        session_id, name = self.session.session_id, self.agent.name
+        if isinstance(event, StreamCompleteEvent):
+            message = event.message
+            if message.cost_info is not None:
+                self.cost += message.cost_info.total_cost
+            pool.activity.usage(
+                session_id,
+                name,
+                used=context_tokens(message),
+                size=self.agent.known_context_window,
+                cost=float(self.cost) if self.cost else None,
+            )
+            return
+        pool.activity.observe(session_id, name, event)
 
     def _report_state(
         self,

@@ -60,3 +60,20 @@ def get_message_chain(
     # Reverse to get origin -> current order
     chain.reverse()
     return chain
+
+
+def context_tokens(message: ChatMessage[Any]) -> int | None:
+    """Tokens in the model's context after a run: the size of its last request.
+
+    The run usage sums every request of a tool loop, so it overcounts the context;
+    it is only used when the run consisted of a single request.
+    """
+    from pydantic_ai import ModelResponse
+
+    for model_message in reversed(message.messages):
+        if isinstance(model_message, ModelResponse) and model_message.usage.total_tokens:
+            return model_message.usage.input_tokens + model_message.usage.output_tokens
+    usage = message.usage
+    if usage.requests <= 1 and usage.total_tokens:
+        return usage.input_tokens + usage.output_tokens
+    return None

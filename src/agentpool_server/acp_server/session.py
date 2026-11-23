@@ -733,17 +733,7 @@ class ACPSession:
 
     async def _get_context_window(self) -> int | None:
         """Context window of the agent's current model, if it can be determined."""
-        if not (model_name := self.agent.model_name):
-            return None
-        try:
-            models = await self.agent.get_available_models()
-        except Exception:
-            self.log.debug("Could not fetch models for context window lookup", exc_info=True)
-            return None
-        for info in models or []:
-            if model_name in (info.id, info.pydantic_ai_id):
-                return info.context_window
-        return None
+        return await self.agent.context_window()
 
     async def _send_error_notification(self, message: str) -> None:
         """Show an error, unless the turn was cancelled."""

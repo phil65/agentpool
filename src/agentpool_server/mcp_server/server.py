@@ -40,6 +40,17 @@ ACTIVITY_EVENTS: dict[ActivityKind, str] = {
         "user), or idle (with stop_reason end_turn / cancelled / error, usage, error)"
     ),
     "info_update": "A session was created or got its title (title, parent_id)",
+    "usage_update": (
+        "Context fill after a response: used tokens of size (null when unknown), and the "
+        "session's cost so far (cost, currency)"
+    ),
+    "notice": (
+        "Information for the user, not part of the conversation (severity, title, description)"
+    ),
+    "compaction_update": (
+        "A context compaction started or ended (compaction_id, status in_progress / completed / "
+        "failed, trigger, pre_tokens, error)"
+    ),
 }
 ACTIVITY_ARGUMENTS: dict[str, Any] = {
     "type": "object",

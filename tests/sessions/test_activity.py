@@ -124,3 +124,65 @@ async def test_serve_mcp_publishes_session_state() -> None:
             watch.cancel()
     assert [(d["agent"], d["state"]) for d in received] == [("a", "running"), ("a", "idle")]
     assert received[1]["stop_reason"] == "end_turn"
+
+
+def test_compaction_steps_share_an_id() -> None:
+    from agentpool.agents.events import CompactionEvent, NoticeEvent
+
+    feed = ActivityFeed()
+    feed.observe("s", "a", CompactionEvent(session_id="backend", phase="starting"))
+    feed.observe("s", "a", CompactionEvent(session_id="backend", phase="completed", pre_tokens=9))
+    feed.observe("s", "a", CompactionEvent(session_id="backend", phase="failed", error="boom"))
+    feed.observe("s", "a", NoticeEvent(title="Rate limited", severity="warning"))
+    compactions = [e.data for e in feed.since(0).entries if e.kind == "compaction_update"]
+    assert [c["status"] for c in compactions] == ["in_progress", "completed", "failed"]
+    assert compactions[0]["compaction_id"] == compactions[1]["compaction_id"]
+    assert compactions[2]["compaction_id"] != compactions[1]["compaction_id"]  # Unstarted
+    assert compactions[1]["pre_tokens"] == 9
+    [notice] = [e.data for e in feed.since(0).entries if e.kind == "notice"]
+    assert (notice["severity"], notice["title"]) == ("warning", "Rate limited")
+
+
+async def test_a_turn_reports_usage() -> None:
+    async with AgentPool() as pool:
+        agent = Agent("a", model=FunctionModel(stream_function=_stream_text))
+        await pool.add_agent(agent)
+        await agent.run("hi")
+        assert agent.model_name is not None
+        agent._model_context_windows[agent.model_name] = 1000  # As a lookup would cache it
+        await agent.run("again")
+        usages = [e.data for e in pool.activity.since(0).entries if e.kind == "usage_update"]
+    assert len(usages) == 2
+    assert usages[0]["used"] is not None
+    assert usages[0]["size"] is None  # Not looked up: no network request in a turn
+    assert usages[1]["size"] == 1000
+
+
+async def test_events_outside_a_turn_reach_the_feed() -> None:
+    from agentpool.agents.events import NoticeEvent
+
+    async with AgentPool() as pool:
+        agent = Agent("a", model=FunctionModel(stream_function=_stream_text))
+        await pool.add_agent(agent)
+        await agent.run("hi")  # The agent has a session now
+        await agent.emit_event(NoticeEvent(title="Background work done"))
+        notices = [e for e in pool.activity.since(0).entries if e.kind == "notice"]
+    assert [(n.session_id, n.data["title"]) for n in notices] == [
+        (agent.session_id, "Background work done")
+    ]
+
+
+async def test_serve_mcp_lists_every_activity_event() -> None:
+    from fastmcp.experimental.events import list_events
+
+    async with AgentPool() as pool:
+        server = MCPServer(pool, MCPPoolServerConfig(serve_events=True))
+        async with Client(server.fastmcp, extensions=[EventsClientExtension()]) as client:
+            names = sorted(event.name for event in await list_events(client))
+    assert names == [
+        "session.compaction_update",
+        "session.info_update",
+        "session.notice",
+        "session.state_update",
+        "session.usage_update",
+    ]

@@ -3,6 +3,9 @@
 ``state_update``: a session's foreground work started (``running``), waits for the user
 (``requires_action``) or stopped (``idle``, with the stop reason and the turn's usage).
 ``info_update``: a session was created or got its title.
+``usage_update``: the session's context fill and cumulative cost after a response.
+``notice``: information for the user that is not part of the conversation.
+``compaction_update``: a context compaction started, completed or failed.
 
 Each entry has a sequence number, so a reader (``serve-mcp``'s published events) can ask for
 what came after the last one it saw. The feed keeps the latest ``max_entries``: a reader that
@@ -14,14 +17,19 @@ from __future__ import annotations
 from collections import deque
 from dataclasses import dataclass, field
 from datetime import datetime  # noqa: TC003
-from typing import Any, Literal
+from typing import TYPE_CHECKING, Any, Literal
+from uuid import uuid4
 
 from agentpool.utils.time_utils import get_now
 
 
-ActivityKind = Literal["state_update", "info_update"]
+if TYPE_CHECKING:
+    from agentpool.agents.events import RichAgentStreamEvent
+
+ActivityKind = Literal["state_update", "info_update", "usage_update", "notice", "compaction_update"]
 SessionState = Literal["running", "idle", "requires_action"]
 StopReason = Literal["end_turn", "cancelled", "error"]
+CompactionStatus = Literal["in_progress", "completed", "failed"]
 
 MAX_ENTRIES = 1000
 
@@ -70,6 +78,8 @@ class ActivityFeed:
     def __init__(self, max_entries: int = MAX_ENTRIES) -> None:
         self._entries: deque[Activity] = deque(maxlen=max_entries)
         self._position = 0
+        self._compactions: dict[str, str] = {}
+        """ID of the compaction in progress, per session."""
 
     def __repr__(self) -> str:
         return f"ActivityFeed(position={self._position}, kept={len(self._entries)})"
@@ -116,6 +126,72 @@ class ActivityFeed:
     ) -> None:
         """Record a session's creation or a change of its metadata."""
         self._add("info_update", session_id, agent, {"title": title, "parent_id": parent_id})
+
+    def usage(
+        self,
+        session_id: str,
+        agent: str,
+        *,
+        used: int | None,
+        size: int | None,
+        cost: float | None,
+    ) -> None:
+        """Record the session's context fill (tokens ``used`` of ``size``) and cost so far."""
+        data = {"used": used, "size": size, "cost": cost, "currency": "USD"}
+        self._add("usage_update", session_id, agent, data)
+
+    def notice(
+        self,
+        session_id: str,
+        agent: str,
+        *,
+        severity: str,
+        title: str,
+        description: str | None = None,
+    ) -> None:
+        """Record information for the user that is not part of the conversation."""
+        data = {"severity": severity, "title": title, "description": description}
+        self._add("notice", session_id, agent, data)
+
+    def compaction(
+        self,
+        session_id: str,
+        agent: str,
+        *,
+        status: CompactionStatus,
+        trigger: str | None = None,
+        pre_tokens: int | None = None,
+        error: str | None = None,
+    ) -> None:
+        """Record a step of a context compaction (one ``compaction_id`` from start to end)."""
+        if status == "in_progress" or session_id not in self._compactions:
+            self._compactions[session_id] = uuid4().hex
+        compaction_id = self._compactions[session_id]
+        if status != "in_progress":
+            del self._compactions[session_id]
+        data = {
+            "compaction_id": compaction_id,
+            "status": status,
+            "trigger": trigger,
+            "pre_tokens": pre_tokens,
+            "error": error,
+        }
+        self._add("compaction_update", session_id, agent, data)
+
+    def observe(self, session_id: str, agent: str, event: RichAgentStreamEvent[Any]) -> None:
+        """Record what an agent's stream event says about its session (notices, compactions)."""
+        from agentpool.agents.events import CompactionEvent, NoticeEvent
+
+        match event:
+            case NoticeEvent(title=title, severity=severity, description=description):
+                self.notice(
+                    session_id, agent, severity=severity, title=title, description=description
+                )
+            case CompactionEvent(phase=phase, trigger=trigger, pre_tokens=pre, error=error):
+                status: CompactionStatus = "in_progress" if phase == "starting" else phase
+                self.compaction(
+                    session_id, agent, status=status, trigger=trigger, pre_tokens=pre, error=error
+                )
 
     def since(self, position: int) -> ActivitySlice:
         """The kept entries after ``position``."""

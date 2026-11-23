@@ -121,6 +121,9 @@ experimental), modelled on ACP v2's session updates:
 |---|---|---|
 | `session.state_update` | `session_id`, `agent`, `state`; for `idle` also `stop_reason` (`end_turn`, `cancelled`, `error`), `usage`, `error` | a turn starts (`running`), waits for the user (`requires_action`), or ends (`idle`) |
 | `session.info_update` | `session_id`, `agent`, `title`, `parent_id` | a session is created or gets its title |
+| `session.usage_update` | `session_id`, `agent`, `used`, `size`, `cost`, `currency` | after each response: tokens in the context (`used`) of the model's window (`size`, `null` while unknown), the session's cost so far |
+| `session.notice` | `session_id`, `agent`, `severity`, `title`, `description` | information for the user outside the conversation (rate limits, a changed agent definition, ...) |
+| `session.compaction_update` | `session_id`, `agent`, `compaction_id`, `status` (`in_progress`, `completed`, `failed`), `trigger`, `pre_tokens`, `error` | a context compaction starts or ends |
 
 Every payload has a `timestamp`. Both take the optional arguments `agent` and `session_id` to
 follow one agent or session. A client that reconnects with its cursor gets what it missed, as
