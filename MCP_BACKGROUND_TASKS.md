@@ -27,8 +27,8 @@ result. There is already a `# TODO: set task=True?` in
   ```python
   from fastmcp_tasks import TasksExtension
 
-  mcp.add_extension(TasksExtension())          # url="memory://" by default
-  mcp.tool(task=True)(fn)                       # == TaskConfig(mode="optional")
+  mcp.add_extension(TasksExtension())  # url="memory://" by default
+  mcp.tool(task=True)(fn)  # == TaskConfig(mode="optional")
   ```
 
   A `task=True` tool without the extension registered raises at startup. Task tools must be

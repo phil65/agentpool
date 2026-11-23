@@ -7,11 +7,11 @@ from __future__ import annotations
 
 import asyncio
 
+from agentpool_server.opencode_server.input_provider import OpenCodeInputProvider
+from agentpool_server.opencode_server.state import ServerState
 from mcp import types
 
 from agentpool import Agent
-from agentpool_server.opencode_server.input_provider import OpenCodeInputProvider
-from agentpool_server.opencode_server.state import ServerState
 
 
 async def demo_single_select():

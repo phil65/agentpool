@@ -48,15 +48,18 @@ Server:
 ```python
 from fastmcp.experimental.events import Event, EventBatch, EventPoll, EventsExtension
 
-events = EventsExtension()          # EventsExtension(push=False) for hosts that can't hold a stream
+events = EventsExtension()  # EventsExtension(push=False) for hosts that can't hold a stream
 mcp.add_extension(events)
+
 
 @events.event(name="alert.fired", description="An alert fired")
 def alert_fired(poll: EventPoll) -> EventBatch:
-    if poll.cursor is None:                       # subscribing: no events, current position
+    if poll.cursor is None:  # subscribing: no events, current position
         return EventBatch(cursor=str(len(ALERTS)))
-    new = ALERTS[int(poll.cursor):]
-    return EventBatch(events=[Event(data=a, event_id=a["id"]) for a in new], cursor=str(len(ALERTS)))
+    new = ALERTS[int(poll.cursor) :]
+    return EventBatch(
+        events=[Event(data=a, event_id=a["id"]) for a in new], cursor=str(len(ALERTS))
+    )
 ```
 
 Each event type is one check function, and it serves both modes. A poll calls it once. A push
@@ -66,7 +69,12 @@ in a worker thread.
 Client:
 
 ```python
-from fastmcp.experimental.events import EventsClientExtension, subscribe_events, list_events, poll_events_mcp
+from fastmcp.experimental.events import (
+    EventsClientExtension,
+    subscribe_events,
+    list_events,
+    poll_events_mcp,
+)
 
 async with Client(server, extensions=[EventsClientExtension()]) as client:
     async for event in subscribe_events(client, "alert.fired"):
