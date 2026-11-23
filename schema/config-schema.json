@@ -26446,6 +26446,116 @@
       "type": "object",
       "x-doc-title": "Event source"
     },
+    "MCPJWTAuthConfig": {
+      "additionalProperties": false,
+      "description": "Clients present JWTs an identity provider issued (OAuth 2.1 resource server).\n\nTokens are checked against the provider's keys (``jwks_uri``, or one ``public_key``),\nand their issuer, audience and scopes. With ``authorization_servers``, the server\npublishes OAuth protected resource metadata (RFC 9728), so MCP clients find where to\nsign in by themselves.",
+      "properties": {
+        "type": {
+          "const": "jwt",
+          "default": "jwt",
+          "description": "Auth type discriminator.",
+          "title": "Type",
+          "type": "string"
+        },
+        "jwks_uri": {
+          "default": null,
+          "description": "Where the provider publishes its signing keys (rotated keys are picked up).",
+          "examples": [
+            "https://auth.example.com/.well-known/jwks.json"
+          ],
+          "title": "JWKS URI",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "public_key": {
+          "default": null,
+          "description": "A PEM public key (or a symmetric secret for HS algorithms) instead of ``jwks_uri``.",
+          "title": "Public key",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "issuer": {
+          "default": null,
+          "description": "The ``iss`` tokens must carry.",
+          "examples": [
+            "https://auth.example.com"
+          ],
+          "title": "Issuer",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "audience": {
+          "default": null,
+          "description": "The ``aud`` tokens must carry: this server, so tokens for others are refused.",
+          "examples": [
+            "https://mcp.example.com/mcp"
+          ],
+          "title": "Audience",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "algorithm": {
+          "default": null,
+          "description": "The signing algorithm (default: the key's, RS256 for a JWKS).",
+          "examples": [
+            "RS256"
+          ],
+          "title": "Algorithm",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "required_scopes": {
+          "description": "Scopes every token must have.",
+          "examples": [
+            [
+              "mcp:agents"
+            ]
+          ],
+          "items": {
+            "type": "string"
+          },
+          "title": "Required scopes",
+          "type": "array"
+        },
+        "authorization_servers": {
+          "description": "Authorization servers to advertise to clients (needs ``base_url``).",
+          "examples": [
+            [
+              "https://auth.example.com"
+            ]
+          ],
+          "items": {
+            "type": "string"
+          },
+          "title": "Authorization servers",
+          "type": "array"
+        },
+        "base_url": {
+          "default": null,
+          "description": "This server's public URL, for the advertised metadata.",
+          "examples": [
+            "https://mcp.example.com"
+          ],
+          "title": "Public base URL",
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "title": "MCPJWTAuthConfig",
+      "type": "object"
+    },
     "MCPPoolServerConfig": {
       "additionalProperties": false,
       "description": "Configuration for pool-based MCP server.",
@@ -26618,6 +26728,33 @@
           },
           "title": "CORS origins",
           "type": "array"
+        },
+        "auth": {
+          "anyOf": [
+            {
+              "discriminator": {
+                "mapping": {
+                  "jwt": "#/$defs/MCPJWTAuthConfig",
+                  "tokens": "#/$defs/MCPTokenAuthConfig"
+                },
+                "propertyName": "type"
+              },
+              "oneOf": [
+                {
+                  "$ref": "#/$defs/MCPTokenAuthConfig"
+                },
+                {
+                  "$ref": "#/$defs/MCPJWTAuthConfig"
+                }
+              ]
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "How clients authenticate (SSE / Streamable-HTTP only). Unset: anyone who can reach\nthe server's address can use the pool's agents, so keep it on localhost then.",
+          "title": "Authentication"
         }
       },
       "title": "MCPPoolServerConfig",
@@ -26842,6 +26979,41 @@
         "url"
       ],
       "title": "MCP Server Tool",
+      "type": "object"
+    },
+    "MCPTokenAuthConfig": {
+      "additionalProperties": false,
+      "description": "Clients authenticate with a token of their own (``Authorization: Bearer <token>``).\n\nFor a server on a trusted network or behind a proxy: no sign-in, no expiry. Each\nclient gets its own token, so one can be revoked by removing it.",
+      "properties": {
+        "type": {
+          "const": "tokens",
+          "default": "tokens",
+          "description": "Auth type discriminator.",
+          "title": "Type",
+          "type": "string"
+        },
+        "tokens": {
+          "additionalProperties": {
+            "format": "password",
+            "type": "string",
+            "writeOnly": true
+          },
+          "description": "Token of each client, by the client's name (shown as its client ID).",
+          "examples": [
+            {
+              "ci": "${CI_MCP_TOKEN}",
+              "zed": "${ZED_MCP_TOKEN}"
+            }
+          ],
+          "minProperties": 1,
+          "title": "Client tokens",
+          "type": "object"
+        }
+      },
+      "required": [
+        "tokens"
+      ],
+      "title": "MCPTokenAuthConfig",
       "type": "object"
     },
     "MarkItDownConfig": {

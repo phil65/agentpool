@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, assert_never
 
 import mcp
 from mcp import types
@@ -20,12 +20,13 @@ if TYPE_CHECKING:
 
     from fastmcp import FastMCP
     from fastmcp.experimental.events import EventBatch, EventPoll
+    from fastmcp.server.auth import AuthProvider
     from mcp.server.context import ServerRequestContext
     from mcp.server.lowlevel.server import LifespanResultT
 
     from agentpool import AgentPool, MessageNode
     from agentpool.sessions.activity import ActivityKind
-    from agentpool_config.pool_server import MCPPoolServerConfig
+    from agentpool_config.pool_server import MCPAuthConfig, MCPPoolServerConfig
 
     LifespanHandler = Callable[
         [FastMCP[LifespanResultT]],
@@ -108,11 +109,14 @@ class MCPServer(BaseServer):
 
         self._tools_registered = False
 
-        # Create FastMCP instance
+        if config.auth is not None and config.transport == "stdio":
+            msg = "auth applies to HTTP transports (sse, streamable-http), not stdio"
+            raise ValueError(msg)
         self.fastmcp = FastMCP(
             instructions=instructions,
             lifespan=lifespan,
             version=agentpool.__version__,
+            auth=auth_provider(config.auth) if config.auth is not None else None,
         )
         self.server = self.fastmcp._mcp_server
         if config.background_tasks:
@@ -326,3 +330,41 @@ class MCPServer(BaseServer):
         if not session.client_params:
             return None
         return session.client_params.client_info
+
+
+def auth_provider(config: MCPAuthConfig) -> AuthProvider:
+    """Fastmcp's auth provider for serve-mcp's ``auth`` settings."""
+    from fastmcp.server.auth import RemoteAuthProvider
+    from fastmcp.server.auth.providers.jwt import JWTVerifier, StaticTokenVerifier
+    from pydantic import AnyHttpUrl
+
+    from agentpool_config.pool_server import MCPJWTAuthConfig, MCPTokenAuthConfig
+
+    match config:
+        case MCPTokenAuthConfig(tokens=tokens):
+            known = {
+                token.get_secret_value(): {"client_id": name, "scopes": []}
+                for name, token in tokens.items()
+            }
+            return StaticTokenVerifier(tokens=known)
+        case MCPJWTAuthConfig() as jwt:
+            verifier = JWTVerifier(
+                public_key=jwt.public_key,
+                jwks_uri=jwt.jwks_uri,
+                issuer=jwt.issuer,
+                audience=jwt.audience,
+                algorithm=jwt.algorithm,
+                required_scopes=jwt.required_scopes or None,
+                base_url=jwt.base_url,
+            )
+            if not jwt.authorization_servers:
+                return verifier
+            assert jwt.base_url is not None  # Checked by the config
+            return RemoteAuthProvider(
+                token_verifier=verifier,
+                authorization_servers=[AnyHttpUrl(url) for url in jwt.authorization_servers],
+                base_url=jwt.base_url,
+                scopes_supported=jwt.required_scopes or None,
+            )
+        case _ as unreachable:
+            assert_never(unreachable)

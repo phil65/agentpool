@@ -45,6 +45,7 @@ pool_server:
   serve_skills: true
   serve_prompts: true                     # or a list of prompt names, or false
   cors_origins: []                        # browser clients allowed in (HTTP only)
+  auth: null                              # see Authentication below (HTTP only)
   serve_events: false                     # see Session Events below
   background_tasks: false                 # see Background Tasks below
 
@@ -65,6 +66,48 @@ A `serve_nodes` list serves exactly the nodes it names, team members included.
 `http://localhost:6274`) call the server: they get CORS headers and pass its origin check.
 Empty by default: `"*"` would let any website open in a browser on the machine call the pool's
 agents.
+
+## Authentication
+
+Over HTTP, anyone who can reach the server's address can use the pool's agents. Keep it on
+`localhost`, or set `auth` (HTTP transports only; refused with stdio).
+
+Tokens, one per client (sent as `Authorization: Bearer <token>`). For a trusted network or a
+server behind a proxy: no sign-in, no expiry; remove a client's token to lock it out.
+
+```yaml
+pool_server:
+  type: mcp
+  transport: streamable-http
+  auth:
+    type: tokens
+    tokens:
+      zed: ${ZED_MCP_TOKEN}
+      ci: ${CI_MCP_TOKEN}
+```
+
+JWTs from an identity provider (the server is an OAuth 2.1 resource server). Tokens are
+checked against the provider's keys (`jwks_uri`, or one `public_key`) and must carry the
+`issuer`, `audience` and `required_scopes` given. With `authorization_servers` (and the
+server's public `base_url`), it publishes protected resource metadata (RFC 9728), so MCP
+clients find where to sign in by themselves.
+
+```yaml
+pool_server:
+  type: mcp
+  transport: streamable-http
+  auth:
+    type: jwt
+    jwks_uri: https://auth.example.com/.well-known/jwks.json
+    issuer: https://auth.example.com
+    audience: https://mcp.example.com/mcp
+    required_scopes: [mcp:agents]
+    authorization_servers: [https://auth.example.com]
+    base_url: https://mcp.example.com
+```
+
+With tokens, Claude Code passes the header:
+`claude mcp add --transport http agentpool http://localhost:3001/mcp --header "Authorization: Bearer $TOKEN"`.
 
 ## Use with Claude Code
 
