@@ -208,10 +208,11 @@ class ACPClientHandler(Client):
             args = tc.raw_input if isinstance(tc.raw_input, dict) else {}
             ctx = replace(base, tool_call_id=tc.tool_call_id, tool_name=name, tool_input=args)
             try:
-                result = await input_provider.get_tool_confirmation(
-                    ctx,
-                    tool_description=name,
-                )
+                with self._agent.awaiting_user():
+                    result = await input_provider.get_tool_confirmation(
+                        ctx,
+                        tool_description=name,
+                    )
                 # Map confirmation result to ACP response
                 match result:
                     case "allow":

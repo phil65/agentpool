@@ -17,6 +17,7 @@ from agentpool.common_types import NodeName, SupportsStructuredOutput
 from agentpool.delegation.message_flow_tracker import MessageFlowTracker
 from agentpool.log import get_logger
 from agentpool.messaging import MessageNode
+from agentpool.sessions.activity import ActivityFeed
 from agentpool.talk import TeamTalk
 from agentpool.talk.router import Router
 from agentpool.tasks import TaskRegistry
@@ -117,7 +118,9 @@ class AgentPool[TPoolDeps = None](BaseRegistry[NodeName, MessageNode[Any, Any]])
         self.exit_stack = AsyncExitStack()
         self.parallel_load = parallel_load
         self.storage = StorageManager(self.manifest.storage)
-        self.sessions = SessionRegistry(storage=self.storage)
+        self.activity = ActivityFeed()
+        """Session lifecycle and foreground state of the pool's agents (ACP v2 style)."""
+        self.sessions = SessionRegistry(storage=self.storage, activity=self.activity)
         self.vfs_registry = VFSRegistry()
         for name, resource_config in self.manifest.resources.items():
             self.vfs_registry.register_from_config(name, resource_config)

@@ -54,6 +54,15 @@ class MCPPoolServerConfig(BasePoolServerConfig):
     serve_skills: bool = Field(default=True, title="Serve skills")
     """Publish the pool's skills through the MCP Skills extension (SEP-2640)."""
 
+    serve_events: bool = Field(default=False, title="Serve events")
+    """Publish the pool's session activity as MCP events (Events extension, SEP-3415).
+
+    ``session.state_update`` (a session's turn runs, waits for the user, or stopped) and
+    ``session.info_update`` (a session was created or got its title), as ACP v2 reports
+    them. Clients subscribe with the optional arguments ``agent`` and ``session_id``.
+    Experimental, as the extension is.
+    """
+
     background_tasks: bool = Field(default=False, title="Background tasks")
     """Let clients run agent and team tools as MCP background tasks (SEP-2663).
 

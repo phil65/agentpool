@@ -19,6 +19,7 @@ if TYPE_CHECKING:
     from collections.abc import Sequence
 
     from agentpool.messaging import ChatMessage
+    from agentpool.sessions.activity import ActivityFeed
     from agentpool.storage import StorageManager
 
 
@@ -269,10 +270,16 @@ class SessionRegistry:
     """
 
     def __init__(
-        self, storage: StorageManager | None = None, *, max_sessions: int = MAX_SESSIONS
+        self,
+        storage: StorageManager | None = None,
+        *,
+        max_sessions: int = MAX_SESSIONS,
+        activity: ActivityFeed | None = None,
     ) -> None:
         self._storage = storage
         self._max_sessions = max_sessions
+        self.activity = activity
+        """Where new sessions are reported (the pool's activity feed)."""
         self._sessions: OrderedDict[str, Session] = OrderedDict()
 
     def register(self, session: Session) -> Session:
@@ -307,6 +314,8 @@ class SessionRegistry:
             overrides=overrides,
             metadata=metadata,
         )
+        if self.activity is not None:
+            self.activity.info(session.session_id, agent_name, parent_id=parent_id)
         return self.register(session)
 
     async def open(

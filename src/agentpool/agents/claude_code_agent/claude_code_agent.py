@@ -829,7 +829,8 @@ class ClaudeCodeAgent[TDeps = None, TResult = str](BaseAgent[TDeps, TResult]):
         """Count a request that waits for the user (steering then waits for it too)."""
         self._open_user_inputs += 1
         try:
-            yield
+            with self.awaiting_user():
+                yield
         finally:
             self._open_user_inputs -= 1
 

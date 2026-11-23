@@ -19,10 +19,12 @@ if TYPE_CHECKING:
     from contextlib import AbstractAsyncContextManager
 
     from fastmcp import FastMCP
+    from fastmcp.experimental.events import EventBatch, EventPoll
     from mcp.server.context import ServerRequestContext
     from mcp.server.lowlevel.server import LifespanResultT
 
     from agentpool import AgentPool
+    from agentpool.sessions.activity import ActivityKind
     from agentpool_config.pool_server import MCPPoolServerConfig
 
     LifespanHandler = Callable[
@@ -31,6 +33,22 @@ if TYPE_CHECKING:
     ]
 
 logger = get_logger(__name__)
+
+ACTIVITY_EVENTS: dict[ActivityKind, str] = {
+    "state_update": (
+        "A session's foreground state changed: running, requires_action (waiting for the "
+        "user), or idle (with stop_reason end_turn / cancelled / error, usage, error)"
+    ),
+    "info_update": "A session was created or got its title (title, parent_id)",
+}
+ACTIVITY_ARGUMENTS: dict[str, Any] = {
+    "type": "object",
+    "properties": {
+        "agent": {"type": "string", "description": "Only this agent's sessions"},
+        "session_id": {"type": "string", "description": "Only this session"},
+    },
+}
+ACTIVITY_POLL_MS = 500
 
 
 class MCPServer(BaseServer):
@@ -94,6 +112,8 @@ class MCPServer(BaseServer):
 
             extension = TasksExtension(url=config.tasks_url, execution_ttl=config.tasks_ttl)
             self.fastmcp.add_extension(extension)
+        if config.serve_events:
+            self._register_activity_events()
         if config.serve_skills:
             from agentpool_server.mcp_server.skills_provider import PoolSkillsProvider
 
@@ -102,6 +122,56 @@ class MCPServer(BaseServer):
         # Register static handlers
         self._register_logging_handlers()
         self._register_resource_handlers()
+
+    def _register_activity_events(self) -> None:
+        """Publish the pool's activity feed as the event types ``session.<kind>``."""
+        from fastmcp.experimental.events import EventsExtension
+
+        extension = EventsExtension()
+        self.fastmcp.add_extension(extension)
+        for kind, description in ACTIVITY_EVENTS.items():
+            extension.event(
+                name=f"session.{kind}",
+                description=description,
+                input_schema=ACTIVITY_ARGUMENTS,
+            )(self._activity_check(kind))
+
+    def _activity_check(self, kind: ActivityKind) -> Callable[[EventPoll], EventBatch]:
+        """The check function of the event type for ``kind`` entries of the activity feed."""
+        from fastmcp.experimental.events import Event, EventBatch
+
+        def check(poll: EventPoll) -> EventBatch:
+            feed = self.pool.activity
+            if poll.cursor is None or not poll.cursor.isdigit():  # From now
+                return EventBatch(
+                    cursor=str(feed.position),
+                    truncated=poll.cursor is not None,
+                    next_poll_ms=ACTIVITY_POLL_MS,
+                )
+            window = feed.since(int(poll.cursor))
+            agent, session_id = poll.arguments.get("agent"), poll.arguments.get("session_id")
+            matching = [
+                entry
+                for entry in window.entries
+                if entry.kind == kind
+                and agent in (None, entry.agent)
+                and session_id in (None, entry.session_id)
+            ]
+            limit = poll.max_events
+            has_more = limit is not None and len(matching) > limit
+            batch = matching[:limit] if has_more else matching
+            return EventBatch(
+                events=[
+                    Event(data=e.to_payload(), event_id=str(e.seq), timestamp=e.timestamp)
+                    for e in batch
+                ],
+                cursor=str(batch[-1].seq) if has_more else str(window.position),
+                truncated=window.truncated,
+                has_more=has_more,
+                next_poll_ms=ACTIVITY_POLL_MS,
+            )
+
+        return check
 
     async def _register_pool_tools(self) -> None:
         """Register all pool tools using FastMCP's @tool decorator."""

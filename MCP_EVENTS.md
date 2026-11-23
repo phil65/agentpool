@@ -3,7 +3,8 @@
 Status: client side done 2026-11-23 (fastmcp 4.2.5 ships `fastmcp.experimental.events`): `mcp_event`
 triggers (`agentpool/talk/mcp_events.py`, run by the router's `Triggers`), with `events: true` on the
 MCP server config, resume from a stored cursor, start-time checks of event and arguments, and the
-session policies. Server side (publishing pool events from `serve-mcp`) not started.
+session policies. Server side done too: `serve_events` publishes the pool's activity feed
+(`agentpool/sessions/activity.py`, ACP v2 style) as `session.state_update` / `session.info_update`.
 First written 2026-11-23 against fastmcp 4.2.4, before it had Events. Companion to
 `MCP_BACKGROUND_TASKS.md`.
 

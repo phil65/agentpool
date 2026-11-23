@@ -561,9 +561,10 @@ class OpenCodeV2Agent[TDeps = None](BaseAgent[TDeps, str]):
                 tool_input=tool_input,
                 tool_name=tool_name,
             )
-            result = await provider.get_tool_confirmation(
-                context, tool_description=data.message or ""
-            )
+            with self.awaiting_user():
+                result = await provider.get_tool_confirmation(
+                    context, tool_description=data.message or ""
+                )
             match result:
                 case "allow":
                     decision = "once"
@@ -592,7 +593,8 @@ class OpenCodeV2Agent[TDeps = None](BaseAgent[TDeps, str]):
             return
         try:
             params = form_to_elicitation(form)
-            elicit_result = await provider.get_elicitation(params, tool_call_id=form.id)
+            with self.awaiting_user():
+                elicit_result = await provider.get_elicitation(params, tool_call_id=form.id)
             answer = elicitation_to_form_answer(form, elicit_result)
             if answer is None:
                 await client.cancel_form(form.session_id, form.id)

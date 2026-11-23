@@ -70,10 +70,11 @@ async def execute_tool_call(
 
     # Check if confirmation is required
     if await _should_confirm_tool(tool, confirmation_mode):
-        confirmation = await context.get_input_provider().get_tool_confirmation(
-            context=context,
-            tool_description=tool.description or "",
-        )
+        with context.agent.awaiting_user():
+            confirmation = await context.get_input_provider().get_tool_confirmation(
+                context=context,
+                tool_description=tool.description or "",
+            )
         match confirmation:
             case "skip":
                 logger.info("Tool execution skipped by user", tool=tool.name)

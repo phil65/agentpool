@@ -27,6 +27,8 @@ from contextvars import ContextVar
 from types import MappingProxyType
 from typing import TYPE_CHECKING, Any
 
+from pydantic_ai import RunUsage
+
 from agentpool.agents.events import (
     DiffContentItem,
     NoticeEvent,
@@ -46,6 +48,7 @@ if TYPE_CHECKING:
     from agentpool.common_types import AnyEventHandlerType, PromptCompatible
     from agentpool.messaging import ChatMessage, MessageHistory
     from agentpool.sessions import Session
+    from agentpool.sessions.activity import SessionState, StopReason
     from agentpool.ui.base import InputProvider
 
 
@@ -134,6 +137,10 @@ class SessionRuntime[TDeps = Any, TResult = Any]:
             self.task = asyncio.current_task()
             # Queue the initial prompts
             self.injections.insert_queued(prompts)
+            self._report_state("running")
+            stop_reason: StopReason = "cancelled"  # Unless the turn ends normally or fails
+            error: str | None = None
+            usage = RunUsage()
             try:
                 # Process queued prompts until queue is empty
                 prompt_message_id = user_message_id  # The given prompts' (the first group)
@@ -154,15 +161,48 @@ class SessionRuntime[TDeps = Any, TResult = Any]:
                         deps=deps,
                         event_handlers=event_handlers,
                     ):
+                        if isinstance(event, StreamCompleteEvent):
+                            usage.incr(event.message.usage)
                         yield event
                     # After each iteration, flush unconsumed injections to queue
                     self.injections.flush_pending_to_queue()
+                if not self.cancelled:
+                    stop_reason = "end_turn"
+            except Exception as e:
+                stop_reason, error = "error", str(e)
+                raise
             finally:
+                self._report_state("idle", stop_reason=stop_reason, usage=usage, error=error)
                 self.task = None
                 self.turn_message_id = None
                 self.injections.clear()  # Clean slate for next run
                 if not self.is_default and self.idle:
                     agent._runtimes.pop(self.session.session_id, None)
+
+    def _report_state(
+        self,
+        state: SessionState,
+        *,
+        stop_reason: StopReason | None = None,
+        usage: RunUsage | None = None,
+        error: str | None = None,
+    ) -> None:
+        """Report this session's foreground state to the pool's activity feed."""
+        if (pool := self.agent.agent_pool) is None:
+            return
+        tokens = (
+            {"input_tokens": usage.input_tokens, "output_tokens": usage.output_tokens}
+            if usage is not None
+            else None
+        )
+        pool.activity.state(
+            self.session.session_id,
+            self.agent.name,
+            state,
+            stop_reason=stop_reason,
+            usage=tokens,
+            error=error,
+        )
 
     async def _start_default_session(
         self, prompts: Sequence[PromptCompatible], session_id: str | None

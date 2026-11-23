@@ -624,9 +624,10 @@ class T3Agent[TDeps = None](BaseAgent[TDeps, str]):
             tool_input=tool_input,
             tool_name=kind,
         )
-        result = await provider.get_tool_confirmation(
-            context, tool_description=approval.reason or ""
-        )
+        with self.awaiting_user():
+            result = await provider.get_tool_confirmation(
+                context, tool_description=approval.reason or ""
+            )
         decision: ApprovalDecision
         match result:
             case "allow":
@@ -710,7 +711,8 @@ class T3Agent[TDeps = None](BaseAgent[TDeps, str]):
                 PendingRequestInput(action="read", thread_id=thread_id, request_id=request_id),
             )
             pending = PendingQuestions.model_validate(read.root)
-            answers = await _ask(pending.questions, provider, request_id)
+            with self.awaiting_user():
+                answers = await _ask(pending.questions, provider, request_id)
             await client.call(
                 PENDING_REQUEST,
                 PendingRequestInput(
@@ -734,7 +736,8 @@ class T3Agent[TDeps = None](BaseAgent[TDeps, str]):
             return
         raw = (item.model_extra or {}).get("questions", [])
         questions = TypeAdapter(list[Question]).validate_python(raw)
-        answers = await _ask(questions, provider, item.request_id)
+        with self.awaiting_user():
+            answers = await _ask(questions, provider, item.request_id)
         await self._native.respond_to_request(feed.thread_id, item.request_id, answers=answers)
 
     async def _interrupt(self) -> None:

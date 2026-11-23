@@ -485,7 +485,8 @@ class CodexAgent[TDeps = None, OutputDataT = str](BaseAgent[TDeps, OutputDataT])
         if ctx is None:
             raise RuntimeError("Permission callback invoked outside of an active run")
         input_provider = ctx.get_input_provider()
-        result = await input_provider.get_tool_confirmation(ctx)
+        with self.awaiting_user():
+            result = await input_provider.get_tool_confirmation(ctx)
         approval_decision: Literal["allow", "deny"]
         match result:
             case "allow":
@@ -515,7 +516,8 @@ class CodexAgent[TDeps = None, OutputDataT = str](BaseAgent[TDeps, OutputDataT])
             raise RuntimeError("MCP elicitation callback invoked outside of an active run")
         provider = ctx.get_input_provider()
         mcp_request = data.to_mcp()
-        result = await provider.get_elicitation(mcp_request)
+        with self.awaiting_user():
+            result = await provider.get_elicitation(mcp_request)
         if isinstance(result, ErrorData):
             return McpServerElicitationResponse(action="cancel")
         return McpServerElicitationResponse(action=result.action, content=result.content)
@@ -555,7 +557,10 @@ class CodexAgent[TDeps = None, OutputDataT = str](BaseAgent[TDeps, OutputDataT])
                 f"{question.header}: {question.question}" if question.header else question.question
             )
             mcp_params = ElicitRequestFormParams(message=message, requested_schema=schema)
-            result = await input_provider.get_elicitation(mcp_params, tool_call_id=params.item_id)
+            with self.awaiting_user():
+                result = await input_provider.get_elicitation(
+                    mcp_params, tool_call_id=params.item_id
+                )
 
             match result:
                 case ErrorData():

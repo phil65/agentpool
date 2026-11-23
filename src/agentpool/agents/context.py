@@ -55,10 +55,16 @@ class AgentContext[TDeps = Any](NodeContext[TDeps]):
         assert isinstance(self.node, Agent)
         return self.node
 
+    @property
+    def _session_id(self) -> str | None:
+        """The session of the turn this context belongs to (None: find the running one)."""
+        return self.runtime.session.session_id if self.runtime is not None else None
+
     async def handle_elicitation(self, params: ElicitRequestParams) -> ElicitResult | ErrorData:
         """Handle elicitation request for additional information."""
         provider = self.get_input_provider()
-        return await provider.get_elicitation(params, tool_call_id=self.tool_call_id)
+        with self.agent.awaiting_user(self._session_id):
+            return await provider.get_elicitation(params, tool_call_id=self.tool_call_id)
 
     async def report_progress(self, progress: float, total: float | None, message: str) -> None:
         """Report progress by emitting event into the agent's stream."""
@@ -112,7 +118,8 @@ class AgentContext[TDeps = Any](NodeContext[TDeps]):
         mode = getattr(self.agent, "tool_confirmation_mode", "per_tool")
         if (mode == "per_tool" and not tool.requires_confirmation) or mode == "never":
             return "allow"
-        return await provider.get_tool_confirmation(self, tool.description or "")
+        with self.agent.awaiting_user(self._session_id):
+            return await provider.get_tool_confirmation(self, tool.description or "")
 
     @property
     def internal_fs(self) -> IsolatedMemoryFileSystem:

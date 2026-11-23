@@ -112,6 +112,10 @@ class MessageNode[TDeps, TResult](ABC):
             """Callback for setting conversation title (called by storage manager)."""
             if target_session_id == self.session_id:
                 self.session_title = title
+            if (pool := self.agent_pool) is not None and target_session_id is not None:
+                session = pool.sessions.get(target_session_id)
+                parent_id = session.parent_id if session is not None else None
+                pool.activity.info(target_session_id, self.name, title=title, parent_id=parent_id)
 
         if self.enable_db_logging and self.storage and target_session_id:
             await self.storage.log_session(

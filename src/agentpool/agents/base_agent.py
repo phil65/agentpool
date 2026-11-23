@@ -358,6 +358,26 @@ class BaseAgent[TDeps = None, TResult = str](MessageNode[TDeps, TResult]):
         return self._session_turn_lock
 
     @contextmanager
+    def awaiting_user(self, session_id: str | None = None) -> Generator[None]:
+        """Run the block as a wait for the user (a confirmation, an elicitation, a question).
+
+        Meanwhile the waiting turn's session ``requires_action`` in the pool's activity feed:
+        ``session_id``'s turn, else the one running in this context, else the running one
+        (callbacks of a backend run outside the turn's context; agents with one native
+        session run one turn at a time).
+        """
+        running = [r for r in self._runtimes_of(session_id) if r.active_runs]
+        if (pool := self.agent_pool) is None or not running:
+            yield
+            return
+        session_id = running[0].session.session_id
+        pool.activity.state(session_id, self.name, "requires_action")
+        try:
+            yield
+        finally:
+            pool.activity.state(session_id, self.name, "running")
+
+    @contextmanager
     def use_session(self, session: Session | None) -> Generator[None]:
         """Run the block as part of ``session``'s turns on this agent.
 

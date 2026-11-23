@@ -582,7 +582,8 @@ class AntigravityAgent[TDeps = None, OutputDataT = str](BaseAgent[TDeps, OutputD
                 cancelled = False
                 for entry in data.questions:
                     params = question_to_elicitation(entry)
-                    elicit_result = await provider.get_elicitation(params)
+                    with agent.awaiting_user():
+                        elicit_result = await provider.get_elicitation(params)
                     from mcp.types import ElicitResult
 
                     if isinstance(elicit_result, ElicitResult) and elicit_result.action == "cancel":
@@ -828,7 +829,8 @@ class AntigravityAgent[TDeps = None, OutputDataT = str](BaseAgent[TDeps, OutputD
             tool_input=dict(tool_call.args),
             tool_name=str(tool_call.name),
         )
-        result = await provider.get_tool_confirmation(context, tool_description=reason)
+        with self.awaiting_user():
+            result = await provider.get_tool_confirmation(context, tool_description=reason)
         match result:
             case "allow":
                 return True

@@ -40,6 +40,7 @@ pool_server:
   port: 3001
   serve_nodes: [data_expert, api_expert]  # true: all (default), false: none
   serve_skills: true
+  serve_events: false                     # see Session Events below
   background_tasks: false                 # see Background Tasks below
 
 agents:
@@ -108,6 +109,22 @@ A task's state and result are kept for 15 minutes by default, counted from when 
 starts, so the limit has to cover the run plus the time until the client fetches the result.
 Raise it with `--tasks-ttl 7200` (seconds), or `tasks_ttl: PT2H` in `pool_server`. Tasks
 always run in the server's own process, because each run needs the pool.
+
+## Session Events
+
+With `serve_events: true` in `pool_server`, the server publishes the pool's session activity
+through the MCP Events extension
+([SEP-3415](https://github.com/modelcontextprotocol/modelcontextprotocol/pull/3415),
+experimental), modelled on ACP v2's session updates:
+
+| Event | Payload | When |
+|---|---|---|
+| `session.state_update` | `session_id`, `agent`, `state`; for `idle` also `stop_reason` (`end_turn`, `cancelled`, `error`), `usage`, `error` | a turn starts (`running`), waits for the user (`requires_action`), or ends (`idle`) |
+| `session.info_update` | `session_id`, `agent`, `title`, `parent_id` | a session is created or gets its title |
+
+Every payload has a `timestamp`. Both take the optional arguments `agent` and `session_id` to
+follow one agent or session. A client that reconnects with its cursor gets what it missed, as
+long as the pool still keeps it (the last 1000 entries); beyond that the server reports the gap.
 
 ## Consuming MCP Servers
 
