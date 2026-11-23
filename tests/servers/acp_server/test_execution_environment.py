@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import sys
 from typing import TYPE_CHECKING
 
 from aclientp.client.implementations import HeadlessACPClient
@@ -31,6 +32,8 @@ if TYPE_CHECKING:
 FULL_CAPS = ClientCapabilities(
     fs=FileSystemCapabilities(read_text_file=True, write_text_file=True), terminal=True
 )
+# `pwd` and `sh` are POSIX programs (the git-diff test covers Windows hosts)
+posix_only = pytest.mark.skipif(sys.platform == "win32", reason="runs POSIX programs")
 # What T3 Code advertises: it renders output but offers neither terminal nor fs.
 NO_CAPS = ClientCapabilities(
     fs=FileSystemCapabilities(read_text_file=False, write_text_file=False), terminal=False
@@ -124,6 +127,7 @@ async def test_client_without_capabilities_loads_local_skills(
     assert "local-skill" in {skill.name for skill in pool.skills.list_skills()}
 
 
+@posix_only
 async def test_commands_run_in_the_session_cwd_without_a_client_terminal(
     tmp_path: Path, default_test_agent: Agent
 ) -> None:
@@ -136,6 +140,7 @@ async def test_commands_run_in_the_session_cwd_without_a_client_terminal(
     assert output.strip() == str(tmp_path)
 
 
+@posix_only
 async def test_run_command_takes_a_cwd_and_reports_failures(
     tmp_path: Path, default_test_agent: Agent
 ) -> None:
@@ -151,6 +156,7 @@ async def test_run_command_takes_a_cwd_and_reports_failures(
     assert "oops" in output
 
 
+@posix_only
 async def test_commands_run_in_the_client_terminal_when_it_has_one(
     tmp_path: Path, default_test_agent: Agent
 ) -> None:

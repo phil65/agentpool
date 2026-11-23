@@ -12,6 +12,8 @@ from dataclasses import dataclass, field
 from decimal import Decimal
 import re
 import shlex
+import subprocess
+import sys
 from typing import TYPE_CHECKING, Any, Literal, assert_never
 
 from aclientp.agent.acp_requests import ACPRequests
@@ -368,7 +370,12 @@ class ACPSession:
             The combined output and the exit code (None if the program did not run)
         """
         # `cwd` may differ from the environment's, and execute_command takes none
-        line = f"cd {shlex.quote(cwd or self.cwd)} && {shlex.join([command, *args])}"
+        directory = cwd or self.cwd
+        if sys.platform == "win32" and isinstance(self.env, LocalExecutionEnvironment):
+            # This host's shell is cmd.exe: no POSIX quoting, and `cd` needs /d for drives
+            line = f'cd /d "{directory}" && {subprocess.list2cmdline([command, *args])}'
+        else:
+            line = f"cd {shlex.quote(directory)} && {shlex.join([command, *args])}"
         result = await self.env.execute_command(line)
         return (result.stdout or "") + (result.stderr or ""), result.exit_code
 
