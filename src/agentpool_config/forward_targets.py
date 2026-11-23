@@ -76,9 +76,6 @@ class ConnectionConfig(Schema):
     )
     """How to process queued messages."""
 
-    priority: int = Field(default=0, examples=[0, 1, 5], title="Task priority")
-    """Priority of the task. Lower = higher priority."""
-
     delay: timedelta | None = Field(default=None, title="Processing delay")
     """Delay before processing."""
     filter_condition: Condition | None = Field(
@@ -120,7 +117,6 @@ class ConnectionConfig(Schema):
             target,
             connection_type=self.connection_type,
             name=name,
-            priority=self.priority,
             delay=self.delay,
             queued=self.queued,
             queue_strategy=self.queue_strategy,
@@ -143,7 +139,7 @@ class NodeConnectionConfig(ConnectionConfig):
     including:
     - Basic routing (which node, what type of connection)
     - Message queueing and processing strategies
-    - Timing controls (priority, delay)
+    - Timing control (delay)
     - Execution behavior (wait for completion)
     """
 

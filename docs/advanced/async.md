@@ -39,7 +39,7 @@ analyzer >> summarizer  # analyzer's outputs go to summarizer
 # The summarizer runs as analyzer's turn ends; analyzer.run() returns after it
 await analyzer.run("Analyze")
 
-# A connection with a delay or priority runs in the background instead
+# A connection with a delay runs in the background instead
 talk = analyzer.connect_to(summarizer, delay=timedelta(seconds=5))
 await analyzer.run("Analyze")  # returns before the summarizer ran
 

@@ -68,7 +68,6 @@ class Talk[TTransmittedData = Any]:
         name: str | None = None,
         connection_type: ConnectionType = "run",
         wait_for_connections: bool = False,
-        priority: int = 0,
         delay: timedelta | None = None,
         queued: bool = False,
         queue_strategy: QueueStrategy = "latest",
@@ -90,7 +89,6 @@ class Talk[TTransmittedData = Any]:
                 - "context": Add message as context to target
                 - "forward": Forward message to target's outbox
             wait_for_connections: Whether to wait for all targets to complete
-            priority: Task priority (lower = higher priority)
             delay: Optional delay before processing
             queued: Whether messages should be queued for manual processing
             queue_strategy: How to process queued messages:
@@ -113,7 +111,6 @@ class Talk[TTransmittedData = Any]:
         # Could perhaps better be an auto-inferring property
         self.name = name or f"{source.name}->{[t.name for t in targets]}"
         self.group = group
-        self.priority = priority
         self.delay = delay
         self.active = True
         self.connection_type: ConnectionType = connection_type
@@ -323,9 +320,9 @@ class Talk[TTransmittedData = Any]:
 
         match self.connection_type:
             case "run":
-                if self.delay is not None or self.priority != 0:
+                if self.delay is not None:
                     target.task_manager.run_background(
-                        self._run_target(message, target), priority=self.priority, delay=self.delay
+                        self._run_target(message, target), delay=self.delay
                     )
                     return None
                 return await self._run_target(message, target)
@@ -343,25 +340,21 @@ class Talk[TTransmittedData = Any]:
                             with target.use_session(session):
                                 target.staged_content.add_text(str(message.content))
 
-                if self.delay is not None or self.priority != 0:
+                if self.delay is not None:
                     coro = add_context()
-                    target.task_manager.run_background(
-                        coro, priority=self.priority, delay=self.delay
-                    )
+                    target.task_manager.run_background(coro, delay=self.delay)
                 else:
                     await add_context()
                 return None
 
             case "forward":
-                if self.delay is not None or self.priority != 0:
+                if self.delay is not None:
 
                     async def delayed_emit() -> None:
                         await target.router.route(target, message)
 
                     coro = delayed_emit()
-                    target.task_manager.run_background(
-                        coro, priority=self.priority, delay=self.delay
-                    )
+                    target.task_manager.run_background(coro, delay=self.delay)
                 else:
                     await target.router.route(target, message)
                 return None

@@ -53,7 +53,6 @@ class ConnectionManager:
         target: MessageNode[Any, Any] | Sequence[MessageNode[Any, Any]],
         *,
         connection_type: ConnectionType = "run",
-        priority: int = 0,
         delay: timedelta | None = None,
         queued: bool = False,
         queue_strategy: QueueStrategy = "latest",
@@ -70,7 +69,6 @@ class ConnectionManager:
             source: Source agent or team
             target: Single target or sequence of targets
             connection_type: How to handle messages
-            priority: Task priority (lower = higher priority)
             delay: Optional delay before processing
             queued: Whether to queue messages for manual processing
             queue_strategy: How to process queued messages
@@ -87,7 +85,6 @@ class ConnectionManager:
                     source,
                     t,
                     connection_type=connection_type,
-                    priority=priority,
                     delay=delay,
                     queued=queued,
                     queue_strategy=queue_strategy,
@@ -105,7 +102,6 @@ class ConnectionManager:
             targets=[target],
             connection_type=connection_type,
             name=name,
-            priority=priority,
             delay=delay,
             queued=queued,
             queue_strategy=queue_strategy,

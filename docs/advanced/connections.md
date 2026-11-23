@@ -39,7 +39,6 @@ class Talk:
         source: MessageNode[Any, Any],
         targets: list[MessageNode[Any, Any]],
         connection_type: ConnectionType = "run",
-        priority: int = 0,
         delay: timedelta | None = None,
         transform: AnyTransformFn | None = None,
         filter_condition: AnyFilterFn | None = None,
@@ -178,7 +177,6 @@ Each connection tracks:
 # Set up connection with control
 talk = agent.connect_to(
     target,
-    priority=1,
     delay=timedelta(seconds=5),
     stop_condition=lambda ctx: ctx.message.content == "STOP",
     exit_condition=lambda ctx: ctx.message.content == "EXIT"

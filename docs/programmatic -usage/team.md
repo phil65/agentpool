@@ -105,7 +105,6 @@ team >> other_agent
 agent.connect_to(
     team,
     connection_type="run",    # How to handle messages
-    priority=1,              # Task priority
     delay=timedelta(seconds=1)  # Optional delay
 )
 ```
@@ -155,7 +154,6 @@ Fine-tune how messages flow through the team:
 team.connect_to(
     target,
     connection_type="context",  # Add as context
-    priority=1,                # Higher priority
     delay=timedelta(minutes=1) # Delayed execution
 )
 

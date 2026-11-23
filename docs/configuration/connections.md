@@ -96,8 +96,7 @@ connections:
 ```
 
 Without a delay, a `run` connection runs the target as the source's turn ends, and the source's
-run returns after it. A delivery with a delay (or a `priority` other than 0) runs in the
-background instead.
+run returns after it. A delivery with a delay runs in the background instead.
 
 ### Wait for Completion
 
@@ -110,11 +109,6 @@ connections:
     delay: 5.0
     wait_for_completion: true  # The source's run returns once the worker is done
 ```
-
-### Priority
-
-A `priority` other than 0 also makes the delivery run in the background. It does not order
-deliveries: they start when due.
 
 ### Target Session
 

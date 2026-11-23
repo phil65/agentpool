@@ -43,7 +43,6 @@ class TaskManager:
         coro: Coroutine[Any, Any, T],
         *,
         name: str | None = None,
-        priority: int = 0,
         delay: timedelta | None = None,
     ) -> asyncio.Task[T]:
         """Create and track a new task, started now or after ``delay``.
@@ -54,13 +53,12 @@ class TaskManager:
         Args:
             coro: Coroutine to run
             name: Optional name for the task (defaults to coroutine function name)
-            priority: Kept for callers that pass it; tasks start when due, in no order
             delay: Optional delay before execution
         """
         task_name = name or get_fn_name(coro)
         runner = _after(delay, coro) if delay is not None else coro
         task = asyncio.create_task(runner, name=task_name)
-        logger.debug("Created task", name=task.get_name(), priority=priority, delay=delay)
+        logger.debug("Created task", name=task.get_name(), delay=delay)
 
         def _done_callback(t: asyncio.Task[Any]) -> None:
             logger.debug("Task completed", name=t.get_name())
@@ -115,12 +113,11 @@ class TaskManager:
         self,
         coro: Coroutine[Any, Any, Any],
         name: str | None = None,
-        priority: int = 0,
         delay: timedelta | None = None,
     ) -> None:
         """Run a coroutine in the background and track it."""
         try:
-            self.create_task(coro, name=name, priority=priority, delay=delay)
+            self.create_task(coro, name=name, delay=delay)
 
         except RuntimeError:
             # No running loop - use fire_and_forget

@@ -23,7 +23,6 @@ class Talk:
         source: MessageNode[Any, Any],
         targets: list[MessageNode[Any, Any]],
         connection_type: ConnectionType = "run",
-        priority: int = 0,
         delay: timedelta | None = None,
     )
 ```
@@ -116,7 +115,6 @@ Connections support:
 # Set up connection with control
 talk = agent.connect_to(
     target,
-    priority=1,
     delay=timedelta(seconds=5)
 )
 
@@ -247,7 +245,6 @@ Fine-grained control over message execution:
 ```python
 talk = agent_a.connect_to(
     agent_b,
-    priority=1,  # Lower numbers = higher priority
     delay=timedelta(seconds=5),  # Delay before processing
 )
 # With a delay agent_b runs in the background: make agent_a's runs wait for it
