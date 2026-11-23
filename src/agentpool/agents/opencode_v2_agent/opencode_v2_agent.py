@@ -282,6 +282,7 @@ class OpenCodeV2Agent[TDeps = None](BaseAgent[TDeps, str]):
             input_provider=input_provider,
             event_handlers=handlers or None,
             hooks=config.hooks.get_agent_hooks(),
+            event_configs=list(config.triggers),
         )
 
     # --- Connection & subprocess lifecycle -------------------------------------------

@@ -211,6 +211,7 @@ class AGUIAgent[TDeps = None](BaseAgent[TDeps, str]):
             agent_pool=agent_pool,
             tool_confirmation_mode=config.requires_tool_confirmation,
             hooks=config.hooks.get_agent_hooks(),
+            event_configs=list(config.triggers),
         )
 
     async def __aenter__(self) -> Self:

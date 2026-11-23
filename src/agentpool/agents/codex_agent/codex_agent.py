@@ -58,6 +58,7 @@ if TYPE_CHECKING:
         ToolRequestUserInputResponse,
     )
     from codexed.request_handlers import ApprovalParams, ApprovalResponse
+    from evented_config import EventConfig
     from exxec import ExecutionEnvironment
     from pydantic_ai import UserContent
     from tokonomics.model_discovery.model_info import ModelInfo
@@ -132,6 +133,7 @@ class CodexAgent[TDeps = None, OutputDataT = str](BaseAgent[TDeps, OutputDataT])
         approval_policy: ApprovalPolicy | None = None,
         sandbox: SandboxMode | None = None,
         personality: Personality | None = None,
+        event_configs: Sequence[EventConfig] | None = None,
     ) -> None:
         """Initialize Codex agent.
 
@@ -158,6 +160,7 @@ class CodexAgent[TDeps = None, OutputDataT = str](BaseAgent[TDeps, OutputDataT])
             approval_policy: Approval policy ("never", "on-request", "untrusted")
             sandbox: Sandbox mode ("read-only", "workspace-write", "danger-full-access")
             personality: Personality preset (none, friendly, pragmatic)
+            event_configs: Event trigger configurations
         """
         from agentpool.mcp_server.tool_bridge import ToolManagerBridge
         from agentpool_config.mcp_server import BaseMCPServerConfig
@@ -174,6 +177,7 @@ class CodexAgent[TDeps = None, OutputDataT = str](BaseAgent[TDeps, OutputDataT])
             output_type=output_type,
             event_handlers=event_handlers,
             hooks=hooks,
+            event_configs=event_configs,
         )
 
         # Codex settings
@@ -371,6 +375,7 @@ class CodexAgent[TDeps = None, OutputDataT = str](BaseAgent[TDeps, OutputDataT])
             agent_pool=agent_pool,
             output_type=resolved_output_type,  # type: ignore[arg-type]  # ty: ignore[invalid-argument-type]
             hooks=config.hooks.get_agent_hooks(),
+            event_configs=list(config.triggers),
         )
 
     async def _setup_toolsets(self) -> None:

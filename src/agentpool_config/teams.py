@@ -73,6 +73,8 @@ class TeamConfig(NodeConfig):
                 display_name=self.display_name,
                 shared_prompt=self.shared_prompt,
                 mcp_servers=self.get_mcp_servers(),
+                description=self.description,
+                event_configs=list(self.triggers),
             )
         return TeamRun(
             nodes,
@@ -80,4 +82,6 @@ class TeamConfig(NodeConfig):
             display_name=self.display_name,
             shared_prompt=self.shared_prompt,
             mcp_servers=self.get_mcp_servers(),
+            description=self.description,
+            event_configs=list(self.triggers),
         )

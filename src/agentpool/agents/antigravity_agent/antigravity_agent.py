@@ -373,6 +373,7 @@ class AntigravityAgent[TDeps = None, OutputDataT = str](BaseAgent[TDeps, OutputD
             output_type=resolved_output_type,  # type: ignore[arg-type]  # ty:ignore[invalid-argument-type]
             event_handlers=handlers or None,
             hooks=config.hooks.get_agent_hooks(),
+            event_configs=list(config.triggers),
         )
 
     # --- Lifecycle --------------------------------------------------------------------

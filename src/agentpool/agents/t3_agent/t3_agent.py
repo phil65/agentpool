@@ -301,6 +301,7 @@ class T3Agent[TDeps = None](BaseAgent[TDeps, str]):
             event_handlers=handlers or None,
             agent_pool=agent_pool,
             hooks=config.hooks.get_agent_hooks(),
+            event_configs=list(config.triggers),
         )
 
     # --- Connection -------------------------------------------------------------------
