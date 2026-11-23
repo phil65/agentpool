@@ -30,7 +30,7 @@ def test_agent_from_config_keeps_triggers(agent_type: str) -> None:
         "agents": {"node": {**AGENT_CONFIGS[agent_type], "triggers": [TRIGGER]}}
     })
     agent = manifest.agents["node"].get_agent()
-    assert [c.name for c in agent._events.configs] == ["daily"]
+    assert [c.name for c in agent.router.triggers.of(agent)] == ["daily"]
 
 
 @pytest.mark.parametrize("mode", ["parallel", "sequential"])
@@ -48,5 +48,5 @@ def test_pool_team_keeps_triggers_and_description(mode: str) -> None:
     })
     pool = AgentPool(manifest)
     team = pool.nodes["crew"]
-    assert [c.name for c in team._events.configs] == ["daily"]
+    assert [c.name for c in team.router.triggers.of(team)] == ["daily"]
     assert team.description == "Does things"

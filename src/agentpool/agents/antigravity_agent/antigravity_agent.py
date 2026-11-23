@@ -39,7 +39,6 @@ if TYPE_CHECKING:
     from collections.abc import AsyncIterator, Callable, Sequence
     from types import TracebackType
 
-    from evented_config import EventConfig
     from exxec import ExecutionEnvironment
     from google.antigravity import Agent as SDKAgent, AgentConfig as SDKAgentConfig
     from google.antigravity.hooks.hooks import Hook, HookContext
@@ -76,6 +75,7 @@ if TYPE_CHECKING:
     from agentpool.resource_providers import ResourceProvider
     from agentpool.sessions import SessionData
     from agentpool.ui.base import InputProvider
+    from agentpool_config.events import EventConfig
     from agentpool_config.mcp_server import MCPServerConfig
 
 

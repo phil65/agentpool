@@ -24,14 +24,13 @@ if TYPE_CHECKING:
     from collections.abc import AsyncIterator, Sequence
     from datetime import datetime
 
-    from evented_config import EventConfig
-
     from agentpool import MessageNode
     from agentpool.agents.events import RichAgentStreamEvent
     from agentpool.agents.events.events import SubAgentType
     from agentpool.common_types import PromptCompatible
     from agentpool.delegation import AgentPool
     from agentpool.sessions import Session
+    from agentpool_config.events import EventConfig
     from agentpool_config.mcp_server import MCPServerConfig
 
 

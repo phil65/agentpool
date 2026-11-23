@@ -183,6 +183,8 @@ class AgentPool[TPoolDeps = None](BaseRegistry[NodeName, MessageNode[Any, Any]])
                 else:
                     for init in node_inits:
                         await init
+                # Triggers last (they run nodes), so they stop first
+                await self.exit_stack.enter_async_context(self.router.triggers)
 
             except Exception as e:
                 await self.cleanup()

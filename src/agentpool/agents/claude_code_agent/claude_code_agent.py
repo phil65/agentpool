@@ -79,7 +79,6 @@ if TYPE_CHECKING:
         ClaudeCodeModelInfo,
         ClaudeCodeServerInfo,
     )
-    from evented_config import EventConfig
     from exxec import ExecutionEnvironment
     from mcp.types import ElicitResult
     from pydantic_ai import FinishReason, UserContent
@@ -101,6 +100,7 @@ if TYPE_CHECKING:
     from agentpool.resource_providers import ResourceProvider
     from agentpool.storage import StorageManager
     from agentpool.ui.base import InputProvider
+    from agentpool_config.events import EventConfig
     from agentpool_config.mcp_server import MCPServerConfig
 
 logger = get_logger(__name__)

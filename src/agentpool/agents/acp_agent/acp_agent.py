@@ -75,7 +75,6 @@ if TYPE_CHECKING:
     from aclientp.schema.capabilities import AgentCapabilities
     from aclientp.schema.mcp import McpServer
     from anyio.abc import ByteReceiveStream, ByteSendStream, Process
-    from evented_config import EventConfig
     from exxec import ExecutionEnvironment
     from pydantic_ai import UserContent
     from slashed import BaseCommand
@@ -93,6 +92,7 @@ if TYPE_CHECKING:
     from agentpool.resource_providers import ResourceProvider
     from agentpool.sessions import SessionData
     from agentpool.ui.base import InputProvider
+    from agentpool_config.events import EventConfig
     from agentpool_config.mcp_server import MCPServerConfig
 
     type PermissionCallback = Callable[

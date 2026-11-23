@@ -1,10 +1,12 @@
-"""Event sources for AgentPool."""
+"""Events of connections between nodes."""
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Literal
+from dataclasses import dataclass, field
+from datetime import datetime  # noqa: TC003
+from typing import TYPE_CHECKING, Any, Literal
 
-from evented.event_data import EventData
+from agentpool.utils.time_utils import get_now
 
 
 if TYPE_CHECKING:
@@ -16,8 +18,9 @@ if TYPE_CHECKING:
 ChangeType = Literal["added", "modified", "deleted"]
 
 
-class ConnectionEventData[TTransmittedData](EventData):
-    """Event from connection activity."""
+@dataclass(frozen=True, kw_only=True)
+class ConnectionEventData[TTransmittedData]:
+    """An event of a connection (``Talk``), as connection triggers and callbacks get it."""
 
     connection_name: str
     """Name of the connection which fired an event."""
@@ -30,6 +33,15 @@ class ConnectionEventData[TTransmittedData](EventData):
 
     message: ChatMessage[TTransmittedData] | None = None
     """The message at the stage of the event."""
+
+    source: str = "connection"
+    """What produced the event (as ``EventData.source``)."""
+
+    timestamp: datetime = field(default_factory=get_now)
+    """When the event occurred."""
+
+    metadata: dict[str, Any] = field(default_factory=dict)
+    """Additional data about the event."""
 
     def to_prompt(self) -> str:
         """Convert event to agent prompt."""

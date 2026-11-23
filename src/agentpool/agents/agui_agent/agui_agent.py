@@ -47,7 +47,6 @@ if TYPE_CHECKING:
     from types import TracebackType
 
     from ag_ui.core import Message, ToolMessage
-    from evented_config import EventConfig
     from exxec import ExecutionEnvironment
     from pydantic_ai import UserContent
     from slashed import BaseCommand
@@ -62,6 +61,7 @@ if TYPE_CHECKING:
     from agentpool.models.agui_agents import AGUIAgentConfig
     from agentpool.sessions import SessionData
     from agentpool.ui.base import InputProvider
+    from agentpool_config.events import EventConfig
     from agentpool_config.mcp_server import MCPServerConfig
     from agentpool_config.nodes import ToolConfirmationMode
 

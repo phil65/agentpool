@@ -11,17 +11,15 @@ AgentPool supports different types of triggers that can activate agents automati
 - Webhook calls
 - Incoming emails
 - Time-based triggers
-- User interface actions
-- Function calls (monitor functions using a decorator and get event each time it is called)
+- Events of connections between agents (a message forwarded, a queue filled, ...)
 
 ## Basic Concepts
 
 Events flow through the system in this order:
 
-1. Event Source detects change
-2. Event Manager processes event
-3. Agent receives and handles event
-4. Optional: Agent forwards event results through connections
+1. An event source detects a change (a trigger in an agent's or team's `triggers:`)
+2. The event becomes a prompt (its `to_prompt()`), and the node the trigger belongs to runs it
+3. Optional: the node's response flows on through its connections
 
 ## Event Types
 
@@ -127,50 +125,50 @@ agents:
         paths: ["config/*.yml"]
 ```
 
-## Event Manager
+## Where Triggers Run
 
-Each agent has an event manager (`agent.events`) that handles:
+A pool runs the triggers of all its agents and teams: their sources start once the nodes are
+up, and stop before they shut down. An agent used without a pool runs its own triggers while
+it is entered (`async with agent:`).
 
-- Event source lifecycle
-- Event processing
-- Callback management
+### Connection Triggers
 
-```python
-# Access event manager
-manager = agent.events
+A `connection` trigger has no source of its own. It fires on events of the pool's connections,
+and runs its node in the background (the routing that caused the event doesn't wait for it):
 
-# Add custom callback
-async def on_event(event: EventData):
-    print(f"Event received: {event}")
-
-manager.add_callback(on_event)
-
-# Remove callback
-manager.remove_callback(on_event)
+```yaml
+agents:
+  writer:
+    model: openai:gpt-5-nano
+    connections:
+      - type: node
+        name: reviewer
+  reviewer:
+    model: openai:gpt-5-nano
+  auditor:
+    model: openai:gpt-5-nano
+    triggers:
+      - type: connection
+        name: on_forward
+        source: writer           # only connections from this node (optional)
+        target: reviewer         # only connections to this node (optional)
+        event: message_forwarded # message_received, message_processed, queue_filled, queue_triggered
+        condition:               # optional
+          type: content
+          words: ["urgent"]
 ```
 
-Events can be handled in two ways:
+### Callbacks for One Connection
 
-1. **Automatic Handling**: Events are automatically converted to agent runs using their `to_prompt()` method
-2. **Custom Callbacks**: Custom event handlers for more control
-
-#### Custom Event Handlers
-
-Register custom callbacks to handle events:
+In Python, a connection (`Talk`) calls back on its own events:
 
 ```python
-async def handle_events(event: EventData):
-    match event:
-        case FileEventData(type="modified", path=p) if p.endswith('.py'):
-            await agent.run(f"Python file modified: {p}")
-        case WebhookEventData(path="/github"):
-            await agent.run(f"GitHub webhook received: {event.data}")
+talk = writer.connect_to(reviewer)
 
-# Register callback
-agent.events.add_callback(handle_events)
+def on_forward(event: ConnectionEventData) -> None:
+    print(f"{event.connection_name}: {event.message.content}")
 
-# Remove callback
-agent.events.remove_callback(handle_events)
+talk.on_event("message_forwarded", on_forward)
 ```
 
 ## CLI Usage
@@ -218,71 +216,6 @@ class WebhookEventData(EventData):
     source: str
 ```
 
-## Function Monitoring
-
-The EventManager provides two powerful decorators for monitoring function execution and creating periodic tasks:
-
-### Track Function Calls
-
-Monitor any function and get events when it's called:
-
-```python
-agent = Agent(...)
-
-@agent.events.track("search_executed")
-async def search_docs(query: str) -> list[Doc]:
-    results = await search(query)
-    return results  # Result becomes event content
-
-# Track with additional metadata
-@agent.events.track(
-    "user_action",
-    category="authentication",
-    severity="high"
-)
-def user_login(username: str) -> bool:
-    return auth.login(username)
-```
-
-The decorator:
-
-- Creates an event for each function call
-- Includes function result as event content
-- Adds timing and error information
-- Supports both sync and async functions
-- Can include custom metadata
-
-### Poll Functions
-
-Execute functions periodically and handle their results as events:
-
-```python
-agent = Agent(...)
-
-# Check every hour
-@agent.events.poll("system_stats", hours=1)
-async def check_system() -> SystemInfo:
-    stats = await get_system_stats()
-    return stats
-
-# Check every 30 minutes with metadata
-@agent.events.poll(
-    "database_status",
-    minutes=30,
-    metadata={"critical": True}
-)
-def check_database() -> DBStatus:
-    return db.get_status()
-```
-
-The decorator:
-
-- Executes function at specified intervals
-- Converts results to events
-- Handles both sync and async functions
-- Can include custom metadata
-- Supports flexible time intervals
-
 ## Common Patterns
 
 ### Code Review Automation
@@ -307,17 +240,4 @@ agents:
         name: "config_watch"
         paths: ["config/*.yml"]
         debounce: 5000  # 5 second delay
-```
-
-### Mixed Handling
-
-```python
-# Custom handling for specific cases
-async def special_handler(event: EventData):
-    if isinstance(event, FileEventData) and event.path.endswith('.secret'):
-        await handle_secret_file(event.path)
-
-# Register custom handler but keep auto-handling
-agent.events.add_callback(special_handler)
-# Auto-handling will still process other events
 ```

@@ -37,7 +37,6 @@ if TYPE_CHECKING:
     from collections.abc import AsyncIterator, Sequence
     from types import TracebackType
 
-    from evented_config import EventConfig
     from exxec import ExecutionEnvironment
     from pydantic import JsonValue
     from pydantic_ai import UserContent
@@ -64,6 +63,7 @@ if TYPE_CHECKING:
     from agentpool.models.t3_agents import T3AgentConfig, T3InteractionMode, T3RuntimeMode
     from agentpool.sessions import SessionData
     from agentpool.ui.base import InputProvider
+    from agentpool_config.events import EventConfig
     from agentpool_config.mcp_server import MCPServerConfig
 
 

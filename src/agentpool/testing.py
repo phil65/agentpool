@@ -37,10 +37,9 @@ from typing import TYPE_CHECKING, Any, Literal
 if TYPE_CHECKING:
     from collections.abc import AsyncGenerator, Sequence
 
-    from evented_config import EventConfig
-
     from agentpool.agents.acp_agent import ACPAgent
     from agentpool.common_types import AnyEventHandlerType
+    from agentpool_config.events import EventConfig
 
 
 @asynccontextmanager

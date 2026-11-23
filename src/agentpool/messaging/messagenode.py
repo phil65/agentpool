@@ -19,9 +19,6 @@ if TYPE_CHECKING:
     from datetime import timedelta
     from types import TracebackType
 
-    from evented.event_data import EventData
-    from evented_config import EventConfig
-
     from agentpool.common_types import (
         AnyTransformFn,
         AsyncFilterFn,
@@ -36,6 +33,7 @@ if TYPE_CHECKING:
     from agentpool.talk.stats import AggregatedMessageStats, MessageStats
     from agentpool.tools.base import FunctionTool
     from agentpool.ui.base import InputProvider
+    from agentpool_config.events import EventConfig
     from agentpool_config.forward_targets import ConnectionType
     from agentpool_config.mcp_server import MCPServerConfig
 
@@ -68,12 +66,7 @@ class MessageNode[TDeps, TResult](ABC):
         self._storage = storage
 
         from agentpool.mcp_server.manager import MCPManager
-        from agentpool.messaging import EventManager
         from agentpool.messaging.connection_manager import ConnectionManager
-
-        async def _event_handler(event: EventData) -> None:
-            if prompt := event.to_prompt():
-                await self.run(prompt)
 
         self.task_manager = TaskManager()
         self._name = name or self.__class__.__name__
@@ -83,8 +76,8 @@ class MessageNode[TDeps, TResult](ABC):
         self.description = description
         self._router: Router | None = None
         self.connections = ConnectionManager(self)
-        cfgs = list(event_configs) if event_configs else None
-        self._events = EventManager(configs=cfgs, event_callbacks=[_event_handler])
+        for config in event_configs or []:  # They run where its router's triggers run
+            self.router.triggers.add(self, config)
         name_ = f"node_{self._name}"
         self.mcp = MCPManager(name_, servers=mcp_servers, owner=self.name)
         self.enable_db_logging = enable_logging
@@ -134,7 +127,8 @@ class MessageNode[TDeps, TResult](ABC):
     async def __aenter__(self) -> Self:
         """Initialize base message node."""
         try:
-            await self._events.__aenter__()
+            if self.agent_pool is None:  # A pool runs its nodes' triggers itself
+                await self.router.triggers.__aenter__()
             await self.mcp.__aenter__()
         except Exception as e:
             await self.__aexit__(type(e), e, e.__traceback__)
@@ -150,7 +144,8 @@ class MessageNode[TDeps, TResult](ABC):
         exc_tb: TracebackType | None,
     ) -> None:
         """Clean up base resources."""
-        await self._events.__aexit__(exc_type, exc_val, exc_tb)
+        if self.agent_pool is None and self._router is not None:
+            await self._router.triggers.__aexit__(exc_type, exc_val, exc_tb)
         await self.mcp.__aexit__(exc_type, exc_val, exc_tb)
         await self.task_manager.cleanup_tasks()
 

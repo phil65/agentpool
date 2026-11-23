@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING, Any
 
 from agentpool.log import get_logger
 from agentpool.talk.registry import ConnectionRegistry
+from agentpool.talk.triggers import Triggers
 from agentpool.utils.inspection import get_fn_name
 
 
@@ -36,6 +37,8 @@ class Router:
         self._outgoing: defaultdict[MessageNode[Any, Any], list[Talk[Any]]] = defaultdict(list)
         self.registry = ConnectionRegistry()
         """Every connection by name (named ones under theirs, the others auto-named)."""
+        self.triggers = Triggers()
+        """The nodes' event triggers (connection triggers get the connections' events)."""
         self._subscriptions: dict[
             MessageNode[Any, Any], Callable[[ChatMessage[Any]], Awaitable[None]]
         ] = {}
@@ -70,11 +73,12 @@ class Router:
         talk._router = None
 
     def adopt(self, other: Router) -> None:
-        """Take over all connections of ``other`` (a node's own router, as it joins a pool)."""
+        """Take over the connections and triggers of ``other`` (a node's own router)."""
         for talk in [t for talks in other._outgoing.values() for t in talks]:
             other.remove(talk)
             talk.active = True
             self.add(talk, name=talk.name)
+        self.triggers.adopt(other.triggers)
 
     def outgoing(self, source: MessageNode[Any, Any]) -> list[Talk[Any]]:
         """Connections from ``source``, in the order they were made."""

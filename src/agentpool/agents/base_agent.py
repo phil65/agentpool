@@ -38,7 +38,6 @@ if TYPE_CHECKING:
     from datetime import datetime
 
     from aclientp.schema import AvailableCommandsUpdate
-    from evented_config import EventConfig
     from exxec import ExecutionEnvironment
     from fsspec import AbstractFileSystem
     from pydantic_ai import UserContent
@@ -80,6 +79,7 @@ if TYPE_CHECKING:
     from agentpool.storage import StorageManager
     from agentpool.talk.stats import MessageStats
     from agentpool.ui.base import InputProvider
+    from agentpool_config.events import EventConfig
     from agentpool_config.mcp_server import MCPServerConfig
 
     # Union type for state updates emitted via state_updated signal

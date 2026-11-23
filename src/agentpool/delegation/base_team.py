@@ -18,8 +18,6 @@ from agentpool.talk.stats import AggregatedMessageStats
 if TYPE_CHECKING:
     from collections.abc import AsyncIterator, Iterator, Sequence
 
-    from evented_config import EventConfig
-
     from agentpool import Agent, AgentPool, Team
     from agentpool.agents.base_agent import BaseAgent
     from agentpool.agents.events import RichAgentStreamEvent
@@ -29,6 +27,7 @@ if TYPE_CHECKING:
     from agentpool.sessions import Session
     from agentpool.talk.stats import AggregatedTalkStats
     from agentpool.ui.base import InputProvider
+    from agentpool_config.events import EventConfig
     from agentpool_config.mcp_server import MCPServerConfig
 
 logger = get_logger(__name__)

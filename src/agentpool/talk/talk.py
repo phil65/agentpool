@@ -21,8 +21,6 @@ if TYPE_CHECKING:
     from collections.abc import AsyncGenerator, Awaitable, Iterator
     from datetime import datetime, timedelta
 
-    from evented.event_data import EventData
-
     from agentpool.common_types import (
         AnyFilterFn,
         AnyTransformFn,
@@ -123,6 +121,12 @@ class Talk[TTransmittedData = Any]:
         self.exit_condition = exit_condition
         self._router: Router | None = None
         """The router holding this connection (set as it is added to one)."""
+        self._event_callbacks: list[
+            tuple[
+                ConnectionEventType,
+                Callable[[ConnectionEventData[TTransmittedData]], Awaitable[None] | None],
+            ]
+        ] = []
 
     def __repr__(self) -> str:
         targets = [t.name for t in self.targets]
@@ -203,14 +207,8 @@ class Talk[TTransmittedData = Any]:
         event_type: ConnectionEventType,
         callback: Callable[[ConnectionEventData[TTransmittedData]], Awaitable[None] | None],
     ) -> Self:
-        """Register callback for connection events."""
-        from agentpool.messaging.events import ConnectionEventData
-
-        async def wrapped_callback(event: EventData) -> None:
-            if isinstance(event, ConnectionEventData) and event.event_type == event_type:
-                await execute(callback, event)
-
-        self.source._events.add_callback(wrapped_callback)
+        """Call ``callback`` on this connection's events of ``event_type``."""
+        self._event_callbacks.append((event_type, callback))
         return self
 
     async def _emit_connection_event(
@@ -218,20 +216,23 @@ class Talk[TTransmittedData = Any]:
         event_type: ConnectionEventType,
         message: ChatMessage[TTransmittedData] | None,
     ) -> None:
+        """Report an event of this connection: to its callbacks, and to its router's triggers."""
         from agentpool.messaging.events import ConnectionEventData
 
+        if not self._event_callbacks and self._router is None:
+            return
         event = ConnectionEventData[Any](
             connection=self,
             source="connection",
             connection_name=self.name,
             event_type=event_type,
             message=message,
-            timestamp=get_now(),
         )
-        # Propagate to all event managers through registry
-        if pool := self.source.agent_pool:
-            for connection in pool.connection_registry.values():
-                await connection.source._events.emit_event(event)
+        for wanted, callback in list(self._event_callbacks):
+            if wanted == event_type:
+                await execute(callback, event)
+        if self._router is not None:
+            await self._router.triggers.connection_event(event)
 
     async def _handle_message(
         self,
@@ -242,6 +243,7 @@ class Talk[TTransmittedData = Any]:
         # 2. Early exit checks
         if not (self.active and (not self.group or self.group.active)):
             return []
+        await self._emit_connection_event("message_received", message)
 
         # 3. Check exit condition for any target
         for target in self.targets:
@@ -286,16 +288,18 @@ class Talk[TTransmittedData = Any]:
             messages = [*self._stats.messages, processed_message]
             self._stats = replace(self._stats, messages=messages)
             await self.message_forwarded.emit(processed_message)
+            await self._emit_connection_event("message_forwarded", processed_message)
 
         # 9. Second pass: Actually process for each target
         responses: list[ChatMessage[Any]] = []
         for target in target_list:
             if self.queued:
                 self._pending_messages[target.name].append(processed_message)
+                await self._emit_connection_event("queue_filled", processed_message)
                 continue
             if response := await self._process_for_target(processed_message, target, prompt):
                 responses.append(response)
-
+        await self._emit_connection_event("message_processed", processed_message)
         return responses
 
     async def _process_for_target(
@@ -352,8 +356,9 @@ class Talk[TTransmittedData = Any]:
         self, prompt: PromptCompatible | None = None
     ) -> list[ChatMessage[TTransmittedData]]:
         """Process queued messages."""
-        if not self._pending_messages:
+        if not any(self._pending_messages.values()):
             return []
+        await self._emit_connection_event("queue_triggered", None)
         match self.queue_strategy:
             case "buffer":
                 results: list[ChatMessage[TTransmittedData]] = []

@@ -58,7 +58,6 @@ if TYPE_CHECKING:
         ToolRequestUserInputResponse,
     )
     from codexed.request_handlers import ApprovalParams, ApprovalResponse
-    from evented_config import EventConfig
     from exxec import ExecutionEnvironment
     from pydantic_ai import UserContent
     from tokonomics.model_discovery.model_info import ModelInfo
@@ -78,6 +77,7 @@ if TYPE_CHECKING:
     from agentpool.sessions import Session as PoolSession
     from agentpool.sessions.models import SessionData
     from agentpool.ui.base import InputProvider
+    from agentpool_config.events import EventConfig
     from agentpool_config.mcp_server import MCPServerConfig
 
 

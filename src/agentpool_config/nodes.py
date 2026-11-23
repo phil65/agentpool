@@ -5,12 +5,13 @@ from __future__ import annotations
 from collections.abc import Sequence
 from typing import TYPE_CHECKING, Annotated, Any, Literal, assert_never
 
-from evented_config import EventConfig, FileWatchConfig, TimeEventConfig
+from evented_config import FileWatchConfig, TimeEventConfig
 from exxec_config import E2bExecutionEnvironmentConfig, ExecutionEnvironmentConfig
 from pydantic import ConfigDict, Field, HttpUrl, ImportString
 from schemez import Schema
 
 from agentpool_config.event_handlers import EventHandlerConfig, StdoutEventHandlerConfig
+from agentpool_config.events import EventConfig
 from agentpool_config.forward_targets import (
     FileConnectionConfig,
     ForwardingTarget,

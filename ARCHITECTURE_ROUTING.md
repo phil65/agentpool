@@ -1,6 +1,32 @@
 # Routing and triggers from outside the nodes
 
-Status: proposal, not started. Written 2026-11-23. Related: `ARCHITECTURE_SESSIONS_AGENTS.md`
+Status: steps 2-4 done on 2026-11-23; step 5 (session policies) and 6 (MCP event triggers) open.
+Written 2026-11-23.
+
+## Done (2026-11-23)
+
+- **Step 2** (`refactor(talk): a router owns the connections`): `agentpool/talk/router.py`
+  `Router` holds every `Talk` keyed by source node, with the `ConnectionRegistry` as its name
+  index. `pool.router`, or a node's own router outside a pool, whose connections move to the
+  pool's when the node registers. `node.connections` is a view. `Talk.disconnect()` removes the
+  connection. Before, disconnected connections stayed forever, and `TeamRun` added two per run.
+- **Step 3** (`refactor(talk)!: the router routes on message_sent`): turns and team runs store
+  their response, then announce it on `message_sent`. The router is subscribed there for every
+  node with a connection. The per-call `wait_for_connections` is gone; the wait is the
+  connection's setting.
+- **Step 4** (`feat(triggers): the router runs the triggers`): `agentpool/talk/triggers.py`
+  `Triggers` (`router.triggers`) runs every node's trigger sources. The pool starts them after
+  its nodes are up; a node outside a pool runs its own. Nodes no longer own an `EventManager`.
+  `Talk` reports `message_received`, `message_forwarded`, `message_processed`, `queue_filled`
+  and `queue_triggered`, once each, to its own `on_event` callbacks and to the router's
+  triggers. `type: connection` triggers validate (`NodeConfig.triggers` uses agentpool's
+  union) and run their node in the background. `ConnectionEventData` is a dataclass now: as an
+  `EventData` (pydantic) it could not hold a `Talk` or `ChatMessage`.
+- Left as they were: team-internal `Talk`s (`Team`, `TeamRun.execute_iter`), queued
+  connections on `Talk`, and the standalone `EventManager` utility (`track` / `poll`), which
+  no node uses any more.
+
+The sections below are the original proposal. Related: `ARCHITECTURE_SESSIONS_AGENTS.md`
 (item 6, per-connection session policy) and `MCP_EVENTS.md` (MCP event triggers, which need
 this first).
 
