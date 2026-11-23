@@ -656,7 +656,7 @@ class Agent[TDeps = None, OutputDataT = str](BaseAgent[TDeps, OutputDataT]):
     ) -> PydanticAgent[TDeps, AgentOutputType]:
         """Create pydantic-ai agent from current state."""
         from agentpool.agents.native_agent.helpers import filter_builtin_tools
-        from agentpool.agents.native_agent.tool_wrapping import wrap_tool
+        from agentpool.agents.native_agent.tool_wrapping import approval_handler, wrap_tool
 
         tools = await self.tools.get_tools(state="enabled")
         final_type = to_type(output_type) if output_type not in [None, str] else self._output_type
@@ -670,9 +670,15 @@ class Agent[TDeps = None, OutputDataT = str](BaseAgent[TDeps, OutputDataT]):
             model_ = actual_model
         # Filter builtin tools to those supported by the resolved model
         builtin_tools = filter_builtin_tools(self._builtin_tools, model_)
+        context_for_tools = self.get_context(input_provider=input_provider)
+        # Tools by the name the model calls them (a schema override may rename one)
+        tools_by_name = {t.name: t for t in tools} | {
+            name: t for t in tools if t.schema_override and (name := t.schema_override.get("name"))
+        }
         capabilities: list[AbstractCapability[Any]] = [
             *(NativeTool(tool) for tool in builtin_tools),
             *(ProcessHistory(processor) for processor in self._history_processors),
+            approval_handler(context_for_tools, tools_by_name),
         ]
         output_retries = self._retries if self._output_retries is None else self._output_retries
         retries: AgentRetries = {"tools": self._retries, "output": output_retries}
@@ -688,9 +694,8 @@ class Agent[TDeps = None, OutputDataT = str](BaseAgent[TDeps, OutputDataT]):
             end_strategy=self._end_strategy,
             deps_type=deps_type,
             output_type=final_type,
-            capabilities=capabilities or None,
+            capabilities=capabilities,
         )
-        context_for_tools = self.get_context(input_provider=input_provider)
         for tool in tools:
             wrapped = wrap_tool(tool, context_for_tools, hooks=self._hook_manager)
             prepare_fn = None

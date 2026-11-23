@@ -22,8 +22,8 @@ from agentpool.agents.base_agent import BaseAgent
 from agentpool.agents.capabilities import AgentCapabilities
 from agentpool.agents.claude_code_agent.cli_process import CliProcess
 from agentpool.agents.claude_code_agent.converters import (
-    confirmation_result_to_native,
     convert_mcp_servers_to_sdk_format,
+    decision_to_native,
     to_auth_status,
     to_finish_reason,
     to_mcp_server_status,
@@ -752,8 +752,8 @@ class ClaudeCodeAgent[TDeps = None, TResult = str](BaseAgent[TDeps, TResult]):
             case _ as unreachable:
                 assert_never(unreachable)
         with self._awaiting_user():
-            result = await ctx.get_input_provider().get_tool_confirmation(context=ctx)
-        permission = confirmation_result_to_native(result)
+            decision = await ctx.decide_tool()
+        permission = decision_to_native(decision, display_name)
         if isinstance(permission, PermissionResultDeny):
             return permission
         # Plan mode tools change the CLI's mode once allowed: follow it.
@@ -761,7 +761,9 @@ class ClaudeCodeAgent[TDeps = None, TResult = str](BaseAgent[TDeps, TResult]):
             case "ExitPlanMode":
                 mode = self._pre_plan_mode
                 update = ModePermissionUpdate(type="setMode", mode=mode, destination="session")
-                permission = PermissionResultAllow(updated_permissions=[update])
+                permission = PermissionResultAllow(
+                    updated_input=permission.updated_input, updated_permissions=[update]
+                )
                 await self._follow_permission_mode(mode)
             case "EnterPlanMode":
                 await self._follow_permission_mode("plan")

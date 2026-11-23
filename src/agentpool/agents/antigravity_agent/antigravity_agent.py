@@ -33,6 +33,7 @@ from agentpool.agents.events.reconstructor import MessageReconstructor
 from agentpool.agents.exceptions import AgentNotInitializedError
 from agentpool.log import get_logger
 from agentpool.messaging import ChatMessage
+from agentpool.tools.decisions import Approve, Deny
 
 
 if TYPE_CHECKING:
@@ -829,18 +830,14 @@ class AntigravityAgent[TDeps = None, OutputDataT = str](BaseAgent[TDeps, OutputD
             tool_input=dict(tool_call.args),
             tool_name=str(tool_call.name),
         )
-        with self.awaiting_user():
-            result = await provider.get_tool_confirmation(context, tool_description=reason)
-        match result:
-            case "allow":
+        # The SDK's policy answer is a bool: no edited arguments, no message to the model
+        match await context.decide_tool(reason):
+            case Approve():
                 return True
-            case "skip":
+            case Deny(stop=stop):
+                if stop:
+                    context.stop_turn()
                 return False
-            case "abort_run" | "abort_chain":
-                await self._interrupt()
-                return False
-            case _ as unreachable:
-                assert_never(unreachable)
 
     # --- Streaming Execution ----------------------------------------------------------
 

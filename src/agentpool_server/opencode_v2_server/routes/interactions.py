@@ -151,7 +151,9 @@ async def session_permission_reply(
 ) -> Response:
     """Answer a permission request (once / always / reject)."""
     try:
-        await state.permissions.reply(session.id, request_id, body.decision, session.directory)
+        await state.permissions.reply(
+            session.id, request_id, body.decision, session.directory, message=body.message
+        )
     except InteractionError:
         raise permission_not_found(request_id) from None
     return Response(status_code=204)

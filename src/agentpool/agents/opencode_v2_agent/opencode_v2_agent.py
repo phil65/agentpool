@@ -9,7 +9,7 @@ from pathlib import Path
 import secrets
 import socket
 import time
-from typing import TYPE_CHECKING, Any, ClassVar, Literal, Self, assert_never
+from typing import TYPE_CHECKING, Any, ClassVar, Literal, Self
 from uuid import uuid4
 
 from anyenv.processes import hard_kill
@@ -39,6 +39,7 @@ from agentpool.agents.opencode_v2_agent.events import V2EventTracker
 from agentpool.log import get_logger
 from agentpool.messaging import ChatMessage
 from agentpool.messaging.messages import TokenCost
+from agentpool.tools.decisions import Approve, Deny
 from opencode_v2_sdk.client import OpenCodeV2Client, OpenCodeV2Error
 from opencode_v2_sdk.models import (
     FormCreated,
@@ -543,12 +544,12 @@ class OpenCodeV2Agent[TDeps = None](BaseAgent[TDeps, str]):
         provider: InputProvider | None,
     ) -> None:
         decision: PermissionDecision
+        message: str | None = None
         if self._permission_mode == "allow":
             decision = "once"
         elif self._permission_mode == "deny" or provider is None:
             decision = "reject"
         else:
-            tool_name = data.action
             call_id = data.source.id if data.source else data.id
             tool_input: dict[str, Any] = {
                 "action": data.action,
@@ -559,24 +560,19 @@ class OpenCodeV2Agent[TDeps = None](BaseAgent[TDeps, str]):
                 input_provider=provider,
                 tool_call_id=call_id,
                 tool_input=tool_input,
-                tool_name=tool_name,
+                tool_name=data.action,
             )
-            with self.awaiting_user():
-                result = await provider.get_tool_confirmation(
-                    context, tool_description=data.message or ""
-                )
-            match result:
-                case "allow":
+            # "once" for a decision for the session too: the session remembers it, while
+            # OpenCode's "always" saves a rule for the whole project
+            match await context.decide_tool(data.message or ""):
+                case Approve():
                     decision = "once"
-                case "skip":
+                case Deny(stop=stop, message=message):
                     decision = "reject"
-                case "abort_run" | "abort_chain":
-                    decision = "reject"
-                    await self._interrupt()
-                case _ as unreachable:
-                    assert_never(unreachable)
+                    if stop:
+                        context.stop_turn()
         try:
-            await client.reply_permission(data.session_id, data.id, decision)
+            await client.reply_permission(data.session_id, data.id, decision, message=message)
         except Exception:
             self.log.exception("Failed to reply to OpenCode V2 permission", request_id=data.id)
 

@@ -20,6 +20,7 @@ from mcp import types
 from pydantic import BaseModel, TypeAdapter, ValidationError
 
 from agentpool.log import get_logger
+from agentpool.tools.decisions import Approve, Deny
 from agentpool.ui.base import InputProvider
 from agentpool.utils import identifiers
 from agentpool.utils.time_utils import now_ms
@@ -60,8 +61,9 @@ if TYPE_CHECKING:
     from collections.abc import Callable
     from pathlib import Path
 
-    from agentpool.agents.context import AgentContext, ConfirmationResult
+    from agentpool.agents.context import AgentContext
     from agentpool.messaging.context import NodeContext
+    from agentpool.tools.decisions import ToolDecision
 
 
 logger = get_logger(__name__)
@@ -99,13 +101,24 @@ class InteractionCancelledError(Exception):
 # --- permissions ---------------------------------------------------------------------------
 
 
+@dataclass(frozen=True, slots=True)
+class PermissionAnswer:
+    """The answer to a permission request."""
+
+    decision: PermissionDecision
+    message: str | None = None
+    """The user's word to the model (with a ``reject``)."""
+    cancelled: bool = False
+    """Rejected because the session's turn was interrupted, not by the user."""
+
+
 @dataclass
 class PendingPermission:
     """A permission request awaiting a decision."""
 
     request: PermissionRequest
     project_id: str
-    future: asyncio.Future[PermissionDecision]
+    future: asyncio.Future[PermissionAnswer]
 
 
 @dataclass
@@ -157,11 +170,11 @@ class PermissionRegistry:
         source: PermissionSourceTool | None = None,
         message: str | None = None,
         request_id: str | None = None,
-    ) -> PermissionDecision:
+    ) -> PermissionAnswer:
         """Create a permission request and wait for the decision."""
         await self.load()
         if self.is_saved(project_id, action, resources):
-            return "always"
+            return PermissionAnswer("always")
         request = self.create(
             session_id=session_id,
             project_id=project_id,
@@ -205,7 +218,7 @@ class PermissionRegistry:
             source=source,
             message=message,
         )
-        future: asyncio.Future[PermissionDecision] = asyncio.get_running_loop().create_future()
+        future: asyncio.Future[PermissionAnswer] = asyncio.get_running_loop().create_future()
         self.pending[request.id] = PendingPermission(
             request=request, project_id=project_id, future=future
         )
@@ -214,7 +227,12 @@ class PermissionRegistry:
         return request
 
     async def reply(
-        self, session_id: str, request_id: str, decision: PermissionDecision, directory: str
+        self,
+        session_id: str,
+        request_id: str,
+        decision: PermissionDecision,
+        directory: str,
+        message: str | None = None,
     ) -> None:
         """Answer a pending permission request.
 
@@ -230,7 +248,7 @@ class PermissionRegistry:
             raise InteractionError(msg)
         if decision == "always":
             await self._save_rules(pending)
-        pending.future.set_result(decision)
+        pending.future.set_result(PermissionAnswer(decision, message))
         data = PermissionRepliedData(session_id=session_id, request_id=request_id, reply=decision)
         self.publish(_event(PermissionReplied, data, directory), "permission.replied")
 
@@ -295,7 +313,7 @@ class PermissionRegistry:
         """Reject all pending requests of a session (e.g. on interrupt)."""
         for pending in list(self.pending.values()):
             if pending.request.session_id == session_id and not pending.future.done():
-                pending.future.set_result("reject")
+                pending.future.set_result(PermissionAnswer("reject", cancelled=True))
 
 
 # --- forms ---------------------------------------------------------------------------------
@@ -566,7 +584,7 @@ class SessionInputProvider(InputProvider):
         self,
         context: AgentContext[Any],
         tool_description: str = "",
-    ) -> ConfirmationResult:
+    ) -> ToolDecision:
         """Ask for tool confirmation via a V2 permission request."""
         tool_name = context.tool_name or "unknown"
         args = context.tool_input
@@ -577,7 +595,7 @@ class SessionInputProvider(InputProvider):
             source = PermissionSourceTool(message_id=msg_id, id=context.tool_call_id)
         message = tool_description or f"{tool_name}({preview})"
         try:
-            decision = await self.permissions.ask(
+            answer = await self.permissions.ask(
                 session_id=self.session_id,
                 project_id=self.project_id,
                 directory=self.directory,
@@ -589,8 +607,14 @@ class SessionInputProvider(InputProvider):
                 message=message,
             )
         except asyncio.CancelledError:
-            return "skip"
-        return "skip" if decision == "reject" else "allow"
+            return Deny(stop=True)
+        match answer:
+            case PermissionAnswer(decision="reject", cancelled=True):
+                return Deny(stop=True)
+            case PermissionAnswer(decision="reject", message=reason):
+                return Deny(message=reason)
+            case _:  # "always" is kept as a rule by the registry (wider than the session)
+                return Approve()
 
     async def get_elicitation(
         self,

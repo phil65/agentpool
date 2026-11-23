@@ -18,6 +18,7 @@ from agentpool.agents.events import (
 from agentpool.agents.opencode_v2_agent import OpenCodeV2Agent
 from agentpool.resource_providers import StaticResourceProvider
 from agentpool.tools.base import FunctionTool
+from agentpool.tools.decisions import Approve
 from agentpool.ui.mock_provider import MockInputProvider
 from agentpool_server.opencode_v2_server.server import create_app
 from opencode_v2_sdk.client import OpenCodeV2Client
@@ -393,7 +394,7 @@ async def test_mock_turn_with_permissions_forms_tools_and_options() -> None:
     )
     client = OpenCodeV2Client("http://v2.test", http_client=http)
     provider = MockInputProvider(
-        tool_confirmation="allow",
+        tool_confirmation=Approve(),
         elicitation_response={"choice": "Yes"},
     )
 

@@ -2,11 +2,12 @@
 
 from __future__ import annotations
 
-from typing import Any
+from typing import TYPE_CHECKING, Any
 from unittest.mock import AsyncMock
 
 from aclientp.schema import (
     AgentMessageChunk,
+    AllowedOutcome,
     ConfigOptionUpdate,
     PermissionOption,
     RequestPermissionRequest,
@@ -15,12 +16,18 @@ from aclientp.schema import (
     TextContentBlock,
     ToolCallUpdate,
 )
+import pytest
 
 from agentpool.agents.acp_agent import ACPAgent
 from agentpool.agents.acp_agent.client_handler import ACPClientHandler
 from agentpool.agents.modes import ConfigOptionChanged
 from agentpool.sessions import Session
+from agentpool.tools.decisions import Approve, Deny
 from agentpool.ui.mock_provider import MockInputProvider
+
+
+if TYPE_CHECKING:
+    from agentpool.tools.decisions import ToolDecision
 
 
 def _agent_with_two_sessions() -> tuple[ACPAgent[None], Session, Session]:
@@ -90,10 +97,44 @@ async def test_permission_requests_go_to_their_sessions_callback() -> None:
 
 async def test_permission_requests_use_their_turns_input_provider() -> None:
     agent, _first, _second = _agent_with_two_sessions()
-    allowing, denying = MockInputProvider(), MockInputProvider(tool_confirmation="skip")
+    allowing, denying = MockInputProvider(), MockInputProvider(tool_confirmation=Deny())
     agent._states["acp-1"].input_provider = denying
     agent._states["acp-2"].input_provider = allowing
     response = await ACPClientHandler(agent).request_permission(_permission("acp-2"))
     assert response.outcome.outcome == "selected"
     assert [c.method for c in allowing.calls] == ["get_tool_confirmation"]
     assert denying.calls == []
+
+
+_OPTIONS = [
+    PermissionOption(option_id=kind, name=kind, kind=kind)
+    for kind in ("allow_once", "allow_always", "reject_once", "reject_always")
+]
+
+
+@pytest.mark.parametrize(
+    ("decision", "option_id"),
+    [
+        (Approve(), "allow_once"),
+        (Approve(scope="session"), "allow_always"),
+        (Deny(), "reject_once"),  # A denial, not a cancelled turn
+        (Deny(scope="session"), "reject_always"),
+        (Deny(stop=True), None),  # Cancelled
+    ],
+)
+async def test_decisions_pick_the_agents_option_of_their_kind(
+    decision: ToolDecision, option_id: str | None
+) -> None:
+    agent, _first, _second = _agent_with_two_sessions()
+    agent._states["acp-2"].input_provider = MockInputProvider(tool_confirmation=decision)
+    request = RequestPermissionRequest(
+        session_id="acp-2",
+        tool_call=ToolCallUpdate(tool_call_id="t1", title="write"),
+        options=_OPTIONS,
+    )
+    response = await ACPClientHandler(agent).request_permission(request)
+    match response.outcome:
+        case AllowedOutcome(option_id=selected):
+            assert selected == option_id
+        case _:
+            assert option_id is None

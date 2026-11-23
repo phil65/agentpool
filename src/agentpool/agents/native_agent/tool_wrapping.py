@@ -6,23 +6,33 @@ from dataclasses import replace
 from functools import wraps
 import inspect
 import time
-from typing import TYPE_CHECKING, Any, Literal
+from typing import TYPE_CHECKING, Any
 
-from pydantic_ai import RunContext
+from pydantic_ai import RunContext, ToolApproved, ToolDenied
+from pydantic_ai.capabilities import HandleDeferredToolCalls
+from pydantic_ai.exceptions import ApprovalRequired
 from pydantic_ai.messages import ToolReturn
+from pydantic_ai.tools import DeferredToolResults
 
 from agentpool.agents.context import AgentContext
-from agentpool.tasks import ChainAbortedError, RunAbortedError, ToolSkippedError
 from agentpool.tools.base import ToolResult
+from agentpool.tools.decisions import Approve, Deny
 from agentpool.utils.inspection import execute, get_argument_key
+from agentpool.utils.pydantic_ai_helpers import safe_args_as_dict
 from agentpool.utils.signatures import create_modified_signature, update_signature
 
 
 if TYPE_CHECKING:
-    from collections.abc import Awaitable, Callable
+    from collections.abc import Awaitable, Callable, Mapping
+
+    from pydantic_ai.tools import DeferredToolApprovalResult, DeferredToolRequests
 
     from agentpool.agents.native_agent.hook_manager import NativeAgentHookManager
     from agentpool.tools.base import Tool
+
+
+RUN_CTX = "_run_ctx"
+"""Name of the RunContext parameter pydantic-ai sees on a wrapped tool that takes none."""
 
 
 def _inject_additional_context(result: Any, additional: str) -> ToolReturn:
@@ -54,18 +64,18 @@ def _inject_additional_context(result: Any, additional: str) -> ToolReturn:
     return ToolReturn(return_value=result, content=additional)
 
 
-def wrap_tool[TReturn](  # noqa: PLR0915
+def wrap_tool[TReturn](
     tool: Tool[TReturn],
     agent_ctx: AgentContext,
     hooks: NativeAgentHookManager | None = None,
-) -> Callable[..., Awaitable[TReturn | ToolReturn | None]]:
-    """Wrap tool with confirmation handling and hooks.
+) -> Callable[..., Awaitable[TReturn | ToolReturn | ToolDenied]]:
+    """Wrap a tool for pydantic-ai: approval, AgentContext injection and hooks.
 
-    Strategy:
-    - Tools with RunContext only: Normal pydantic-ai handling
-    - Tools with AgentContext only: Treat as regular tools, inject AgentContext
-    - Tools with both contexts: Present as RunContext-only to pydantic-ai, inject AgentContext
-    - Tools with no context: Normal pydantic-ai handling
+    - pydantic-ai sees a RunContext first (injected if the tool takes none) and never the
+      AgentContext, which is injected per call.
+    - A call that needs the user's decision raises ``ApprovalRequired`` and is answered by
+      :func:`approval_handler`; pydantic-ai runs it again once approved.
+    - A pre-tool hook's denial is returned as ``ToolDenied``: the model is told and goes on.
 
     Args:
         tool: The tool to wrap.
@@ -89,7 +99,7 @@ def wrap_tool[TReturn](  # noqa: PLR0915
         tool_input: dict[str, Any],
         *args: Any,
         **kwargs: Any,
-    ) -> TReturn | ToolReturn | None:
+    ) -> TReturn | ToolReturn | ToolDenied:
         """Execute tool with pre/post hooks."""
         # Pre-tool hooks
         if hooks:
@@ -100,9 +110,9 @@ def wrap_tool[TReturn](  # noqa: PLR0915
                 session_id=None,  # Could be passed through if needed
                 env=agent_ctx.agent.env,
             )
-            if pre_result["decision"] == "deny":
+            if pre_result["decision"] == "deny":  # Told to the model, which goes on
                 reason = pre_result.get("reason", "Blocked by pre-tool hook")
-                raise ToolSkippedError(f"Tool {tool.name} blocked: {reason}")
+                return ToolDenied(f"Tool {tool.name!r} was blocked: {reason}")
             # Apply modified input if provided
             if modified := pre_result.get("modified_input"):
                 kwargs.update(modified)
@@ -132,74 +142,32 @@ def wrap_tool[TReturn](  # noqa: PLR0915
 
         return result
 
-    if run_ctx_key or agent_ctx_key:
-        # Tool has RunContext and/or AgentContext
-        async def wrapped(
-            ctx: RunContext, *args: Any, **kwargs: Any
-        ) -> TReturn | ToolReturn | None:
-            confirm_ctx = replace(
+    async def wrapped(
+        ctx: RunContext, *args: Any, **kwargs: Any
+    ) -> TReturn | ToolReturn | ToolDenied:
+        # Asked through pydantic-ai: the call is deferred, the user's decision comes back
+        # from the approval handler, and an approved call runs again (tool_call_approved).
+        if not ctx.tool_call_approved and needs_approval(tool, agent_ctx):
+            raise ApprovalRequired
+        if agent_ctx.data is None:
+            agent_ctx.data = ctx.deps
+        if agent_ctx_key:  # Inject a per-call AgentContext (avoids races between calls)
+            model_name = f"{ctx.model.system}:{ctx.model.model_name}" if ctx.model else None
+            kwargs[agent_ctx_key] = replace(
                 agent_ctx,
                 tool_name=ctx.tool_name,
                 tool_call_id=ctx.tool_call_id,
                 tool_input=kwargs.copy(),
+                model_name=model_name,
             )
-            result = await confirm_ctx.handle_confirmation(tool, kwargs)
-            if result == "allow":
-                # Populate AgentContext with RunContext data if needed
-                if agent_ctx.data is None:
-                    agent_ctx.data = ctx.deps
-
-                if agent_ctx_key:  # inject AgentContext
-                    # Build model_name from RunContext's model (provider:model_name format)
-                    model_name = f"{ctx.model.system}:{ctx.model.model_name}" if ctx.model else None
-                    # Create per-call copy with tool execution fields (avoids race condition)
-                    call_ctx = replace(
-                        agent_ctx,
-                        tool_name=ctx.tool_name,
-                        tool_call_id=ctx.tool_call_id,
-                        tool_input=kwargs.copy(),
-                        model_name=model_name,
-                    )
-                    kwargs[agent_ctx_key] = call_ctx
-
-                tool_input = kwargs.copy()
-                if run_ctx_key:
-                    # Pass RunContext to original function
-                    return await _execute_with_hooks(
-                        lambda *a, **kw: execute(fn, ctx, *a, **kw),
-                        tool_input,
-                        *args,
-                        **kwargs,
-                    )
-                # Don't pass RunContext to original function since it didn't expect it
-                return await _execute_with_hooks(
-                    lambda *a, **kw: execute(fn, *a, **kw),
-                    tool_input,
-                    *args,
-                    **kwargs,
-                )
-            await _handle_confirmation_result(result, tool.name)
-            return None
-
-    else:
-        # Tool has no context - normal function call
-        async def wrapped(*args: Any, **kwargs: Any) -> TReturn | ToolReturn | None:  # type: ignore[misc]
-            confirm_ctx = replace(
-                agent_ctx,
-                tool_name=tool.name,
-                tool_input=kwargs.copy(),
+        tool_input = {k: v for k, v in kwargs.items() if k != agent_ctx_key}
+        if run_ctx_key:  # The function takes the RunContext (as its first parameter)
+            return await _execute_with_hooks(
+                lambda *a, **kw: execute(fn, ctx, *a, **kw), tool_input, *args, **kwargs
             )
-            result = await confirm_ctx.handle_confirmation(tool, kwargs)
-            if result == "allow":
-                tool_input = kwargs.copy()
-                return await _execute_with_hooks(
-                    lambda *a, **kw: execute(fn, *a, **kw),
-                    tool_input,
-                    *args,
-                    **kwargs,
-                )
-            await _handle_confirmation_result(result, tool.name)
-            return None
+        return await _execute_with_hooks(
+            lambda *a, **kw: execute(fn, *a, **kw), tool_input, *args, **kwargs
+        )
 
     # Apply wraps first
     wraps(fn)(wrapped)
@@ -212,25 +180,62 @@ def wrap_tool[TReturn](  # noqa: PLR0915
     wrapped.__name__ = tool.name
     # Modify signature for pydantic-ai: hide AgentContext, add RunContext if needed
     # Must be done AFTER wraps to prevent overwriting
-    if agent_ctx_key and not run_ctx_key:
-        # Tool has AgentContext only - make it appear to have RunContext to pydantic-ai
-        new_sig = create_modified_signature(fn, remove=agent_ctx_key, inject={"ctx": RunContext})
-        update_signature(wrapped, new_sig)
-    elif agent_ctx_key and run_ctx_key:
-        # Tool has both contexts - hide AgentContext from pydantic-ai
-        new_sig = create_modified_signature(fn, remove=agent_ctx_key)
-        update_signature(wrapped, new_sig)
+    # pydantic-ai sees a RunContext first (the wrapper needs it) and no AgentContext
+    if run_ctx_key:
+        new_sig = create_modified_signature(fn, remove=agent_ctx_key or None)
+    else:
+        new_sig = create_modified_signature(
+            fn, remove=agent_ctx_key or None, inject={RUN_CTX: RunContext}
+        )
+    update_signature(wrapped, new_sig)
     return wrapped
 
 
-async def _handle_confirmation_result(
-    result: Literal["skip", "abort_run", "abort_chain"], name: str
-) -> None:
-    """Handle non-allow confirmation results."""
-    match result:
-        case "skip":
-            raise ToolSkippedError(f"Tool {name} execution skipped")
-        case "abort_run":
-            raise RunAbortedError("Run aborted by user")
-        case "abort_chain":
-            raise ChainAbortedError("Agent chain aborted by user")
+def needs_approval(tool: Tool, agent_ctx: AgentContext) -> bool:
+    """Whether a call of ``tool`` waits for the user's decision (the agent's confirmation mode)."""
+    match agent_ctx.native_agent.tool_confirmation_mode:
+        case "always":
+            return True
+        case "never":
+            return False
+        case "per_tool":
+            return tool.requires_confirmation
+
+
+def approval_handler(agent_ctx: AgentContext, tools: Mapping[str, Tool]) -> HandleDeferredToolCalls:
+    """The capability that asks the user about the tool calls awaiting approval.
+
+    An approved call runs (with the user's arguments, if edited); a denied one is reported
+    to the model as ``outcome="denied"`` and the turn goes on. A denial that stops the turn
+    denies the batch's remaining calls unasked and interrupts the turn once answered.
+
+    Args:
+        agent_ctx: The run's agent context
+        tools: The run's tools by the name the model calls them
+    """
+
+    async def decide(ctx: RunContext[Any], requests: DeferredToolRequests) -> DeferredToolResults:
+        decisions: dict[str, bool | DeferredToolApprovalResult] = {}
+        stopped = False
+        for call in requests.approvals:
+            if stopped:
+                decisions[call.tool_call_id] = ToolDenied(Deny(stop=True).reason(call.tool_name))
+                continue
+            call_ctx = replace(
+                agent_ctx,
+                tool_name=call.tool_name,
+                tool_call_id=call.tool_call_id,
+                tool_input=safe_args_as_dict(call),
+            )
+            tool = tools.get(call.tool_name)
+            match await call_ctx.decide_tool(tool.description or "" if tool else ""):
+                case Approve(args=args):
+                    decisions[call.tool_call_id] = ToolApproved(override_args=args)
+                case Deny() as denial:
+                    decisions[call.tool_call_id] = ToolDenied(denial.reason(call.tool_name))
+                    stopped = denial.stop
+        if stopped:
+            agent_ctx.stop_turn()
+        return DeferredToolResults(approvals=decisions)
+
+    return HandleDeferredToolCalls(handler=decide)

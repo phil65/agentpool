@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any, Literal, assert_never
+from typing import TYPE_CHECKING, Any, assert_never
 import uuid
 
 from aclientp import AllowedOutcome, DeniedOutcome, PermissionOption
@@ -12,6 +12,7 @@ from pydantic import ValidationError
 
 from agentpool.acp_utils import DEFAULT_PERMISSION_OPTIONS
 from agentpool.log import get_logger
+from agentpool.tools.decisions import Approve, Deny
 from agentpool.ui.base import InputProvider
 
 
@@ -19,7 +20,7 @@ if TYPE_CHECKING:
     from aclientp import RequestPermissionResponse
 
     from agentpool import AgentContext
-    from agentpool.agents.context import ConfirmationResult
+    from agentpool.tools.decisions import ToolDecision
     from agentpool_server.acp_server.session import ACPSession
 
 logger = get_logger(__name__)
@@ -92,6 +93,24 @@ def _create_boolean_elicitation_options() -> list[PermissionOption]:
     ]
 
 
+_KIND_DECISIONS: dict[str, ToolDecision] = {
+    "allow_once": Approve(),
+    "allow_always": Approve(scope="session"),
+    "reject_once": Deny(),
+    "reject_always": Deny(scope="session"),
+}
+_OPTION_DECISIONS = {o.option_id: _KIND_DECISIONS[o.kind] for o in DEFAULT_PERMISSION_OPTIONS}
+"""The decision each of the offered permission options stands for."""
+
+
+def _decision_of(option_id: str) -> ToolDecision:
+    """The decision of the option the client selected (an unknown one counts as a denial)."""
+    if (decision := _OPTION_DECISIONS.get(option_id)) is None:
+        logger.warning("Unknown permission option", option_id=option_id)
+        return Deny()
+    return decision
+
+
 class ACPInputProvider(InputProvider):
     """Input provider that uses ACP session for user interactions.
 
@@ -107,7 +126,6 @@ class ACPInputProvider(InputProvider):
             session: Active ACP session for handling requests
         """
         self.session = session
-        self._tool_approvals: dict[str, Literal["allow_always", "reject_always"]] = {}
         # URL elicitations forwarded to the client, awaiting `elicitation/complete`
         self._pending_url_elicitations: set[str] = set()
 
@@ -115,104 +133,45 @@ class ACPInputProvider(InputProvider):
         self,
         context: AgentContext[Any],
         tool_description: str = "",
-    ) -> ConfirmationResult:
-        """Get tool execution confirmation via ACP request permission.
+    ) -> ToolDecision:
+        """Ask the ACP client whether to run a tool call (``session/request_permission``).
 
-        Uses the ACP session's request_permission mechanism to ask
-        the client for confirmation before executing the tool.
+        The options' kinds give the decision: ``allow_always`` and ``reject_always`` decide
+        for the session, which then answers the tool's later calls without asking. A
+        cancelled request (the client cancelled the prompt turn) stops the turn.
 
         Args:
             context: Current node context with tool_name, tool_call_id, tool_input set
             tool_description: Human-readable description of the tool
-
-        Returns:
-            Confirmation result indicating whether to allow, skip, or abort
         """
-        tool_name = context.tool_name or "unknown"
-        args = context.tool_input
         from agentpool.acp_utils import generate_tool_title
 
+        tool_name = context.tool_name or "unknown"
+        args = context.tool_input
+        # The streaming loop has sent the tool call's start already, so the permission
+        # request refers to a call the client knows (its tool_call_id must match).
+        if not (tc_id := context.tool_call_id):
+            logger.error("No tool_call_id for a permission request", tool_name=tool_name)
+            return Deny(stop=True)
+        logger.debug("Requesting permission", tool_name=tool_name, tool_call_id=tc_id)
         try:
-            # Check if we have a standing approval/rejection for this tool
-            if decision := self._tool_approvals.get(tool_name):
-                logger.debug("Get tool confirmation", tool_name=tool_name, reason=decision)
-                match decision:
-                    case "allow_always":
-                        return "allow"
-                    case "reject_always":
-                        return "skip"
-                    case _ as unreachable:
-                        assert_never(unreachable)
-
-            # Create a descriptive title for the permission request
-            # args_str = ", ".join(f"{k}={v}" for k, v in args.items())
-            # Use the tool_call_id from context - this must match the UI tool call
-            tc_id = context.tool_call_id
-            if not tc_id:
-                msg = f"No tool_call_id in context for tool {tool_name!r}. "
-                logger.error(msg)
-                raise RuntimeError(msg)  # noqa: TRY301
-            logger.debug("Requesting permission", tool_name=tool_name, tool_call_id=tc_id)
-            # Note: We no longer send tool_call_start/progress notifications here.
-            # The streaming loop (via ACPEventConverter) already sends ToolCallStart
-            # before the permission callback is invoked, so Zed already knows about
-            # the tool call. Sending duplicates was causing sync issues.
-
-            title = generate_tool_title(tool_name, args)
             response = await self.session.requests.request_permission(
                 tool_call_id=tc_id,
-                title=title,
+                title=generate_tool_title(tool_name, args),
                 raw_input=args,
                 options=DEFAULT_PERMISSION_OPTIONS,
             )
-            logger.info(
-                "Permission response received",
-                tool_name=tool_name,
-                outcome=response.outcome.outcome,
-            )
-            # Map ACP permission response to our confirmation result
-            match response.outcome:
-                case AllowedOutcome(option_id=option_id):
-                    return self._handle_permission_response(option_id, tool_name)
-                case DeniedOutcome():
-                    # The client cancelled the prompt turn: stop instead of running on
-                    return "abort_run"
-                case _ as outcome:
-                    logger.warning("Unexpected permission outcome", outcome=outcome)
-
         except Exception:
             logger.exception("Failed to get tool confirmation")
-            # Default to abort on error to be safe
-            return "abort_run"
-        else:
-            return "skip"  # Default to skip for unknown outcomes
-
-    def _handle_permission_response(self, option_id: str, tool_name: str) -> ConfirmationResult:
-        """Handle permission response and update tool approval state."""
-        # Normalize to hyphen format for matching
-        normalized = option_id.replace("_", "-")
-        logger.info(
-            "Handling permission response",
-            option_id=option_id,
-            normalized=normalized,
-            tool_name=tool_name,
-        )
-        match normalized:
-            case "allow-once":
-                return "allow"
-            case "allow-always":
-                self._tool_approvals[tool_name] = "allow_always"
-                logger.info("Tool approval set", tool_name=tool_name, approval="allow_always")
-                return "allow"
-            case "reject-once" | "deny-once":
-                return "skip"
-            case "reject-always" | "deny-always":
-                self._tool_approvals[tool_name] = "reject_always"
-                logger.info("Tool approval set", tool_name=tool_name, approval="reject_always")
-                return "skip"
-            case _:
-                logger.warning("Unknown permission option", option_id=option_id)
-                return "abort_run"
+            return Deny(stop=True)  # Stop rather than run on unasked
+        logger.info("Permission response", tool_name=tool_name, outcome=response.outcome.outcome)
+        match response.outcome:
+            case AllowedOutcome(option_id=option_id):
+                return _decision_of(option_id)
+            case DeniedOutcome():
+                return Deny(stop=True)
+            case _ as unreachable:
+                assert_never(unreachable)
 
     def _to_acp_elicitation(
         self, params: types.ElicitRequestParams, tool_call_id: str | None = None
@@ -366,25 +325,6 @@ class ACPInputProvider(InputProvider):
                 return types.ElicitResult(action="cancel")
             case _:
                 return types.ElicitResult(action="cancel")
-
-    def clear_tool_approvals(self) -> None:
-        """Clear all stored tool approval decisions.
-
-        This resets the "allow_always" and "reject_always" states,
-        so tools will ask for permission again.
-        """
-        approval_count = len(self._tool_approvals)
-        self._tool_approvals.clear()
-        logger.info("Cleared tool approval decisions", count=approval_count)
-
-    def get_tool_approval_state(self) -> dict[str, Literal["allow_always", "reject_always"]]:
-        """Get current tool approval state for debugging/inspection.
-
-        Returns:
-            Dictionary mapping tool names to their approval state
-            ("allow_always" or "reject_always")
-        """
-        return self._tool_approvals.copy()
 
 
 def _handle_enum_elicitation_response(

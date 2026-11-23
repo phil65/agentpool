@@ -12,8 +12,9 @@ if TYPE_CHECKING:
     from mcp import types
     from pydantic import BaseModel
 
-    from agentpool.agents.context import AgentContext, ConfirmationResult
+    from agentpool.agents.context import AgentContext
     from agentpool.messaging.context import NodeContext
+    from agentpool.tools.decisions import ToolDecision
 
 
 class InputProvider(ABC):
@@ -55,8 +56,8 @@ class InputProvider(ABC):
         self,
         context: AgentContext[Any],
         tool_description: str = "",
-    ) -> Coroutine[Any, Any, ConfirmationResult]:
-        """Get tool execution confirmation.
+    ) -> Coroutine[Any, Any, ToolDecision]:
+        """Ask the user whether to run a tool call: approve or deny it, once or for the session.
 
         Tool name and arguments are read from context.tool_name and context.tool_input.
 

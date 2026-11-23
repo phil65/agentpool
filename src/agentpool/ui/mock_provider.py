@@ -5,13 +5,14 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Literal
 
+from agentpool.tools.decisions import Approve, ToolDecision
 from agentpool.ui.base import InputProvider
 
 
 if TYPE_CHECKING:
     from mcp import types
 
-    from agentpool.agents.context import AgentContext, ConfirmationResult
+    from agentpool.agents.context import AgentContext
     from agentpool.messaging.context import NodeContext
 
 InputMethod = Literal["get_input", "get_tool_confirmation", "get_elicitation"]
@@ -34,11 +35,11 @@ class MockInputProvider(InputProvider):
         self,
         *,
         input_response: str = "mock response",
-        tool_confirmation: ConfirmationResult = "allow",
+        tool_confirmation: ToolDecision | None = None,
         elicitation_response: dict[str, Any] | None = None,
     ) -> None:
         self.input_response = input_response
-        self.tool_confirmation: ConfirmationResult = tool_confirmation
+        self.tool_confirmation: ToolDecision = tool_confirmation or Approve()
         self.elicitation_response: dict[str, Any] = elicitation_response or {
             "response": "mock response"
         }
@@ -63,7 +64,7 @@ class MockInputProvider(InputProvider):
         self,
         context: AgentContext[Any],
         tool_description: str = "",
-    ) -> ConfirmationResult:
+    ) -> ToolDecision:
         call = InputCall(
             method="get_tool_confirmation",
             args=(context, tool_description),

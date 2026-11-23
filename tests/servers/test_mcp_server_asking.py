@@ -6,7 +6,6 @@ import asyncio
 from typing import Any
 
 from fastmcp import Client
-from fastmcp.exceptions import ToolError
 from mcp import types
 from pydantic_ai.models.test import TestModel
 import pytest
@@ -33,14 +32,25 @@ async def _served(calls: list[str]) -> tuple[AgentPool, MCPServer]:
     return pool, server
 
 
-def _answering(decision: str, asked: list[str]) -> Any:
+def _answering(decision: str, asked: list[str], note: str | None = None) -> Any:
     async def handler(
         message: str, response_type: Any, params: types.ElicitRequestParams, context: Any
     ) -> types.ElicitResult:
         asked.append(message)
-        return types.ElicitResult(action="accept", content={"decision": decision})
+        content: dict[str, Any] = {"decision": decision}
+        if note is not None:
+            content["message"] = note
+        return types.ElicitResult(action="accept", content=content)
 
     return handler
+
+
+def _text(result: Any) -> str:
+    match result.content:
+        case [types.TextContent(text=text), *_]:
+            return text
+        case _:
+            raise AssertionError(result)
 
 
 @pytest.mark.parametrize("mode", ["legacy", "auto"], ids=["handshake-era", "2026-07-28"])
@@ -57,29 +67,53 @@ async def test_allowed_tool_runs(mode: str) -> None:
     assert len(asked) == 1
     assert "delete_files" in asked[0]
     assert calls == ["deleted"]
-    match result.content:
-        case [types.TextContent(text=text), *_]:
-            assert text == "done"
-        case _:
-            raise AssertionError(result)
+    assert _text(result) == "done"
 
 
 @pytest.mark.parametrize("mode", ["legacy", "auto"], ids=["handshake-era", "2026-07-28"])
-async def test_skipped_tool_does_not_run(mode: str) -> None:
+async def test_denied_tool_does_not_run_and_the_agent_goes_on(mode: str) -> None:
     calls: list[str] = []
     pool, server = await _served(calls)
     try:
-        handler = _answering("skip", [])
+        handler = _answering("deny", [], note="keep the cache")
         async with Client(server.fastmcp, mode=mode, elicitation_handler=handler) as client:
-            # A native agent ends its run on a skipped tool (ToolSkippedError)
-            with pytest.raises(ToolError, match="skipped"):
-                await client.call_tool("ask_cleaner", {"prompt": "clean up"})
+            result = await client.call_tool("ask_cleaner", {"prompt": "clean up"})
     finally:
         await pool.__aexit__(None, None, None)
     assert calls == []
+    assert _text(result) == "done"
 
 
-async def test_a_client_that_cannot_answer_skips_the_tool(monkeypatch: pytest.MonkeyPatch) -> None:
+async def test_stopping_ends_the_served_run() -> None:
+    calls: list[str] = []
+    pool, server = await _served(calls)
+    try:
+        handler = _answering("stop", [])
+        async with Client(server.fastmcp, elicitation_handler=handler) as client:
+            result = await client.call_tool("ask_cleaner", {"prompt": "clean up"})
+    finally:
+        await pool.__aexit__(None, None, None)
+    assert calls == []
+    assert _text(result) != "done"  # Ended before the agent's final answer
+
+
+async def test_allowing_for_the_session_is_kept_by_the_session() -> None:
+    calls: list[str] = []
+    pool, server = await _served(calls)
+    try:
+        handler = _answering("allow_session", [])
+        async with Client(server.fastmcp, elicitation_handler=handler) as client:
+            await client.call_tool("ask_cleaner", {"prompt": "clean up"})
+        kept = pool.get_agent("cleaner").session.overrides.tool_decisions
+    finally:
+        await pool.__aexit__(None, None, None)
+    assert calls == ["deleted"]
+    assert kept == {"delete_files": "approve"}
+
+
+async def test_a_client_that_cannot_answer_denies_the_tool(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     def no_stdin(*args: object) -> str:
         raise AssertionError("asked on stdin")
 
@@ -88,11 +122,11 @@ async def test_a_client_that_cannot_answer_skips_the_tool(monkeypatch: pytest.Mo
     pool, server = await _served(calls)
     try:
         async with Client(server.fastmcp, mode="legacy") as client:  # No elicitation support
-            with pytest.raises(ToolError, match="skipped"):
-                await client.call_tool("ask_cleaner", {"prompt": "clean up"})
+            result = await client.call_tool("ask_cleaner", {"prompt": "clean up"})
     finally:
         await pool.__aexit__(None, None, None)
     assert calls == []
+    assert _text(result) == "done"
 
 
 async def test_an_unanswered_question_expires(monkeypatch: pytest.MonkeyPatch) -> None:

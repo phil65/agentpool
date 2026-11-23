@@ -514,7 +514,7 @@ class ToolManagerBridge:
         Handles tools that expect AgentContext, RunContext, or neither.
         Runs pre/post tool hooks if configured on the node.
         """
-        from agentpool.tasks import ToolSkippedError
+        from fastmcp.exceptions import ToolError
 
         if hooks := self.node.hooks:
             pre_result = await hooks.run_pre_tool_hooks(
@@ -525,8 +525,9 @@ class ToolManagerBridge:
                 env=self.node.env,
             )
             if pre_result.get("decision") == "deny":
+                # An error result: the agent's model is told and goes on
                 reason = pre_result.get("reason", "Blocked by pre-tool hook")
-                raise ToolSkippedError(f"Tool {tool.name} blocked: {reason}")
+                raise ToolError(f"Tool {tool.name!r} was blocked: {reason}")
             # Apply modified input if provided
             if modified := pre_result.get("modified_input"):
                 kwargs.update(modified)

@@ -10,6 +10,7 @@ import anyenv
 from mcp import types
 
 from agentpool.log import get_logger
+from agentpool.tools.decisions import Approve, Deny
 from agentpool.tools.exceptions import ToolError
 from agentpool.ui.base import InputProvider
 
@@ -17,8 +18,9 @@ from agentpool.ui.base import InputProvider
 if TYPE_CHECKING:
     from pydantic import BaseModel
 
-    from agentpool.agents.context import AgentContext, ConfirmationResult
+    from agentpool.agents.context import AgentContext
     from agentpool.messaging.context import NodeContext
+    from agentpool.tools.decisions import ToolDecision
 
 
 logger = get_logger(__name__)
@@ -53,7 +55,7 @@ class StdlibInputProvider(InputProvider):
         self,
         context: AgentContext[Any],
         tool_description: str = "",
-    ) -> ConfirmationResult:
+    ) -> ToolDecision:
         agent_name = context.node_name
         tool_name = context.tool_name or "unknown"
         args = context.tool_input
@@ -68,23 +70,27 @@ class StdlibInputProvider(InputProvider):
             {anyenv.dump_json(args, indent=True)}
 
             Options:
-            - y: allow execution
-            - n/skip: skip this tool
-            - abort: abort current run
-            - quit: abort entire chain
+            - y: allow this call
+            - always: allow this tool for the rest of the session
+            - n [reason]: don't run it (the agent is told, with your reason, and goes on)
+            - never: don't run this tool for the rest of the session
+            - stop: don't run it, and end the turn
             """).strip()
 
-        print(f"{prompt}\nChoice [y/n/abort/quit]: ", end="", file=sys.stderr, flush=True)
-        response = input().lower()
-        match response:
+        print(f"{prompt}\nChoice [y/always/n/never/stop]: ", end="", file=sys.stderr, flush=True)
+        response = input().strip()
+        choice, _, reason = response.partition(" ")
+        match choice.lower():
             case "y" | "yes":
-                return "allow"
-            case "abort":
-                return "abort_run"
-            case "quit":
-                return "abort_chain"
+                return Approve()
+            case "always":
+                return Approve(scope="session")
+            case "never":
+                return Deny(scope="session", message=reason.strip() or None)
+            case "stop":
+                return Deny(stop=True)
             case _:
-                return "skip"
+                return Deny(message=reason.strip() or None)
 
     async def get_elicitation(
         self,

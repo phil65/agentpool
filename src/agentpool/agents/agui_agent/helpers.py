@@ -2,12 +2,14 @@
 
 from __future__ import annotations
 
+from dataclasses import replace
 from typing import TYPE_CHECKING, Any, assert_never
 from uuid import uuid4
 
 from pydantic import TypeAdapter
 
 from agentpool.log import get_logger
+from agentpool.tools.decisions import Approve, Deny
 
 
 if TYPE_CHECKING:
@@ -68,28 +70,21 @@ async def execute_tool_call(
     tool_call_id = context.tool_call_id or ""
     args = context.tool_input
 
-    # Check if confirmation is required
+    # Ask the user if the mode says so: a denial is the call's result, told to the model
     if await _should_confirm_tool(tool, confirmation_mode):
-        with context.agent.awaiting_user():
-            confirmation = await context.get_input_provider().get_tool_confirmation(
-                context=context,
-                tool_description=tool.description or "",
-            )
-        match confirmation:
-            case "skip":
-                logger.info("Tool execution skipped by user", tool=tool.name)
+        call_ctx = replace(context, tool_name=tool.name)
+        match await call_ctx.decide_tool(tool.description or ""):
+            case Approve(args=edited):
+                args = edited if edited is not None else args
+            case Deny(stop=stop) as denial:
+                logger.info("Tool call denied by the user", tool=tool.name, stop=stop)
+                if stop:
+                    call_ctx.stop_turn()
                 return AGUIToolMessage(
                     id=str(uuid4()),
                     tool_call_id=tool_call_id,
-                    content="Tool execution was skipped by user",
-                )
-            case "abort_run" | "abort_chain":
-                logger.info("Tool execution aborted by user", tool=tool.name, action=confirmation)
-                return AGUIToolMessage(
-                    id=str(uuid4()),
-                    tool_call_id=tool_call_id,
-                    content="Tool execution was aborted by user",
-                    error="Execution aborted",
+                    content=denial.reason(tool.name),
+                    error="Turn stopped by the user" if stop else None,
                 )
 
     # Execute the tool

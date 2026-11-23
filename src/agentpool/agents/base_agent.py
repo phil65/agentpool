@@ -359,6 +359,23 @@ class BaseAgent[TDeps = None, TResult = str](MessageNode[TDeps, TResult]):
             return nullcontext()
         return self._session_turn_lock
 
+    def turn_session(self, session_id: str | None = None) -> Session | None:
+        """The session whose turn is running: ``session_id``'s, else the one in this context.
+
+        Else the running one (callbacks of a backend run outside the turn's context; agents
+        with one native session run one turn at a time). None if no turn runs.
+        """
+        running = [r for r in self._runtimes_of(session_id) if r.active_runs]
+        return running[0].session if running else None
+
+    def stop_turn_soon(self, session_id: str | None = None) -> None:
+        """Interrupt the turn of ``session_id`` (else the running one) in a task of its own.
+
+        For a denial that stops the turn (``Deny(stop=True)``): the backend gets its answer
+        first, and the interrupt can't cancel the very callback that answers.
+        """
+        self.task_manager.create_task(self.interrupt(session_id), name=f"stop-turn-{self.name}")
+
     @contextmanager
     def awaiting_user(self, session_id: str | None = None) -> Generator[None]:
         """Run the block as a wait for the user (a confirmation, an elicitation, a question).

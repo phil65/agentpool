@@ -29,6 +29,7 @@ from agentpool.agents.events import (
     ToolCallStartEvent,
 )
 from agentpool.hooks import AgentHooks, CallableHook
+from agentpool.tools.decisions import Approve
 from agentpool.ui.mock_provider import MockInputProvider
 
 
@@ -275,7 +276,7 @@ async def test_policy_approval_and_interaction_hooks(tmp_path: Path) -> None:
         return _StubSDKAgent(cfg, [])
 
     provider = MockInputProvider(
-        tool_confirmation="allow",
+        tool_confirmation=Approve(),
         elicitation_response={"answer": "Option B"},
     )
     agent = AntigravityAgent(

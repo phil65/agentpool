@@ -12,6 +12,7 @@ from schemez import Schema
 
 from agentpool.messaging.message_history import MessageHistory
 from agentpool.sessions.models import SessionData
+from agentpool.tools.decisions import RememberedDecision
 from agentpool.utils.identifiers import generate_session_id
 
 
@@ -33,12 +34,16 @@ class SessionOverrides(Schema):
     """Config option values for this session by option ID (native agents' options read
     them, e.g. ``mode`` for tool confirmation)."""
 
+    tool_decisions: dict[str, RememberedDecision] = Field(default_factory=dict)
+    """Decisions the user made for the whole session, by tool name (every agent type
+    answers that tool's later calls with them instead of asking)."""
+
     # Session-scoped instructions and env vars belong here too, once the runtime can apply
     # them (ARCHITECTURE_SESSIONS_AGENTS.md section 10.9)
 
     def is_empty(self) -> bool:
         """Whether no overrides are set."""
-        return self.model is None and not self.modes
+        return self.model is None and not self.modes and not self.tool_decisions
 
 
 class Session:

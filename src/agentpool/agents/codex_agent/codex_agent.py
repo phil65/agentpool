@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from contextlib import nullcontext
+from dataclasses import replace
 from decimal import Decimal
 from pathlib import Path
 import time
@@ -43,6 +44,7 @@ from agentpool.log import get_logger
 from agentpool.mcp_server.tool_bridge import DEFAULT_ROUTE
 from agentpool.messaging import ChatMessage
 from agentpool.sessions.environment import current_instructions, instructions_update
+from agentpool.tools.decisions import Approve, Deny
 
 
 if TYPE_CHECKING:
@@ -484,17 +486,32 @@ class CodexAgent[TDeps = None, OutputDataT = str](BaseAgent[TDeps, OutputDataT])
         ctx = self._run_context(thread_id)
         if ctx is None:
             raise RuntimeError("Permission callback invoked outside of an active run")
-        input_provider = ctx.get_input_provider()
-        with self.awaiting_user():
-            result = await input_provider.get_tool_confirmation(ctx)
+        # What the user decides on, named so a decision for the session covers its kind
+        tool_name: str
+        tool_input: dict[str, Any]
+        match data:
+            case CommandExecutionRequestApprovalParams(command=command, cwd=cwd, reason=reason):
+                tool_name = "command_execution"
+                tool_input = {"command": command, "cwd": cwd, "reason": reason}
+            case FileChangeRequestApprovalParams(grant_root=root, reason=reason):
+                tool_name = "file_change"
+                tool_input = {"grant_root": root, "reason": reason}
+            case SkillRequestApprovalParams(skill_name=skill):
+                tool_name = f"skill:{skill}"
+                tool_input = {"skill": skill}
+            case _ as unreachable:
+                assert_never(unreachable)
+        call_ctx = replace(
+            ctx, tool_name=tool_name, tool_call_id=data.item_id, tool_input=tool_input
+        )
         approval_decision: Literal["allow", "deny"]
-        match result:
-            case "allow":
+        match await call_ctx.decide_tool():
+            case Approve():
                 approval_decision = "allow"
-            case "skip" | "abort_run" | "abort_chain":
+            case Deny(stop=stop):
                 approval_decision = "deny"
-            case _ as unreachable_result:
-                assert_never(unreachable_result)
+                if stop:
+                    call_ctx.stop_turn()
         match data:
             case CommandExecutionRequestApprovalParams():
                 return CommandExecutionRequestApprovalResponse(decision=approval_decision)

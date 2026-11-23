@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Any, Literal
+from typing import TYPE_CHECKING, Any
 
 from agentpool.log import get_logger
 from agentpool.messaging.context import NodeContext
@@ -16,10 +16,8 @@ if TYPE_CHECKING:
     from agentpool import Agent
     from agentpool.agents.events import RichAgentStreamEvent, StreamEventEmitter
     from agentpool.agents.runtime import SessionRuntime
-    from agentpool.tools.base import Tool
+    from agentpool.tools.decisions import ToolDecision
 
-
-ConfirmationResult = Literal["allow", "skip", "abort_run", "abort_chain"]
 
 logger = get_logger(__name__)
 
@@ -56,14 +54,14 @@ class AgentContext[TDeps = Any](NodeContext[TDeps]):
         return self.node
 
     @property
-    def _session_id(self) -> str | None:
+    def turn_session_id(self) -> str | None:
         """The session of the turn this context belongs to (None: find the running one)."""
         return self.runtime.session.session_id if self.runtime is not None else None
 
     async def handle_elicitation(self, params: ElicitRequestParams) -> ElicitResult | ErrorData:
         """Handle elicitation request for additional information."""
         provider = self.get_input_provider()
-        with self.agent.awaiting_user(self._session_id):
+        with self.agent.awaiting_user(self.turn_session_id):
             return await provider.get_elicitation(params, tool_call_id=self.tool_call_id)
 
     async def report_progress(self, progress: float, total: float | None, message: str) -> None:
@@ -98,28 +96,36 @@ class AgentContext[TDeps = Any](NodeContext[TDeps]):
 
         return StreamEventEmitter(self)
 
-    async def handle_confirmation(self, tool: Tool, args: dict[str, Any]) -> ConfirmationResult:
-        """Handle tool execution confirmation.
+    def stop_turn(self) -> None:
+        """End this context's turn, after the callback deciding a tool call has answered.
 
-        Returns "allow" if:
-        - No confirmation handler is set
-        - Handler confirms the execution
+        For a denial that stops the turn (``Deny(stop=True)``).
+        """
+        self.agent.stop_turn_soon(self.turn_session_id)
+
+    async def decide_tool(self, tool_description: str = "") -> ToolDecision:
+        """The user's decision on this context's tool call (``tool_name``, ``tool_input``).
+
+        A decision the user made for the whole session answers without asking. Otherwise
+        the input provider asks, while the turn's session ``requires_action``, and a
+        decision for the session (``scope="session"``) is kept for the tool's later calls.
 
         Args:
-            tool: The tool being executed
-            args: Arguments passed to the tool
-
-        Returns:
-            Confirmation result indicating how to proceed
+            tool_description: Human-readable description of the tool
         """
+        from agentpool.tools.decisions import from_remembered
+
+        session = self.runtime.session if self.runtime else self.agent.turn_session()
+        name = self.tool_name or "unknown"
+        if session is not None and (kept := session.overrides.tool_decisions.get(name)):
+            logger.debug("Tool decided for the session", tool_name=name, decision=kept)
+            return from_remembered(kept)
         provider = self.get_input_provider()
-        # Get tool_confirmation_mode if available (NativeAgent only)
-        # Other agents handle permission checks in their own way
-        mode = getattr(self.agent, "tool_confirmation_mode", "per_tool")
-        if (mode == "per_tool" and not tool.requires_confirmation) or mode == "never":
-            return "allow"
-        with self.agent.awaiting_user(self._session_id):
-            return await provider.get_tool_confirmation(self, tool.description or "")
+        with self.agent.awaiting_user(self.turn_session_id):
+            decision = await provider.get_tool_confirmation(self, tool_description)
+        if decision.scope == "session" and session is not None:
+            session.overrides.tool_decisions[name] = decision.remembered()
+        return decision
 
     @property
     def internal_fs(self) -> IsolatedMemoryFileSystem:

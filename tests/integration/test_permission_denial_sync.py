@@ -23,13 +23,14 @@ from mcp.types import ElicitResult
 import pytest
 
 from agentpool.agents.claude_code_agent import ClaudeCodeAgent
+from agentpool.tools.decisions import Deny
 from agentpool.ui.base import InputProvider
 from agentpool_server.acp_server.event_converter import ACPEventConverter
 
 
 if TYPE_CHECKING:
     from agentpool import AgentContext
-    from agentpool.agents.context import ConfirmationResult
+    from agentpool.tools.decisions import ToolDecision
 
 
 @dataclass
@@ -60,14 +61,14 @@ class DenyingInputProvider(InputProvider):
         self,
         context: AgentContext[Any],
         tool_description: str = "",
-    ) -> ConfirmationResult:
+    ) -> ToolDecision:
         """Deny all tool calls after a small delay."""
         tool_name = context.tool_name or "unknown"
         tool_call_id = context.tool_call_id or "unknown"
         self.trace.log_permission_request(tool_name, tool_call_id)
         await asyncio.sleep(self.delay)
         self.denial_count += 1
-        return "skip"
+        return Deny()
 
     async def get_elicitation(self, *args: Any, **kwargs: Any) -> Any:
         """Not used in this test."""

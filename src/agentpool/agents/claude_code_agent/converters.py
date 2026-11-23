@@ -45,6 +45,7 @@ from pydantic_ai import (
 
 from agentpool.agents.events import DiffContentItem, PlanUpdateEvent, ToolCallProgressEvent
 from agentpool.common_types import MCPServerStatus
+from agentpool.tools.decisions import Approve, Deny
 from agentpool.utils.todos import PlanEntry
 
 
@@ -74,8 +75,8 @@ if TYPE_CHECKING:
     from tokonomics.model_discovery.model_info import ModelInfo
 
     from agentpool.agents.auth import AuthStatus
-    from agentpool.agents.context import ConfirmationResult
     from agentpool.hooks import AgentHooks
+    from agentpool.tools.decisions import ToolDecision
     from agentpool_config.mcp_server import MCPServerConfig as NativeMCPServerConfig
 
 
@@ -201,18 +202,15 @@ def to_request_usage(usage: Usage) -> RequestUsage:
     )
 
 
-def confirmation_result_to_native(result: ConfirmationResult) -> PermissionResult:
+def decision_to_native(decision: ToolDecision, tool_name: str | None) -> PermissionResult:
+    """The CLI's permission result for the user's decision on a tool call."""
     from clawd_code_sdk import PermissionResultAllow, PermissionResultDeny
 
-    match result:
-        case "allow":
-            return PermissionResultAllow()
-        case "skip":
-            return PermissionResultDeny(message="User skipped tool execution")
-        case "abort_run" | "abort_chain":
-            return PermissionResultDeny(message="User aborted execution", interrupt=True)
-        case _ as unreachable:
-            raise assert_never(unreachable)
+    match decision:
+        case Approve(args=args):
+            return PermissionResultAllow(updated_input=args)
+        case Deny(stop=stop) as denial:
+            return PermissionResultDeny(message=denial.reason(tool_name), interrupt=stop)
 
 
 FINISH_REASON_MAP: dict[StopReason, FinishReason] = {

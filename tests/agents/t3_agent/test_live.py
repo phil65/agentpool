@@ -14,6 +14,7 @@ from agentpool.agents.events import NoticeEvent, StreamCompleteEvent
 from agentpool.agents.t3_agent import t3_agent
 from agentpool.agents.t3_agent.items import ItemTracker
 from agentpool.agents.t3_agent.live import ThreadFeed
+from agentpool.tools.decisions import Approve, Deny
 from agentpool.ui.mock_provider import MockInputProvider
 
 from .test_t3_agent import ReplayServer, _agent, _run, _script
@@ -25,7 +26,8 @@ if TYPE_CHECKING:
     from pydantic import JsonValue
     from pyt3client.native import ApprovalDecision, ThreadStreamItem
 
-    from agentpool.agents.context import AgentContext, ConfirmationResult
+    from agentpool.agents.context import AgentContext
+    from agentpool.tools.decisions import ToolDecision
 
 
 def _turn_item(
@@ -128,14 +130,14 @@ class FakeNative(T3NativeClient):
 
 
 class _Approve(MockInputProvider):
-    def __init__(self, result: ConfirmationResult) -> None:
+    def __init__(self, result: ToolDecision) -> None:
         super().__init__()
-        self.result: ConfirmationResult = result
+        self.result: ToolDecision = result
         self.asked: list[tuple[str | None, str | None, dict[str, Any]]] = []
 
     async def get_tool_confirmation(
         self, context: AgentContext[Any], tool_description: str = ""
-    ) -> ConfirmationResult:
+    ) -> ToolDecision:
         self.asked.append((context.tool_name, context.tool_call_id, context.tool_input))
         return self.result
 
@@ -150,9 +152,12 @@ def _first_turn() -> tuple[list[dict[str, Any]], str, str, str]:
     return script, str(launched["result"]["runId"]), str(reply["itemId"]), str(reply["text"])
 
 
-@pytest.mark.parametrize(("result", "decision"), [("allow", "accept"), ("skip", "decline")])
+@pytest.mark.parametrize(
+    ("result", "decision"),
+    [(Approve(), "accept"), (Deny(), "decline"), (Deny(stop=True), "cancel")],
+)
 async def test_live_text_streams_and_approvals_are_answered(
-    monkeypatch: pytest.MonkeyPatch, result: ConfirmationResult, decision: ApprovalDecision
+    monkeypatch: pytest.MonkeyPatch, result: ToolDecision, decision: ApprovalDecision
 ) -> None:
     monkeypatch.setattr(t3_agent, "LIVE_READ_INTERVAL", 0.01)
     script, run_id, reply_id, reply = _first_turn()

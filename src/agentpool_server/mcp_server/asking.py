@@ -17,7 +17,7 @@ A run whose question goes unanswered for ``PENDING_TTL`` is cancelled.
 from __future__ import annotations
 
 import asyncio
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 import json
 from typing import TYPE_CHECKING, Any
 import uuid
@@ -26,6 +26,7 @@ from mcp import types
 from mcp_types.version import MODERN_PROTOCOL_VERSIONS
 
 from agentpool.log import get_logger
+from agentpool.tools.decisions import Approve, Deny
 from agentpool.ui.base import InputProvider
 
 
@@ -33,9 +34,10 @@ if TYPE_CHECKING:
     from fastmcp import Context
     from pydantic import BaseModel
 
-    from agentpool.agents.context import AgentContext, ConfirmationResult
+    from agentpool.agents.context import AgentContext
     from agentpool.messaging import ChatMessage, MessageNode
     from agentpool.messaging.context import NodeContext
+    from agentpool.tools.decisions import ToolDecision
 
 
 logger = get_logger(__name__)
@@ -46,10 +48,12 @@ PENDING_TTL = 600.0
 QUESTION_KEY = "question"
 """Key of the one input request a waiting run returns."""
 
-_DECISIONS: dict[str, ConfirmationResult] = {
-    "allow": "allow",
-    "skip": "skip",
-    "abort": "abort_run",
+_DECISIONS: dict[str, ToolDecision] = {
+    "allow": Approve(),
+    "allow_session": Approve(scope="session"),
+    "deny": Deny(),
+    "deny_session": Deny(scope="session"),
+    "stop": Deny(stop=True),
 }
 _DECISION_SCHEMA: dict[str, Any] = {
     "type": "object",
@@ -58,8 +62,19 @@ _DECISION_SCHEMA: dict[str, Any] = {
             "type": "string",
             "title": "Decision",
             "enum": list(_DECISIONS),
-            "enumNames": ["Allow", "Skip this tool call", "Stop the run"],
-        }
+            "enumNames": [
+                "Allow",
+                "Allow for this session",
+                "Don't run it",
+                "Don't run it for this session",
+                "Don't run it, and stop",
+            ],
+        },
+        "message": {
+            "type": "string",
+            "title": "Message to the agent",
+            "description": "Why not, or what to do instead (with a denial)",
+        },
     },
     "required": ["decision"],
 }
@@ -121,18 +136,24 @@ class ServedRunInputProvider(InputProvider):
         self,
         context: AgentContext[Any],
         tool_description: str = "",
-    ) -> ConfirmationResult:
+    ) -> ToolDecision:
         args = json.dumps(context.tool_input, indent=2, ensure_ascii=False, default=str)
         detail = f"\n{tool_description}" if tool_description else ""
         message = f"Allow the agent to run {context.tool_name!r}?{detail}\n\nArguments:\n{args}"
         params = types.ElicitRequestFormParams(message=message, requested_schema=_DECISION_SCHEMA)
         match await self._ask(params):
-            case types.ElicitResult(action="accept", content={"decision": str(decision)}):
-                return _DECISIONS.get(decision, "skip")
+            case types.ElicitResult(action="accept", content={"decision": str(choice)} as content):
+                match _DECISIONS.get(choice, Deny()):
+                    case Deny(stop=False) as denial if isinstance(
+                        text := content.get("message"), str
+                    ):
+                        return replace(denial, message=text.strip() or None)
+                    case decision:
+                        return decision
             case types.ElicitResult(action="cancel"):
-                return "abort_run"
-            case _:
-                return "skip"
+                return Deny(stop=True)
+            case _:  # Declined, or a client that can't be asked
+                return Deny()
 
     async def get_elicitation(
         self,

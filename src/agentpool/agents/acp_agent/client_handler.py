@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from dataclasses import replace
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, assert_never
+from typing import TYPE_CHECKING, Any
 
 from aclientp.client.protocol import Client
 from aclientp.schema import (
@@ -24,6 +24,7 @@ from agentpool.agents.exceptions import OperationNotAllowedError, ResourceNotFou
 from agentpool.log import get_logger
 from agentpool.mcp_server.tool_bridge import DEFAULT_ROUTE
 from agentpool.sessions.environment import use_session_environment
+from agentpool.tools.decisions import Approve, Deny
 
 
 if TYPE_CHECKING:
@@ -33,6 +34,7 @@ if TYPE_CHECKING:
         AvailableCommand,
         CreateTerminalRequest,
         KillTerminalRequest,
+        PermissionOption,
         ReadTextFileRequest,
         ReleaseTerminalRequest,
         RequestPermissionRequest,
@@ -172,7 +174,7 @@ class ACPClientHandler(Client):
                 state.add_update(params.update)
                 state.update_event.set()
 
-    async def request_permission(  # noqa: PLR0911
+    async def request_permission(
         self, params: RequestPermissionRequest
     ) -> RequestPermissionResponse:
         """Handle permission requests via InputProvider."""
@@ -181,8 +183,9 @@ class ACPClientHandler(Client):
         logger.info("Permission requested", tool_name=name)
         # Check auto_approve FIRST, before any forwarding
         # This ensures "bypass permissions" mode works even for nested ACP agents
-        if self._agent.auto_approve and params.options:
-            option_id = params.options[0].option_id
+        if self._agent.auto_approve and (
+            option_id := _option_of(params.options, "allow_once", "allow_always")
+        ):
             logger.debug("Auto-granting permission (auto_approve=True)", tool_name=name)
             return RequestPermissionResponse.allowed(option_id)
         state = self._agent._states.get(params.session_id)
@@ -206,27 +209,35 @@ class ACPClientHandler(Client):
         input_provider = (state.input_provider if state else None) or base.input_provider
         if input_provider:
             args = tc.raw_input if isinstance(tc.raw_input, dict) else {}
-            ctx = replace(base, tool_call_id=tc.tool_call_id, tool_name=name, tool_input=args)
+            ctx = replace(
+                base,
+                input_provider=input_provider,
+                tool_call_id=tc.tool_call_id,
+                tool_name=name,
+                tool_input=args,
+            )
             try:
-                with self._agent.awaiting_user():
-                    result = await input_provider.get_tool_confirmation(
-                        ctx,
-                        tool_description=name,
-                    )
-                # Map confirmation result to ACP response
-                match result:
-                    case "allow":
-                        option_id = params.options[0].option_id if params.options else "allow"
-                        return RequestPermissionResponse.allowed(option_id)
-                    case "skip":
-                        return RequestPermissionResponse.denied()
-                    case "abort_chain" | "abort_run":
-                        return RequestPermissionResponse.denied()
-                    case _ as unreachable:
-                        assert_never(unreachable)
+                decision = await ctx.decide_tool(name)
             except Exception:
                 logger.exception("Failed to get permission via input provider")
                 return RequestPermissionResponse.denied()
+            # Answered with the agent's own options, by kind ("cancelled" means the
+            # prompt turn was cancelled, so it only answers a denial that stops)
+            match decision:
+                case Approve(scope="session"):
+                    option_id = _option_of(params.options, "allow_always", "allow_once")
+                case Approve():
+                    option_id = _option_of(params.options, "allow_once", "allow_always")
+                case Deny(stop=False, scope="session"):
+                    option_id = _option_of(params.options, "reject_always", "reject_once")
+                case Deny(stop=False):
+                    option_id = _option_of(params.options, "reject_once", "reject_always")
+                case Deny(stop=True):
+                    ctx.stop_turn()
+                    option_id = None
+            if option_id is None:
+                return RequestPermissionResponse.denied()
+            return RequestPermissionResponse.allowed(option_id)
 
         logger.debug("Denying permission (no input provider)", tool_name=name)
         return RequestPermissionResponse.denied()
@@ -443,3 +454,12 @@ if __name__ == "__main__":
             await agent.run("Say hello briefly.")
 
     anyio.run(main)
+
+
+def _option_of(options: Sequence[PermissionOption], *kinds: str) -> str | None:
+    """The ID of the first offered option of the first of ``kinds`` there is one of."""
+    for kind in kinds:
+        for option in options:
+            if option.kind == kind:
+                return option.option_id
+    return None

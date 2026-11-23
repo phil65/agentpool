@@ -11,6 +11,7 @@ from unittest.mock import AsyncMock, Mock
 from aclientp import RequestError
 from aclientp.schema import (
     AgentMessageChunk,
+    AllowedOutcome,
     CancelNotification,
     Cost,
     DeniedOutcome,
@@ -37,6 +38,7 @@ from agentpool.agents.events import NoticeEvent, StreamCompleteEvent
 from agentpool.messaging import ChatMessage
 from agentpool.messaging.messages import TokenCost
 from agentpool.sessions import SessionData
+from agentpool.tools.decisions import Approve, Deny
 from agentpool_config.storage import SQLStorageConfig, StorageConfig
 from agentpool_server.acp_server.acp_agent import AgentPoolACPAgent
 from agentpool_server.acp_server.event_converter import ACPEventConverter
@@ -49,6 +51,8 @@ if TYPE_CHECKING:
 
     from aclientp.schema import SessionNotification
     from pydantic_ai import ModelMessage
+
+    from agentpool.tools.decisions import ToolDecision
 
 
 RESOURCE_NOT_FOUND = -32002
@@ -312,14 +316,36 @@ async def test_prompt_of_only_commands_ends_without_running_the_agent(
     assert ran == []
 
 
-async def test_cancelled_permission_request_aborts_the_run() -> None:
+async def test_cancelled_permission_request_stops_the_turn() -> None:
     session = Mock()
     session.requests.request_permission = AsyncMock(
         return_value=RequestPermissionResponse(outcome=DeniedOutcome())
     )
     provider = ACPInputProvider(session)
     context = Mock(tool_name="bash", tool_input={"command": "ls"}, tool_call_id="tc1")
-    assert await provider.get_tool_confirmation(context) == "abort_run"
+    assert await provider.get_tool_confirmation(context) == Deny(stop=True)
+
+
+@pytest.mark.parametrize(
+    ("option_id", "decision"),
+    [
+        ("allow_once", Approve()),
+        ("allow_always", Approve(scope="session")),
+        ("deny_once", Deny()),
+        ("deny_always", Deny(scope="session")),
+        ("something_else", Deny()),
+    ],
+)
+async def test_selected_permission_options_are_decisions(
+    option_id: str, decision: ToolDecision
+) -> None:
+    session = Mock()
+    session.requests.request_permission = AsyncMock(
+        return_value=RequestPermissionResponse(outcome=AllowedOutcome(option_id=option_id))
+    )
+    provider = ACPInputProvider(session)
+    context = Mock(tool_name="bash", tool_input={"command": "ls"}, tool_call_id="tc1")
+    assert await provider.get_tool_confirmation(context) == decision
 
 
 # --- usage -------------------------------------------------------------------

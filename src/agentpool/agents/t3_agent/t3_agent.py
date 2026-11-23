@@ -17,7 +17,7 @@ from contextlib import AsyncExitStack
 from datetime import UTC, datetime
 from pathlib import PurePath, PurePosixPath, PureWindowsPath
 import time
-from typing import TYPE_CHECKING, Any, ClassVar, Literal, Self, assert_never, cast
+from typing import TYPE_CHECKING, Any, ClassVar, Literal, Self, cast
 from uuid import uuid4
 
 import anyio
@@ -31,6 +31,7 @@ from agentpool.agents.t3_agent.items import FINAL_STATUSES, ItemTracker
 from agentpool.agents.t3_agent.live import ThreadFeed
 from agentpool.log import get_logger
 from agentpool.messaging import ChatMessage
+from agentpool.tools.decisions import Approve, Deny
 
 
 if TYPE_CHECKING:
@@ -624,20 +625,14 @@ class T3Agent[TDeps = None](BaseAgent[TDeps, str]):
             tool_input=tool_input,
             tool_name=kind,
         )
-        with self.awaiting_user():
-            result = await provider.get_tool_confirmation(
-                context, tool_description=approval.reason or ""
-            )
         decision: ApprovalDecision
-        match result:
-            case "allow":
+        match await context.decide_tool(approval.reason or ""):
+            case Approve():
                 decision = "accept"
-            case "skip":
+            case Deny(stop=True):
+                decision = "cancel"  # T3 Code ends the turn
+            case Deny():
                 decision = "decline"
-            case "abort_run" | "abort_chain":
-                decision = "cancel"
-            case _ as unreachable:
-                assert_never(unreachable)
         self.log.info("Answering a T3 approval", kind=kind, decision=decision)
         await self._native.respond_to_request(
             feed.thread_id, approval.request_id, decision=decision

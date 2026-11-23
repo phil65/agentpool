@@ -42,10 +42,13 @@ the ACP v2 server steers a prompt that arrives during a turn (`ACP_V2_SERVER.md`
 
 ## 5. "Always allow" permission choices
 
-`ConfirmationResult` is allow / skip / abort. The CLI sends `permission_suggestions` (rules like
-`Bash(git status:*)`, directories) with each request; Zed offers them as "Yes, and don't ask
-again for ..." and returns them as `updatedPermissions` (`permissions/options/*.ts`,
-`permissions/effects.ts`). Touches the agentpool-wide confirmation model and the servers.
+The decision model is in (2026-11-23, `agentpool/tools/decisions.py`): `Approve` / `Deny`, once
+or for the session (the session keeps it, `SessionOverrides.tool_decisions`, for every agent
+type), with edited arguments (`updated_input`) and a message to the model. Open: the CLI sends
+`permission_suggestions` (rules like `Bash(git status:*)`, directories) with each request; Zed
+offers them as "Yes, and don't ask again for ..." and returns them as `updatedPermissions`
+(`permissions/options/*.ts`, `permissions/effects.ts`). That needs a rule-shaped scope beyond
+"the tool, for the session", and servers that offer the suggested rules as options.
 
 ## 6. Plan approval choices
 
