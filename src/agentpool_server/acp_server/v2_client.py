@@ -17,6 +17,7 @@ gets this adapter as its client:
 
 from __future__ import annotations
 
+from contextlib import asynccontextmanager
 from typing import TYPE_CHECKING, Any, assert_never
 
 from aclientp.exceptions import RequestError
@@ -32,6 +33,8 @@ from agentpool_server.acp_server.v2_translate import UpdateTranslator, tool_call
 
 
 if TYPE_CHECKING:
+    from collections.abc import AsyncGenerator
+
     from aclientp.schema import (
         CreateTerminalRequest,
         CreateTerminalResponse,
@@ -111,6 +114,32 @@ class V2ClientAdapter:
         """
         self.conn = conn
         self.translator = translator
+        self._waiting: dict[str, int] = {}
+        """Requests waiting for the user, per session."""
+
+    @asynccontextmanager
+    async def _awaiting_user(self, session_id: str | None) -> AsyncGenerator[None]:
+        """The session ``requires_action`` while its first to last request waits for the user.
+
+        ``running`` again once none waits: the request came from the session's turn.
+        """
+        if session_id is None:
+            yield
+            return
+        self._waiting[session_id] = self._waiting.get(session_id, 0) + 1
+        if self._waiting[session_id] == 1:
+            await self._send_state(session_id, v2.RequiresActionStateSessionUpdate())
+        try:
+            yield
+        finally:
+            self._waiting[session_id] -= 1
+            if not self._waiting[session_id]:
+                del self._waiting[session_id]
+                await self._send_state(session_id, v2.RunningStateSessionUpdate())
+
+    async def _send_state(self, session_id: str, state: v2.StateSessionUpdate) -> None:
+        notification = v2.UpdateSessionNotification(session_id=session_id, update=state)
+        await self.conn.session_update(notification)
 
     async def session_update(self, params: SessionNotification) -> None:
         if (update := self.translator.translate(params.update)) is None:
@@ -121,11 +150,13 @@ class V2ClientAdapter:
     async def request_permission(
         self, params: RequestPermissionRequest
     ) -> RequestPermissionResponse:
-        response = await self.conn.request_permission(permission_request(params))
+        async with self._awaiting_user(params.session_id):
+            response = await self.conn.request_permission(permission_request(params))
         return permission_response(response)
 
     async def elicitation(self, params: ElicitationRequest) -> ElicitationResponse:
-        response = await self.conn.create_elicitation(elicitation_request(params))
+        async with self._awaiting_user(params.session_id):
+            response = await self.conn.create_elicitation(elicitation_request(params))
         return ElicitationResponse.model_validate(v2.to_wire(response))
 
     async def elicitation_complete(self, params: ElicitationCompleteNotification) -> None:

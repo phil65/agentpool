@@ -362,3 +362,51 @@ async def test_two_v2_sessions_isolate_native_agent_history(
         assert sum(str(part).count("Global Rules") for part in first) == 1
     # The shared native agent's default conversation was never polluted
     assert agent.conversation.get_history() == []
+
+
+class _WaitingConnection:
+    """The part of a v2 connection a permission request uses: answers once released."""
+
+    def __init__(self) -> None:
+        self.states: list[tuple[str, str]] = []
+        self.release = asyncio.Event()
+
+    async def session_update(self, params: v2.UpdateSessionNotification) -> None:
+        match params.update:
+            case v2.RunningStateSessionUpdate() | v2.RequiresActionStateSessionUpdate() as update:
+                self.states.append((params.session_id, update.state))
+
+    async def request_permission(
+        self, params: v2.RequestPermissionRequest
+    ) -> v2.RequestPermissionResponse:
+        await self.release.wait()
+        option = params.options[0]
+        return v2.RequestPermissionResponse(
+            outcome=v2.SelectedPermissionOutcome(option_id=option.option_id)
+        )
+
+
+async def test_permission_requests_report_requires_action() -> None:
+    """The session requires_action while its requests wait, running once none does."""
+    from aclientp.schema import PermissionOption, RequestPermissionRequest, ToolCallUpdate
+
+    from agentpool_server.acp_server.v2_client import V2ClientAdapter
+    from agentpool_server.acp_server.v2_translate import UpdateTranslator
+
+    def request(tool_call_id: str) -> RequestPermissionRequest:
+        return RequestPermissionRequest(
+            session_id="s",
+            tool_call=ToolCallUpdate(tool_call_id=tool_call_id, title="Run it"),
+            options=[PermissionOption(option_id="allow", name="Allow", kind="allow_once")],
+        )
+
+    conn = _WaitingConnection()
+    adapter = V2ClientAdapter(conn, UpdateTranslator(message_id="m"))  # type: ignore[arg-type]  # ty:ignore[invalid-argument-type]
+    both = asyncio.gather(
+        adapter.request_permission(request("t1")), adapter.request_permission(request("t2"))
+    )
+    await asyncio.sleep(0.05)
+    assert conn.states == [("s", "requires_action")]  # Once, for both waiting requests
+    conn.release.set()
+    await asyncio.wait_for(both, TIMEOUT)
+    assert conn.states == [("s", "requires_action"), ("s", "running")]
