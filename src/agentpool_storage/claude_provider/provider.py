@@ -24,6 +24,7 @@ from typing import TYPE_CHECKING, Any
 
 import anyenv
 from clawd_code_sdk.models import ToolUseBlock as ClaudeToolUseBlock
+from clawd_code_sdk.storage.chain import index_chain_entries, walk_ancestry
 from clawd_code_sdk.storage.helpers import (
     count_session_messages,
     encode_project_path,
@@ -31,7 +32,11 @@ from clawd_code_sdk.storage.helpers import (
     read_session,
     write_entry,
 )
-from clawd_code_sdk.storage.models import ClaudeAssistantEntry, ClaudeEntry, ClaudeUserEntry
+from clawd_code_sdk.storage.models import (
+    ClaudeAssistantEntry,
+    ClaudeChainEntry,
+    ClaudeEntry,
+)
 from pydantic_ai import RunUsage
 
 from agentpool.log import get_logger
@@ -710,31 +715,26 @@ class ClaudeStorageProvider(StorageProvider):
         Returns:
             List of messages from oldest ancestor to the specified message
         """
-        # Fast path: if we know the session, load once and traverse in-memory
+        # Parent chains run through attachments and system entries, not only messages:
+        # follow every chain entry, return the user and assistant messages on the way.
+        # Fast path: if we know the session, load it once and walk in memory.
         if session_id and (session_path := self._find_session_path(session_id)):
             entries = read_session(session_path)
             tool_mapping = _build_tool_id_mapping(entries)
-            # Build UUID -> entry index for O(1) lookups
-            entry_by_uuid = {
-                entry.uuid: entry
-                for entry in entries
-                if isinstance(entry, ClaudeUserEntry | ClaudeAssistantEntry)
-            }
-            ancestors: list[ChatMessage[str]] = []
-            current_id: str | None = message_id
-            while current_id and (found := entry_by_uuid.get(current_id)):
-                if msg := entry_to_chat_message(found, session_id, tool_mapping):
-                    ancestors.append(msg)
-                current_id = found.parent_uuid
-            ancestors.reverse()
-            return ancestors
+            chain = walk_ancestry(index_chain_entries(entries), message_id)
+            return [
+                msg
+                for entry in reversed(chain)
+                if isinstance(entry, ClaudeEntry)
+                and (msg := entry_to_chat_message(entry, session_id, tool_mapping))
+            ]
 
         # Slow path: the chain may span sessions. Parse only transcripts that contain the
-        # UUID being looked up, each at most once, and index all their entries.
-        by_uuid: dict[str, tuple[str, ClaudeEntry, dict[str, str]]] = {}
+        # UUID being looked up, each at most once, and index all their chain entries.
+        by_uuid: dict[str, tuple[str, ClaudeChainEntry, dict[str, str]]] = {}
         parsed: set[Path] = set()
         seen: set[str] = set()  # parent chains can contain cycles
-        ancestors = []
+        ancestors: list[ChatMessage[str]] = []
         current_id = message_id
         while current_id and current_id not in seen:
             seen.add(current_id)
@@ -745,19 +745,18 @@ class ClaudeStorageProvider(StorageProvider):
                     parsed.add(path)
                     entries = read_session(path)
                     mapping = _build_tool_id_mapping(entries)
-                    for entry in entries:
-                        if isinstance(entry, ClaudeEntry):
-                            by_uuid.setdefault(entry.uuid, (sid, entry, mapping))
+                    for uuid, entry in index_chain_entries(entries).items():
+                        by_uuid.setdefault(uuid, (sid, entry, mapping))
                     if current_id in by_uuid:
                         break
             if (located := by_uuid.get(current_id)) is None:
                 break
             sid, entry, mapping = located
-            msg = entry_to_chat_message(entry, sid, mapping)
-            if not msg:
-                break
-            ancestors.append(msg)
-            current_id = msg.parent_id
+            if isinstance(entry, ClaudeEntry) and (
+                msg := entry_to_chat_message(entry, sid, mapping)
+            ):
+                ancestors.append(msg)
+            current_id = entry.parent_uuid
         ancestors.reverse()
         return ancestors
 

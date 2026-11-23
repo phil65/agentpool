@@ -98,3 +98,35 @@ async def test_ancestry_stops_on_cycle(tmp_path: Path) -> None:
     provider = ClaudeStorageProvider(ClaudeStorageConfig(path=str(tmp_path)))
     ancestry = await provider.get_message_ancestry("x2")
     assert [m.message_id for m in ancestry] == ["x1", "x2"]
+
+
+@pytest.mark.parametrize("with_session_hint", [True, False])
+async def test_ancestry_runs_through_attachments(tmp_path: Path, with_session_hint: bool) -> None:
+    """Real parent chains pass attachment entries; the walk must not stop there."""
+    project = tmp_path / "projects" / "-tmp-project"
+    project.mkdir(parents=True)
+    attachment = {
+        "type": "attachment",
+        "uuid": "at1",
+        "parentUuid": "u1",
+        "sessionId": "with-attachments",
+        "timestamp": "2026-01-01T00:00:00.000Z",
+        "cwd": "/tmp/project",
+        "version": "2.0.0",
+        "isSidechain": False,
+        "userType": "external",
+        "attachment": {"type": "date", "date": "2026-01-01"},
+    }
+    _write(
+        project,
+        "with-attachments",
+        [
+            _entry("user", "u1", None, "with-attachments", "question"),
+            attachment,
+            _entry("assistant", "a1", "at1", "with-attachments", "answer"),
+        ],
+    )
+    provider = ClaudeStorageProvider(ClaudeStorageConfig(path=str(tmp_path)))
+    session_id = "with-attachments" if with_session_hint else None
+    ancestry = await provider.get_message_ancestry("a1", session_id=session_id)
+    assert [m.message_id for m in ancestry] == ["u1", "a1"]
