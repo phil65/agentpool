@@ -125,6 +125,11 @@ class MCPServer(BaseServer):
             self.fastmcp.add_extension(extension)
         if config.serve_events:
             self._register_activity_events()
+        if config.serve_prompts is not False:
+            from agentpool_server.mcp_server.prompts_provider import PoolPromptsProvider
+
+            names = config.serve_prompts if isinstance(config.serve_prompts, list) else None
+            self.fastmcp.add_provider(PoolPromptsProvider(pool.prompt_manager, names))
         if config.serve_skills:
             from agentpool_server.mcp_server.skills_provider import PoolSkillsProvider
 
@@ -290,7 +295,24 @@ class MCPServer(BaseServer):
                 transport=self.config.transport,
                 host=self.config.host,
                 port=self.config.port,
+                **self.http_options(),
             )
+
+    def http_options(self) -> dict[str, Any]:
+        """HTTP transport options: CORS for ``cors_origins``, which pass the origin check."""
+        if not (origins := self.config.cors_origins):
+            return {}
+        from starlette.middleware import Middleware
+        from starlette.middleware.cors import CORSMiddleware
+
+        cors = Middleware(
+            CORSMiddleware,
+            allow_origins=origins,
+            allow_methods=["GET", "POST", "DELETE", "OPTIONS"],
+            allow_headers=["*"],
+            expose_headers=["Mcp-Session-Id"],
+        )
+        return {"middleware": [cors], "allowed_origins": origins}
 
     @property
     def current_session(self) -> mcp.ServerSession:

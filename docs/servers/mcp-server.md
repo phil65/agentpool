@@ -14,6 +14,9 @@ MCP client: Claude Code, other agents, or another AgentPool.
 - **A tool per agent and team**, `ask_<name>`, taking a `prompt` and returning the node's
   answer. By default all teams and the agents that are not team members.
 - **The pool's skills**, through the MCP Skills extension (SEP-2640).
+- **The pool's prompt library** as MCP prompts: `prompts.system_prompts` under their names,
+  prompts of prompt hubs (`prompts.providers`) as `<provider>.<name>`. Claude Code offers them
+  as `/mcp__<server>__<name>` commands.
 
 ## Quick Start
 
@@ -40,6 +43,8 @@ pool_server:
   port: 3001
   serve_nodes: [data_expert, api_expert]  # true: all (default), false: none
   serve_skills: true
+  serve_prompts: true                     # or a list of prompt names, or false
+  cors_origins: []                        # browser clients allowed in (HTTP only)
   serve_events: false                     # see Session Events below
   background_tasks: false                 # see Background Tasks below
 
@@ -55,6 +60,11 @@ agents:
 ```
 
 A `serve_nodes` list serves exactly the nodes it names, team members included.
+
+`cors_origins` lets browser-based clients on those origins (for example the MCP Inspector at
+`http://localhost:6274`) call the server: they get CORS headers and pass its origin check.
+Empty by default: `"*"` would let any website open in a browser on the machine call the pool's
+agents.
 
 ## Use with Claude Code
 

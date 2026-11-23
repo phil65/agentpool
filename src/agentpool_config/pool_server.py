@@ -45,10 +45,11 @@ class MCPPoolServerConfig(BasePoolServerConfig):
         title="Serve prompts",
         examples=[["prompt1", "prompt2"], ["system", "user"]],
     )
-    """Which prompts to expose:
-    - True: All prompts from manifest
-    - False: No prompts
-    - list[str]: Specific prompt names
+    """Which prompts of the pool's prompt library to serve as MCP prompts:
+    - True: All (``prompts.system_prompts`` by name, prompt hub prompts as
+      ``<provider>.<name>``)
+    - False: None
+    - list[str]: These names
     """
 
     serve_skills: bool = Field(default=True, title="Serve skills")
@@ -119,11 +120,16 @@ class MCPPoolServerConfig(BasePoolServerConfig):
     """Port to listen on (SSE / Streamable-HTTP only)."""
 
     cors_origins: list[str] = Field(
-        default_factory=lambda: ["*"],
+        default_factory=list,
         title="CORS origins",
-        examples=[["*"], ["https://example.com", "https://app.com"]],
+        examples=[["http://localhost:6274"], ["https://app.example.com"]],
     )
-    """Allowed CORS origins (SSE / Streamable-HTTP only)."""
+    """Origins of browser clients allowed to call the server (SSE / Streamable-HTTP only).
+
+    Each gets CORS headers and passes the server's origin check. Empty (the default):
+    no cross-origin browser access. ``"*"`` lets any website open in a browser on the
+    machine call the pool's agents.
+    """
 
     model_config = ConfigDict(frozen=True)
 
