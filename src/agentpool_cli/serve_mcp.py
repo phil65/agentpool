@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+from datetime import timedelta
 import os
 from typing import TYPE_CHECKING, Annotated, Any, Literal
 
@@ -31,6 +32,21 @@ def serve_command(
     show_messages: Annotated[
         bool, t.Option("--show-messages", help="Show message activity")
     ] = False,
+    background_tasks: Annotated[
+        bool,
+        t.Option(
+            "--background-tasks",
+            help="Let clients run agent tools as MCP background tasks (needs mcp-tasks extra)",
+        ),
+    ] = False,
+    tasks_url: Annotated[
+        str | None,
+        t.Option(help="Task backend: memory:// (default) or a Redis URL to survive restarts"),
+    ] = None,
+    tasks_ttl: Annotated[
+        int | None,
+        t.Option(help="Seconds to keep a task and its result, counted from its start"),
+    ] = None,
 ) -> None:
     """Run agents as an MCP server.
 
@@ -57,6 +73,9 @@ def serve_command(
             transport=transport,
             host=host,
             port=port,
+            background_tasks=background_tasks,
+            tasks_url=tasks_url,
+            tasks_ttl=timedelta(seconds=tasks_ttl) if tasks_ttl is not None else None,
         )
         server = MCPServer(pool, server_config)
         async with pool, server:

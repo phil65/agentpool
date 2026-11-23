@@ -1,6 +1,30 @@
 # MCP background tasks for the agentpool MCP server
 
-Status: idea, not started. Written 2026-11-19 against fastmcp 4.2.0.
+Status: step 1 done on 2026-11-23 with fastmcp 4.2.5 / fastmcp-tasks 4.2.5. Written 2026-11-19 against fastmcp 4.2.0.
+
+## Done (2026-11-23)
+
+- `MCPPoolServerConfig.background_tasks` / `tasks_url` and the `serve-mcp --background-tasks
+  --tasks-url` flags. When enabled, `MCPServer` registers `TasksExtension` and agent and team
+  tools use `task=True` (optional mode). The `mcp-tasks` extra pulls in `fastmcp-tasks`, imported
+  lazily.
+- Removed `ResponseCachingMiddleware` (disk store in the agentpool config dir). It served a
+  repeated prompt from cache for an hour without running the agent, and its list caches were
+  shared by every `serve-mcp` on the machine. The `py-key-value-aio[disk]` dependency went with it.
+- Progress (point 3 below) turned out to be moot: `MCPServer.report_progress` has no callers,
+  so served agent tools report no progress, with or without tasks.
+- Cancellation (point 5): a cancelled task cancels the tool coroutine, and the native agent run
+  gets `CancelledError`, as the tests check. Subprocess agents (Claude Code, Codex, ...) behave the
+  same as on a cancelled synchronous call, and whether they interrupt the subprocess is still
+  unverified.
+- Client side (point 4 of the order): importing `fastmcp_tasks` registers task support on every
+  FastMCP `Client` in the process. So far that only happens when `serve-mcp` runs with
+  background tasks. Our `MCPClient` still doesn't import it, so external task-required tools
+  still fail when we're the client.
+- TTL: a task's state and result live for `tasks_ttl`, else `FASTMCP_DOCKET_EXECUTION_TTL` (default 15 minutes,
+  ISO duration such as `PT2H`), and that includes the run itself. `tasks_ttl` / `--tasks-ttl`
+  sets it per server.
+- Tests: `tests/servers/test_mcp_server_tasks.py`.
 
 ## Goal
 

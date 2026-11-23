@@ -78,6 +78,15 @@ class MCPServer(BaseServer):
             version=agentpool.__version__,
         )
         self.server = self.fastmcp._mcp_server
+        if config.background_tasks:
+            try:
+                from fastmcp_tasks import TasksExtension
+            except ImportError as e:
+                msg = "background_tasks needs the mcp-tasks extra: pip install agentpool[mcp-tasks]"
+                raise ImportError(msg) from e
+
+            extension = TasksExtension(url=config.tasks_url, execution_ttl=config.tasks_ttl)
+            self.fastmcp.add_extension(extension)
         if config.serve_skills:
             from agentpool_server.mcp_server.skills_provider import PoolSkillsProvider
 
@@ -98,8 +107,10 @@ class MCPServer(BaseServer):
             # TODO: previously there was code to filter private attributes using a wrapper.
             # comment said it was to remove _meta params, but not sure if it was required at all.
             tool_annotations = tool.hints.to_mcp()
-            # TODO: set task=True?
-            self.fastmcp.tool(annotations=tool_annotations)(tool.fn)
+            # Optional task mode: clients that opt in get a task, all others a normal call
+            self.fastmcp.tool(annotations=tool_annotations, task=self.config.background_tasks)(
+                tool.fn
+            )
 
         self._tools_registered = True
         logger.info("Registered MCP tools", count=len(tools))

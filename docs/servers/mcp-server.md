@@ -168,6 +168,30 @@ For HTTP-based communication:
 agentpool serve-mcp config.yml --transport sse --port 3001
 ```
 
+## Background Tasks
+
+An agent or team run can take minutes, and a normal tool call keeps the request open the
+whole time. That can hit client timeouts, and over HTTP the session can idle out mid-run.
+With background tasks ([SEP-2663](https://modelcontextprotocol.io/extensions/tasks/overview))
+a client gets a task ID right away, can disconnect, and fetches the result later.
+
+```bash
+pip install "agentpool[mcp-tasks]"
+agentpool serve-mcp config.yml --transport streamable-http --background-tasks
+```
+
+Agent and team tools then run as tasks when the client asks for it. That needs a client on the
+`2026-07-28` protocol that supports the tasks extension, such as the FastMCP client. All other
+clients, including ones that don't support tasks, keep calling the tools synchronously.
+Cancelling a task cancels the agent run.
+
+Task state lives in memory by default and is lost on restart. Pass `--tasks-url
+redis://localhost:6379/0` (or set `FASTMCP_DOCKET_URL`) to keep it in Redis or Valkey.
+A task's state and result are kept for 15 minutes by default, counted from when the task
+starts, so the limit has to cover the run plus the time until the client fetches the result.
+Raise it with `--tasks-ttl 7200` (seconds), or `tasks_ttl` on `MCPPoolServerConfig` when
+building the server in Python. Tasks always run in the server's own process, because each
+run needs the pool.
 
 ## Consuming MCP Servers
 

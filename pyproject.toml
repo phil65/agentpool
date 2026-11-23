@@ -139,6 +139,7 @@ mcp-discovery = [
   "pyarrow>=19.0.0",
 ]  # MCP Discovery Toolset with semantic search
 mcp_run = ["mcpx-py>=0.7.0"]  # MCP.run Toolset
+mcp-tasks = ["fastmcp-tasks>=4.2.5"]  # MCP background tasks for serve-mcp (SEP-2663)
 notifications = ["apprise>=1.9.5"]  # Notification Toolset
 promptlayer = ["promptlayer"]  # PromptLayer Prompt Hub
 tiktoken = ["tiktoken"]  # Exact token counting

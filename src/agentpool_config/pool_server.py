@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from datetime import timedelta
 from typing import Annotated, Literal, assert_never
 
 from pydantic import ConfigDict, Field, SecretStr
@@ -52,6 +53,37 @@ class MCPPoolServerConfig(BasePoolServerConfig):
 
     serve_skills: bool = Field(default=True, title="Serve skills")
     """Publish the pool's skills through the MCP Skills extension (SEP-2640)."""
+
+    background_tasks: bool = Field(default=False, title="Background tasks")
+    """Let clients run agent and team tools as MCP background tasks (SEP-2663).
+
+    Needs the ``mcp-tasks`` extra. A client on the ``2026-07-28`` protocol that opts in gets
+    a task ID right away and polls for the result, so long runs survive request timeouts
+    and idle HTTP sessions. Every other client calls the tools synchronously, as before.
+    """
+
+    tasks_url: str | None = Field(
+        default=None,
+        title="Tasks backend URL",
+        examples=["memory://", "redis://localhost:6379/0"],
+    )
+    """Where task state lives (only with ``background_tasks``).
+
+    ``memory://`` keeps tasks in this process and loses them on restart; a Redis or Valkey
+    URL keeps them across restarts. Unset uses ``FASTMCP_DOCKET_URL``, else ``memory://``.
+    Tasks always run in this process's own worker, which holds the pool.
+    """
+
+    tasks_ttl: timedelta | None = Field(
+        default=None,
+        title="Task lifetime",
+        examples=["PT2H", 3600],
+    )
+    """How long a task's state and result are kept (only with ``background_tasks``).
+
+    Counted from when the task starts, so it must cover the run plus the time until the client
+    fetches the result. Unset uses ``FASTMCP_DOCKET_EXECUTION_TTL``, else 15 minutes.
+    """
 
     transport: TransportType = Field(
         default="stdio",
