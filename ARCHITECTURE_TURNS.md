@@ -1,9 +1,29 @@
 # Turns as a first-class model
 
-Status: proposal, not started. Written 2026-11-23. Related: `ARCHITECTURE_SESSIONS_AGENTS.md`
-(sessions, runtimes) and `ARCHITECTURE_ROUTING.md` (router, triggers, session policies). The
-team rework this enables is "Team runs" there: session policies on team targets, team state
-in the activity feed.
+Status: proposal, not started. Written 2026-11-23, revised the same day (teams demoted, see
+"How multi-agent work happens now"). Related: `ARCHITECTURE_SESSIONS_AGENTS.md` (sessions,
+runtimes) and `ARCHITECTURE_ROUTING.md` (router, triggers, session policies).
+
+## How multi-agent work happens now
+
+`Team` (parallel) and `TeamRun` (sequential), with `a & b` / `a | b`, come from a time of
+exploring APIs and conversation topologies in code. That is no longer how agents are used:
+people mostly don't write code against the API, they configure agents and let them work.
+
+- **An agent delegates.** An orchestrator decides mid-turn to hand work to another agent: the
+  subagent tool (`agentpool_toolsets/builtin/subagent_tools.py`), background tasks, and the
+  agents' own subagents (Claude Code, Codex). The topology is chosen by the model at runtime.
+- **Things happen around agents.** Triggers, MCP events, connections, and protocol clients
+  (Zed, OpenCode, Claude Code over MCP) driving sessions.
+- **Fixed pipelines and fan-outs** are the rare case. Outside their own classes, teams appear
+  in a handful of places (the OpenCode V2 runner, the MCP server's `ask_<team>` tools, the
+  subagent toolset, one CLI and one command module, five docs/examples).
+
+So the structure that matters is "this turn spawned these turns": an orchestrator's turn with
+its subagent turns as children, each with its own session, outcome and cost. That is what
+`Turn` models, and none of it depends on teams. Teams stay, thin: convenience for code and
+YAML, reimplemented as small orchestrations over turns, without new features (session
+policies keep rejecting team targets with a clear error).
 
 ## Problem
 
@@ -95,9 +115,11 @@ fields; until then they stay, and `Turn` reads them.
 - `message_sent` keeps firing with the result message; a new `turn_completed` signal carries
   the `Turn` (the router and the activity feed move to it).
 
-### Teams
+### Teams (thin, last)
 
-One implementation per team type, on the streaming path, which already handles sessions:
+Not a goal in itself (see above): the point is to delete the two half-paths and the temporary
+connections, not to grow team features. When it is done, one implementation per team type,
+on the streaming path, which already handles sessions:
 
 - Members run in child sessions (`member_session`), each a child turn.
 - The team turn ends with its own completion event carrying the team `Turn`: `children` are
@@ -110,8 +132,10 @@ One implementation per team type, on the streaming path, which already handles s
 - `run()` / `run_turn()` consume the stream; `execute()`, `execute_iter()`, the temporary
   queued connections of `TeamRun`, and `AgentResponse` / `TeamResponse` go away (or become
   views of the turn tree).
-- Session policies then accept team targets: the routed team turn runs in the picked
-  session, and its members in child sessions of it.
+- Session policies could then accept team targets; not planned unless someone needs it.
+
+A different meaning of "team" may fit today's use better: a named group of agents an
+orchestrator can delegate to (what an agent sees through the subagent tool anyway). Open.
 
 ### Routing and triggers
 
@@ -146,12 +170,13 @@ Each stage leaves everything working; only stage 4 breaks the public API.
    `StreamCompleteEvent`, ends cancelled and failed turns with it, emits `turn_completed`.
    Add `run_turn()`. The activity feed takes `idle` from the outcome. No behaviour change for
    existing callers.
-2. **Teams on turns.** The rework above: one streaming implementation per team type, member
-   turns as children, team turn events, announcements, activity; drop the temporary
-   connections and `execute*()`; session policies accept team targets.
-3. **Consumers on turns.** Router on `turn_completed` with parent links; ACP and OpenCode V2
-   servers on shared outcomes; subagent tool calls recorded as child turns; storage persists
-   outcome and parent.
+2. **Delegation and consumers on turns.** Subagent tool calls and background tasks as child
+   turns of the calling turn (the main structure today); router on `turn_completed` with
+   parent links; ACP and OpenCode V2 servers on shared outcomes; storage persists outcome
+   and parent.
+3. **Teams, thin.** Reimplement `Team` / `TeamRun` as small orchestrations over turns (member
+   turns as children, one streaming path, no temporary connections, no `execute*()`), only
+   to remove the duplicated paths. No new team features.
 4. **Slim `ChatMessage` (breaking).** Move `messages`, `usage`, `cost_info`,
    `response_time`, `finish_reason`, `associated_messages`, model and provider details to
    `Turn`; `run()` returns `Turn`. Storage providers and history then read turns. Needs a
@@ -164,9 +189,9 @@ the 66 files that use `ChatMessage` and is worth doing only once 1-3 have settle
 
 - **Names.** `run_turn()` vs. `run()` returning `Turn` right away (breaking earlier); signal
   `turn_completed` vs. reusing `message_sent` with a richer payload.
-- **Parallel team result.** A typed container (`TeamResult` with per-member results) or a
-  combined `ChatMessage` whose content is built by a configurable reducer? Today it is a
-  list, which downstream agents receive as its string form.
+- **What "team" should mean.** Keep `Team` / `TeamRun` as fixed fan-out / pipeline sugar,
+  or redefine a team as a group of agents an orchestrator delegates to? If kept: a parallel
+  team's result is a list today, which downstream agents receive as its string form.
 - **Partial results.** Should `Cancelled` carry the partial answer as `result` (as native and
   Claude Code agents return it today) or keep `result=None` and put the partial text in the
   outcome?
