@@ -1,6 +1,6 @@
 # Routing and triggers from outside the nodes
 
-Status: steps 2-4 done on 2026-11-23; step 5 (session policies) and 6 (MCP event triggers) open.
+Status: steps 2-5 done on 2026-11-23; step 6 (MCP event triggers) open.
 Written 2026-11-23.
 
 ## Done (2026-11-23)
@@ -22,6 +22,16 @@ Written 2026-11-23.
   triggers. `type: connection` triggers validate (`NodeConfig.triggers` uses agentpool's
   union) and run their node in the background. `ConnectionEventData` is a dataclass now: as an
   `EventData` (pydantic) it could not hold a `Talk` or `ChatMessage`.
+- **Step 5** (`feat(talk): session policies for connections and triggers`): connections take
+  `session: target | per_source_session | standing | per_message`, triggers
+  `session: target | standing | per_event`. `agentpool/talk/sessions.py` `SessionPicker`
+  (`router.sessions`) opens the sessions: in `pool.sessions` in a pool, otherwise locally. Agents with one
+  native session per instance take their turn lock, as team members do. Other than `target` only for
+  agent targets: a team's `run_stream(session=...)` doesn't announce on `message_sent`, so its
+  connections wouldn't route. The trigger configs are agentpool subclasses of evented's
+  (`FileWatchTriggerConfig`, ...) to carry the field. Fixed on the way: `run` connections ignored
+  `delay` and `priority`, and `TaskManager` never ran a delayed task: it cancelled the task and then
+  restarted the closed coroutine.
 - Left as they were: team-internal `Talk`s (`Team`, `TeamRun.execute_iter`), queued
   connections on `Talk`, and the standalone `EventManager` utility (`track` / `poll`), which
   no node uses any more.

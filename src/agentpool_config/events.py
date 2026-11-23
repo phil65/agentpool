@@ -19,6 +19,42 @@ if TYPE_CHECKING:
     from agentpool.messaging.events import ConnectionEventData
 
 
+TriggerSessionPolicy = Literal["target", "standing", "per_event"]
+"""Which session a trigger's events run in.
+
+- ``target``: the node's own session (the default).
+- ``standing``: one session for the trigger, kept and resumed (``trigger/<node>/<trigger>``).
+- ``per_event``: a new session for every event.
+
+Other than ``target`` only for agents: a team runs its members in sessions of its own.
+"""
+
+
+class _TriggerSession(Schema):
+    session: TriggerSessionPolicy = Field(
+        default="target",
+        examples=["target", "standing", "per_event"],
+        title="Session",
+    )
+    """Which session the trigger's events run in (see ``TriggerSessionPolicy``)."""
+
+
+class FileWatchTriggerConfig(FileWatchConfig, _TriggerSession):
+    """File watch trigger."""
+
+
+class WebhookTriggerConfig(WebhookConfig, _TriggerSession):
+    """Webhook trigger."""
+
+
+class EmailTriggerConfig(EmailConfig, _TriggerSession):
+    """Email trigger."""
+
+
+class TimeTriggerConfig(TimeEventConfig, _TriggerSession):
+    """Scheduled (cron) trigger."""
+
+
 ConnectionEventType = Literal[
     "message_received",
     "message_processed",
@@ -28,7 +64,7 @@ ConnectionEventType = Literal[
 ]
 
 
-class ConnectionTriggerConfig(EventSourceConfig):
+class ConnectionTriggerConfig(EventSourceConfig, _TriggerSession):
     """Trigger config specifically for connection events."""
 
     model_config = ConfigDict(title="Connection Trigger")
@@ -79,7 +115,11 @@ class ConnectionTriggerConfig(EventSourceConfig):
 
 
 EventConfig = Annotated[
-    FileWatchConfig | WebhookConfig | EmailConfig | TimeEventConfig | ConnectionTriggerConfig,
+    FileWatchTriggerConfig
+    | WebhookTriggerConfig
+    | EmailTriggerConfig
+    | TimeTriggerConfig
+    | ConnectionTriggerConfig,
     Field(discriminator="type"),
 ]
 

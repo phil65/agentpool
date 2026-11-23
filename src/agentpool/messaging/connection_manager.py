@@ -15,7 +15,7 @@ if TYPE_CHECKING:
 
     from agentpool.common_types import AgentName, AnyTransformFn, AsyncFilterFn, QueueStrategy
     from agentpool.messaging import ChatMessage, MessageNode
-    from agentpool_config.forward_targets import ConnectionType
+    from agentpool_config.forward_targets import ConnectionSessionPolicy, ConnectionType
 
 
 class ConnectionManager:
@@ -62,6 +62,7 @@ class ConnectionManager:
         stop_condition: AsyncFilterFn | None = None,
         exit_condition: AsyncFilterFn | None = None,
         name: str | None = None,
+        session: ConnectionSessionPolicy = "target",
     ) -> Talk[Any] | TeamTalk:
         """Connect ``source`` to one target, or to each of a sequence of targets.
 
@@ -78,6 +79,7 @@ class ConnectionManager:
             stop_condition: When to disconnect
             exit_condition: When to exit application
             name: Name for the connection (single target only; else auto-generated)
+            session: Which session of the target the messages run in
         """
         if isinstance(target, Sequence):
             talks = [
@@ -93,6 +95,7 @@ class ConnectionManager:
                     filter_condition=filter_condition,
                     stop_condition=stop_condition,
                     exit_condition=exit_condition,
+                    session=session,
                 )
                 for t in target
             ]
@@ -110,6 +113,7 @@ class ConnectionManager:
             filter_condition=filter_condition,
             stop_condition=stop_condition,
             exit_condition=exit_condition,
+            session=session,
         )
         return source.router.add(talk, name=name)
 

@@ -30,9 +30,10 @@ if TYPE_CHECKING:
     )
     from agentpool.messaging import MessageNode
     from agentpool.messaging.events import ConnectionEventData
+    from agentpool.sessions import Session
     from agentpool.talk.router import Router
     from agentpool_config.events import ConnectionEventType
-    from agentpool_config.forward_targets import ConnectionType
+    from agentpool_config.forward_targets import ConnectionSessionPolicy, ConnectionType
 
 logger = get_logger(__name__)
 
@@ -75,6 +76,7 @@ class Talk[TTransmittedData = Any]:
         filter_condition: AnyFilterFn | None = None,
         stop_condition: AnyFilterFn | None = None,
         exit_condition: AnyFilterFn | None = None,
+        session: ConnectionSessionPolicy = "target",
     ) -> None:
         """Initialize talk connection.
 
@@ -99,7 +101,13 @@ class Talk[TTransmittedData = Any]:
             filter_condition: Optional condition for filtering messages
             stop_condition: Optional condition for disconnecting
             exit_condition: Optional condition for stopping the event loop
+            session: Which session of the target the messages run in (``run`` and
+                ``context``; see ``ConnectionSessionPolicy``)
         """
+        from agentpool.talk.sessions import check_policy_target
+
+        for target in targets:
+            check_policy_target(target, session, what=f"Connection to {target.name!r}")
         self.source = source
         self.targets = list(targets)
         # Could perhaps better be an auto-inferring property
@@ -119,6 +127,7 @@ class Talk[TTransmittedData = Any]:
         self.filter_condition = filter_condition
         self.stop_condition = stop_condition
         self.exit_condition = exit_condition
+        self.session_policy: ConnectionSessionPolicy = session
         self._router: Router | None = None
         """The router holding this connection (set as it is added to one)."""
         self._event_callbacks: list[
@@ -314,9 +323,12 @@ class Talk[TTransmittedData = Any]:
 
         match self.connection_type:
             case "run":
-                # Use run_message to handle ChatMessage routing
-                # It extracts content, preserves session_id, and applies forwarding
-                return await target.run_message(message)
+                if self.delay is not None or self.priority != 0:
+                    target.task_manager.run_background(
+                        self._run_target(message, target), priority=self.priority, delay=self.delay
+                    )
+                    return None
+                return await self._run_target(message, target)
 
             case "context":
 
@@ -327,7 +339,9 @@ class Talk[TTransmittedData = Any]:
                             for agent in target.iter_agents():
                                 agent.staged_content.add_text(str(message.content))
                         case BaseAgent():
-                            target.staged_content.add_text(str(message.content))
+                            session = await self._target_session(message, target)
+                            with target.use_session(session):
+                                target.staged_content.add_text(str(message.content))
 
                 if self.delay is not None or self.priority != 0:
                     coro = add_context()
@@ -351,6 +365,37 @@ class Talk[TTransmittedData = Any]:
                 else:
                     await target.router.route(target, message)
                 return None
+
+    async def _run_target(
+        self, message: ChatMessage[Any], target: MessageNode[Any, Any]
+    ) -> ChatMessage[Any]:
+        """Run ``message`` on ``target``, in the session the connection's policy picks."""
+        from agentpool.talk.sessions import run_in
+
+        if (session := await self._target_session(message, target)) is None:
+            return await target.run_message(message)
+        return await run_in(target, message.content, session, parent_id=message.message_id)
+
+    async def _target_session(
+        self, message: ChatMessage[Any], target: MessageNode[Any, Any]
+    ) -> Session | None:
+        """The session of ``target`` that ``message`` runs in: None for the target's own."""
+        from agentpool.agents.base_agent import BaseAgent
+
+        if self.session_policy == "target" or not isinstance(target, BaseAgent):
+            return None
+        sessions = target.router.sessions
+        standing = f"connection/{self.name}/{target.name}"
+        match self.session_policy:
+            case "per_message":
+                return sessions.new(target, parent_id=message.session_id)
+            case "standing":
+                return await sessions.open(target, standing, parent_id=None)
+            case "per_source_session":
+                if (source_session := message.session_id) is None:  # Nothing to follow
+                    return await sessions.open(target, standing, parent_id=None)
+                session_id = f"{source_session}/{self.name}/{target.name}"
+                return await sessions.open(target, session_id, parent_id=source_session)
 
     async def trigger(
         self, prompt: PromptCompatible | None = None
@@ -444,6 +489,7 @@ class Talk[TTransmittedData = Any]:
             source=self.source,
             targets=self.targets,
             connection_type=self.connection_type,
+            session=self.session_policy,
         )
 
         if self.transform_fn is not None:

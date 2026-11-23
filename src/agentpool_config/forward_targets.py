@@ -24,6 +24,17 @@ if TYPE_CHECKING:
 
 
 ConnectionType = Literal["run", "context", "forward"]
+ConnectionSessionPolicy = Literal["target", "per_source_session", "standing", "per_message"]
+"""Which session of the target a connection's messages run in (``run`` and ``context``).
+
+- ``target``: the target's own session (the default).
+- ``per_source_session``: one per session of the source (``<source session>/<connection>``,
+  a child of it), so each conversation of the source has its own with the target.
+- ``standing``: one for the connection, kept and resumed (``connection/<connection>``).
+- ``per_message``: a new session for every message.
+
+Other than ``target`` only for agent targets: a team runs its members in sessions of its own.
+"""
 
 
 DEFAULT_MESSAGE_TEMPLATE = """
@@ -40,6 +51,13 @@ class ConnectionConfig(Schema):
     """Connection type."""
 
     connection_type: ConnectionType
+
+    session: ConnectionSessionPolicy = Field(
+        default="target",
+        examples=["target", "per_source_session", "standing", "per_message"],
+        title="Target session",
+    )
+    """Which session of the target the messages run in (see ``ConnectionSessionPolicy``)."""
 
     wait_for_completion: bool = Field(default=True, title="Wait for completion")
     """Whether to wait for the result before continuing.
@@ -110,6 +128,7 @@ class ConnectionConfig(Schema):
             filter_condition=self.filter_condition.check if self.filter_condition else None,
             stop_condition=self.stop_condition.check if self.stop_condition else None,
             exit_condition=self.exit_condition.check if self.exit_condition else None,
+            session=self.session,
         )
         source.connections.set_wait_state(target, wait=self.wait_for_completion)
 

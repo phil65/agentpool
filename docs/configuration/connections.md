@@ -84,38 +84,57 @@ agents:
 
 ## Message Flow Control
 
-### Wait for Completion
+### Delay
 
-Control whether to wait for the connection to complete:
+Run the delivery later, in the background:
 
 ```yaml
 connections:
   - type: node
     name: "worker"
-    wait_for_completion: false  # Async, fire-and-forget
+    delay: 5.0  # Deliver 5 seconds after the source's turn ends
+```
+
+Without a delay, a `run` connection runs the target as the source's turn ends, and the source's
+run returns after it. A delivery with a delay (or a `priority` other than 0) runs in the
+background instead.
+
+### Wait for Completion
+
+Whether the source's run waits for its background deliveries (and what they route on):
+
+```yaml
+connections:
+  - type: node
+    name: "worker"
+    delay: 5.0
+    wait_for_completion: true  # The source's run returns once the worker is done
 ```
 
 ### Priority
 
-Control processing order when multiple messages are queued:
+A `priority` other than 0 also makes the delivery run in the background. It does not order
+deliveries: they start when due.
+
+### Target Session
+
+Which session of the target the messages run in (for `run` and `context` connections):
 
 ```yaml
 connections:
   - type: node
-    name: "worker"
-    priority: 1  # Lower numbers = higher priority
+    name: "reviewer"
+    session: per_source_session
 ```
 
-### Delay
+- `target` (default): the target's own session.
+- `per_source_session`: one per session of the source, as a child of it
+  (`<source session>/<connection>/<target>`). Each conversation of the source has its own
+  conversation with the target.
+- `standing`: one session for the connection, kept and resumed (`connection/<connection>/<target>`).
+- `per_message`: a new session for every message.
 
-Add delays before processing:
-
-```yaml
-connections:
-  - type: node
-    name: "worker"
-    delay: 5.0  # Wait 5 seconds before forwarding
-```
+Other than `target` only for agents: a team runs its members in sessions of its own.
 
 ## Conditions
 

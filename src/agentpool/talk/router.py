@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING, Any
 
 from agentpool.log import get_logger
 from agentpool.talk.registry import ConnectionRegistry
+from agentpool.talk.sessions import SessionPicker
 from agentpool.talk.triggers import Triggers
 from agentpool.utils.inspection import get_fn_name
 
@@ -37,7 +38,9 @@ class Router:
         self._outgoing: defaultdict[MessageNode[Any, Any], list[Talk[Any]]] = defaultdict(list)
         self.registry = ConnectionRegistry()
         """Every connection by name (named ones under theirs, the others auto-named)."""
-        self.triggers = Triggers()
+        self.sessions = SessionPicker()
+        """Sessions that connections and triggers with a session policy run in."""
+        self.triggers = Triggers(self.sessions)
         """The nodes' event triggers (connection triggers get the connections' events)."""
         self._subscriptions: dict[
             MessageNode[Any, Any], Callable[[ChatMessage[Any]], Awaitable[None]]

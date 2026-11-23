@@ -6,6 +6,7 @@ import asyncio
 from typing import TYPE_CHECKING, Any, Self
 
 from agentpool.log import get_logger
+from agentpool.talk.sessions import check_policy_target, run_in
 from agentpool.utils.inspection import execute
 from agentpool_config.events import ConnectionTriggerConfig
 
@@ -19,6 +20,8 @@ if TYPE_CHECKING:
 
     from agentpool.messaging import MessageNode
     from agentpool.messaging.events import ConnectionEventData
+    from agentpool.sessions import Session
+    from agentpool.talk.sessions import SessionPicker
     from agentpool_config.events import EventConfig
 
     ConnectionEventCallback = Callable[[ConnectionEventData[Any]], Awaitable[None] | None]
@@ -36,7 +39,8 @@ class Triggers:
     no source: the router's connections report their events here (``connection_event``).
     """
 
-    def __init__(self) -> None:
+    def __init__(self, sessions: SessionPicker) -> None:
+        self._sessions = sessions
         self._configs: list[tuple[MessageNode[Any, Any], EventConfig]] = []
         self._sources: dict[tuple[MessageNode[Any, Any], str], EventSource] = {}
         self._pumps: set[asyncio.Task[None]] = set()
@@ -61,6 +65,7 @@ class Triggers:
         """Bind a trigger to ``node`` (its source starts now if the triggers run)."""
         if any(owner is node and c.name == config.name for owner, c in self._configs):
             raise ValueError(f"Trigger {config.name!r} already exists for {node.name!r}")
+        check_policy_target(node, config.session, what=f"Trigger {config.name!r}")
         self._configs.append((node, config))
         if self._running and self._has_source(config):
             self._spawn(self._start(node, config), name=f"start-trigger-{config.name}")
@@ -136,25 +141,48 @@ class Triggers:
             logger.exception("Failed to start trigger", node=node.name, trigger=config.name)
             return
         self._sources[key] = source
-        self._spawn(self._pump(node, source), name=f"trigger-{node.name}-{config.name}")
+        self._spawn(self._pump(node, config, source), name=f"trigger-{node.name}-{config.name}")
 
     async def _stop(self, node: MessageNode[Any, Any], name: str) -> None:
         if (source := self._sources.pop((node, name), None)) is not None:
             await source.__aexit__(None, None, None)
 
-    async def _pump(self, node: MessageNode[Any, Any], source: EventSource) -> None:
+    async def _pump(
+        self, node: MessageNode[Any, Any], config: EventConfig, source: EventSource
+    ) -> None:
         async for event in source.events():
-            await self._run(node, event)
+            await self._run(node, config, event)
 
     async def _run(
-        self, node: MessageNode[Any, Any], event: EventData | ConnectionEventData[Any]
+        self,
+        node: MessageNode[Any, Any],
+        config: EventConfig,
+        event: EventData | ConnectionEventData[Any],
     ) -> None:
         if not (prompt := event.to_prompt()):
             return
         try:
-            await node.run(prompt)
+            if (session := await self._session(node, config)) is None:
+                await node.run(prompt)
+            else:
+                await run_in(node, prompt, session)
         except Exception:
             logger.exception("Triggered run failed", node=node.name, source=event.source)
+
+    async def _session(self, node: MessageNode[Any, Any], config: EventConfig) -> Session | None:
+        """The session the trigger's event runs in: None for the node's own."""
+        from agentpool.agents.base_agent import BaseAgent
+
+        if not isinstance(node, BaseAgent):
+            return None
+        match config.session:
+            case "target":
+                return None
+            case "standing":
+                session_id = f"trigger/{node.name}/{config.name}"
+                return await self._sessions.open(node, session_id, parent_id=None)
+            case "per_event":
+                return self._sessions.new(node, parent_id=None)
 
     # --- Connection events ------------------------------------------------------------
 
@@ -182,5 +210,5 @@ class Triggers:
                 continue
             if await config.matches_event(event):
                 node.task_manager.create_task(
-                    self._run(node, event), name=f"trigger-{node.name}-{config.name}"
+                    self._run(node, config, event), name=f"trigger-{node.name}-{config.name}"
                 )

@@ -34,7 +34,7 @@ if TYPE_CHECKING:
     from agentpool.tools.base import FunctionTool
     from agentpool.ui.base import InputProvider
     from agentpool_config.events import EventConfig
-    from agentpool_config.forward_targets import ConnectionType
+    from agentpool_config.forward_targets import ConnectionSessionPolicy, ConnectionType
     from agentpool_config.mcp_server import MCPServerConfig
 
 
@@ -285,6 +285,7 @@ class MessageNode[TDeps, TResult](ABC):
         filter_condition: AsyncFilterFn | None = None,
         stop_condition: AsyncFilterFn | None = None,
         exit_condition: AsyncFilterFn | None = None,
+        session: ConnectionSessionPolicy = "target",
     ) -> Talk[TResult]: ...
 
     @overload
@@ -311,6 +312,7 @@ class MessageNode[TDeps, TResult](ABC):
         filter_condition: AsyncFilterFn | None = None,
         stop_condition: AsyncFilterFn | None = None,
         exit_condition: AsyncFilterFn | None = None,
+        session: ConnectionSessionPolicy = "target",
     ) -> TeamTalk[TResult]: ...
 
     @overload
@@ -328,6 +330,7 @@ class MessageNode[TDeps, TResult](ABC):
         filter_condition: AsyncFilterFn | None = None,
         stop_condition: AsyncFilterFn | None = None,
         exit_condition: AsyncFilterFn | None = None,
+        session: ConnectionSessionPolicy = "target",
     ) -> TeamTalk: ...
 
     def connect_to(
@@ -346,6 +349,7 @@ class MessageNode[TDeps, TResult](ABC):
         filter_condition: AsyncFilterFn | None = None,
         stop_condition: AsyncFilterFn | None = None,
         exit_condition: AsyncFilterFn | None = None,
+        session: ConnectionSessionPolicy = "target",
     ) -> Talk[Any] | TeamTalk:
         """Create connection(s) to target(s)."""
         # Handle callable case
@@ -388,6 +392,7 @@ class MessageNode[TDeps, TResult](ABC):
             filter_condition=filter_condition,
             stop_condition=stop_condition,
             exit_condition=exit_condition,
+            session=session,
         )
 
     async def disconnect_all(self) -> None:

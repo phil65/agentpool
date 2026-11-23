@@ -5,13 +5,12 @@ from __future__ import annotations
 from collections.abc import Sequence
 from typing import TYPE_CHECKING, Annotated, Any, Literal, assert_never
 
-from evented_config import FileWatchConfig, TimeEventConfig
 from exxec_config import E2bExecutionEnvironmentConfig, ExecutionEnvironmentConfig
 from pydantic import ConfigDict, Field, HttpUrl, ImportString
 from schemez import Schema
 
 from agentpool_config.event_handlers import EventHandlerConfig, StdoutEventHandlerConfig
-from agentpool_config.events import EventConfig
+from agentpool_config.events import EventConfig, FileWatchTriggerConfig, TimeTriggerConfig
 from agentpool_config.forward_targets import (
     FileConnectionConfig,
     ForwardingTarget,
@@ -82,14 +81,14 @@ class NodeConfig(Schema):
         default_factory=list,
         examples=[
             [
-                TimeEventConfig(
+                TimeTriggerConfig(
                     name="daily_check",
                     schedule="0 9 * * *",
                     prompt="Daily status update",
                 )
             ],
             [
-                FileWatchConfig(
+                FileWatchTriggerConfig(
                     name="code_watcher",
                     paths=["./src"],
                     extensions=[".py"],

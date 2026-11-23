@@ -131,6 +131,28 @@ A pool runs the triggers of all its agents and teams: their sources start once t
 up, and stop before they shut down. An agent used without a pool runs its own triggers while
 it is entered (`async with agent:`).
 
+### Trigger Sessions
+
+By default an event runs in the node's own session. A trigger can pick another:
+
+```yaml
+agents:
+  monitor:
+    model: openai:gpt-5-nano
+    triggers:
+      - type: time
+        name: daily_report
+        schedule: "0 9 * * *"
+        prompt: "Write the daily report"
+        session: per_event   # target (default) | standing | per_event
+```
+
+- `target`: the node's own session.
+- `standing`: one session for the trigger, kept and resumed (`trigger/<node>/<trigger>`).
+- `per_event`: a new session for every event.
+
+Other than `target` only for agents: a team runs its members in sessions of its own.
+
 ### Connection Triggers
 
 A `connection` trigger has no source of its own. It fires on events of the pool's connections,
