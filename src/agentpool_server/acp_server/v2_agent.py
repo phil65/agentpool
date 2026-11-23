@@ -54,9 +54,10 @@ from agentpool_server.acp_server.turns import (
     TurnLimitReached,
     TurnRefused,
 )
+from agentpool_server.acp_server.v1_output import V1SessionOutput
 from agentpool_server.acp_server.v2_client import V2ClientAdapter
 from agentpool_server.acp_server.v2_output import V2SessionOutput
-from agentpool_server.acp_server.v2_translate import UpdateTranslator, config_option
+from agentpool_server.acp_server.v2_translate import UpdateTranslator, command, config_option
 
 
 if TYPE_CHECKING:
@@ -269,10 +270,25 @@ class AgentPoolV2Agent(V2Agent):
             replayFrom=None,
         )
 
+    def _commands(self, session_id: str | None) -> Any:
+        """The slash commands of ``session_id`` for a session response (MISSING: unknown).
+
+        The ``available_commands_update`` sent at setup may reach the client before the
+        response that tells it the session id, so responses carry the commands too.
+        """
+        from pydantic import MISSING
+
+        session = self.v1.session_manager.get_session(session_id) if session_id else None
+        if session is None or not isinstance(output := session.output, V1SessionOutput):
+            return MISSING
+        return [command(c) for c in output.available_commands(session.list_commands())]
+
     async def new_session(self, params: v2.NewSessionRequest) -> v2.NewSessionResponse:
         response = await self.v1.new_session(self._session_request(params, V1NewSessionRequest))
         return v2.NewSessionResponse(
-            session_id=response.session_id, config_options=_config_options(response.config_options)
+            session_id=response.session_id,
+            config_options=_config_options(response.config_options),
+            available_commands=self._commands(response.session_id),
         )
 
     async def resume_session(self, params: v2.ResumeSessionRequest) -> v2.ResumeSessionResponse:
@@ -282,18 +298,26 @@ class AgentPoolV2Agent(V2Agent):
             update = v2.ReplayComplete()
             notification = v2.UpdateSessionNotification(session_id=params.session_id, update=update)
             await self.conn.session_update(notification)
-            return v2.ResumeSessionResponse(config_options=_config_options(loaded.config_options))
+            return v2.ResumeSessionResponse(
+                config_options=_config_options(loaded.config_options),
+                available_commands=self._commands(params.session_id),
+            )
         await self.v1.resume_session(self._session_request(params, V1ResumeSessionRequest))
         session = self.v1.session_manager.get_session(params.session_id)
         options = None
         if session is not None:
             options = await session.config_options()
-        return v2.ResumeSessionResponse(config_options=_config_options(options))
+        return v2.ResumeSessionResponse(
+            config_options=_config_options(options),
+            available_commands=self._commands(params.session_id),
+        )
 
     async def fork_session(self, params: v2.ForkSessionRequest) -> v2.ForkSessionResponse:
         response = await self.v1.fork_session(self._session_request(params, V1ForkSessionRequest))
         return v2.ForkSessionResponse(
-            session_id=response.session_id, config_options=_config_options(response.config_options)
+            session_id=response.session_id,
+            config_options=_config_options(response.config_options),
+            available_commands=self._commands(response.session_id),
         )
 
     async def close_session(self, params: v2.CloseSessionRequest) -> v2.CloseSessionResponse:
@@ -314,7 +338,11 @@ class AgentPoolV2Agent(V2Agent):
 
     async def session_options(self, params: v2.SessionOptionsRequest) -> v2.SessionOptionsResponse:
         response = await self.v1.session_options(to_v1(params, V1SessionOptionsRequest))
-        return v2.SessionOptionsResponse(config_options=_config_options(response.config_options))
+        session_id = params.session_id if v2.is_set(params.session_id) else None
+        return v2.SessionOptionsResponse(
+            config_options=_config_options(response.config_options),
+            available_commands=self._commands(session_id),
+        )
 
     async def set_session_title(
         self, params: v2.SetSessionTitleRequest

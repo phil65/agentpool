@@ -712,8 +712,10 @@ class ACPSession:
                     session_id=self.session_id,
                 ):
                     if self._cancelled:
-                        self.log.info("Cancelled during event loop, cleaning up tool calls")
-                        return TurnCancelled()
+                        # Interrupted agents end their stream: let it end here instead of
+                        # leaving it to the garbage collector, whose cleanup in another
+                        # task cancels this one through the run's cancel scopes
+                        continue
                     event_count += 1
                     await output.event(event)
         except asyncio.CancelledError:

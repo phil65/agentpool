@@ -118,7 +118,8 @@ class V1SessionOutput:
                 assert_never(unreachable)
         await session.notifications.send_update(update)
 
-    async def commands_changed(self, commands: Sequence[BaseCommand]) -> None:
+    def available_commands(self, commands: Sequence[BaseCommand]) -> list[AvailableCommand]:
+        """``commands`` as ACP commands, with the remote agent's that they don't shadow."""
         available = [
             AvailableCommand.create(
                 name=cmd.name, description=cmd.description, input_hint=cmd.usage
@@ -126,8 +127,10 @@ class V1SessionOutput:
             for cmd in commands
         ]
         names = {command.name for command in available}
-        available += [c for c in self._remote_commands if c.name not in names]
-        await self._session.notifications.update_commands(available)
+        return available + [c for c in self._remote_commands if c.name not in names]
+
+    async def commands_changed(self, commands: Sequence[BaseCommand]) -> None:
+        await self._session.notifications.update_commands(self.available_commands(commands))
 
     async def error(self, message: str) -> None:
         session = self._session

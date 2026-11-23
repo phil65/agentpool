@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+from contextlib import asynccontextmanager
 from typing import TYPE_CHECKING, Any
 
 from aclientp.schema import v2
@@ -10,7 +11,7 @@ from aclientp.v2.agent import AgentSideConnection
 from aclientp.v2.client import Client, ClientSideConnection
 import anyio
 from anyio.abc import ByteReceiveStream, ByteSendStream
-from pydantic_ai.models.function import AgentInfo, FunctionModel
+from pydantic_ai.models.function import AgentInfo, DeltaToolCall, FunctionModel
 import pytest
 
 from agentpool import Agent, AgentPool, AgentsManifest
@@ -19,7 +20,7 @@ from agentpool_server.acp_server.v2_agent import AgentPoolV2Agent
 
 
 if TYPE_CHECKING:
-    from collections.abc import AsyncIterator
+    from collections.abc import AsyncGenerator, AsyncIterator, Callable, Sequence
 
     from anyio.streams.memory import MemoryObjectReceiveStream, MemoryObjectSendStream
     from pydantic_ai import ModelMessage
@@ -93,9 +94,18 @@ async def _reply(messages: list[ModelMessage], info: AgentInfo) -> AsyncIterator
 async def connected(
     tmp_path: Any,
 ) -> AsyncIterator[tuple[ClientSideConnection, RecordingClient, Agent[None, str]]]:
+    async with _serve(FunctionModel(stream_function=_reply)) as served:
+        yield served
+
+
+@asynccontextmanager
+async def _serve(
+    model: FunctionModel, tools: Sequence[Callable[..., Any]] = ()
+) -> AsyncGenerator[tuple[ClientSideConnection, RecordingClient, Agent[None, str]]]:
+    """A v2 connection to an agent with ``model`` (and ``tools``) in a pool."""
     storage = StorageConfig(providers=[SQLStorageConfig(url="sqlite+aiosqlite:///:memory:")])
     async with AgentPool(AgentsManifest(storage=storage)) as pool:
-        agent = Agent(name="a", model=FunctionModel(stream_function=_reply), agent_pool=pool)
+        agent = Agent(name="a", model=model, tools=list(tools), agent_pool=pool)
         pool.register("a", agent)
         to_agent_send, to_agent_recv = anyio.create_memory_object_stream[bytes](100)
         to_client_send, to_client_recv = anyio.create_memory_object_stream[bytes](100)
@@ -207,6 +217,55 @@ async def test_cancel_ends_the_turn_as_cancelled(
     idle = await recorder.wait_idle()
 
     assert idle.stop_reason == "cancelled"
+
+
+async def test_cancel_during_a_tool_call_ends_the_turn(tmp_path: Any) -> None:
+    """A real native run cancelled while a tool runs still ends with idle/cancelled."""
+    tool_started = asyncio.Event()
+
+    async def slow_tool() -> str:
+        """Take a long time."""
+        tool_started.set()
+        await asyncio.sleep(30)
+        return "done"
+
+    async def stream(messages: list[ModelMessage], info: AgentInfo) -> AsyncIterator[Any]:
+        if len(messages) == 1:
+            yield {0: DeltaToolCall(name="slow_tool", json_args="{}", tool_call_id="c1")}
+        else:
+            yield "finished"
+
+    async with _serve(FunctionModel(stream_function=stream), [slow_tool]) as (conn, recorder, _):
+        session_id = await _new_session(conn, str(tmp_path))
+        await conn.prompt(_prompt(session_id))
+        await asyncio.wait_for(tool_started.wait(), TIMEOUT)
+        await conn.cancel(v2.CancelSessionNotification(session_id=session_id))
+        idle = await recorder.wait_idle()
+
+        assert idle.stop_reason == "cancelled"
+        # The session takes the next prompt
+        await conn.prompt(_prompt(session_id))
+        assert (await recorder.wait_idle()).stop_reason == "end_turn"
+
+
+async def test_session_responses_carry_the_commands(connected: Any, tmp_path: Any) -> None:
+    """The commands update at setup may precede the response naming the session."""
+    conn, _, _ = connected
+    await _initialize(conn)
+
+    new = await conn.new_session(v2.NewSessionRequest(cwd=str(tmp_path)))
+    assert v2.is_set(new.available_commands)
+    assert "help" in {c.name for c in new.available_commands if isinstance(c, v2.Command)}
+
+    request = v2.ForkSessionRequest(session_id=new.session_id, cwd=str(tmp_path))
+    forked = await conn.fork_session(request)
+    assert v2.is_set(forked.available_commands)
+    assert forked.available_commands
+
+    options_request = v2.SessionOptionsRequest(session_id=new.session_id, cwd=str(tmp_path))
+    options = await conn.session_options(options_request)
+    assert v2.is_set(options.available_commands)
+    assert options.available_commands
 
 
 async def test_commands_and_config_options_arrive_in_v2_shape(
