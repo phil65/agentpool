@@ -332,6 +332,16 @@ class SessionRuntime[TDeps = Any, TResult = Any]:
         finally:
             self.active_runs -= 1
 
+        if not self.active_runs:
+            # Events queued after the stream stopped draining (e.g. a background task
+            # finishing as the run ends) are not held back for the next run
+            while not self.events.empty():
+                late = BaseAgent.BackgroundEvent(
+                    agent_name=agent.name,
+                    session_id=effective_session_id,
+                    event=self.events.get_nowait(),
+                )
+                await agent.background_event.emit(late)
         if final_message is not None:
             await self._finalize(
                 user_msg=user_msg,

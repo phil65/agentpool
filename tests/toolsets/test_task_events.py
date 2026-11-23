@@ -10,7 +10,7 @@ from pydantic_ai.models.function import AgentInfo, DeltaToolCall, FunctionModel
 from pydantic_ai.models.test import TestModel
 
 from agentpool import Agent, AgentPool
-from agentpool.agents.events import TaskFinishedEvent, TaskStartedEvent
+from agentpool.agents.events import StreamCompleteEvent, TaskFinishedEvent, TaskStartedEvent
 from agentpool_config.toolsets import SubagentToolsetConfig
 from agentpool_toolsets.builtin import subagent_tools
 
@@ -83,6 +83,25 @@ async def test_background_task_ending_after_the_run_is_a_background_event() -> N
         (background,) = received
         assert (background.agent_name, background.event) == ("lead", finished)
         assert background.session_id == lead.session_id
+        assert lead._event_queue.empty()
+
+
+async def test_event_queued_as_the_run_ends_is_a_background_event() -> None:
+    """An event queued after the stream stopped draining is not stranded in the queue."""
+    async with AgentPool() as pool:
+        lead = Agent(name="lead", model=TestModel(custom_output_text="ok"))
+        await pool.add_agent(lead)
+        received: list[Any] = []
+
+        async def on_background(background: BaseAgent.BackgroundEvent) -> None:
+            received.append(background.event)
+
+        lead.background_event.connect(on_background)
+        finished = TaskFinishedEvent(task_id="t1", status="completed")
+        async for event in lead.run_stream("go"):
+            if isinstance(event, StreamCompleteEvent):  # the run is active, nothing drains
+                lead._event_queue.put_nowait(finished)
+        assert received == [finished]
         assert lead._event_queue.empty()
 
 
