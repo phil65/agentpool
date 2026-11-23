@@ -317,17 +317,12 @@ class ToolManagerBridge:
             await self._refresh_tools()
 
     async def _refresh_tools(self) -> None:
-        """Refresh tools registered with the MCP server.
+        """Refresh the tools registered with the MCP server, and announce the change.
 
-        Uses FastMCP's add_tool/local_provider.remove_tool API which automatically sends
-        ToolListChanged notifications when called within a request context.
-
-        Note: FastMCP only sends notifications when inside a request context
-        (ContextVar-based). Outside of requests, tools are updated but clients
-        won't receive a push notification - they'll see changes on next list_tools.
-
-        Future improvement: Access StreamableHTTPSessionManager._server_instances
-        to broadcast ToolListChanged to all connected sessions regardless of context.
+        Clients on 2026-07-28 connections hear of it on their ``subscriptions/listen``
+        streams (``notify_tools_changed``), with or without a request in flight. Earlier
+        protocol versions get FastMCP's in-request notification when the change happens
+        during a request, and otherwise see it on their next ``tools/list``.
         """
         if not self._mcp:
             return
@@ -356,6 +351,7 @@ class ToolManagerBridge:
                 with suppress(Exception):
                     self._mcp.local_provider.remove_tool(tool.name)
             self._register_single_tool(tool)
+        await self._mcp.notify_tools_changed()
 
     @property
     def port(self) -> int:

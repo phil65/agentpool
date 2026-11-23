@@ -279,3 +279,26 @@ async def test_claude_code_mcp_bridge_integration():
 
 if __name__ == "__main__":
     pytest.main(["-v", __file__])
+
+
+async def test_tool_changes_reach_listening_clients() -> None:
+    """A toolset change outside any request reaches 2026-07-28 clients' listen streams."""
+    import asyncio
+
+    from fastmcp import Client
+    from mcp.shared.subscriptions import ToolsListChanged
+
+    async with AgentPool() as pool:
+        agent = Agent(name="test", model="test", system_prompt="Test")
+        await pool.add_agent(agent)
+        agent.tools.register_tool(simple_add)
+        async with ToolManagerBridge(node=agent) as bridge, Client(bridge.url) as client:
+            assert {t.name for t in await client.list_tools()} == {"simple_add"}
+            async with client.listen(tools_list_changed=True) as subscription:
+                provider = agent.tools.builtin_provider
+                provider.register_tool(list_pool_agents)
+                await provider.tools_changed.emit(provider.create_change_event("tools"))
+                event = await asyncio.wait_for(anext(subscription), timeout=10)
+            assert isinstance(event, ToolsListChanged)
+            names = {t.name for t in await client.list_tools()}
+        assert names == {"simple_add", "list_pool_agents"}

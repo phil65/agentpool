@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from collections import defaultdict
 from typing import TYPE_CHECKING, Any
 
 import mcp
@@ -107,7 +106,6 @@ class MCPServer(BaseServer):
         """Runs of the served nodes, and the ones waiting for the user's answer."""
         self.config = config
 
-        self._subscriptions: defaultdict[str, set[mcp.ServerSession]] = defaultdict(set)
         self._tools_registered = False
 
         # Create FastMCP instance
@@ -140,7 +138,6 @@ class MCPServer(BaseServer):
 
         # Register static handlers
         self._register_logging_handlers()
-        self._register_resource_handlers()
 
     def _register_activity_events(self) -> None:
         """Publish the pool's activity feed as the event types ``session.<kind>``."""
@@ -226,35 +223,6 @@ class MCPServer(BaseServer):
             "return": returns | types.InputRequiredResult,
         }
         return ask
-
-    def _register_resource_handlers(self) -> None:
-        """Register resource subscription handlers."""
-
-        async def handle_subscribe(
-            ctx: ServerRequestContext[Any], params: types.SubscribeRequestParams
-        ) -> types.EmptyResult:
-            """Subscribe to resource updates."""
-            self._subscriptions[params.uri].add(ctx.session)
-            logger.debug("Added subscription", uri=params.uri)
-            return types.EmptyResult()
-
-        async def handle_unsubscribe(
-            ctx: ServerRequestContext[Any], params: types.UnsubscribeRequestParams
-        ) -> types.EmptyResult:
-            """Unsubscribe from resource updates."""
-            if (uri := params.uri) in self._subscriptions:
-                self._subscriptions[uri].discard(ctx.session)
-                if not self._subscriptions[uri]:
-                    del self._subscriptions[uri]
-                logger.debug("Removed subscription", uri=uri)
-            return types.EmptyResult()
-
-        self.server.add_request_handler(
-            "resources/subscribe", types.SubscribeRequestParams, handle_subscribe
-        )
-        self.server.add_request_handler(
-            "resources/unsubscribe", types.UnsubscribeRequestParams, handle_unsubscribe
-        )
 
     def _register_logging_handlers(self) -> None:
         """Register logging-related handlers.
@@ -358,12 +326,3 @@ class MCPServer(BaseServer):
         if not session.client_params:
             return None
         return session.client_params.client_info
-
-    async def notify_tool_list_changed(self) -> None:
-        """Notify clients about tool list changes."""
-        try:
-            self.task_manager.create_task(self.current_session.send_tool_list_changed())
-        except RuntimeError:
-            self.log.debug("No active session for notification")
-        except Exception:
-            self.log.exception("Failed to send tool list change notification")
