@@ -326,8 +326,16 @@ async def test_mid_turn_prompt_steers_without_duplicate_running_state(
     assert len(running_states) == 1
 
 
-async def test_two_v2_sessions_isolate_native_agent_history(connected: Any, tmp_path: Any) -> None:
+async def test_two_v2_sessions_isolate_native_agent_history(
+    connected: Any, tmp_path: Any, monkeypatch: pytest.MonkeyPatch
+) -> None:
     """Two ACP v2 sessions on the same native pool agent keep isolated Session histories."""
+    # Global rules come from the user's config dir: provide them here instead of relying
+    # on the machine's ~/.config/agentpool
+    global_dir = tmp_path / "global_config"
+    global_dir.mkdir()
+    (global_dir / "AGENTS.md").write_text("Be terse.", encoding="utf-8")
+    monkeypatch.setattr("agentpool_config.resolution.get_global_config_dir", lambda: global_dir)
     conn, recorder, agent = connected
     sid_a = await _new_session(conn, str(tmp_path))
     sid_b = (await conn.new_session(v2.NewSessionRequest(cwd=str(tmp_path)))).session_id
@@ -345,8 +353,8 @@ async def test_two_v2_sessions_isolate_native_agent_history(connected: Any, tmp_
     sess_b = pool.sessions.get(sid_b)
     assert sess_a is not None
     assert sess_b is not None
-    # Each session's first prompt is its own and carries its own rules once (the test
-    # config has global rules); before, session A's turn took both sessions' rules
+    # Each session's first prompt is its own and carries its own rules once (global
+    # rules set up above); before, session A's turn took both sessions' rules
     for session, prompt in ((sess_a, "alpha prompt"), (sess_b, "beta prompt")):
         first = session.history.get_history()[0].content
         assert isinstance(first, list)
