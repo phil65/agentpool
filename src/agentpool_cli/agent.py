@@ -36,12 +36,13 @@ def init_agent_config(
         from agentpool.utils.inspection import validate_import
 
         validate_import("promptantic", "chat")
-        from promptantic import ModelGenerator
+        import asyncio
+
+        from promptantic import fill
 
         from agentpool import AgentsManifest
 
-        generator = ModelGenerator()
-        manifest = generator.populate(AgentsManifest)
+        manifest = asyncio.run(fill(AgentsManifest, title="New agent configuration"))
         manifest.save(output)
     else:
         from agentpool import config_resources

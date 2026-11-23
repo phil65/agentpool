@@ -108,20 +108,14 @@ class StdlibInputProvider(InputProvider):
                     )
                     return types.ElicitResult(action=action)
                 case types.ElicitRequestFormParams(requested_schema=schema):
-                    # Form mode: collect structured JSON input
-                    print("Please provide response as JSON:", file=sys.stderr)
-                    if schema:
-                        schema_json = anyenv.dump_json(schema, indent=True)
-                        print(f"Expected schema:\n{schema_json}", file=sys.stderr)
-                    print("> ", end="", file=sys.stderr, flush=True)
-                    response = input()
+                    # Form mode: a form for the requested schema (validated against it)
+                    from promptantic import FormCancelledError, fill
+
                     try:
-                        content = anyenv.load_json(response, return_type=dict)
-                        return types.ElicitResult(action="accept", content=content)
-                    except anyenv.JsonLoadError as e:
-                        return types.ErrorData(
-                            code=types.INVALID_REQUEST, message=f"Invalid JSON: {e}"
-                        )
+                        content = await fill(dict(schema or {"type": "object"}))
+                    except FormCancelledError:
+                        return types.ElicitResult(action="cancel")
+                    return types.ElicitResult(action="accept", content=content)
 
         except KeyboardInterrupt:
             return types.ElicitResult(action="cancel")
@@ -130,16 +124,17 @@ class StdlibInputProvider(InputProvider):
 
 
 async def _get_promptantic_result(output_type: type[BaseModel]) -> BaseModel | None:
-    """Helper to get structured input via promptantic.
+    """Structured input as a form (promptantic); ``None`` if it can't be shown.
 
-    Returns None if promptantic is not available or fails.
+    Raises:
+        ToolError: The user cancelled the form.
     """
-    try:
-        from promptantic import ModelGenerator
+    from promptantic import FormCancelledError, fill
 
-        return await ModelGenerator().apopulate(output_type)
-    except ImportError:
-        return None
+    try:
+        return await fill(output_type)
+    except FormCancelledError as e:
+        raise ToolError("Input cancelled by the user") from e
     except Exception as e:  # noqa: BLE001
         logger.warning("Promptantic failed", error=e)
         return None

@@ -279,7 +279,7 @@ requires-dist = [
     { name = "mcpx-py", marker = "extra == 'mcp-run'", specifier = ">=0.7.0" },
     { name = "pillow", specifier = ">=11.3.0" },
     { name = "platformdirs" },
-    { name = "promptantic", specifier = ">=0.4.5" },
+    { name = "promptantic", specifier = ">=1.1.3" },
     { name = "promptlayer", marker = "extra == 'promptlayer'" },
     { name = "psygnal", specifier = ">=0.11.1" },
     { name = "pyarrow", marker = "extra == 'mcp-discovery'", specifier = ">=19.0.0" },
@@ -4788,17 +4788,20 @@ wheels = [
 
 [[package]]
 name = "promptantic"
-version = "1.0.0"
+version = "1.1.3"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
+    { name = "jsonschema" },
     { name = "prompt-toolkit" },
     { name = "pydantic" },
+    { name = "pydantic-core" },
+    { name = "referencing" },
     { name = "schemez" },
     { name = "universal-pathlib" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/3e/9d/0581eadf715aa31d61bfe2b7463b65dc6f08bc3220d3b2432d688f1a7979/promptantic-1.0.0.tar.gz", hash = "sha256:84422e4c83bd372c4fd3f13cbff317b8867c3807c4050d88a94496bf5813e663", size = 24765, upload-time = "2025-10-07T20:25:38.313Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/fc/9c/0ce557683cb47a2d4e8bb002fc599dee363905f9e8b3b514402d12777811/promptantic-1.1.3.tar.gz", hash = "sha256:063c891ca99c029b1eabd134caa5db9a4cdb3ae4089fb1be30797e1a7f25375a", size = 52484, upload-time = "2026-11-23T18:26:50.806Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/b2/d1/d4987d168b6942fee14cd49b00317658cc24f8db0fe121f4395576616290/promptantic-1.0.0-py3-none-any.whl", hash = "sha256:90ad4e7e860b1296427cd50a99abc1562e90ae482af104174acb99cb9dd6138b", size = 33945, upload-time = "2025-10-07T20:25:36.999Z" },
+    { url = "https://files.pythonhosted.org/packages/90/97/90d5a012c5ce13b56dd701abd742aae36cd0db49202174ba3326be126896/promptantic-1.1.3-py3-none-any.whl", hash = "sha256:85a9d28a2d54acad716f1213bb73efe3f067a9fdfa7634b1ecd048c5764cbea5", size = 61348, upload-time = "2026-11-23T18:26:49.696Z" },
 ]
 
 [[package]]
@@ -6369,19 +6372,20 @@ wheels = [
 
 [[package]]
 name = "schemez"
-version = "2.3.0"
+version = "2.4.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "docstring-parser" },
     { name = "griffelib" },
     { name = "pydantic" },
     { name = "pydantic-core" },
+    { name = "referencing" },
     { name = "typing-extensions" },
     { name = "universal-pathlib" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/25/35/4f09f31ea9c0e4e6f16e345439e0171cebfd0360b87ddffbdf522e211a51/schemez-2.3.0.tar.gz", hash = "sha256:d94a21071b77630d532addd35a0a49551449ca0528490d2bec9f0d855ac6184b", size = 80992, upload-time = "2026-11-23T07:57:28.815Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/bf/4b/70daa093459327708a97acded2253a3899e35787b383e5a02e1aebf931d0/schemez-2.4.0.tar.gz", hash = "sha256:f523a17f4a267ebc87aee0fbaa2b775a1ece7857eca524109d498cdcba88d5bf", size = 82871, upload-time = "2026-11-23T17:37:30.67Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/06/00/b3e58b9c521672da7539a548facd30a72abcd9e3a6f349e40e628c84ac2b/schemez-2.3.0-py3-none-any.whl", hash = "sha256:765459846722353cf63452ea0806999e4bf1723415e52eef3312feaf5b200a5c", size = 92621, upload-time = "2026-11-23T07:57:27.611Z" },
+    { url = "https://files.pythonhosted.org/packages/93/17/c2e2ff0438fc9ac5dabea49e63e826be33bd973b7caa924a8e0bd3c69e94/schemez-2.4.0-py3-none-any.whl", hash = "sha256:13c6ed5aa9665d4e112959fbe092f00809e9479cb9d2219f2cae9a4a5f5cf07f", size = 94921, upload-time = "2026-11-23T17:37:29.574Z" },
 ]
 
 [package.optional-dependencies]
