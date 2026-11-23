@@ -102,6 +102,12 @@ class BaseMCPServerConfig(Schema):
     become available to the agent owning this connection as ``<server>/<skill>``.
     """
 
+    events: bool = Field(default=False, title="Use server events")
+    """Opt into the server's MCP Events extension (SEP-3415, experimental).
+
+    Needed for ``mcp_event`` triggers on this server: they subscribe to its events.
+    """
+
     @model_validator(mode="after")
     def _validate_tool_filters(self) -> Self:
         """Validate that enabled_tools and disabled_tools are mutually exclusive."""

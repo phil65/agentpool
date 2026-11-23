@@ -6,9 +6,10 @@ import asyncio
 from typing import TYPE_CHECKING, Any, Self
 
 from agentpool.log import get_logger
+from agentpool.talk.mcp_events import CursorStore, MCPEventSource
 from agentpool.talk.sessions import check_policy_target, run_in
 from agentpool.utils.inspection import execute
-from agentpool_config.events import ConnectionTriggerConfig
+from agentpool_config.events import ConnectionTriggerConfig, MCPEventTriggerConfig
 
 
 if TYPE_CHECKING:
@@ -39,8 +40,10 @@ class Triggers:
     no source: the router's connections report their events here (``connection_event``).
     """
 
-    def __init__(self, sessions: SessionPicker) -> None:
+    def __init__(self, sessions: SessionPicker, cursors: CursorStore | None = None) -> None:
         self._sessions = sessions
+        self.cursors = cursors if cursors is not None else CursorStore()
+        """Positions of resumable MCP event subscriptions."""
         self._configs: list[tuple[MessageNode[Any, Any], EventConfig]] = []
         self._sources: dict[tuple[MessageNode[Any, Any], str], EventSource] = {}
         self._pumps: set[asyncio.Task[None]] = set()
@@ -135,7 +138,10 @@ class Triggers:
         if key in self._sources or isinstance(config, ConnectionTriggerConfig):
             return
         try:
-            source = EventSource.from_config(config)
+            if isinstance(config, MCPEventTriggerConfig):
+                source: EventSource = MCPEventSource(config, node, self.cursors)
+            else:
+                source = EventSource.from_config(config)
             await source.__aenter__()
         except Exception:
             logger.exception("Failed to start trigger", node=node.name, trigger=config.name)
@@ -150,8 +156,17 @@ class Triggers:
     async def _pump(
         self, node: MessageNode[Any, Any], config: EventConfig, source: EventSource
     ) -> None:
-        async for event in source.events():
-            await self._run(node, config, event)
+        try:
+            async for event in source.events():
+                await self._run(node, config, event)
+                # Stopped during the run, whose node may have swallowed the cancel (a native
+                # agent ends its turn with what it has): stop now, not with the next event
+                if (task := asyncio.current_task()) is not None and task.cancelling():
+                    return
+        except asyncio.CancelledError:
+            raise
+        except Exception:
+            logger.exception("Trigger source failed", node=node.name, trigger=config.name)
 
     async def _run(
         self,

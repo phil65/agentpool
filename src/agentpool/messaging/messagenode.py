@@ -127,9 +127,9 @@ class MessageNode[TDeps, TResult](ABC):
     async def __aenter__(self) -> Self:
         """Initialize base message node."""
         try:
-            if self.agent_pool is None:  # A pool runs its nodes' triggers itself
-                await self.router.triggers.__aenter__()
             await self.mcp.__aenter__()
+            if self.agent_pool is None:  # A pool runs its nodes' triggers itself (after MCP)
+                await self.router.triggers.__aenter__()
         except Exception as e:
             await self.__aexit__(type(e), e, e.__traceback__)
 

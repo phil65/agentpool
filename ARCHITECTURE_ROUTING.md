@@ -1,6 +1,6 @@
 # Routing and triggers from outside the nodes
 
-Status: steps 2-5 done on 2026-11-23; step 6 (MCP event triggers) open.
+Status: steps 2-6 done on 2026-11-23 (step 6: MCP event triggers, see `MCP_EVENTS.md`).
 Written 2026-11-23.
 
 ## Done (2026-11-23)

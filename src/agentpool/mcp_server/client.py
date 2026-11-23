@@ -98,6 +98,12 @@ class MCPClient:
         self._client = self._get_client(self.config)
 
     @property
+    def fastmcp_client(self) -> fastmcp.Client[Any]:
+        """The underlying FastMCP client (for extensions this class doesn't wrap)."""
+        self._ensure_connected()
+        return self._client
+
+    @property
     def connected(self) -> bool:
         """Check if client is connected by examining session state."""
         return self._client.is_connected()
@@ -233,6 +239,10 @@ class MCPClient:
             from fastmcp.skills import SkillsClientExtension
 
             extensions.append(SkillsClientExtension())
+        if config.events:
+            from fastmcp.experimental.events import EventsClientExtension
+
+            extensions.append(EventsClientExtension())
 
         return fastmcp.Client(
             transport,

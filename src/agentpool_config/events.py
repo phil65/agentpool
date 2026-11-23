@@ -114,12 +114,57 @@ class ConnectionTriggerConfig(EventSourceConfig, _TriggerSession):
         return True
 
 
+class MCPEventTriggerConfig(EventSourceConfig, _TriggerSession):
+    """Trigger on events an MCP server publishes (MCP Events extension, SEP-3415).
+
+    The server must be one of the node's or the pool's MCP servers, with ``events: true``.
+    Experimental, as the extension is.
+    """
+
+    model_config = ConfigDict(title="MCP Event Trigger")
+
+    type: Literal["mcp_event"] = Field("mcp_event", init=False)
+    """MCP event trigger."""
+
+    server: str = Field(examples=["github", "pagerduty"], title="MCP server")
+    """Name of the MCP server (its ``name``, else its client ID)."""
+
+    event: str = Field(examples=["incident.triggered", "repo.push"], title="Event type")
+    """Event type to subscribe to, as the server lists it."""
+
+    arguments: dict[str, Any] = Field(
+        default_factory=dict, examples=[{"service": "checkout"}], title="Arguments"
+    )
+    """Subscription arguments, matching the event type's input schema."""
+
+    delivery: Literal["auto", "push", "poll"] = Field(default="auto", title="Delivery")
+    """``auto`` uses push when the server offers it, else poll."""
+
+    prompt: str | None = Field(
+        default=None,
+        examples=["New incident: {{ event.data.title }}"],
+        title="Prompt template",
+    )
+    """Jinja2 template for the prompt, with ``event`` (``name``, ``data``, ``event_id``,
+    ``timestamp``) and ``server``. Without one, the event's name and data."""
+
+    resume: bool = Field(default=True, title="Resume after restart")
+    """Keep the position in the event stream, so a restart delivers what came in meanwhile.
+
+    Without, a subscription starts from now.
+    """
+
+    min_poll_interval: float = Field(default=1.0, gt=0, title="Minimum poll interval")
+    """Shortest wait between polls in seconds (poll delivery), whatever the server suggests."""
+
+
 EventConfig = Annotated[
     FileWatchTriggerConfig
     | WebhookTriggerConfig
     | EmailTriggerConfig
     | TimeTriggerConfig
-    | ConnectionTriggerConfig,
+    | ConnectionTriggerConfig
+    | MCPEventTriggerConfig,
     Field(discriminator="type"),
 ]
 

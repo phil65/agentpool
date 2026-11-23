@@ -180,6 +180,39 @@ agents:
           words: ["urgent"]
 ```
 
+### MCP Event Triggers
+
+An `mcp_event` trigger subscribes to events an MCP server publishes through the MCP Events
+extension ([SEP-3415](https://github.com/modelcontextprotocol/modelcontextprotocol/pull/3415),
+experimental), and runs its node on each:
+
+```yaml
+agents:
+  triager:
+    model: openai:gpt-5-nano
+    mcp_servers:
+      - type: streamable-http
+        name: incidents
+        url: https://incidents.example.com/mcp
+        events: true               # opt into the server's events
+    triggers:
+      - type: mcp_event
+        name: new_incidents
+        server: incidents          # one of the node's or the pool's MCP servers
+        event: incident.triggered  # as the server lists it
+        arguments: {service: checkout}
+        prompt: "New incident: {{ event.data.title }}"
+        session: per_event
+```
+
+- The server has to offer the event, and `arguments` must match its input schema: both are
+  checked when the trigger starts.
+- `delivery: auto` (default) uses push when the server offers it, else poll (`push`, `poll`).
+- `resume: true` (default) keeps the position after each handled event (in the agentpool data
+  directory), so a restart first delivers what arrived meanwhile. An event whose run a stop cut
+  short is delivered again. With `resume: false` a subscription starts from now.
+- Without `prompt`, the prompt is the event's name and data.
+
 ### Callbacks for One Connection
 
 In Python, a connection (`Talk`) calls back on its own events:

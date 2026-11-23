@@ -1,7 +1,11 @@
 # MCP Events (SEP-3415) for agentpool
 
-Status: idea, not started. Written 2026-11-23 against fastmcp 4.2.4 and mcp 2.3.0. Neither
-version supports Events. Companion to `MCP_BACKGROUND_TASKS.md`.
+Status: client side done 2026-11-23 (fastmcp 4.2.5 ships `fastmcp.experimental.events`): `mcp_event`
+triggers (`agentpool/talk/mcp_events.py`, run by the router's `Triggers`), with `events: true` on the
+MCP server config, resume from a stored cursor, start-time checks of event and arguments, and the
+session policies. Server side (publishing pool events from `serve-mcp`) not started.
+First written 2026-11-23 against fastmcp 4.2.4, before it had Events. Companion to
+`MCP_BACKGROUND_TASKS.md`.
 
 ## What it is
 
