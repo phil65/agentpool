@@ -53,16 +53,18 @@ async def _run(*, async_mode: bool) -> list[Any]:
             toolsets=[SubagentToolsetConfig().get_provider()],
         )
         await pool.add_agent(lead)
-        events: list[Any] = []
+        background_events: list[Any] = []
 
         async def on_background(background: BaseAgent.BackgroundEvent) -> None:
-            events.append(background.event)
+            background_events.append(background.event)
 
-        # A background task ending after the run is reported as a background event
+        # A background task ending after the run is reported as a background event (which
+        # may come before the streamed events are all collected: keep them apart)
         lead.background_event.connect(on_background)
-        events += [e async for e in lead.run_stream("go")]
+        streamed = [e async for e in lead.run_stream("go")]
         while subagent_tools._background_tasks:
             await asyncio.sleep(0.01)
+        events = [*streamed, *background_events]
         return [e for e in events if isinstance(e, TaskStartedEvent | TaskFinishedEvent)]
 
 
