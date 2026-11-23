@@ -33,8 +33,8 @@ Written 2026-11-23.
   `delay` and `priority`, and `TaskManager` never ran a delayed task: it cancelled the task and then
   restarted the closed coroutine.
 - Left as they were: team-internal `Talk`s (`Team`, `TeamRun.execute_iter`), queued
-  connections on `Talk`, and the standalone `EventManager` utility (`track` / `poll`), which
-  no node uses any more.
+  connections on `Talk`. The standalone `EventManager` (`track` / `poll`), which no node
+  used any more, was removed later the same day.
 
 The sections below are the original proposal. Related: `ARCHITECTURE_SESSIONS_AGENTS.md`
 (item 6, per-connection session policy) and `MCP_EVENTS.md` (MCP event triggers, which need

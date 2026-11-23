@@ -3,7 +3,6 @@
 from agentpool.messaging.chat_filesystem import ChatMessageFileSystem
 from agentpool.messaging.messages import ChatMessage, TokenCost, AgentResponse, TeamResponse
 from agentpool.messaging.message_container import ChatMessageList
-from agentpool.messaging.event_manager import EventManager
 from agentpool.messaging.messagenode import MessageNode
 from agentpool.messaging.message_history import MessageHistory
 from agentpool.messaging.compaction import (
@@ -34,7 +33,6 @@ __all__ = [
     "ChatMessageList",
     "CompactionPipeline",
     "CompactionStep",
-    "EventManager",
     "FilterBinaryContent",
     "FilterEmptyMessages",
     "FilterRetryPrompts",
