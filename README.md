@@ -75,6 +75,8 @@ agentpool run assistant "Hello!"
 agentpool serve-acp agents.yml
 ```
 
+![AgentPool ACP streaming flow](./docs/assets/agentpool-streaming.svg)
+
 ### Integrating External Agents
 
 The real power comes from mixing agent types:

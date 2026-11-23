@@ -22,6 +22,8 @@ First-class support for the Agent Client Protocol (ACP):
 - Unified node abstraction - ACP agents work like native agents
 - Compose ACP agents into teams with native agents
 
+![AgentPool ACP streaming flow](./assets/agentpool-streaming.svg)
+
 ### 📝 Easy Agent Configuration
 
 AgentPool excels at static YAML-based agent configuration:
