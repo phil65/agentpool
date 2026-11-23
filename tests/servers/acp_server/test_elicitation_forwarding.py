@@ -61,6 +61,21 @@ async def test_form_elicitation_is_forwarded() -> None:
     provider.session.requests.request_permission.assert_not_called()
 
 
+async def test_single_value_schema_is_forwarded_as_a_value_field() -> None:
+    """The question tool asks for one value: a form with a "value" field, not accept/decline."""
+    provider = _provider(_form_caps(), ElicitationResponse.accept({"value": "blue"}))
+    params = types.ElicitRequestFormParams(message="Colour?", requested_schema={"type": "string"})
+
+    result = await provider.get_elicitation(params, tool_call_id="tc1")
+
+    assert result == types.ElicitResult(action="accept", content={"value": "blue"})
+    request: ElicitationRequest = provider.session.requests.elicit.call_args.args[0]
+    assert request.requested_schema
+    assert list(request.requested_schema.properties) == ["value"]
+    assert request.requested_schema.required == ["value"]
+    provider.session.requests.request_permission.assert_not_called()
+
+
 async def test_url_elicitation_needs_url_capability() -> None:
     params = types.ElicitRequestURLParams(
         message="Log in", url="https://example.com", elicitation_id="e1"

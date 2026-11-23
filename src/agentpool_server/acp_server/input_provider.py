@@ -230,6 +230,12 @@ class ACPInputProvider(InputProvider):
             case types.ElicitRequestFormParams(requested_schema=schema, message=msg):
                 if caps.form is None:
                     return None
+                if schema.get("type") != "object":
+                    # A single value (e.g. the question tool's answer): one field named
+                    # "value", whose content then is {"value": ...} (like the OpenCode server)
+                    value = {"title": "Answer", **schema}
+                    properties = {"value": value}
+                    schema = {"type": "object", "properties": properties, "required": ["value"]}
                 try:
                     acp_schema = ElicitationSchema.model_validate(schema)
                 except ValidationError:
