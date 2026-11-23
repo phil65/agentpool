@@ -9,6 +9,8 @@ hide:
 
 **Connect all the agents!**
 
+![AgentPool Architecture](./assets/agentpool-architecture.svg)
+
 ## Key Features
 
 ### 🔌 ACP Integration

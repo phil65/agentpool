@@ -1,0 +1,90 @@
+<svg xmlns="http://www.w3.org/2000/svg" class="mmd-root" viewBox="0 0 766 552" width="766" height="552" role="img" aria-label="AGENTPOOL · UNIFIED AGENT ORCHESTRATION">
+  <defs>
+    <style>
+      .mmd-root {
+        --mv-bg: #070B14;
+        --mv-card: #0F172A;
+        --mv-border: rgba(148,163,184,0.24);
+        --mv-fg: #F8FAFC;
+        --mv-muted: #94A3B8;
+        --mv-title: #38BDF8;
+        --mv-dot: rgba(148,163,184,0.14);
+        --mv-hub-start: #1E293B;
+        --mv-hub-end: #0F172A;
+        --pele-series-1: #38BDF8;
+        --pele-series-2: #818CF8;
+        --pele-series-3: #FBBF24;
+        --pele-series-4: #34D399;
+        --pele-series-5: #F472B6;
+      }
+      @media (prefers-color-scheme: light) {
+        .mmd-root {
+          --mv-bg: #F8FAFC;
+          --mv-card: #FFFFFF;
+          --mv-border: rgba(148,163,184,0.45);
+          --mv-fg: #0F172A;
+          --mv-muted: #475569;
+          --mv-title: #0284C7;
+          --mv-dot: rgba(100,116,139,0.18);
+          --mv-hub-start: #EFF6FF;
+          --mv-hub-end: #FFFFFF;
+        }
+      }
+      .mmd-bg { fill: var(--mv-bg); }
+      .mmd-card { fill: var(--mv-card); stroke: var(--mv-border); stroke-width: 1.2; }
+      .mmd-dot { fill: var(--mv-dot); }
+      .mmd-title { font: 700 13px ui-monospace, SFMono-Regular, Menlo, monospace; letter-spacing: 2px; fill: var(--mv-title); text-transform: uppercase; }
+      .mmd-footer { font: 500 12px ui-monospace, SFMono-Regular, Menlo, monospace; fill: var(--mv-muted); }
+      .mmd-stage { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; font-size: 14px; fill: var(--mv-fg); }
+      .pele-label { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; fill: var(--mv-fg); }
+      .pele-label tspan:first-child { font-size: 14.5px; font-weight: 700; fill: var(--mv-fg); }
+      .pele-label tspan:nth-child(n+2) { font-size: 11.5px; font-weight: 400; fill: var(--mv-muted); }
+      .pele-cluster-label { font-size: 12px; font-weight: 600; letter-spacing: 0.04em; fill: var(--mv-muted); }
+      .pele-edge-label rect { fill: var(--mv-card); stroke: var(--mv-border); stroke-width: 1; rx: 6; }
+      .pele-edge-label text { font-size: 12px; font-weight: 600; fill: var(--mv-fg); }
+      .pele-branch .pele-label { font-size: 12px; font-weight: 700; fill: #070B14; }
+      .pele-task .pele-label { font-size: 12px; font-weight: 700; fill: #070B14; }
+      .pele-commit-label text { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 11px; fill: var(--mv-muted); }
+      .mmd-hub-node .pele-label tspan:first-child { font-size: 16px; font-weight: 700; fill: var(--mv-fg); }
+      .mmd-hub-node .pele-label tspan:nth-child(2) { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 11.5px; fill: var(--mv-title); }
+      .mmd-flow { stroke-dasharray: 6 14; stroke-linecap: round; animation: mmd-dash 1.80s linear infinite; }
+      .mmd-pulse { transform-box: fill-box; transform-origin: center; animation: mmd-ring 3.20s ease-in-out infinite; }
+      @keyframes mmd-dash { to { stroke-dashoffset: -40; } }
+      @keyframes mmd-ring {
+        0%, 100% { opacity: 0.25; transform: scale(0.97); }
+        50% { opacity: 0.65; transform: scale(1.03); }
+      }
+      @media (prefers-reduced-motion: reduce) {
+        .mmd-flow, .mmd-pulse { animation: none; }
+      }
+    </style>
+    <pattern id="mmd-dots" width="28" height="28" patternUnits="userSpaceOnUse">
+      <circle cx="1.5" cy="1.5" r="1" class="mmd-dot"/>
+    </pattern>
+    <radialGradient id="mmd-glow-l" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="#38BDF8" stop-opacity="0.16"/>
+      <stop offset="100%" stop-color="#38BDF8" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="mmd-glow-r" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="#818CF8" stop-opacity="0.16"/>
+      <stop offset="100%" stop-color="#818CF8" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="mmd-hub-bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="var(--mv-hub-start)"/>
+      <stop offset="100%" stop-color="var(--mv-hub-end)"/>
+    </linearGradient>
+  </defs>
+
+  <rect width="766" height="552" rx="18" class="mmd-bg"/>
+  <rect width="766" height="552" rx="18" fill="url(#mmd-dots)"/>
+  <circle cx="199" cy="199" r="214" fill="url(#mmd-glow-l)"/>
+  <circle cx="567" cy="353" r="214" fill="url(#mmd-glow-r)"/>
+  <text x="383" y="42" text-anchor="middle" class="mmd-title">AGENTPOOL · UNIFIED AGENT ORCHESTRATION</text>
+
+  <g class="mmd-stage" transform="translate(52,76)" style="--_bg:var(--mv-bg);--_fg:var(--mv-fg);--_m:var(--mv-muted);--_l:#38BDF8;--_s:var(--mv-card);--_a:var(--mv-hub-start);--_b:var(--mv-border);--_c:#38BDF8;--_r:12px">
+    <g class="pele-edges" fill="none" stroke="var(--_l)" stroke-linecap="round"><g class="pele-edge" data-id="L_native_hub_0"><path id="mmd-edge-0" d="M177.78,41C202.58,41 217.78,67.45 217.78,110.6C217.78,153.75 225.98,180.2 239.38,180.2L245.38,180.2" stroke="#38BDF8" stroke-width="2" stroke-opacity="0.32" fill="none"/><path d="M177.78,41C202.58,41 217.78,67.45 217.78,110.6C217.78,153.75 225.98,180.2 239.38,180.2L245.38,180.2" stroke="#38BDF8" stroke-width="2.2" fill="none" class="mmd-flow"/><path class="pele-marker" d="M252.38,180.2L244.38,183.56L244.38,176.84Z" fill="#38BDF8" fill-opacity="0.88" stroke="none"/></g><g class="pele-edge" data-id="L_acp_hub_0"><path id="mmd-edge-1" d="M177.78,147C205.61,147 205.61,193.4 233.44,193.4L239.44,193.4" stroke="#818CF8" stroke-width="2" stroke-opacity="0.32" fill="none"/><path d="M177.78,147C205.61,147 205.61,193.4 233.44,193.4L239.44,193.4" stroke="#818CF8" stroke-width="2.2" fill="none" class="mmd-flow"/><path class="pele-marker" d="M246.44,193.4L238.44,196.76L238.44,190.04Z" fill="#818CF8" fill-opacity="0.88" stroke="none"/></g><g class="pele-edge" data-id="L_claude_hub_0"><path id="mmd-edge-2" d="M177.78,253C205.61,253 205.61,206.6 233.44,206.6L239.44,206.6" stroke="#FBBF24" stroke-width="2" stroke-opacity="0.32" fill="none"/><path d="M177.78,253C205.61,253 205.61,206.6 233.44,206.6L239.44,206.6" stroke="#FBBF24" stroke-width="2.2" fill="none" class="mmd-flow"/><path class="pele-marker" d="M246.44,206.6L238.44,209.96L238.44,203.24Z" fill="#FBBF24" fill-opacity="0.88" stroke="none"/></g><g class="pele-edge" data-id="L_agui_hub_0"><path id="mmd-edge-3" d="M177.78,359C202.58,359 217.78,332.55 217.78,289.4C217.78,246.25 225.98,219.8 239.38,219.8L245.38,219.8" stroke="#34D399" stroke-width="2" stroke-opacity="0.32" fill="none"/><path d="M177.78,359C202.58,359 217.78,332.55 217.78,289.4C217.78,246.25 225.98,219.8 239.38,219.8L245.38,219.8" stroke="#34D399" stroke-width="2.2" fill="none" class="mmd-flow"/><path class="pele-marker" d="M252.38,219.8L244.38,223.16L244.38,216.44Z" fill="#34D399" fill-opacity="0.88" stroke="none"/></g><g class="pele-edge" data-id="L_hub_s_acp_0"><path id="mmd-edge-4" d="M403.33,180.2C424.78,180.2 437.93,153.75 437.93,110.6C437.93,67.45 448.19,41 464.93,41L470.93,41" stroke="#38BDF8" stroke-width="2" stroke-opacity="0.32" fill="none"/><path d="M403.33,180.2C424.78,180.2 437.93,153.75 437.93,110.6C437.93,67.45 448.19,41 464.93,41L470.93,41" stroke="#38BDF8" stroke-width="2.2" fill="none" class="mmd-flow"/><path class="pele-marker" d="M477.93,41L469.93,44.36L469.93,37.64Z" fill="#38BDF8" fill-opacity="0.88" stroke="none"/></g><g class="pele-edge" data-id="L_hub_s_oc_0"><path id="mmd-edge-5" d="M409.26,193.4L437.93,193.4C451.43,193.4 451.43,147 464.93,147L470.93,147" stroke="#818CF8" stroke-width="2" stroke-opacity="0.32" fill="none"/><path d="M409.26,193.4L437.93,193.4C451.43,193.4 451.43,147 464.93,147L470.93,147" stroke="#818CF8" stroke-width="2.2" fill="none" class="mmd-flow"/><path class="pele-marker" d="M477.93,147L469.93,150.36L469.93,143.64Z" fill="#818CF8" fill-opacity="0.88" stroke="none"/></g><g class="pele-edge" data-id="L_hub_s_mcp_0"><path id="mmd-edge-6" d="M409.26,206.6L437.93,206.6C451.43,206.6 451.43,253 464.93,253L470.93,253" stroke="#FBBF24" stroke-width="2" stroke-opacity="0.32" fill="none"/><path d="M409.26,206.6L437.93,206.6C451.43,206.6 451.43,253 464.93,253L470.93,253" stroke="#FBBF24" stroke-width="2.2" fill="none" class="mmd-flow"/><path class="pele-marker" d="M477.93,253L469.93,256.36L469.93,249.64Z" fill="#FBBF24" fill-opacity="0.88" stroke="none"/></g><g class="pele-edge" data-id="L_hub_s_agui_0"><path id="mmd-edge-7" d="M403.33,219.8C424.78,219.8 437.93,246.25 437.93,289.4C437.93,332.55 448.19,359 464.93,359L470.93,359" stroke="#34D399" stroke-width="2" stroke-opacity="0.32" fill="none"/><path d="M403.33,219.8C424.78,219.8 437.93,246.25 437.93,289.4C437.93,332.55 448.19,359 464.93,359L470.93,359" stroke="#34D399" stroke-width="2.2" fill="none" class="mmd-flow"/><path class="pele-marker" d="M477.93,359L469.93,362.36L469.93,355.64Z" fill="#34D399" fill-opacity="0.88" stroke="none"/></g></g><g class="mmd-packets"><circle r="3.8" fill="#38BDF8"><animateMotion dur="2.10s" begin="-0.20s" repeatCount="indefinite"><mpath href="#mmd-edge-0"/></animateMotion></circle><circle r="3.8" fill="#818CF8"><animateMotion dur="2.32s" begin="-0.63s" repeatCount="indefinite"><mpath href="#mmd-edge-1"/></animateMotion></circle><circle r="3.8" fill="#FBBF24"><animateMotion dur="2.54s" begin="-1.06s" repeatCount="indefinite"><mpath href="#mmd-edge-2"/></animateMotion></circle><circle r="3.8" fill="#34D399"><animateMotion dur="2.76s" begin="-1.49s" repeatCount="indefinite"><mpath href="#mmd-edge-3"/></animateMotion></circle><circle r="3.8" fill="#38BDF8"><animateMotion dur="2.10s" begin="-1.92s" repeatCount="indefinite"><mpath href="#mmd-edge-4"/></animateMotion></circle><circle r="3.8" fill="#818CF8"><animateMotion dur="2.32s" begin="-0.35s" repeatCount="indefinite"><mpath href="#mmd-edge-5"/></animateMotion></circle><circle r="3.8" fill="#FBBF24"><animateMotion dur="2.54s" begin="-0.78s" repeatCount="indefinite"><mpath href="#mmd-edge-6"/></animateMotion></circle><circle r="3.8" fill="#34D399"><animateMotion dur="2.76s" begin="-1.21s" repeatCount="indefinite"><mpath href="#mmd-edge-7"/></animateMotion></circle></g><g class="pele-nodes"><g class="pele-node pele-shape-rect cyan" data-id="native" transform="translate(92.89,41)"><rect x="-84.89" y="-33" width="169.78" height="66" rx="12" class="mmd-card"/><rect x="-74.9" y="-20.0" width="5" height="40.0" rx="2.5" fill="#38BDF8"/><text class="pele-label" text-anchor="middle" xml:space="preserve"><tspan x="0" y="-4.9">Native Agent</tspan><tspan x="0" y="16.1">PydanticAI · Tools</tspan></text></g><g class="pele-node pele-shape-stadium hub mmd-hub-node" data-id="hub" transform="translate(327.85,200)"><rect x="-89.1" y="-40.0" width="178.2" height="80.0" rx="24" fill="none" stroke="#38BDF8" stroke-opacity="0.35" stroke-width="1.5" class="mmd-pulse"/><rect x="-82.08" y="-33" width="164.15" height="66" rx="18" fill="url(#mmd-hub-bg)" stroke="#38BDF8" stroke-opacity="0.65" stroke-width="1.6"/><text class="pele-label" text-anchor="middle" xml:space="preserve"><tspan x="0" y="-4.9">AgentPool</tspan><tspan x="0" y="16.1">MessageNode</tspan></text></g><g class="pele-node pele-shape-rect indigo" data-id="acp" transform="translate(104,147)"><rect x="-73.78" y="-33" width="147.55" height="66" rx="12" class="mmd-card"/><rect x="-63.8" y="-20.0" width="5" height="40.0" rx="2.5" fill="#818CF8"/><text class="pele-label" text-anchor="middle" xml:space="preserve"><tspan x="0" y="-4.9">ACP Agent</tspan><tspan x="0" y="16.1">Goose · Codex</tspan></text></g><g class="pele-node pele-shape-rect amber" data-id="claude" transform="translate(99.99,253)"><rect x="-77.78" y="-33" width="155.57" height="66" rx="12" class="mmd-card"/><rect x="-67.8" y="-20.0" width="5" height="40.0" rx="2.5" fill="#FBBF24"/><text class="pele-label" text-anchor="middle" xml:space="preserve"><tspan x="0" y="-4.9">Claude Code</tspan><tspan x="0" y="16.1">CLI · Subagents</tspan></text></g><g class="pele-node pele-shape-rect emerald" data-id="agui" transform="translate(103.32,359)"><rect x="-74.46" y="-33" width="148.91" height="66" rx="12" class="mmd-card"/><rect x="-64.5" y="-20.0" width="5" height="40.0" rx="2.5" fill="#34D399"/><text class="pele-label" text-anchor="middle" xml:space="preserve"><tspan x="0" y="-4.9">AG-UI &amp; Teams</tspan><tspan x="0" y="16.1">Chain | Parallel</tspan></text></g><g class="pele-node pele-shape-rect cyan" data-id="s_acp" transform="translate(550.82,41)"><rect x="-72.89" y="-33" width="145.78" height="66" rx="12" class="mmd-card"/><rect x="-62.9" y="-20.0" width="5" height="40.0" rx="2.5" fill="#38BDF8"/><text class="pele-label" text-anchor="middle" xml:space="preserve"><tspan x="0" y="-4.9">ACP Server</tspan><tspan x="0" y="16.1">Zed · VS Code</tspan></text></g><g class="pele-node pele-shape-rect indigo" data-id="s_oc" transform="translate(547.25,147)"><rect x="-69.32" y="-33" width="138.64" height="66" rx="12" class="mmd-card"/><rect x="-59.3" y="-20.0" width="5" height="40.0" rx="2.5" fill="#818CF8"/><text class="pele-label" text-anchor="middle" xml:space="preserve"><tspan x="0" y="-4.9">OpenCode</tspan><tspan x="0" y="16.1">TUI · Desktop</tspan></text></g><g class="pele-node pele-shape-rect amber" data-id="s_mcp" transform="translate(554.36,253)"><rect x="-76.43" y="-33" width="152.86" height="66" rx="12" class="mmd-card"/><rect x="-66.4" y="-20.0" width="5" height="40.0" rx="2.5" fill="#FBBF24"/><text class="pele-label" text-anchor="middle" xml:space="preserve"><tspan x="0" y="-4.9">MCP Server</tspan><tspan x="0" y="16.1">Tools · Prompts</tspan></text></g><g class="pele-node pele-shape-rect emerald" data-id="s_agui" transform="translate(565.48,359)"><rect x="-87.55" y="-33" width="175.1" height="66" rx="12" class="mmd-card"/><rect x="-77.5" y="-20.0" width="5" height="40.0" rx="2.5" fill="#34D399"/><text class="pele-label" text-anchor="middle" xml:space="preserve"><tspan x="0" y="-4.9">AG-UI / OpenAI</tspan><tspan x="0" y="16.1">Web · REST / SSE</tspan></text></g></g>
+  </g>
+
+  <rect x="176" y="500" width="415" height="30" rx="15" class="mmd-card"/>
+  <text x="383" y="519" text-anchor="middle" class="mmd-footer">define once in YAML · planner | (coder &amp; goose)</text>
+</svg>

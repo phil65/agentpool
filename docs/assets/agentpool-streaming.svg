@@ -1,0 +1,90 @@
+<svg xmlns="http://www.w3.org/2000/svg" class="mmd-root" viewBox="0 0 570 430" width="570" height="430" role="img" aria-label="AGENTPOOL · ACP STREAMING FLOW">
+  <defs>
+    <style>
+      .mmd-root {
+        --mv-bg: #070B14;
+        --mv-card: #0F172A;
+        --mv-border: rgba(148,163,184,0.24);
+        --mv-fg: #F8FAFC;
+        --mv-muted: #94A3B8;
+        --mv-title: #38BDF8;
+        --mv-dot: rgba(148,163,184,0.14);
+        --mv-hub-start: #1E293B;
+        --mv-hub-end: #0F172A;
+        --pele-series-1: #38BDF8;
+        --pele-series-2: #818CF8;
+        --pele-series-3: #FBBF24;
+        --pele-series-4: #34D399;
+        --pele-series-5: #F472B6;
+      }
+      @media (prefers-color-scheme: light) {
+        .mmd-root {
+          --mv-bg: #F8FAFC;
+          --mv-card: #FFFFFF;
+          --mv-border: rgba(148,163,184,0.45);
+          --mv-fg: #0F172A;
+          --mv-muted: #475569;
+          --mv-title: #0284C7;
+          --mv-dot: rgba(100,116,139,0.18);
+          --mv-hub-start: #EFF6FF;
+          --mv-hub-end: #FFFFFF;
+        }
+      }
+      .mmd-bg { fill: var(--mv-bg); }
+      .mmd-card { fill: var(--mv-card); stroke: var(--mv-border); stroke-width: 1.2; }
+      .mmd-dot { fill: var(--mv-dot); }
+      .mmd-title { font: 700 13px ui-monospace, SFMono-Regular, Menlo, monospace; letter-spacing: 2px; fill: var(--mv-title); text-transform: uppercase; }
+      .mmd-footer { font: 500 12px ui-monospace, SFMono-Regular, Menlo, monospace; fill: var(--mv-muted); }
+      .mmd-stage { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; font-size: 14px; fill: var(--mv-fg); }
+      .pele-label { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; fill: var(--mv-fg); }
+      .pele-label tspan:first-child { font-size: 14.5px; font-weight: 700; fill: var(--mv-fg); }
+      .pele-label tspan:nth-child(n+2) { font-size: 11.5px; font-weight: 400; fill: var(--mv-muted); }
+      .pele-cluster-label { font-size: 12px; font-weight: 600; letter-spacing: 0.04em; fill: var(--mv-muted); }
+      .pele-edge-label rect { fill: var(--mv-card); stroke: var(--mv-border); stroke-width: 1; rx: 6; }
+      .pele-edge-label text { font-size: 12px; font-weight: 600; fill: var(--mv-fg); }
+      .pele-branch .pele-label { font-size: 12px; font-weight: 700; fill: #070B14; }
+      .pele-task .pele-label { font-size: 12px; font-weight: 700; fill: #070B14; }
+      .pele-commit-label text { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 11px; fill: var(--mv-muted); }
+      .mmd-hub-node .pele-label tspan:first-child { font-size: 16px; font-weight: 700; fill: var(--mv-fg); }
+      .mmd-hub-node .pele-label tspan:nth-child(2) { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 11.5px; fill: var(--mv-title); }
+      .mmd-flow { stroke-dasharray: 6 14; stroke-linecap: round; animation: mmd-dash 1.80s linear infinite; }
+      .mmd-pulse { transform-box: fill-box; transform-origin: center; animation: mmd-ring 3.20s ease-in-out infinite; }
+      @keyframes mmd-dash { to { stroke-dashoffset: -40; } }
+      @keyframes mmd-ring {
+        0%, 100% { opacity: 0.25; transform: scale(0.97); }
+        50% { opacity: 0.65; transform: scale(1.03); }
+      }
+      @media (prefers-reduced-motion: reduce) {
+        .mmd-flow, .mmd-pulse { animation: none; }
+      }
+    </style>
+    <pattern id="mmd-dots" width="28" height="28" patternUnits="userSpaceOnUse">
+      <circle cx="1.5" cy="1.5" r="1" class="mmd-dot"/>
+    </pattern>
+    <radialGradient id="mmd-glow-l" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="#38BDF8" stop-opacity="0.16"/>
+      <stop offset="100%" stop-color="#38BDF8" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="mmd-glow-r" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="#818CF8" stop-opacity="0.16"/>
+      <stop offset="100%" stop-color="#818CF8" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="mmd-hub-bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="var(--mv-hub-start)"/>
+      <stop offset="100%" stop-color="var(--mv-hub-end)"/>
+    </linearGradient>
+  </defs>
+
+  <rect width="570" height="430" rx="18" class="mmd-bg"/>
+  <rect width="570" height="430" rx="18" fill="url(#mmd-dots)"/>
+  <circle cx="148" cy="155" r="160" fill="url(#mmd-glow-l)"/>
+  <circle cx="422" cy="275" r="160" fill="url(#mmd-glow-r)"/>
+  <text x="285" y="42" text-anchor="middle" class="mmd-title">AGENTPOOL · ACP STREAMING FLOW</text>
+
+  <g class="mmd-stage" transform="translate(52,76)" style="--_bg:var(--mv-bg);--_fg:var(--mv-fg);--_m:var(--mv-muted);--_l:#38BDF8;--_s:var(--mv-card);--_a:var(--mv-hub-start);--_b:var(--mv-border);--_c:#38BDF8;--_r:12px">
+    <g transform="translate(76.47,8)"><g class="pele-lifelines" fill="none" stroke="var(--_b)"><path class="pele-lifeline" data-id="IDE" d="M0,44V218"/><path class="pele-lifeline" data-id="AP" d="M161.38,44V218"/><path class="pele-lifeline" data-id="LLM" d="M317.43,44V218"/></g><g class="pele-edges" fill="none" stroke="var(--_l)" stroke-linecap="round"><g class="pele-edge pele-message" data-id="i0"><path id="mmd-edge-0" d="M0,87H154.38" stroke="#38BDF8" stroke-width="2" stroke-opacity="0.8" fill="none"/><path class="pele-marker" d="M161.38,87L153.38,90.36L153.38,83.64Z" fill="#38BDF8" fill-opacity="0.88" stroke="none"/></g><g class="pele-edge pele-message" data-id="i1"><path id="mmd-edge-1" d="M161.38,124H310.43" stroke="#818CF8" stroke-width="2" stroke-opacity="0.8" fill="none"/><path class="pele-marker" d="M317.43,124L309.43,127.36L309.43,120.64Z" fill="#818CF8" fill-opacity="0.88" stroke="none"/></g><g class="pele-edge pele-message" data-id="i2"><path id="mmd-edge-2" d="M317.43,161H168.38" stroke="#FBBF24" stroke-width="2" stroke-opacity="0.8" stroke-dasharray="5 5" fill="none"/><path class="pele-marker" d="M161.38,161L169.38,157.64L169.38,164.36Z" fill="#FBBF24" fill-opacity="0.88" stroke="none"/></g><g class="pele-edge pele-message" data-id="i3"><path id="mmd-edge-3" d="M161.38,198H7" stroke="#34D399" stroke-width="2" stroke-opacity="0.8" stroke-dasharray="5 5" fill="none"/><path class="pele-marker" d="M0,198L8,194.64L8,201.36Z" fill="#34D399" fill-opacity="0.88" stroke="none"/></g></g><g class="mmd-packets"><circle r="4" fill="#38BDF8"><animateMotion dur="4.60s" begin="-0.40s" repeatCount="indefinite" calcMode="linear" keyPoints="0;1;1" keyTimes="0;0.2200;1"><mpath href="#mmd-edge-0"/></animateMotion><animate attributeName="opacity" dur="4.60s" begin="-0.40s" repeatCount="indefinite" keyTimes="0;0.0200;0.2200;0.2600;1" values="1;1;1;0;0"/></circle><circle r="4" fill="#818CF8"><animateMotion dur="4.60s" begin="-0.40s" repeatCount="indefinite" calcMode="linear" keyPoints="0;0;1;1" keyTimes="0;0.2500;0.4700;1"><mpath href="#mmd-edge-1"/></animateMotion><animate attributeName="opacity" dur="4.60s" begin="-0.40s" repeatCount="indefinite" keyTimes="0;0.2500;0.2700;0.4700;0.5100;1" values="0;0;1;1;0;0"/></circle><circle r="4" fill="#FBBF24"><animateMotion dur="4.60s" begin="-0.40s" repeatCount="indefinite" calcMode="linear" keyPoints="0;0;1;1" keyTimes="0;0.5000;0.7200;1"><mpath href="#mmd-edge-2"/></animateMotion><animate attributeName="opacity" dur="4.60s" begin="-0.40s" repeatCount="indefinite" keyTimes="0;0.5000;0.5200;0.7200;0.7600;1" values="0;0;1;1;0;0"/></circle><circle r="4" fill="#34D399"><animateMotion dur="4.60s" begin="-0.40s" repeatCount="indefinite" calcMode="linear" keyPoints="0;0;1;1" keyTimes="0;0.7500;0.9700;1"><mpath href="#mmd-edge-3"/></animateMotion><animate attributeName="opacity" dur="4.60s" begin="-0.40s" repeatCount="indefinite" keyTimes="0;0.7500;0.7700;0.9700;1.0000;1" values="0;0;1;1;0;0"/></circle></g><g class="pele-edge-labels" font-size="14"><g class="pele-edge-label" data-id="i0"><text x="80.69" y="77.4" text-anchor="middle">session/prompt</text></g><g class="pele-edge-label" data-id="i1"><text x="239.41" y="114.4" text-anchor="middle">run_stream()</text></g><g class="pele-edge-label" data-id="i2"><text x="239.41" y="151.4" text-anchor="middle">tool_call + deltas</text></g><g class="pele-edge-label" data-id="i3"><text x="80.69" y="188.4" text-anchor="middle">session/update</text></g></g><g class="pele-nodes"><g class="pele-node pele-actor pele-actor-participant pele-actor-footer" data-id="IDE"><rect x="-68.47" y="218" width="136.94" height="44" fill="var(--_s)" stroke="var(--_b)" style="rx:var(--_r)"/><text class="pele-label" x="0" y="245.6" text-anchor="middle">Zed / VS Code</text></g><g class="pele-node pele-actor pele-actor-participant pele-actor-footer" data-id="AP"><rect x="108.47" y="218" width="105.82" height="44" fill="var(--_s)" stroke="var(--_b)" style="rx:var(--_r)"/><text class="pele-label" x="161.38" y="245.6" text-anchor="middle">AgentPool</text></g><g class="pele-node pele-actor pele-actor-participant pele-actor-footer" data-id="LLM"><rect x="254.3" y="218" width="126.27" height="44" fill="var(--_s)" stroke="var(--_b)" style="rx:var(--_r)"/><text class="pele-label" x="317.43" y="245.6" text-anchor="middle">Agent / Tools</text></g><g class="pele-node pele-actor pele-actor-participant" data-id="IDE"><rect x="-68.47" y="0" width="136.94" height="44" fill="var(--_s)" stroke="var(--_b)" style="rx:var(--_r)"/><text class="pele-label" x="0" y="27.6" text-anchor="middle">Zed / VS Code</text></g><g class="pele-node pele-actor pele-actor-participant" data-id="AP"><rect x="108.47" y="0" width="105.82" height="44" fill="var(--_s)" stroke="var(--_b)" style="rx:var(--_r)"/><text class="pele-label" x="161.38" y="27.6" text-anchor="middle">AgentPool</text></g><g class="pele-node pele-actor pele-actor-participant" data-id="LLM"><rect x="254.3" y="0" width="126.27" height="44" fill="var(--_s)" stroke="var(--_b)" style="rx:var(--_r)"/><text class="pele-label" x="317.43" y="27.6" text-anchor="middle">Agent / Tools</text></g></g></g>
+  </g>
+
+  <rect x="135" y="378" width="300" height="30" rx="15" class="mmd-card"/>
+  <text x="285" y="397" text-anchor="middle" class="mmd-footer">agentpool serve-acp agents.yml</text>
+</svg>
