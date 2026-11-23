@@ -13,7 +13,7 @@ import json
 from pathlib import Path
 from typing import Any
 
-import httpx
+import httpx  # pyt3client (T3Client http_client) is still built on httpx
 from mcp import types
 from pyt3client import T3Client
 import pytest

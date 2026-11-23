@@ -14,7 +14,7 @@ from uuid import uuid4
 
 from anyenv.processes import hard_kill
 import anyio
-import httpx
+import httpx2
 
 from agentpool.agents.base_agent import BaseAgent
 from agentpool.agents.capabilities import AgentCapabilities
@@ -336,7 +336,7 @@ class OpenCodeV2Agent[TDeps = None](BaseAgent[TDeps, str]):
                     raise RuntimeError(msg)
                 try:
                     await probe.info()
-                except (httpx.HTTPError, OpenCodeV2Error):
+                except (httpx2.HTTPError, OpenCodeV2Error):
                     await anyio.sleep(0.1)
                 else:
                     return
@@ -382,7 +382,7 @@ class OpenCodeV2Agent[TDeps = None](BaseAgent[TDeps, str]):
             try:
                 await client.add_mcp_server(name, mcp_cfg)
                 self._registered_mcp_names.append(name)
-                with suppress(OpenCodeV2Error, httpx.HTTPError):
+                with suppress(OpenCodeV2Error, httpx2.HTTPError):
                     await client.connect_mcp_server(name)
             except OpenCodeV2Error as exc:
                 self.log.warning(
@@ -435,7 +435,7 @@ class OpenCodeV2Agent[TDeps = None](BaseAgent[TDeps, str]):
             await self._stop_sse_loop()
             if self._client is not None:
                 for name in self._registered_mcp_names:
-                    with suppress(OpenCodeV2Error, httpx.HTTPError):
+                    with suppress(OpenCodeV2Error, httpx2.HTTPError):
                         await self._client.remove_mcp_server(name)
                 self._registered_mcp_names.clear()
                 if self._owns_client:
@@ -644,7 +644,7 @@ class OpenCodeV2Agent[TDeps = None](BaseAgent[TDeps, str]):
                         await self._dispatch_sse_event(client, event)
                 except asyncio.CancelledError:
                     raise
-                except (httpx.HTTPError, OpenCodeV2Error) as exc:
+                except (httpx2.HTTPError, OpenCodeV2Error) as exc:
                     self._sse_error = exc
                     self._sse_ready.set()
                     if self._turn_queue is not None:

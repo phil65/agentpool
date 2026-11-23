@@ -96,7 +96,7 @@ class DownloadFileTool(Tool[dict[str, Any]]):
         Returns:
             Status information about the download
         """
-        import httpx
+        import httpx2
 
         effective_chunk_size = chunk_size or self.chunk_size
         start_time = time.time()
@@ -117,7 +117,7 @@ class DownloadFileTool(Tool[dict[str, Any]]):
             await fs._makedirs(target_dir, exist_ok=True)
 
             async with (
-                httpx.AsyncClient(verify=False) as client,
+                httpx2.AsyncClient(verify=False) as client,
                 client.stream("GET", url, timeout=self.timeout) as response,
             ):
                 response.raise_for_status()
@@ -158,15 +158,15 @@ class DownloadFileTool(Tool[dict[str, Any]]):
                 "speed_mbps": round(size_mb / duration, 2) if duration > 0 else 0,
             }
 
-        except httpx.ConnectError as e:
+        except httpx2.ConnectError as e:
             error_msg = f"Connection error downloading {url}: {e}"
             await ctx.events.file_operation("read", path=url, success=False, error=error_msg)
             return {"error": error_msg}
-        except httpx.TimeoutException:
+        except httpx2.TimeoutException:
             error_msg = f"Timeout downloading {url}"
             await ctx.events.file_operation("read", path=url, success=False, error=error_msg)
             return {"error": error_msg}
-        except httpx.HTTPStatusError as e:
+        except httpx2.HTTPStatusError as e:
             error_msg = f"HTTP error {e.response.status_code} downloading {url}"
             await ctx.events.file_operation("read", path=url, success=False, error=error_msg)
             return {"error": error_msg}

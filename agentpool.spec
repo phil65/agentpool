@@ -18,6 +18,7 @@ metadata_packages = [
     "typer",
     "rich",
     "httpx",
+    "httpx2",
     "openai",
     "anthropic",
     "google-generativeai",

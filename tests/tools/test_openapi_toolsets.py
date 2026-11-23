@@ -99,7 +99,7 @@ async def test_openapi_toolset_remote(mock_openapi_spec, caplog, monkeypatch):
     url = mock_openapi_spec["remote_url"]
     mock_response = MockResponse()
 
-    # Mock sync httpx.get (used by load_openapi_spec)
+    # Mock sync httpx.get (used by schemez load_openapi_spec, which still uses httpx)
     mock_sync_get = MagicMock(return_value=mock_response)
     monkeypatch.setattr("httpx.get", mock_sync_get)
 
@@ -111,7 +111,7 @@ async def test_openapi_toolset_remote(mock_openapi_spec, caplog, monkeypatch):
     def mock_client_factory(*args, **kwargs):
         return mock_client
 
-    monkeypatch.setattr("httpx.AsyncClient", mock_client_factory)
+    monkeypatch.setattr("httpx2.AsyncClient", mock_client_factory)
     toolset = OpenAPITools(spec=url, base_url=BASE_URL)
     spec = await toolset._load_spec()
     validate(spec)  # type: ignore[arg-type]

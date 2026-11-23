@@ -16,7 +16,7 @@ if TYPE_CHECKING:
     from collections.abc import AsyncIterator
     from pathlib import Path
 
-    from httpx import AsyncClient
+    from httpx2 import AsyncClient
     from pydantic_ai import ModelMessage
 
     from agentpool import AgentPool

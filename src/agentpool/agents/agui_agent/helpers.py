@@ -14,7 +14,7 @@ if TYPE_CHECKING:
     from collections.abc import AsyncIterator
 
     from ag_ui.core import Event, ToolMessage
-    import httpx
+    import httpx2
 
     from agentpool.agents.context import AgentContext
     from agentpool.tools import Tool
@@ -108,7 +108,7 @@ async def execute_tool_call(
         )
 
 
-async def parse_sse_stream(response: httpx.Response) -> AsyncIterator[Event]:
+async def parse_sse_stream(response: httpx2.Response) -> AsyncIterator[Event]:
     """Parse Server-Sent Events stream.
 
     Args:

@@ -167,7 +167,7 @@ class ResourceRegistry:
 
         Args:
             urls: URLs to refresh
-            fetcher: Optional custom fetch function (default: httpx)
+            fetcher: Optional custom fetch function (default: httpx2)
 
         Returns:
             List of ResourceChange for URLs whose content changed
@@ -245,9 +245,9 @@ def _url_to_cache_key(url: str) -> str:
 
 
 def _default_fetcher(url: str) -> str:
-    """Default sync fetcher using httpx."""
-    import httpx
+    """Default sync fetcher using httpx2."""
+    import httpx2
 
-    response = httpx.get(url, follow_redirects=True, timeout=30)
+    response = httpx2.get(url, follow_redirects=True, timeout=30)
     response.raise_for_status()
     return response.text

@@ -15,7 +15,7 @@ from agentpool.resource_providers import ResourceProvider
 if TYPE_CHECKING:
     from collections.abc import Sequence
 
-    import httpx
+    import httpx2
     from upathtools import JoinablePathLike
 
     from agentpool.tools.base import Tool
@@ -37,7 +37,7 @@ class OpenAPITools(ResourceProvider):
         self.spec_url = spec
         self.base_url = base_url
         self.headers = headers or {}
-        self._client: httpx.AsyncClient | None = None
+        self._client: httpx2.AsyncClient | None = None
         self._spec: dict[str, Any] | None = None
         self._schemas: dict[str, dict[str, Any]] = {}
         self._operations: dict[str, Any] = {}
@@ -59,10 +59,10 @@ class OpenAPITools(ResourceProvider):
         return tools
 
     async def _load_spec(self) -> dict[str, Any]:
-        import httpx
+        import httpx2
 
         if not self._client:
-            self._client = httpx.AsyncClient(base_url=self.base_url, headers=self.headers)
+            self._client = httpx2.AsyncClient(base_url=self.base_url, headers=self.headers)
 
         try:
             spec_str = str(self.spec_url)
@@ -109,9 +109,9 @@ class OpenAPITools(ResourceProvider):
     ) -> dict[str, Any]:
         """Perform HTTP request to the API."""
         if not self._client:
-            import httpx
+            import httpx2
 
-            self._client = httpx.AsyncClient(base_url=self.base_url, headers=self.headers)
+            self._client = httpx2.AsyncClient(base_url=self.base_url, headers=self.headers)
 
         response = await self._client.request(method=method, url=path, params=params, json=body)
         response.raise_for_status()

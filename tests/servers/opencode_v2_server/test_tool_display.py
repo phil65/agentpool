@@ -14,7 +14,7 @@ from .conftest import create_session, messages, prompt_and_wait
 
 
 if TYPE_CHECKING:
-    from httpx import AsyncClient
+    from httpx2 import AsyncClient
 
 
 def test_known_tools_map_to_opencode_renderers() -> None:

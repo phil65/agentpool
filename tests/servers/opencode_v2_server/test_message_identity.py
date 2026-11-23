@@ -11,7 +11,7 @@ from .conftest import create_session, messages, prompt_and_wait
 
 
 if TYPE_CHECKING:
-    from httpx import AsyncClient
+    from httpx2 import AsyncClient
 
     from agentpool_server.opencode_v2_server.state import ServerState
 

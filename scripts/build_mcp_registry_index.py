@@ -15,7 +15,7 @@ import argparse
 import asyncio
 from pathlib import Path
 
-import httpx
+import httpx2
 from pydantic import BaseModel
 
 
@@ -54,7 +54,7 @@ class MCPServerRecord(BaseModel):
         return " ".join(parts)
 
 
-async def fetch_all_servers(client: httpx.AsyncClient) -> list[dict]:
+async def fetch_all_servers(client: httpx2.AsyncClient) -> list[dict]:
     """Fetch all servers from registry with pagination."""
     all_servers = []
     cursor = None
@@ -112,7 +112,7 @@ async def main(output_path: Path) -> None:
     """Build the LanceDB index."""
     print("Fetching MCP registry servers...")
 
-    async with httpx.AsyncClient(timeout=30.0) as client:
+    async with httpx2.AsyncClient(timeout=30.0) as client:
         raw_servers = await fetch_all_servers(client)
 
     print(f"\nParsing {len(raw_servers)} servers...")

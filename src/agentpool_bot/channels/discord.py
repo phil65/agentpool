@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 import anyenv
-import httpx
+import httpx2
 import websockets
 
 from agentpool.log import get_logger
@@ -50,7 +50,7 @@ class DiscordChannel(BaseChannel):
         self._seq: int | None = None
         self._heartbeat_task: asyncio.Task[None] | None = None
         self._typing_tasks: dict[str, asyncio.Task[None]] = {}
-        self._http: httpx.AsyncClient | None = None
+        self._http: httpx2.AsyncClient | None = None
 
     async def start(self) -> None:
         """Start the Discord gateway connection."""
@@ -59,7 +59,7 @@ class DiscordChannel(BaseChannel):
             return
 
         self._running = True
-        self._http = httpx.AsyncClient(timeout=30.0)
+        self._http = httpx2.AsyncClient(timeout=30.0)
 
         while self._running:
             try:

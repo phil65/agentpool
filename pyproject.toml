@@ -31,14 +31,13 @@ classifiers = [
   "Typing :: Typed",
 ]
 dependencies = [
-  "aclientp[bridge,http2,tracing,websocket]>=0.1.8",  # 0.1.8: serve(v2_agent=...)
+  "aclientp[bridge,http2,tracing,websocket]>=0.2.0",  # 0.2.0: httpx2
   "alembic>=1.16.5",
-  "anyenv[httpx]>=2.0.17",
+  "anyenv[httpx2]>=2.1.0",
   "bashkit>=0.1.11",
   "clawd-code-sdk>=1.4.0",  # 1.4.0: unknown JSONL entry types load
   # "clawd-code-sdk@git+https://github.com/phil65/claude-agent-sdk-python.git@efbaa798",
   "codexed>=1.4.0",  # 1.4.0: default_tools_approval_mode (the bridge's tools run)
-  "pyt3client[native]>=0.2.0",  # type: t3 agents (native: live updates, approvals)
   "docler>=2.2.0",
   "docstring-parser>=0.17.0",
   "epregistry",
@@ -47,11 +46,11 @@ dependencies = [
   "fastapi",
   "fastmcp>=4.2.0",
   "fsspec",
-  "httpx",
+  "httpx2>=2.16",
   "jinja2",
   "jinjarope>=1.0.9",
   "keyring>=25.6.0",
-  "llmling-models>=1.7.2",
+  "llmling-models>=1.8.0",
   "logfire[fastapi]",
   "mcp>=1.2.0",
   "pillow>=11.3.0",
@@ -64,6 +63,7 @@ dependencies = [
   # Only add below (Copier)
   "pydantic-monty>=0.0.11",
   "pydocket>=0.16.1",
+  "pyt3client[native]>=0.2.0",  # type: t3 agents (native: live updates, approvals)
   "python-dotenv>=1.0.1",
   "rich",
   "ripgrep-rs>=0.4.3",  # First release with Python 3.15 wheels
@@ -133,9 +133,7 @@ composio = ["composio"]  # Composio toolsets
 events = ["evented[all]"]  # Event triggers for agents
 # git = ["fsspec[git]"]  # Git support (disabled: cffi doesn't support free-threaded 3.13)
 langfuse = ["langfuse"]  # Langfuse Prompt Hub
-markitdown = [
-  "markitdown; python_version < '3.15'"
-]  # MarkItDown Media Converter
+markitdown = ["markitdown; python_version < '3.15'"]  # MarkItDown Media Converter
 mcp-discovery = [
   "fastembed>=0.7.4; python_version < '3.15'",
   "lancedb>=0.30.0",
@@ -145,9 +143,7 @@ mcp_run = ["mcpx-py>=0.7.0"]  # MCP.run Toolset
 notifications = ["apprise>=1.9.5"]  # Notification Toolset
 promptlayer = ["promptlayer"]  # PromptLayer Prompt Hub
 tiktoken = ["tiktoken"]  # Exact token counting
-tts = [
-  "anyvoice[tts-edge,openai]>=0.0.2"
-]  # Text-to-Speech using AnyVoice (disabled: cffi doesn't support free-threaded 3.13)
+tts = ["anyvoice[tts-edge,openai]>=0.0.2"]  # Text-to-Speech using AnyVoice (disabled: cffi doesn't support free-threaded 3.13)
 zed = ["zstandard>=0.23.0"]  # Zed IDE storage provider
 
 [dependency-groups]

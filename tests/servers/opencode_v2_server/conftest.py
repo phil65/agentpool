@@ -5,7 +5,7 @@ from __future__ import annotations
 import asyncio
 from typing import TYPE_CHECKING, Any
 
-from httpx import ASGITransport, AsyncClient
+from httpx2 import ASGITransport, AsyncClient
 import pytest
 
 from agentpool import AgentPool

@@ -5,7 +5,7 @@ from __future__ import annotations
 import os
 from pathlib import Path
 
-import httpx
+import httpx2
 
 from agentpool.log import get_logger
 
@@ -42,7 +42,7 @@ class GroqTranscriptionProvider:
             return ""
 
         try:
-            async with httpx.AsyncClient() as client:
+            async with httpx2.AsyncClient() as client:
                 with path.open("rb") as f:
                     files = {
                         "file": (path.name, f),

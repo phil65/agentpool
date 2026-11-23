@@ -12,7 +12,7 @@ import time
 from typing import Any, Literal, Self
 
 import anyio
-import httpx
+import httpx2
 from pydantic import Field
 from schemez import Schema
 
@@ -240,7 +240,7 @@ class MCPRegistryClient:
 
     def __init__(self, base_url: str = "https://registry.modelcontextprotocol.io") -> None:
         self.base_url = base_url.rstrip("/")
-        self.client = httpx.AsyncClient(timeout=30.0)
+        self.client = httpx2.AsyncClient(timeout=30.0)
         self._cache_lists: dict[str, ListServersCacheEntry] = {}
         self._cache_servers: dict[str, GetServerCacheEntry] = {}
 
@@ -262,7 +262,7 @@ class MCPRegistryClient:
             response = await self.client.get(f"{self.base_url}/v0/servers")
             response.raise_for_status()
             data = response.json()
-        except httpx.HTTPError as e:
+        except httpx2.HTTPError as e:
             raise MCPRegistryError(f"Failed to list servers: {e}") from e
         else:
             data = RegistryListResponse(**data)
@@ -314,12 +314,12 @@ class MCPRegistryClient:
             response = await self.client.get(f"{self.base_url}/v0/servers/{server_uuid}")
             response.raise_for_status()
             server_data = response.json()
-        except httpx.HTTPStatusError as e:
+        except httpx2.HTTPStatusError as e:
             if e.response.status_code == HTTP_NOT_FOUND:
                 raise MCPRegistryError(f"Server {server_id!r} not found in registry") from e
 
             raise MCPRegistryError(f"Failed to get server details: {e}") from e
-        except (httpx.HTTPError, ValueError, KeyError) as e:
+        except (httpx2.HTTPError, ValueError, KeyError) as e:
             raise MCPRegistryError(f"Failed to get server details: {e}") from e
         else:
             server = RegistryServer.model_validate(server_data)

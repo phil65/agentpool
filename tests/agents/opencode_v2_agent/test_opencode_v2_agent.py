@@ -6,7 +6,7 @@ import asyncio
 import json
 from typing import TYPE_CHECKING, Any
 
-import httpx
+import httpx2
 
 from agentpool import Agent, AgentPool
 from agentpool.agents.events import (
@@ -49,33 +49,33 @@ class _FakeV2Server:
     def push_event(self, payload: dict[str, Any]) -> None:
         self.event_queue.put_nowait(_sse(payload))
 
-    def _event_stream_response(self) -> httpx.Response:
+    def _event_stream_response(self) -> httpx2.Response:
         queue = self.event_queue
 
-        class _Stream(httpx.AsyncByteStream):
+        class _Stream(httpx2.AsyncByteStream):
             async def __aiter__(self) -> AsyncIterator[bytes]:
                 yield _sse({"id": "evt_0", "type": "server.connected", "data": {}})
                 while (chunk := await queue.get()) is not None:
                     yield chunk
 
-        return httpx.Response(
+        return httpx2.Response(
             200,
             headers={"content-type": "text/event-stream"},
             stream=_Stream(),
         )
 
-    def _handle_mcp(self, method: str, rest: str, body: Any) -> httpx.Response | None:
+    def _handle_mcp(self, method: str, rest: str, body: Any) -> httpx2.Response | None:
         if method == "PUT":
             self.mcp_servers[rest] = body
-            return httpx.Response(204)
+            return httpx2.Response(204)
         if method == "POST" and rest.endswith("/connect"):
-            return httpx.Response(204)
+            return httpx2.Response(204)
         if method == "DELETE":
             self.mcp_servers.pop(rest, None)
-            return httpx.Response(204)
+            return httpx2.Response(204)
         return None
 
-    def _handle_static(self, path: str) -> httpx.Response | None:
+    def _handle_static(self, path: str) -> httpx2.Response | None:
         static_payloads: dict[str, dict[str, Any]] = {
             "/api/info": {
                 "version": "2.3.2",
@@ -145,9 +145,9 @@ class _FakeV2Server:
             },
         }
         payload = static_payloads.get(path)
-        return httpx.Response(200, json=payload) if payload is not None else None
+        return httpx2.Response(200, json=payload) if payload is not None else None
 
-    def _handle_session(self, method: str, path: str, body: Any) -> httpx.Response | None:
+    def _handle_session(self, method: str, path: str, body: Any) -> httpx2.Response | None:
         empty_tokens = {
             "input": 0,
             "output": 0,
@@ -167,7 +167,7 @@ class _FakeV2Server:
                 "time": {"created": 1000, "updated": 1000},
                 "location": {"directory": "/work"},
             }
-            return httpx.Response(200, json={"data": data})
+            return httpx2.Response(200, json={"data": data})
         if path == "/api/session" and method == "GET":
             item = {
                 "id": "ses_1",
@@ -178,7 +178,7 @@ class _FakeV2Server:
                 "time": {"created": 1000, "updated": 2000},
                 "location": {"directory": "/work"},
             }
-            return httpx.Response(200, json={"data": [item], "cursor": {}})
+            return httpx2.Response(200, json={"data": [item], "cursor": {}})
         if path == "/api/session/ses_1" and method == "GET":
             item = {
                 "id": "ses_1",
@@ -195,7 +195,7 @@ class _FakeV2Server:
                 "time": {"created": 1000, "updated": 2000},
                 "location": {"directory": "/work"},
             }
-            return httpx.Response(200, json={"data": item})
+            return httpx2.Response(200, json={"data": item})
         if path == "/api/session/ses_1/message" and method == "GET":
             msgs = [
                 {
@@ -214,10 +214,10 @@ class _FakeV2Server:
                     "finish": "stop",
                 },
             ]
-            return httpx.Response(200, json={"data": msgs, "cursor": {}})
+            return httpx2.Response(200, json={"data": msgs, "cursor": {}})
         return self._handle_session_action(method, path, body)
 
-    def _handle_session_action(self, method: str, path: str, body: Any) -> httpx.Response | None:
+    def _handle_session_action(self, method: str, path: str, body: Any) -> httpx2.Response | None:
         if path.endswith("/prompt") and method == "POST":
             sid = path.split("/")[3]
             payload = {
@@ -227,21 +227,21 @@ class _FakeV2Server:
                 "payload": {"text": body["text"]},
                 "delivery": body.get("delivery", "steer"),
             }
-            return httpx.Response(200, json={"data": payload})
+            return httpx2.Response(200, json={"data": payload})
         if path.endswith("/interrupt") and method == "POST":
             self.interrupted = True
-            return httpx.Response(200, json={"interrupted": True})
+            return httpx2.Response(200, json={"interrupted": True})
         if "/permission/" in path and path.endswith("/reply"):
             self.permission_replies.append((path.split("/")[5], body))
-            return httpx.Response(204)
+            return httpx2.Response(204)
         if "/form/" in path and path.endswith("/reply"):
             self.form_replies.append((path.split("/")[5], body))
-            return httpx.Response(204)
+            return httpx2.Response(204)
         if path.endswith(("/agent", "/model")) or method == "PATCH":
-            return httpx.Response(204)
+            return httpx2.Response(204)
         return None
 
-    def handle(self, request: httpx.Request) -> httpx.Response:
+    def handle(self, request: httpx2.Request) -> httpx2.Response:
         path = request.url.path
         body = json.loads(request.content) if request.content else None
         self.calls.append((request.method, path, body))
@@ -255,7 +255,7 @@ class _FakeV2Server:
             return resp
         if (resp := self._handle_session(request.method, path, body)) is not None:
             return resp
-        return httpx.Response(404, json={"error": f"Unhandled {request.method} {path}"})
+        return httpx2.Response(404, json={"error": f"Unhandled {request.method} {path}"})
 
 
 async def _drive_sample_turn(server: _FakeV2Server) -> None:
@@ -388,8 +388,8 @@ async def _drive_sample_turn(server: _FakeV2Server) -> None:
 
 async def test_mock_turn_with_permissions_forms_tools_and_options() -> None:
     server = _FakeV2Server()
-    http = httpx.AsyncClient(
-        base_url="http://v2.test", transport=httpx.MockTransport(server.handle)
+    http = httpx2.AsyncClient(
+        base_url="http://v2.test", transport=httpx2.MockTransport(server.handle)
     )
     client = OpenCodeV2Client("http://v2.test", http_client=http)
     provider = MockInputProvider(
@@ -523,8 +523,8 @@ async def test_persistent_sse_steer_and_background_turn() -> None:
     from agentpool.agents.events import NoticeEvent
 
     server = _FakeV2Server()
-    http = httpx.AsyncClient(
-        base_url="http://v2.test", transport=httpx.MockTransport(server.handle)
+    http = httpx2.AsyncClient(
+        base_url="http://v2.test", transport=httpx2.MockTransport(server.handle)
     )
     client = OpenCodeV2Client("http://v2.test", http_client=http)
     agent = OpenCodeV2Agent(name="oc-live", client=client, enable_logging=False)

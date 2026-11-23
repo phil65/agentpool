@@ -67,7 +67,7 @@ resp_json = resp.json()
 token = resp_json.get("token")
 print("Token:", token)
 
-# from httpx import AsyncClient
+# from httpx2 import AsyncClient
 # from pydantic_ai.models.openai import OpenAIModel
 # from pydantic_ai.agent import Agent
 #

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 
-import httpx
+import httpx2
 
 from agentpool.prompts.base import BasePromptProvider
 
@@ -32,7 +32,7 @@ class FabricPromptHub(BasePromptProvider):
         system_url = f"{self._BASE_URL}/data/patterns/{name}/system.md"
         user_url = f"{self._BASE_URL}/data/patterns/{name}/user.md"
 
-        async with httpx.AsyncClient() as client:
+        async with httpx2.AsyncClient() as client:
             # Try system prompt first
             if (response := await client.get(system_url)).status_code == 200:  # noqa: PLR2004
                 return response.text
@@ -45,7 +45,7 @@ class FabricPromptHub(BasePromptProvider):
         """List available prompts from Fabric repository."""
         headers = {"Accept": "application/vnd.github.v3+json"}
 
-        async with httpx.AsyncClient() as client:
+        async with httpx2.AsyncClient() as client:
             response = await client.get(self._API_URL, headers=headers)
 
             if response.status_code != 200:  # noqa: PLR2004

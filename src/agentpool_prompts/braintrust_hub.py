@@ -9,7 +9,7 @@ import os
 from typing import Any
 
 from braintrust import init_logger, load_prompt
-import httpx
+import httpx2
 
 from agentpool.prompts.base import BasePromptProvider
 from agentpool_config.prompt_hubs import BraintrustConfig
@@ -139,7 +139,7 @@ class BraintrustPromptHub(BasePromptProvider):
             params["project_name"] = self.config.project
 
         all_prompts = []
-        async with httpx.AsyncClient() as client:
+        async with httpx2.AsyncClient() as client:
             while True:
                 url = "https://api.braintrust.dev/v1/prompt"
                 headers = {"Authorization": f"Bearer {self.api_key}"}

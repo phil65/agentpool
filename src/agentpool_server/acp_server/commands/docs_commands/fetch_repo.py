@@ -5,7 +5,7 @@ from __future__ import annotations
 import os
 import uuid
 
-import httpx
+import httpx2
 from pydantic_ai import UserPromptPart
 from slashed import CommandContext  # noqa: TC002
 
@@ -118,7 +118,7 @@ class FetchRepoCommand(NodeCommand):
             )
 
             # Make async HTTP request
-            async with httpx.AsyncClient() as client:
+            async with httpx2.AsyncClient() as client:
                 response = await client.get(
                     base_url,
                     params=params,
@@ -141,7 +141,7 @@ class FetchRepoCommand(NodeCommand):
                 text=f"```\n{content}\n```",
             )
 
-        except httpx.HTTPStatusError as e:
+        except httpx2.HTTPStatusError as e:
             logger.exception(
                 "HTTP error fetching repository", repo=repo, status=e.response.status_code
             )
@@ -150,7 +150,7 @@ class FetchRepoCommand(NodeCommand):
                 status="failed",
                 title=f"HTTP {e.response.status_code}: Failed to fetch {repo}",
             )
-        except httpx.RequestError as e:
+        except httpx2.RequestError as e:
             logger.exception("Request error fetching repository", repo=repo)
             await session.output.command_updated(
                 call_id=tc_id,

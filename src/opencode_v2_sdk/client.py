@@ -6,7 +6,7 @@ import base64
 from typing import TYPE_CHECKING, Any, Literal, Self
 from urllib.parse import quote
 
-import httpx
+import httpx2
 from pydantic import ValidationError
 
 from opencode_v2_sdk.models import (
@@ -94,7 +94,7 @@ class OpenCodeV2Client:
     """Typed async HTTP + SSE client for the OpenCode V2 HTTP API.
 
     Can connect to any OpenCode v2.3.x server (``opencode serve`` or AgentPool's
-    ``serve-opencode``) over HTTP, or wrap a caller-supplied ``httpx.AsyncClient``
+    ``serve-opencode``) over HTTP, or wrap a caller-supplied ``httpx2.AsyncClient``
     (e.g. with ``ASGITransport`` or ``MockTransport`` in tests).
     """
 
@@ -106,7 +106,7 @@ class OpenCodeV2Client:
         directory: str | None = None,
         headers: Mapping[str, str] | None = None,
         timeout: float = 30.0,
-        http_client: httpx.AsyncClient | None = None,
+        http_client: httpx2.AsyncClient | None = None,
     ) -> None:
         self._base_url = base_url.rstrip("/")
         self._directory = directory
@@ -127,12 +127,12 @@ class OpenCodeV2Client:
         """Normalized base URL of the OpenCode V2 server."""
         return self._base_url
 
-    def _require_client(self) -> httpx.AsyncClient:
+    def _require_client(self) -> httpx2.AsyncClient:
         if self._client is None:
-            self._client = httpx.AsyncClient(
+            self._client = httpx2.AsyncClient(
                 base_url=self._base_url,
                 headers=self._headers,
-                timeout=httpx.Timeout(self._timeout),
+                timeout=httpx2.Timeout(self._timeout),
             )
         return self._client
 
@@ -161,7 +161,7 @@ class OpenCodeV2Client:
         *,
         params: Mapping[str, Any] | None = None,
         json_body: dict[str, Any] | None = None,
-    ) -> httpx.Response:
+    ) -> httpx2.Response:
         client = self._require_client()
         clean_params = {k: v for k, v in (params or {}).items() if v is not None}
         response = await client.request(
@@ -460,7 +460,7 @@ class OpenCodeV2Client:
         client = self._require_client()
         params: dict[str, list[str]] | None = {"types": list(types)} if types else None
         headers = {"Accept": "text/event-stream"}
-        stream_timeout = httpx.Timeout(connect=10.0, read=None, write=10.0, pool=10.0)
+        stream_timeout = httpx2.Timeout(connect=10.0, read=None, write=10.0, pool=10.0)
         async with client.stream(
             "GET",
             "/api/event",

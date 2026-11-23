@@ -17,7 +17,7 @@ from uuid import uuid4
 
 from anyenv.processes import hard_kill
 import anyio
-import httpx
+import httpx2
 from pydantic_ai import ModelRequest, ToolReturnPart
 
 from agentpool.agents.agui_agent.helpers import execute_tool_call, parse_sse_stream
@@ -69,9 +69,9 @@ if TYPE_CHECKING:
 logger = get_logger(__name__)
 
 
-def get_client(headers: dict[str, str], timeout: float) -> httpx.AsyncClient:
+def get_client(headers: dict[str, str], timeout: float) -> httpx2.AsyncClient:
     headers = {**headers, "Accept": "text/event-stream", "Content-Type": "application/json"}
-    return httpx.AsyncClient(timeout=httpx.Timeout(timeout), headers=headers)
+    return httpx2.AsyncClient(timeout=httpx2.Timeout(timeout), headers=headers)
 
 
 class AGUIAgent[TDeps = None](BaseAgent[TDeps, str]):
@@ -174,7 +174,7 @@ class AGUIAgent[TDeps = None](BaseAgent[TDeps, str]):
         self._startup_delay = startup_delay
         self._startup_process: Process | None = None
         # Client state
-        self._client: httpx.AsyncClient | None = None
+        self._client: httpx2.AsyncClient | None = None
         self._sdk_session_id = None
         # Override tools with provided tools
         self.tools = ToolManager(tools)
@@ -350,7 +350,7 @@ class AGUIAgent[TDeps = None](BaseAgent[TDeps, str]):
                         ):
                             reconstructor.observe(event)
                             yield event
-                except httpx.HTTPError:
+                except httpx2.HTTPError:
                     self.log.exception("HTTP error during AG-UI run")
                     raise
                 # If cancelled or no pending tool calls, break out of the while loop
@@ -456,7 +456,7 @@ class AGUIAgent[TDeps = None](BaseAgent[TDeps, str]):
 
     async def _process_events(
         self,
-        response: httpx.Response,
+        response: httpx2.Response,
         tool_calls_pending: dict[str, tuple[str, dict[str, Any]]],
     ) -> AsyncIterator[RichAgentStreamEvent[Any]]:
         from ag_ui.core import (

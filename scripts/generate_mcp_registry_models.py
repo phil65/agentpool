@@ -17,7 +17,7 @@ import sys
 from typing import Any
 
 import anyio
-import httpx
+import httpx2
 
 
 REGISTRY_URL = "https://registry.modelcontextprotocol.io/v0/servers"
@@ -487,7 +487,7 @@ async def fetch_registry() -> list[dict[str, Any]]:
     all_servers: list[dict[str, Any]] = []
     cursor: str | None = None
 
-    async with httpx.AsyncClient(timeout=30.0) as client:
+    async with httpx2.AsyncClient(timeout=30.0) as client:
         while True:
             url = REGISTRY_URL
             if cursor:

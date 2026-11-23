@@ -21,19 +21,19 @@ wheels = [
 
 [[package]]
 name = "aclientp"
-version = "0.1.8"
+version = "0.2.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "anyenv" },
+    { name = "anyenv", extra = ["httpx2"] },
     { name = "anyio" },
-    { name = "httpx" },
+    { name = "httpx2" },
     { name = "pydantic" },
     { name = "structlog" },
     { name = "upathtools" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/e3/52/203ea9134d608c270470efeec2f34640c756a8b82584144f04da836ff5c2/aclientp-0.1.8.tar.gz", hash = "sha256:0ae07ac4a9ef703b6b2c40a71a3f9590af9378cf8b7e540978a143ff4861ecd8", size = 177865, upload-time = "2026-11-22T03:36:41.536Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/92/e8/07d5cd92bf6f336c275efff92f4579af732ee909d44bd47cc9001816762c/aclientp-0.2.0.tar.gz", hash = "sha256:af5a041657e7b79d0d6b2209b51878fe0edb06d699b30956ecb1709d44be6c7c", size = 177839, upload-time = "2026-11-23T07:44:16.787Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/f3/59/767fa57b669a6de945d088c4516400c86ac81873d8b6f81773e60e21300a/aclientp-0.1.8-py3-none-any.whl", hash = "sha256:a91371de58748ab352eb49f8ade341971e8c62d7e92d844ac36ed8a9501c55ec", size = 224721, upload-time = "2026-11-22T03:36:40.201Z" },
+    { url = "https://files.pythonhosted.org/packages/12/1b/690a3ba68a7d89915cd75314747422169fb61282ebf5c1015d7fa5ecb0bb/aclientp-0.2.0-py3-none-any.whl", hash = "sha256:47ba9df4430ee87b7f12133dadfee453b1c8a65e3f28fd671fe44219f3e980c5", size = 224725, upload-time = "2026-11-23T07:44:15.436Z" },
 ]
 
 [package.optional-dependencies]
@@ -43,7 +43,7 @@ bridge = [
     { name = "websockets" },
 ]
 http2 = [
-    { name = "httpx", extra = ["http2"] },
+    { name = "httpx2", extra = ["http2"] },
 ]
 tracing = [
     { name = "logfire" },
@@ -72,7 +72,7 @@ default-groups = ["dev", "docs", "lint"]
 dependencies = [
     { name = "aclientp", extra = ["bridge", "http2", "tracing", "websocket"] },
     { name = "alembic" },
-    { name = "anyenv", extra = ["httpx"] },
+    { name = "anyenv", extra = ["httpx2"] },
     { name = "bashkit" },
     { name = "clawd-code-sdk" },
     { name = "codexed" },
@@ -84,7 +84,7 @@ dependencies = [
     { name = "fastapi" },
     { name = "fastmcp" },
     { name = "fsspec" },
-    { name = "httpx" },
+    { name = "httpx2" },
     { name = "jinja2" },
     { name = "jinjarope" },
     { name = "keyring" },
@@ -235,10 +235,10 @@ lint = [
 
 [package.metadata]
 requires-dist = [
-    { name = "aclientp", extras = ["bridge", "http2", "tracing", "websocket"], specifier = ">=0.1.8" },
+    { name = "aclientp", extras = ["bridge", "http2", "tracing", "websocket"], specifier = ">=0.2.0" },
     { name = "ag-ui-protocol", marker = "extra == 'ag-ui'", specifier = ">=0.1.10" },
     { name = "alembic", specifier = ">=1.16.5" },
-    { name = "anyenv", extras = ["httpx"], specifier = ">=2.0.17" },
+    { name = "anyenv", extras = ["httpx2"], specifier = ">=2.1.0" },
     { name = "anyvoice", extras = ["tts-edge", "openai"], marker = "extra == 'tts'", specifier = ">=0.0.2" },
     { name = "apprise", marker = "extra == 'notifications'", specifier = ">=1.9.5" },
     { name = "ast-grep-py", marker = "extra == 'coding'", specifier = ">=0.40.0" },
@@ -263,13 +263,13 @@ requires-dist = [
     { name = "fsspec" },
     { name = "google-antigravity", marker = "extra == 'antigravity'", specifier = ">=0.1.24" },
     { name = "grep-ast", marker = "extra == 'coding'" },
-    { name = "httpx" },
+    { name = "httpx2", specifier = ">=2.16" },
     { name = "jinja2" },
     { name = "jinjarope", specifier = ">=1.0.9" },
     { name = "keyring", specifier = ">=25.6.0" },
     { name = "lancedb", marker = "extra == 'mcp-discovery'", specifier = ">=0.30.0" },
     { name = "langfuse", marker = "extra == 'langfuse'" },
-    { name = "llmling-models", specifier = ">=1.7.2" },
+    { name = "llmling-models", specifier = ">=1.8.0" },
     { name = "logfire", extras = ["fastapi"] },
     { name = "markitdown", marker = "python_full_version < '3.15' and extra == 'markitdown'" },
     { name = "mcp", specifier = ">=1.2.0" },
@@ -616,7 +616,7 @@ wheels = [
 
 [[package]]
 name = "anyenv"
-version = "2.0.17"
+version = "2.1.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "aioitertools" },
@@ -624,15 +624,19 @@ dependencies = [
     { name = "appdirs" },
     { name = "universal-pathlib" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/28/0e/6be91d84f787f9b36fb588a1e4c4bb56a98e71c71e3e239dd921848979a1/anyenv-2.0.17.tar.gz", hash = "sha256:00ac5fe91a1c04278049cbea468736cdeff26396cd1b12304e461a86f0ad0865", size = 105445, upload-time = "2026-11-16T23:09:34.744Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/72/71/ea8240c5e312b4e08292d7d719c6124d097df63aab1458fdc3b5c0b31a13/anyenv-2.1.0.tar.gz", hash = "sha256:7f856cce1ae2a2e80d8939d77f233884ceea719c81f50a24b00e2e67c7446c3a", size = 110715, upload-time = "2026-11-23T07:48:09.724Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/42/2d/691b8c2aed2b840acb9122d905f52fb21802d06d3717060f592f6bf1b35e/anyenv-2.0.17-py3-none-any.whl", hash = "sha256:4749d6717de56cd5602fb8018db09bda8057906be5b14e8c459a9ef77bbed3bd", size = 160967, upload-time = "2026-11-16T23:09:33.392Z" },
+    { url = "https://files.pythonhosted.org/packages/93/75/510d598f178efc8cf9bedb9f1a219d480f69886a2371565cba8fca5050d7/anyenv-2.1.0-py3-none-any.whl", hash = "sha256:6f60d6f94d0bd3b252d12e2f63806fddacb7875accf887950fac5d88e9ce6ae7", size = 166340, upload-time = "2026-11-23T07:48:08.219Z" },
 ]
 
 [package.optional-dependencies]
 httpx = [
     { name = "hishel", extra = ["async"] },
     { name = "httpx" },
+]
+httpx2 = [
+    { name = "hishel", extra = ["httpx2"] },
+    { name = "httpx2" },
 ]
 
 [[package]]
@@ -2450,6 +2454,11 @@ async = [
     { name = "anyio" },
     { name = "anysqlite" },
 ]
+httpx2 = [
+    { name = "anyio" },
+    { name = "anysqlite" },
+    { name = "httpx2" },
+]
 
 [[package]]
 name = "hpack"
@@ -2575,9 +2584,6 @@ wheels = [
 ]
 
 [package.optional-dependencies]
-http2 = [
-    { name = "h2" },
-]
 socks = [
     { name = "socksio" },
 ]
@@ -2596,6 +2602,11 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/1c/77/6515121dc5ac3c743ad1bff5afe635bcd1a3f23cc40db3c5c89f7d02917d/httpx2-2.16.2.tar.gz", hash = "sha256:748b615678f07d8e3b183efe81ad13b655ca88bfc56ce4589219b2d442860574", size = 103370, upload-time = "2026-11-16T10:12:20.49Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/77/de/8c4306a3d6aa2495111986addf33a9e561eff4c47552e4c4b9251160d0ad/httpx2-2.16.2-py3-none-any.whl", hash = "sha256:f05c13aade4c45dbf1c9060647a1058f0acad62398fad96e741269edb33d46f5", size = 97893, upload-time = "2026-11-16T10:12:18.192Z" },
+]
+
+[package.optional-dependencies]
+http2 = [
+    { name = "h2" },
 ]
 
 [[package]]
@@ -3085,19 +3096,19 @@ wheels = [
 
 [[package]]
 name = "llmling-models"
-version = "1.7.2"
+version = "1.8.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "anyenv", extra = ["httpx"] },
+    { name = "anyenv", extra = ["httpx2"] },
     { name = "httpx2" },
     { name = "pydantic" },
-    { name = "pydantic-ai-slim" },
+    { name = "pydantic-ai-slim", extra = ["openai"] },
     { name = "schemez" },
     { name = "tokonomics" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/32/6d/2ce6181dea7df12b977929c14ab8e53c1d6d255d9a1825a9b62a7d1ead88/llmling_models-1.7.2.tar.gz", hash = "sha256:28bc1b70ae7b0c7d1085edd46e531fa0d8f7f0f519e4594cc50f604f507ebbc5", size = 100549, upload-time = "2026-11-18T22:16:21.598Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/11/54/cc95e7542051ff7e1f6ce5a05a15d48a2d1c5876cd68c618ec660844fe95/llmling_models-1.8.0.tar.gz", hash = "sha256:58b2189952188e547cb7c2bd566cc6fe01f5f1310943c0ea9f5986fda4512e4e", size = 98562, upload-time = "2026-11-23T07:41:41.296Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/15/67/e8baafc5e85df8534fba75e1cfe0ab03bf6acd5ec66fbf12fe9d1c08893e/llmling_models-1.7.2-py3-none-any.whl", hash = "sha256:923f5373c1e67b217aa38e6d2651309adfac3586b5eafd948cc8aafd675de4a1", size = 130704, upload-time = "2026-11-18T22:16:19.726Z" },
+    { url = "https://files.pythonhosted.org/packages/44/3e/d8f7fc0f11324370e6756b3e9e6ae7fba191e1afcb4566fd6a528d2c348d/llmling_models-1.8.0-py3-none-any.whl", hash = "sha256:13a9fb3e3f02cf2047a4a1482ffd38a7d504fc9e77a891a608202fdc8f38bba8", size = 129545, upload-time = "2026-11-23T07:41:39.828Z" },
 ]
 
 [[package]]

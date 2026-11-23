@@ -236,13 +236,13 @@ class OpenAIAPIServer(BaseServer):
 
 if __name__ == "__main__":
     import anyio
-    import httpx
+    import httpx2
 
     from agentpool import Agent, AgentPool
 
     async def test_completions() -> None:
         """Test the chat completions API."""
-        async with httpx.AsyncClient() as client:
+        async with httpx2.AsyncClient() as client:
             response = await client.post(
                 "http://localhost:8000/v1/chat/completions",
                 headers={"Authorization": "Bearer dummy"},
@@ -270,8 +270,8 @@ if __name__ == "__main__":
 
     async def test_responses() -> None:
         """Test the responses API."""
-        timeout = httpx.Timeout(30.0, connect=5.0)
-        async with httpx.AsyncClient(timeout=timeout) as client:
+        timeout = httpx2.Timeout(30.0, connect=5.0)
+        async with httpx2.AsyncClient(timeout=timeout) as client:
             response = await client.post(
                 "http://localhost:8000/v1/responses",
                 headers={"Authorization": "Bearer dummy"},

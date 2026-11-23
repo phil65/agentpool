@@ -27,7 +27,7 @@ from .conftest import create_session, messages, prompt_and_wait, wait_for
 
 
 if TYPE_CHECKING:
-    from httpx import AsyncClient
+    from httpx2 import AsyncClient
 
     from agentpool_server.opencode_v2_server.state import ServerState
 
@@ -331,7 +331,7 @@ async def test_delete_session(client: AsyncClient, state: ServerState) -> None:
 
 @pytest.mark.parametrize("password", ["secret"])
 async def test_basic_auth(pool: Any, tmp_path: Any, password: str) -> None:
-    from httpx import ASGITransport, AsyncClient as Client
+    from httpx2 import ASGITransport, AsyncClient as Client
 
     from agentpool_server.opencode_v2_server.server import create_app
 

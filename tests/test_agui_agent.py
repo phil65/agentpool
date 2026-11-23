@@ -9,7 +9,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 from ag_ui.core import TextMessageContentEvent, ToolCallStartEvent
 import anyio
-import httpx
+import httpx2
 from pydantic_ai import PartDeltaEvent
 from pydantic_ai.models.test import TestModel
 import pytest
@@ -35,7 +35,7 @@ def mock_sse_response():
 
     def _create_response(events: list[str]) -> AsyncMock:
         """Create mock response with SSE events."""
-        response = AsyncMock(spec=httpx.Response)
+        response = AsyncMock(spec=httpx2.Response)
         response.raise_for_status = MagicMock()
 
         async def aiter_text() -> AsyncIterator[str]:
@@ -83,7 +83,7 @@ async def test_agui_agent_run_stream(mock_sse_response):
 
     mock_response = mock_sse_response(events)
 
-    with patch("agentpool.agents.agui_agent.agui_agent.httpx.AsyncClient") as mock_client_class:
+    with patch("agentpool.agents.agui_agent.agui_agent.httpx2.AsyncClient") as mock_client_class:
         mock_client = AsyncMock()
         mock_client_class.return_value = mock_client
         # stream() should return an async context manager
@@ -110,7 +110,7 @@ async def test_agui_agent_run(mock_sse_response):
     ]
 
     mock_response = mock_sse_response(events)
-    with patch("agentpool.agents.agui_agent.agui_agent.httpx.AsyncClient") as mock_client_class:
+    with patch("agentpool.agents.agui_agent.agui_agent.httpx2.AsyncClient") as mock_client_class:
         mock_client = AsyncMock()
         mock_client_class.return_value = mock_client
         # stream() should return an async context manager
@@ -151,11 +151,11 @@ async def test_agui_agent_to_tool():
         'data: {"type":"TEXT_MESSAGE_CONTENT","messageId":"msg1","delta":"Answer"}\n\n',
     ]
 
-    with patch("agentpool.agents.agui_agent.agui_agent.httpx.AsyncClient") as mock_client_class:
+    with patch("agentpool.agents.agui_agent.agui_agent.httpx2.AsyncClient") as mock_client_class:
         mock_client = AsyncMock()
         mock_client_class.return_value = mock_client
 
-        mock_response = AsyncMock(spec=httpx.Response)
+        mock_response = AsyncMock(spec=httpx2.Response)
         mock_response.raise_for_status = MagicMock()
 
         async def aiter_text():
@@ -192,13 +192,13 @@ async def test_agui_agent_get_stats():
 @pytest.mark.skipif(sys.platform == "win32", reason="Hangs on Windows CI")
 async def test_agui_agent_error_handling(mock_sse_response):
     """Test error handling in AGUIAgent."""
-    with patch("agentpool.agents.agui_agent.agui_agent.httpx.AsyncClient") as mock_client_class:
+    with patch("agentpool.agents.agui_agent.agui_agent.httpx2.AsyncClient") as mock_client_class:
         mock_client = AsyncMock()
         mock_client_class.return_value = mock_client
 
         # Simulate HTTP error
-        mock_response = AsyncMock(spec=httpx.Response)
-        mock_response.raise_for_status.side_effect = httpx.HTTPStatusError(
+        mock_response = AsyncMock(spec=httpx2.Response)
+        mock_response.raise_for_status.side_effect = httpx2.HTTPStatusError(
             "Server error",
             request=MagicMock(),
             response=MagicMock(),
@@ -210,7 +210,7 @@ async def test_agui_agent_error_handling(mock_sse_response):
         mock_stream_cm.__aexit__ = AsyncMock(return_value=None)
         mock_client.stream = MagicMock(return_value=mock_stream_cm)
         async with AGUIAgent(endpoint="http://localhost:8000/run", name="test-agent") as agent:
-            with pytest.raises(httpx.HTTPStatusError):
+            with pytest.raises(httpx2.HTTPStatusError):
                 async for _ in agent.run_stream("Test"):
                     pass
 
@@ -240,7 +240,7 @@ async def test_agui_agent_with_tools(mock_sse_response):
         'data: {"type":"TEXT_MESSAGE_END","messageId":"msg2"}\n\n',
     ]
 
-    with patch("agentpool.agents.agui_agent.agui_agent.httpx.AsyncClient") as mock_client_class:
+    with patch("agentpool.agents.agui_agent.agui_agent.httpx2.AsyncClient") as mock_client_class:
         mock_client = AsyncMock()
         mock_client_class.return_value = mock_client
 
@@ -315,7 +315,7 @@ async def test_agui_tool_execution_error(mock_sse_response):
         'data: {"type":"TEXT_MESSAGE_CONTENT","messageId":"msg1","delta":"Tool failed"}\n\n',
     ]
 
-    with patch("agentpool.agents.agui_agent.agui_agent.httpx.AsyncClient") as mock_client_class:
+    with patch("agentpool.agents.agui_agent.agui_agent.httpx2.AsyncClient") as mock_client_class:
         mock_client = AsyncMock()
         mock_client_class.return_value = mock_client
 
