@@ -337,7 +337,8 @@ class TestProcessLifecycle:
         # Check event was emitted
         events = get_progress_events(test_agent)
         assert len(events) == 1
-        assert "Process exited" in str(events[0].title)
+        assert events[0].process is not None
+        assert events[0].process.exit_code == 0
 
     async def test_wait_for_process_failure(self, agent_ctx: AgentContext, test_agent: Agent):
         """Test waiting for failed process."""

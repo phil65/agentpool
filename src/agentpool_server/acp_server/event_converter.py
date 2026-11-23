@@ -180,6 +180,10 @@ class ACPEventConverter:
         self._current_message_id = str(uuid.uuid4())
         self.last_usage = None
 
+    def pending_tool_calls(self) -> list[str]:
+        """The tool calls that started and have not completed."""
+        return [tool_call_id for tool_call_id, s in self._tool_states.items() if s.started]
+
     async def cancel_pending_tools(self) -> AsyncIterator[ToolCallProgress]:
         """Cancel all pending tool calls.
 

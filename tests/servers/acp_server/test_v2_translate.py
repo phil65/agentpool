@@ -119,6 +119,7 @@ def test_git_patch_sections() -> None:
 
 
 def test_terminal_content(translator: UpdateTranslator) -> None:
+    """Terminal references stay: their state comes as ``terminal_update`` (``TerminalTracker``)."""
     progress = ToolCallProgress(
         tool_call_id="t1", content=[TerminalToolCallContent(terminal_id="x")]
     )

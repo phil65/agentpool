@@ -38,7 +38,6 @@
       ],
       "sessionUpdate": "tool_call_update",
       "status": "in_progress",
-      "title": "Output: ls: cannot access '/nonexistent': No such file or ...",
       "toolCallId": "pyd_ai_tool_call_id__bash"
     },
     "type": "tool_call_update"

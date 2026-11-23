@@ -147,11 +147,14 @@ async def test_get_process_output(
     assert isinstance(result, str)
     assert "hello world" in result
 
-    # Check event was emitted (title contains output)
+    # Check event was emitted: all output so far, for the process's terminal
     events = get_progress_events(test_agent)
     assert len(events) == 1
-    assert events[0].title is not None
-    assert "hello world" in events[0].title
+    signal = events[0].process
+    assert signal is not None
+    assert signal.snapshot
+    assert signal.output is not None
+    assert "hello world" in signal.output
 
 
 async def test_kill_process(
@@ -210,9 +213,9 @@ async def test_wait_for_process(
     # Check event was emitted
     events = get_progress_events(test_agent)
     assert len(events) == 1
-    assert events[0].title is not None
-    assert "Process exited" in events[0].title
-    assert "exit 0" in events[0].title
+    assert events[0].title is None  # The title stays the command
+    assert events[0].process is not None
+    assert events[0].process.exit_code == 0
 
 
 async def test_release_process(

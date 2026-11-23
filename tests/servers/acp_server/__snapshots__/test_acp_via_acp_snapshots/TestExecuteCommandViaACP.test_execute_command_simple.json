@@ -23,6 +23,14 @@
       }
     ],
     "message": null,
+    "process": {
+      "command": "echo hello",
+      "exit_code": null,
+      "killed": false,
+      "output": null,
+      "snapshot": false,
+      "terminal_id": "cmd_0001"
+    },
     "progress": null,
     "replace_content": false,
     "status": "in_progress",
@@ -43,10 +51,18 @@
       }
     ],
     "message": null,
+    "process": {
+      "command": null,
+      "exit_code": null,
+      "killed": false,
+      "output": "hello\n",
+      "snapshot": false,
+      "terminal_id": "cmd_0001"
+    },
     "progress": null,
     "replace_content": false,
     "status": "in_progress",
-    "title": "hello\n",
+    "title": null,
     "tool_call_id": "pyd_ai_tool_call_id__bash",
     "tool_input": null,
     "tool_name": "bash",
@@ -67,10 +83,18 @@
       }
     ],
     "message": null,
+    "process": {
+      "command": null,
+      "exit_code": 0,
+      "killed": false,
+      "output": null,
+      "snapshot": false,
+      "terminal_id": "cmd_0001"
+    },
     "progress": null,
     "replace_content": false,
     "status": "in_progress",
-    "title": "Process exited [✓ exit 0]",
+    "title": null,
     "tool_call_id": "pyd_ai_tool_call_id__bash",
     "tool_input": null,
     "tool_name": "bash",

@@ -137,6 +137,33 @@ class TerminalContentItem:
 
 
 @dataclass(kw_only=True)
+class ProcessSignal:
+    """What happened to the process behind a terminal (for protocols showing terminals).
+
+    One of: a start (``command``), a chunk of output (``output``), an exit
+    (``exit_code`` or ``killed``).
+    """
+
+    terminal_id: str
+    """The terminal (process) this is about."""
+    command: str | None = None
+    """The command, when the process started."""
+    output: str | None = None
+    """Output: appended since the last signal, or all of it with ``snapshot``."""
+    snapshot: bool = False
+    """Whether ``output`` is all output so far (replacing what was shown)."""
+    exit_code: int | None = None
+    """Exit code, when the process exited."""
+    killed: bool = False
+    """Whether the process was killed (exited without a known code)."""
+
+    @property
+    def exited(self) -> bool:
+        """Whether this signal ends the process."""
+        return self.exit_code is not None or self.killed
+
+
+@dataclass(kw_only=True)
 class DiffContentItem:
     """File modification shown as a diff."""
 
@@ -306,6 +333,8 @@ class ToolCallProgressEvent:
     signals (``terminal_info``, ``terminal_output``, ``terminal_exit``).
     See :mod:`aclientp.schema.field_meta` for known conventions.
     """
+    process: ProcessSignal | None = None
+    """The process event behind this progress (``process_*`` constructors)."""
 
     event_kind: Literal["tool_call_progress"] = "tool_call_progress"
     """Event type identifier."""
@@ -346,6 +375,7 @@ class ToolCallProgressEvent:
             status=status,
             title=title,
             items=items,
+            process=ProcessSignal(terminal_id=process_id, command=command) if success else None,
         )
 
     @classmethod
@@ -356,24 +386,24 @@ class ToolCallProgressEvent:
         process_id: str,
         output: str,
         tool_name: str | None = None,
+        snapshot: bool = False,
     ) -> ToolCallProgressEvent:
         """Create event for process output.
 
         Args:
             tool_call_id: Tool call identifier
             process_id: Process/terminal identifier
-            output: Process output
+            output: Process output (new output; all of it with ``snapshot``)
             tool_name: Optional tool name
+            snapshot: Whether ``output`` is all output so far
         """
-        items = [TerminalContentItem(terminal_id=process_id)]
-        title = f"Output: {output[:50]}..." if len(output) > 50 else output  # noqa: PLR2004
-
+        # The title stays what it was (the command): the output goes to the terminal
         return cls(
             tool_call_id=tool_call_id,
             tool_name=tool_name,
             status="in_progress",
-            title=title,
-            items=items,
+            items=[TerminalContentItem(terminal_id=process_id)],
+            process=ProcessSignal(terminal_id=process_id, output=output, snapshot=snapshot),
         )
 
     @classmethod
@@ -395,20 +425,17 @@ class ToolCallProgressEvent:
             final_output: Final process output
             tool_name: Optional tool name
         """
-        success = exit_code == 0
-        status_icon = "✓" if success else "✗"
-        title = f"Process exited [{status_icon} exit {exit_code}]"
-
         items: list[ToolCallContentItem] = [TerminalContentItem(terminal_id=process_id)]
         if final_output:
             items.append(TextContentItem(text=final_output))
 
+        # The title stays the command; the exit code goes to the terminal
         return cls(
             tool_call_id=tool_call_id,
             tool_name=tool_name,
             status="in_progress",
-            title=title,
             items=items,
+            process=ProcessSignal(terminal_id=process_id, exit_code=exit_code),
         )
 
     @classmethod
@@ -445,6 +472,7 @@ class ToolCallProgressEvent:
             status=status,
             title=title,
             items=items,
+            process=ProcessSignal(terminal_id=process_id, killed=True) if success else None,
         )
 
     @classmethod

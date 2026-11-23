@@ -39,7 +39,6 @@
       ],
       "sessionUpdate": "tool_call_update",
       "status": "in_progress",
-      "title": "Output: line\nline\nline\nline\nline\nline\nline\nline\nline\nline\n...",
       "toolCallId": "pyd_ai_tool_call_id__bash"
     },
     "type": "tool_call_update"
@@ -61,7 +60,6 @@
       ],
       "sessionUpdate": "tool_call_update",
       "status": "in_progress",
-      "title": "Process exited [✓ exit 0]",
       "toolCallId": "pyd_ai_tool_call_id__bash"
     },
     "type": "tool_call_update"

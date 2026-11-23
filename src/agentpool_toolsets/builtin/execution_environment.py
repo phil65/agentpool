@@ -135,7 +135,7 @@ class ProcessManagementTools(ResourceProvider):
         manager = self.get_env(agent_ctx).process_manager
         try:
             output = await manager.get_output(process_id)
-            await agent_ctx.events.process_output(process_id, output.combined or "")
+            await agent_ctx.events.process_output(process_id, output.combined or "", snapshot=True)
             combined = output.combined or ""
             # Apply regex filter if specified
             if filter_lines and combined:

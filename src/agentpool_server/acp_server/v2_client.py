@@ -141,6 +141,11 @@ class V2ClientAdapter:
         notification = v2.UpdateSessionNotification(session_id=session_id, update=state)
         await self.conn.session_update(notification)
 
+    async def send_update(self, session_id: str, update: v2.SessionUpdate) -> None:
+        """Send an update that has no v1 form (terminals, ``cancelled`` tool calls)."""
+        notification = v2.UpdateSessionNotification(session_id=session_id, update=update)
+        await self.conn.session_update(notification)
+
     async def session_update(self, params: SessionNotification) -> None:
         if (update := self.translator.translate(params.update)) is None:
             return

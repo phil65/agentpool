@@ -207,18 +207,20 @@ class StreamEventEmitter:
         )
         await self._emit(event)
 
-    async def process_output(self, process_id: str, output: str) -> None:
+    async def process_output(self, process_id: str, output: str, *, snapshot: bool = False) -> None:
         """Emit process output event.
 
         Args:
             process_id: Process identifier
-            output: Process output
+            output: Process output: new output, or all of it so far with ``snapshot``
+            snapshot: Whether ``output`` is all output so far
         """
         event = ToolCallProgressEvent.process_output(
             tool_call_id=self._context.tool_call_id or "",
             tool_name=self._context.tool_name,
             process_id=process_id,
             output=output,
+            snapshot=snapshot,
         )
         await self._emit(event)
 
