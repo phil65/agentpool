@@ -106,6 +106,21 @@ class CodexAgentConfig(BaseAgentConfig):
     developer_instructions: str | None = Field(default=None, title="Developer Instructions")
     """Developer-provided instructions for the Codex session."""
 
+    thread_options: dict[str, Any] = Field(
+        default_factory=dict,
+        title="Thread options",
+        examples=[{"service_tier": "flex", "config": {"model_verbosity": "low"}}],
+    )
+    """Parameters of Codex's ``thread/start`` passed through (also on resume and fork, where
+    Codex takes them).
+
+    For what agentpool has no setting of its own, by the parameter names: e.g. ``config``
+    (Codex config overrides, like ``codex -c``), ``service_tier``, ``model_provider``,
+    ``approvals_reviewer``, ``ephemeral``. Values are converted to Codex's types.
+    Parameters agentpool sets itself (model, sandbox, instructions, MCP servers, ...) are
+    refused: use their own settings.
+    """
+
     tools: list[AnyToolConfig | str] = Field(
         default_factory=list,
         title="Tools",

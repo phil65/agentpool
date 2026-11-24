@@ -24,7 +24,9 @@ from pydantic_ai import RunUsage
 from agentpool.agents.base_agent import BaseAgent
 from agentpool.agents.capabilities import AgentCapabilities
 from agentpool.agents.codex_agent.codex_converters import (
+    codex_thread_options,
     mcp_config_to_codex,
+    options_taken_by,
     to_auth_status,
     to_finish_reason,
     to_model_info,
@@ -46,7 +48,7 @@ from agentpool.tools.decisions import Approve, Deny
 
 
 if TYPE_CHECKING:
-    from collections.abc import AsyncIterator, Sequence
+    from collections.abc import AsyncIterator, Mapping, Sequence
     from types import TracebackType
 
     from codexed import CodexClient, Session
@@ -133,6 +135,7 @@ class CodexAgent[TDeps = None, OutputDataT = str](BaseAgent[TDeps, OutputDataT])
         approval_policy: ApprovalPolicy | None = None,
         sandbox: SandboxMode | None = None,
         personality: Personality | None = None,
+        thread_options: Mapping[str, Any] | None = None,
         event_configs: Sequence[EventConfig] | None = None,
     ) -> None:
         """Initialize Codex agent.
@@ -160,6 +163,8 @@ class CodexAgent[TDeps = None, OutputDataT = str](BaseAgent[TDeps, OutputDataT])
             approval_policy: Approval policy ("never", "on-request", "untrusted")
             sandbox: Sandbox mode ("read-only", "workspace-write", "danger-full-access")
             personality: Personality preset (none, friendly, pragmatic)
+            thread_options: ``thread/start`` parameters passed through (those agentpool
+                doesn't set itself; also on resume and fork, where Codex takes them)
             event_configs: Event trigger configurations
         """
         from agentpool.mcp_server.tool_bridge import ToolManagerBridge
@@ -211,6 +216,7 @@ class CodexAgent[TDeps = None, OutputDataT = str](BaseAgent[TDeps, OutputDataT])
         self._own_effort: ReasoningEffort | None = reasoning_effort
         self._own_sandbox: SandboxMode | None = sandbox
         self._own_personality: Personality | None = personality
+        self._thread_options = codex_thread_options(thread_options or {})
         self._tool_bridge = ToolManagerBridge(node=self)
 
     # --- Settings: per session when set within one (``use_session``), else the agent's ---
@@ -307,7 +313,9 @@ class CodexAgent[TDeps = None, OutputDataT = str](BaseAgent[TDeps, OutputDataT])
         if self._client is None:
             raise AgentNotInitializedError
         session = await self._client.thread_resume(
-            thread_id, mcp_servers=self._thread_mcp_servers()
+            thread_id,
+            mcp_servers=self._thread_mcp_servers(),
+            **options_taken_by(self._client.thread_resume, self._thread_options),
         )
         self._open_thread(session)
         return session
@@ -366,6 +374,7 @@ class CodexAgent[TDeps = None, OutputDataT = str](BaseAgent[TDeps, OutputDataT])
             approval_policy=config.approval_policy,
             sandbox=config.sandbox,
             personality=config.personality,
+            thread_options=config.thread_options,
             # MCP and toolsets
             mcp_servers=config.get_mcp_servers(),
             toolsets=config.get_tool_providers(),
@@ -446,6 +455,7 @@ class CodexAgent[TDeps = None, OutputDataT = str](BaseAgent[TDeps, OutputDataT])
             approval_policy=self._approval_policy,
             personality=self._current_personality,
             mcp_servers=self._thread_mcp_servers(),
+            **self._thread_options,
         )
         self._open_thread(session)
         self._thread_instructions[session.thread_id] = instructions
@@ -908,7 +918,10 @@ class CodexAgent[TDeps = None, OutputDataT = str](BaseAgent[TDeps, OutputDataT])
             raise UnsupportedOperationError(self.name, "fork this", reason)
         forked = await self._fork_history(None, session)
         with self.use_session(forked):
-            forked_sdk = await sdk_session.fork(mcp_servers=self._thread_mcp_servers())
+            forked_sdk = await sdk_session.fork(
+                mcp_servers=self._thread_mcp_servers(),
+                **options_taken_by(sdk_session.fork, self._thread_options),
+            )
             self._open_thread(forked_sdk)  # Stored on the fork (its sdk_session_id)
         return forked
 

@@ -540,3 +540,61 @@ def build_sdk_hooks_from_agent_hooks(
         result["PostToolUse"] = [HookMatcher(matcher="*", hooks=[on_post_tool_use])]  # pyright: ignore[reportArgumentType]
 
     return result
+
+
+MANAGED_SDK_OPTIONS = frozenset({
+    "cwd",
+    "allowed_tools",
+    "disallowed_tools",
+    "system_prompt",
+    "include_builtin_system_prompt",
+    "model",
+    "max_turns",
+    "max_budget_usd",
+    "effort",
+    "permission_mode",
+    "env",
+    "agents",
+    "add_dirs",
+    "tools",
+    "fallback_model",
+    "prompt_suggestions",
+    "enable_tool_search",
+    "on_permission",
+    "on_user_question",
+    "on_elicitation",
+    "output_schema",
+    "mcp_servers",
+    "hooks",
+    "setting_sources",
+    "chrome",
+    "session",
+    "stderr",
+    "allow_dangerously_skip_permissions",
+})
+"""``ClaudeAgentOptions`` fields agentpool sets itself (not passed through ``sdk_options``)."""
+
+
+def claude_sdk_options(raw: Mapping[str, Any]) -> dict[str, Any]:
+    """Pass-through ``ClaudeAgentOptions`` fields, converted to the SDK's types.
+
+    Raises:
+        ValueError: An unknown or agentpool-managed field, or a value of the wrong type
+    """
+    if not raw:
+        return {}
+    import importlib
+
+    from clawd_code_sdk import ClaudeAgentOptions
+
+    from agentpool.agents.backend_options import check_backend_options, dataclass_field_types
+
+    # The options module names its field types only for type checking: resolve them here
+    namespace: dict[str, Any] = dict(vars(importlib.import_module("clawd_code_sdk.models")))
+    for module in ("agents", "base", "hooks", "mcp", "permissions", "settings", "thinking"):
+        namespace |= vars(importlib.import_module(f"clawd_code_sdk.models.{module}"))
+    namespace |= vars(importlib.import_module("clawd_code_sdk.models.options"))
+    fields = dataclass_field_types(ClaudeAgentOptions, namespace)
+    return check_backend_options(
+        raw, fields, managed=MANAGED_SDK_OPTIONS, backend="Claude Code SDK"
+    )

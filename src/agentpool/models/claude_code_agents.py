@@ -379,6 +379,20 @@ class ClaudeCodeAgentConfig(BaseAgentConfig):
     ``autoCompactEnabled: false`` and ``DISABLE_COMPACT`` turn it off too.
     """
 
+    sdk_options: dict[str, Any] = Field(
+        default_factory=dict,
+        title="SDK options",
+        examples=[{"per_task_stop_affordance": True, "plugin_delivery": "initialize"}],
+    )
+    """Options of the Claude Code SDK (``ClaudeAgentOptions``) passed through as they are.
+
+    For what agentpool has no setting of its own, by the SDK's field names: e.g.
+    ``per_task_stop_affordance`` (an interrupt spares background agents; ``/tasks stop``
+    ends them), ``plugins``, ``plugin_delivery``, ``exclude_dynamic_sections``. Values are
+    converted to the SDK's types. Options agentpool sets itself (model, permissions, hooks,
+    MCP servers, the session, ...) are refused: use their own settings.
+    """
+
     tools: list[AnyToolConfig | str] = Field(
         default_factory=list,
         title="Tools",

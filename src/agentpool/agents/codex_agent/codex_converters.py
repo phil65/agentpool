@@ -49,7 +49,7 @@ from agentpool.utils.pydantic_ai_helpers import get_builtin_tool_parts
 
 
 if TYPE_CHECKING:
-    from collections.abc import Iterator, Sequence
+    from collections.abc import Callable, Iterator, Mapping, Sequence
 
     from codexed.models import (
         GetAccountResponse,
@@ -652,3 +652,63 @@ def turns_to_chat_messages(turns: list[Turn]) -> list[ChatMessage[list[UserConte
         List of ChatMessages with proper content types and model messages
     """
     return [msg for turn in turns for msg in _turn_to_chat_messages(turn)]
+
+
+MANAGED_THREAD_OPTIONS = frozenset({
+    "thread_id",
+    "path",
+    "cwd",
+    "model",
+    "base_instructions",
+    "developer_instructions",
+    "sandbox",
+    "approval_policy",
+    "personality",
+    "mcp_servers",
+    "last_turn_id",
+    "before_turn_id",
+    "exclude_turns",
+})
+"""``thread/start`` (resume, fork) parameters agentpool sets itself, or per call."""
+
+
+def _codex_namespace() -> dict[str, Any]:
+    """Where the codexed signatures' type names resolve (they name them for type checking)."""
+    import importlib
+    import pkgutil
+
+    import codexed
+    import codexed.models
+
+    namespace: dict[str, Any] = {k: getattr(codexed, k) for k in dir(codexed)}
+    for name in ("codexed.client.client", "codexed.client.session"):
+        namespace |= vars(importlib.import_module(name))
+    for module in pkgutil.iter_modules(codexed.models.__path__):
+        namespace |= vars(importlib.import_module(f"codexed.models.{module.name}"))
+    return namespace
+
+
+def codex_thread_options(raw: Mapping[str, Any]) -> dict[str, Any]:
+    """Pass-through ``thread/start`` parameters, converted to codexed's types.
+
+    Raises:
+        ValueError: An unknown or agentpool-managed parameter, or a value of the wrong type
+    """
+    if not raw:
+        return {}
+    from codexed.client.client import CodexClient
+
+    from agentpool.agents.backend_options import check_backend_options, parameter_types
+
+    fields = parameter_types(CodexClient.thread_start, _codex_namespace())
+    return check_backend_options(
+        raw, fields, managed=MANAGED_THREAD_OPTIONS, backend="Codex thread/start"
+    )
+
+
+def options_taken_by(method: Callable[..., Any], options: Mapping[str, Any]) -> dict[str, Any]:
+    """The ``options`` that ``method`` takes as keyword parameters (resume and fork take less)."""
+    import inspect
+
+    parameters = inspect.signature(method).parameters
+    return {name: value for name, value in options.items() if name in parameters}

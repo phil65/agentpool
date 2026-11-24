@@ -22,6 +22,8 @@ from agentpool.agents.base_agent import BaseAgent
 from agentpool.agents.capabilities import AgentCapabilities
 from agentpool.agents.claude_code_agent.cli_process import CliProcess
 from agentpool.agents.claude_code_agent.converters import (
+    MANAGED_SDK_OPTIONS,
+    claude_sdk_options,
     convert_mcp_servers_to_sdk_format,
     decision_to_native,
     to_auth_status,
@@ -210,6 +212,7 @@ class ClaudeCodeAgent[TDeps = None, TResult = str](BaseAgent[TDeps, TResult]):
         max_processes: int = 8,
         enable_tool_search: bool | int | Literal["auto"] | None = None,
         idle_compaction: bool = True,
+        sdk_options: Mapping[str, Any] | None = None,
         env: ExecutionEnvironment | StrPath | None = None,
         input_provider: InputProvider | None = None,
         agent_pool: AgentPool[Any] | None = None,
@@ -253,6 +256,8 @@ class ClaudeCodeAgent[TDeps = None, TResult = str](BaseAgent[TDeps, TResult]):
                 recently used first
             enable_tool_search: Control MCP tool search (True/False/"auto"/threshold)
             idle_compaction: Compact an idle session shortly before its prompt cache expires
+            sdk_options: SDK options passed through (``ClaudeAgentOptions`` fields agentpool
+                doesn't set itself; values converted to the SDK's types)
             env: Execution environment
             input_provider: Provider for user input/confirmations
             agent_pool: Agent pool for multi-agent coordination
@@ -319,6 +324,7 @@ class ClaudeCodeAgent[TDeps = None, TResult = str](BaseAgent[TDeps, TResult]):
         self._prompt_suggestions = prompt_suggestions
         self._enable_tool_search = enable_tool_search
         self._idle_compaction_enabled = idle_compaction
+        self._sdk_options = claude_sdk_options(sdk_options or {})
         self._toolsets = toolsets or []
         # CLI processes: one per session (see cli_process)
         self._processes: dict[str, CliProcess] = {}
@@ -594,6 +600,7 @@ class ClaudeCodeAgent[TDeps = None, TResult = str](BaseAgent[TDeps, TResult]):
             max_processes=config.max_processes,
             enable_tool_search=config.enable_tool_search,
             idle_compaction=config.idle_compaction,
+            sdk_options=config.sdk_options,
             # Toolsets
             toolsets=config.get_tool_providers() if config.tools else [],
             # Runtime
@@ -741,7 +748,7 @@ class ClaudeCodeAgent[TDeps = None, TResult = str](BaseAgent[TDeps, TResult]):
             if self._sdk_session_id
             else NewSession()
         )
-        opts = ClaudeAgentOptions(
+        managed: dict[str, Any] = dict(
             cwd=self.env.cwd,
             allowed_tools=self._allowed_tools or [],
             disallowed_tools=self._disallowed_tools,
@@ -771,6 +778,8 @@ class ClaudeCodeAgent[TDeps = None, TResult = str](BaseAgent[TDeps, TResult]):
             stderr=lambda line: logger.debug("claude_cli_stderr", output=line),
             allow_dangerously_skip_permissions=True,
         )
+        assert managed.keys() <= MANAGED_SDK_OPTIONS, managed.keys() - MANAGED_SDK_OPTIONS
+        opts = ClaudeAgentOptions(**managed, **self._sdk_options)
         return ClaudeSDKClient(opts)
 
     async def _on_permission(

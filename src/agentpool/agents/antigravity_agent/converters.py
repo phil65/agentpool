@@ -32,7 +32,7 @@ from agentpool.utils.pydantic_ai_helpers import get_builtin_tool_parts
 
 
 if TYPE_CHECKING:
-    from collections.abc import Sequence
+    from collections.abc import Mapping, Sequence
 
     from google.antigravity.types import (
         AskQuestionEntry,
@@ -340,3 +340,56 @@ def steps_to_chat_messages(
 
     _flush_assistant()
     return messages
+
+
+MANAGED_SDK_OPTIONS = frozenset({
+    "system_instructions",
+    "capabilities",
+    "tools",
+    "policies",
+    "hooks",
+    "mcp_servers",
+    "workspaces",
+    "conversation_id",
+    "session_continuation_mode",
+    "save_dir",
+    "app_data_dir",
+    "response_schema",
+    "skills_paths",
+    "compaction_config",
+    "budget_config",
+    "env",
+    "debug_config",
+    "model",
+    "api_key",
+    "vertex",
+    "project",
+    "location",
+    "base_url",
+})
+"""Agent config fields agentpool sets itself (not passed through ``sdk_options``)."""
+
+
+def antigravity_sdk_options(raw: Mapping[str, Any], *, openai: bool) -> dict[str, Any]:
+    """Pass-through agent config fields, converted to the SDK's types.
+
+    Args:
+        raw: The fields as configured
+        openai: Checked against ``LocalOpenAIAgentConfig`` (else ``LocalAgentConfig``)
+
+    Raises:
+        ValueError: An unknown or agentpool-managed field, or a value of the wrong type
+    """
+    if not raw:
+        return {}
+    from google.antigravity import LocalAgentConfig, LocalOpenAIAgentConfig
+
+    from agentpool.agents.backend_options import check_backend_options, model_field_types
+
+    config_type = LocalOpenAIAgentConfig if openai else LocalAgentConfig
+    return check_backend_options(
+        raw,
+        model_field_types(config_type),
+        managed=MANAGED_SDK_OPTIONS,
+        backend=f"Antigravity {config_type.__name__}",
+    )

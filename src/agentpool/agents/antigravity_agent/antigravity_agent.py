@@ -15,6 +15,7 @@ import platformdirs
 from pydantic import TypeAdapter, ValidationError
 
 from agentpool.agents.antigravity_agent.converters import (
+    antigravity_sdk_options,
     elicitation_to_question_response,
     mcp_config_to_antigravity,
     question_to_elicitation,
@@ -37,7 +38,7 @@ from agentpool.tools.decisions import Approve, Deny
 
 
 if TYPE_CHECKING:
-    from collections.abc import AsyncIterator, Callable, Sequence
+    from collections.abc import AsyncIterator, Callable, Mapping, Sequence
     from types import TracebackType
 
     from exxec import ExecutionEnvironment
@@ -148,6 +149,7 @@ class AntigravityAgent[TDeps = None, OutputDataT = str](BaseAgent[TDeps, OutputD
         budget: AntigravityBudgetConfig | None = None,
         env_vars: dict[str, str] | None = None,
         debug: bool = False,
+        sdk_options: Mapping[str, Any] | None = None,
         session_id: str | None = None,
         toolsets: list[ResourceProvider] | None = None,
         custom_tools: Sequence[Callable[..., Any]] | None = None,
@@ -203,6 +205,8 @@ class AntigravityAgent[TDeps = None, OutputDataT = str](BaseAgent[TDeps, OutputD
             budget: Session-level budget limits
             env_vars: Extra environment variables for the localharness subprocess
             debug: Enable Antigravity SDK debug logging and tracing
+            sdk_options: SDK agent config fields passed through (those agentpool doesn't
+                set itself; values converted to the SDK's types)
             session_id: Existing Antigravity ``conversation_id`` to resume on connect
             toolsets: AgentPool resource providers exposed via an in-process MCP bridge
             custom_tools: Python callables registered directly as Antigravity custom tools
@@ -287,6 +291,7 @@ class AntigravityAgent[TDeps = None, OutputDataT = str](BaseAgent[TDeps, OutputD
         self._budget = budget
         self._env_vars = dict(env_vars or {})
         self._debug = debug
+        self._sdk_options = antigravity_sdk_options(sdk_options or {}, openai=openai_compatible)
 
         # Toolsets & MCP
         self._toolsets = toolsets or []
@@ -366,6 +371,7 @@ class AntigravityAgent[TDeps = None, OutputDataT = str](BaseAgent[TDeps, OutputD
             budget=config.budget,
             env_vars=config.get_env_vars(),
             debug=config.debug,
+            sdk_options=config.sdk_options,
             mcp_servers=config.get_mcp_servers(),
             toolsets=config.get_tool_providers(),
             env=config.get_execution_environment(),
@@ -765,6 +771,7 @@ class AntigravityAgent[TDeps = None, OutputDataT = str](BaseAgent[TDeps, OutputD
                 model=self._model,
                 base_url=self._base_url,
                 **common_kwargs,
+                **self._sdk_options,
             )
 
         options: GeminiModelOptions | None = None
@@ -813,6 +820,7 @@ class AntigravityAgent[TDeps = None, OutputDataT = str](BaseAgent[TDeps, OutputD
             project=self._project,
             location=self._location,
             **common_kwargs,
+            **self._sdk_options,
         )
 
     async def _handle_tool_approval(self, tool_call: ToolCall, reason: str = "") -> bool:

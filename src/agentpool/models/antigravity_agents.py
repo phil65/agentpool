@@ -305,6 +305,20 @@ class AntigravityAgentConfig(BaseAgentConfig):
     debug: bool = Field(default=False, title="Enable SDK Debug Logging")
     """Enable verbose Antigravity SDK logging and server-side tracing."""
 
+    sdk_options: dict[str, Any] = Field(
+        default_factory=dict,
+        title="SDK options",
+        examples=[{"retry_config": {"api_retry": {"max_retries": 5}}}],
+    )
+    """Fields of the Antigravity SDK's agent config passed through as they are.
+
+    ``LocalAgentConfig`` (or ``LocalOpenAIAgentConfig`` with ``openai_compatible``), for
+    what agentpool has no setting of its own, by the SDK's field names: e.g.
+    ``retry_config``, ``subagents``, ``inline_skills``, ``triggers``, ``models``. Values
+    are converted to the SDK's types. Fields agentpool sets itself (model, instructions,
+    tools, policies, hooks, MCP servers, ...) are refused: use their own settings.
+    """
+
     @model_validator(mode="after")
     def _validate_config(self) -> Self:
         if self.enabled_tools is not None and self.disabled_tools is not None:

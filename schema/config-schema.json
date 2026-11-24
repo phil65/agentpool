@@ -3748,6 +3748,21 @@
           "description": "Enable verbose Antigravity SDK logging and server-side tracing.",
           "title": "Enable SDK Debug Logging",
           "type": "boolean"
+        },
+        "sdk_options": {
+          "additionalProperties": true,
+          "description": "Fields of the Antigravity SDK's agent config passed through as they are.\n\n``LocalAgentConfig`` (or ``LocalOpenAIAgentConfig`` with ``openai_compatible``), for\nwhat agentpool has no setting of its own, by the SDK's field names: e.g.\n``retry_config``, ``subagents``, ``inline_skills``, ``triggers``, ``models``. Values\nare converted to the SDK's types. Fields agentpool sets itself (model, instructions,\ntools, policies, hooks, MCP servers, ...) are refused: use their own settings.",
+          "examples": [
+            {
+              "retry_config": {
+                "api_retry": {
+                  "max_retries": 5
+                }
+              }
+            }
+          ],
+          "title": "SDK options",
+          "type": "object"
         }
       },
       "title": "Antigravity Agent Configuration",
@@ -8402,6 +8417,18 @@
           "title": "Idle Compaction",
           "type": "boolean"
         },
+        "sdk_options": {
+          "additionalProperties": true,
+          "description": "Options of the Claude Code SDK (``ClaudeAgentOptions``) passed through as they are.\n\nFor what agentpool has no setting of its own, by the SDK's field names: e.g.\n``per_task_stop_affordance`` (an interrupt spares background agents; ``/tasks stop``\nends them), ``plugins``, ``plugin_delivery``, ``exclude_dynamic_sections``. Values are\nconverted to the SDK's types. Options agentpool sets itself (model, permissions, hooks,\nMCP servers, the session, ...) are refused: use their own settings.",
+          "examples": [
+            {
+              "per_task_stop_affordance": true,
+              "plugin_delivery": "initialize"
+            }
+          ],
+          "title": "SDK options",
+          "type": "object"
+        },
         "tools": {
           "description": "Tools and toolsets to expose to this Claude Code agent via MCP bridge.\n\nSupports both single tools and toolsets. These will be started as an\nin-process MCP server and made available to Claude Code.\n\nDocs: https://phil65.github.io/agentpool/YAML%20Configuration/tool_configuration/",
           "examples": [
@@ -9926,6 +9953,20 @@
             "string",
             "null"
           ]
+        },
+        "thread_options": {
+          "additionalProperties": true,
+          "description": "Parameters of Codex's ``thread/start`` passed through (also on resume and fork, where\nCodex takes them).\n\nFor what agentpool has no setting of its own, by the parameter names: e.g. ``config``\n(Codex config overrides, like ``codex -c``), ``service_tier``, ``model_provider``,\n``approvals_reviewer``, ``ephemeral``. Values are converted to Codex's types.\nParameters agentpool sets itself (model, sandbox, instructions, MCP servers, ...) are\nrefused: use their own settings.",
+          "examples": [
+            {
+              "config": {
+                "model_verbosity": "low"
+              },
+              "service_tier": "flex"
+            }
+          ],
+          "title": "Thread options",
+          "type": "object"
         },
         "tools": {
           "description": "Tools and toolsets to expose to Codex via MCP bridge.\n\nThese will be started as an in-process MCP server and made available\nto the Codex agent.",
