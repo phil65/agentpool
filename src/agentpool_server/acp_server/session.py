@@ -31,19 +31,19 @@ from agentpool.agents.modes import ConfigOptionChanged
 from agentpool.agents.staged_content import StagedContent
 from agentpool.log import get_logger
 from agentpool.sessions.environment import SessionEnvironment, use_session_environment
-from agentpool_commands.base import NodeCommand
-from agentpool_server.acp_server.converters import (
-    convert_acp_mcp_server_to_config,
-    from_acp_content,
-)
-from agentpool_server.acp_server.input_provider import ACPInputProvider
-from agentpool_server.acp_server.turns import (
+from agentpool.turns import (
     TurnCancelled,
     TurnCompleted,
     TurnFailed,
     TurnLimitReached,
     TurnRefused,
 )
+from agentpool_commands.base import NodeCommand
+from agentpool_server.acp_server.converters import (
+    convert_acp_mcp_server_to_config,
+    from_acp_content,
+)
+from agentpool_server.acp_server.input_provider import ACPInputProvider
 from agentpool_server.acp_server.v1_output import V1SessionOutput
 
 
@@ -69,10 +69,11 @@ if TYPE_CHECKING:
     from agentpool.agents.base_agent import BaseAgent
     from agentpool.common_types import PathReference
     from agentpool.sessions import Session as PoolSession
+    from agentpool.turns import TurnOutcome
     from agentpool_server.acp_server.acp_agent import AgentPoolACPAgent
     from agentpool_server.acp_server.output import AgentStateChange, SessionOutput
     from agentpool_server.acp_server.session_manager import ACPSessionManager
-    from agentpool_server.acp_server.turns import TurnOutcome, TurnOutput
+    from agentpool_server.acp_server.turns import TurnOutput
 
 logger = get_logger(__name__)
 SLASH_PATTERN = re.compile(r"^/([\w-]+)(?:\s+(.*))?$")

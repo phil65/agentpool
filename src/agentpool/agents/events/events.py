@@ -46,6 +46,7 @@ if TYPE_CHECKING:
 
     from agentpool.messaging import ChatMessage
     from agentpool.tools.base import ToolKind
+    from agentpool.turns import Turn
     from agentpool.utils.todos import PlanEntry
 
 
@@ -237,6 +238,8 @@ class StreamCompleteEvent[TContent]:
 
     message: ChatMessage[TContent]
     """The final chat message with all metadata."""
+    turn: Turn[TContent] | None = None
+    """The turn this message ends (set by the turn loop; None from an agent's own stream)."""
     event_kind: Literal["stream_complete"] = "stream_complete"
     """Event type identifier."""
 

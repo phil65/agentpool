@@ -4,51 +4,17 @@ A turn's outcome and where its events go are independent of the ACP version: v1
 answers ``session/prompt`` with a stop reason once the turn ended, v2 reports the
 turn through ``state_update`` notifications (see ``ACP_V2_SERVER.md``). The session
 runs the turn (``ACPSession.run_turn``); each protocol supplies a ``TurnOutput`` and
-maps the ``TurnOutcome``.
+maps the ``TurnOutcome`` (``agentpool.turns``, shared with the other servers).
 """
 
 from __future__ import annotations
 
-from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Protocol
 
 
 if TYPE_CHECKING:
     from agentpool.agents.events import RichAgentStreamEvent
-
-
-@dataclass(frozen=True, slots=True)
-class TurnCompleted:
-    """The agent finished the turn (or the prompt held only slash commands)."""
-
-
-@dataclass(frozen=True, slots=True)
-class TurnCancelled:
-    """The client cancelled the turn; it may have left tool calls pending."""
-
-
-@dataclass(frozen=True, slots=True)
-class TurnLimitReached:
-    """A usage limit (requests, tokens, tool calls) ended the turn."""
-
-    message: str
-
-
-@dataclass(frozen=True, slots=True)
-class TurnFailed:
-    """The agent failed during the turn."""
-
-    error: Exception
-
-
-@dataclass(frozen=True, slots=True)
-class TurnRefused:
-    """The turn did not run, e.g. because the prompt was empty."""
-
-    reason: str
-
-
-type TurnOutcome = TurnCompleted | TurnCancelled | TurnLimitReached | TurnFailed | TurnRefused
+    from agentpool.turns import TurnOutcome
 
 
 class TurnOutput(Protocol):

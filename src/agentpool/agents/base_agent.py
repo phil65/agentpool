@@ -80,6 +80,7 @@ if TYPE_CHECKING:
     from agentpool.sessions import Session, SessionData
     from agentpool.storage import StorageManager
     from agentpool.talk.stats import MessageStats
+    from agentpool.turns import Turn
     from agentpool.ui.base import InputProvider
     from agentpool_config.events import EventConfig
     from agentpool_config.mcp_server import MCPServerConfig
@@ -207,6 +208,8 @@ class BaseAgent[TDeps = None, TResult = str](MessageNode[TDeps, TResult]):
     agent_reset = Signal[AgentReset]()
     # Signal emitted when agent execution fails
     run_failed: Signal[RunFailedEvent] = Signal()
+    turn_completed: Signal[Turn[Any]] = Signal()
+    """A turn ended, however it ended (completed, cancelled, failed): its :class:`Turn`."""
     state_updated: Signal[StateUpdate] = Signal()
     # Signal emitted when agent is interrupted
     interrupted: Signal[InterruptEvent] = Signal()
@@ -1509,6 +1512,62 @@ class BaseAgent[TDeps = None, TResult = str](MessageNode[TDeps, TResult]):
             raise RuntimeError("No final message received from stream")
 
         return final_message
+
+    async def run_turn(
+        self,
+        *prompts: PromptCompatible | ChatMessage[Any],
+        store_history: bool = True,
+        message_id: str | None = None,
+        user_message_id: str | None = None,
+        session: Session | None = None,
+        session_id: str | None = None,
+        parent_id: str | None = None,
+        message_history: MessageHistory | None = None,
+        deps: TDeps | None = None,
+        input_provider: InputProvider | None = None,
+        event_handlers: Sequence[AnyEventHandlerType] | None = None,
+    ) -> Turn[TResult]:
+        """Run the prompts as a turn and return the :class:`Turn`, however it ended.
+
+        Like :meth:`run`, but a failed turn, or one interrupted (``interrupt()``), comes back
+        as its ``Turn`` (``outcome``: ``TurnFailed`` with the error, ``TurnCancelled`` with
+        the partial answer if any) instead of raising. Cancelling the caller's task from
+        outside still cancels it. With prompts queued during the turn, the last one's.
+        Arguments as for :meth:`run`.
+
+        Raises:
+            RuntimeError: If no turn ran (the run failed before its prompt started)
+        """
+        runtime = self.runtime(session)
+        try:
+            async for _event in self.run_stream(
+                *prompts,
+                store_history=store_history,
+                message_id=message_id,
+                user_message_id=user_message_id,
+                session=session,
+                session_id=session_id,
+                parent_id=parent_id,
+                message_history=message_history,
+                deps=deps,
+                input_provider=input_provider,
+                event_handlers=event_handlers,
+            ):
+                pass
+        except asyncio.CancelledError:
+            interrupted = runtime.cancelled and (turn := runtime.last_turn) is not None
+            if not interrupted or (task := asyncio.current_task()) is None:
+                raise  # Cancelled from outside: not ours to answer
+            task.uncancel()
+            assert turn is not None
+            return turn
+        except Exception:
+            if (turn := runtime.last_turn) is None or turn.completed:
+                raise  # It failed outside a turn: nothing to return
+            return turn
+        if (turn := runtime.last_turn) is None:
+            raise RuntimeError("No turn ran")
+        return turn
 
     async def context_window(self) -> int | None:
         """Context window of the current model in tokens, if it can be determined.

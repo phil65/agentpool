@@ -45,19 +45,19 @@ from aclientp.v2.agent import Agent as V2Agent
 from pydantic import BaseModel, ValidationError
 
 from agentpool.log import get_logger
+from agentpool.turns import (
+    TurnCancelled,
+    TurnCompleted,
+    TurnFailed,
+    TurnLimitReached,
+    TurnRefused,
+)
 from agentpool_server.acp_server.acp_agent import AgentPoolACPAgent
 from agentpool_server.acp_server.idempotency import idempotency_store
 from agentpool_server.acp_server.session import (
     get_all_commands,
     infer_stop_reason,
     merge_commands,
-)
-from agentpool_server.acp_server.turns import (
-    TurnCancelled,
-    TurnCompleted,
-    TurnFailed,
-    TurnLimitReached,
-    TurnRefused,
 )
 from agentpool_server.acp_server.v1_output import V1SessionOutput, acp_commands
 from agentpool_server.acp_server.v2_client import V2ClientAdapter
@@ -72,9 +72,9 @@ if TYPE_CHECKING:
     from aclientp.v2.agent import AgentSideConnection as V2AgentSideConnection
 
     from agentpool.agents.base_agent import BaseAgent
+    from agentpool.turns import TurnOutcome
     from agentpool_server.acp_server.server import ACPServer
     from agentpool_server.acp_server.session import ACPSession
-    from agentpool_server.acp_server.turns import TurnOutcome
     from agentpool_server.acp_server.v2_subagents import ChildSession
 
 

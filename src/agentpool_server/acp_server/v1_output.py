@@ -8,14 +8,14 @@ from aclientp.schema import AvailableCommand, Notice
 import anyio
 
 from agentpool.agents.modes import ConfigOptionChanged, ModeInfo
-from agentpool_server.acp_server.event_converter import ACPEventConverter
-from agentpool_server.acp_server.turns import (
+from agentpool.turns import (
     TurnCancelled,
     TurnCompleted,
     TurnFailed,
     TurnLimitReached,
     TurnRefused,
 )
+from agentpool_server.acp_server.event_converter import ACPEventConverter
 
 
 if TYPE_CHECKING:
@@ -24,13 +24,13 @@ if TYPE_CHECKING:
     from slashed import BaseCommand
 
     from agentpool.agents.events import RichAgentStreamEvent
+    from agentpool.turns import TurnOutcome
     from agentpool_server.acp_server.output import (
         AgentStateChange,
         CommandToolKind,
         CommandToolStatus,
     )
     from agentpool_server.acp_server.session import ACPSession
-    from agentpool_server.acp_server.turns import TurnOutcome
 
 
 def acp_commands(commands: Sequence[BaseCommand]) -> list[AvailableCommand]:

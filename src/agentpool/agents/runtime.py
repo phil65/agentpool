@@ -24,7 +24,9 @@ from __future__ import annotations
 import asyncio
 from contextlib import contextmanager
 from contextvars import ContextVar
+from dataclasses import replace
 from decimal import Decimal
+import time
 from types import MappingProxyType
 from typing import TYPE_CHECKING, Any
 
@@ -40,6 +42,14 @@ from agentpool.agents.events import (
 from agentpool.agents.prompt_injection import PromptInjectionManager
 from agentpool.agents.staged_content import StagedContent
 from agentpool.prompts.convert import convert_prompts
+from agentpool.turns import (
+    Turn,
+    TurnCancelled,
+    TurnCompleted,
+    outcome_of_error,
+    stop_reason as turn_stop_reason,
+)
+from agentpool.utils.time_utils import get_now
 
 
 if TYPE_CHECKING:
@@ -51,6 +61,7 @@ if TYPE_CHECKING:
     from agentpool.messaging import ChatMessage, MessageHistory
     from agentpool.sessions import Session
     from agentpool.sessions.activity import SessionState, StopReason
+    from agentpool.turns import TurnOutcome
     from agentpool.ui.base import InputProvider
 
 
@@ -84,6 +95,8 @@ class SessionRuntime[TDeps = Any, TResult = Any]:
         """Cost of this session's turns on this runtime so far (USD)."""
         self.tasks: dict[str, RunningTask] = {}
         """Tasks this session's turns started that still run, by task id."""
+        self.last_turn: Turn[TResult] | None = None
+        """The last turn of the running (or last) ``run_stream``, however it ended."""
         """ID of the user message of the prompt group running (e.g. file changes record it)."""
 
     @property
@@ -145,6 +158,7 @@ class SessionRuntime[TDeps = Any, TResult = Any]:
             # Queue the initial prompts
             self.injections.insert_queued(prompts)
             self._report_state("running")
+            self.last_turn = None
             stop_reason: StopReason = "cancelled"  # Unless the turn ends normally or fails
             error: str | None = None
             usage = RunUsage()
@@ -180,6 +194,8 @@ class SessionRuntime[TDeps = Any, TResult = Any]:
                 stop_reason, error = "error", str(e)
                 raise
             finally:
+                if (turn := self.last_turn) is not None:  # How its last turn ended
+                    stop_reason = turn_stop_reason(turn.outcome)
                 self._report_state("idle", stop_reason=stop_reason, usage=usage, error=error)
                 self.task = None
                 self.turn_message_id = None
@@ -360,6 +376,25 @@ class SessionRuntime[TDeps = Any, TResult = Any]:
         )
         # Stream events from implementation
         final_message: ChatMessage[TResult] | None = None
+        turn: Turn[TResult] | None = None
+        started_at, started = get_now(), time.perf_counter()
+
+        def end_turn(outcome: TurnOutcome, result: ChatMessage[TResult] | None) -> Turn[TResult]:
+            ended = Turn(
+                turn_id=user_msg.message_id,
+                session_id=effective_session_id or self.session.session_id,
+                node=agent.name,
+                prompt=user_msg,
+                outcome=outcome,
+                result=result,
+                usage=result.usage if result is not None else RunUsage(),
+                cost=result.cost_info if result is not None else None,
+                started_at=started_at,
+                duration=time.perf_counter() - started,
+            )
+            self.last_turn = ended
+            return ended
+
         await agent.message_received.emit(user_msg)
         self.active_runs += 1
         try:
@@ -375,7 +410,7 @@ class SessionRuntime[TDeps = Any, TResult = Any]:
                     raise RuntimeError(f"Run blocked: {reason}")  # noqa: TRY301
 
             context = agent.get_context(input_provider=input_provider)
-            async for event in agent._stream_events(
+            async for raw in agent._stream_events(
                 [*pending_parts, *converted_prompts],
                 user_msg=user_msg,
                 effective_parent_id=effective_parent_id,
@@ -387,18 +422,24 @@ class SessionRuntime[TDeps = Any, TResult = Any]:
                 input_provider=input_provider,
                 deps=deps,
             ):
+                event = raw
+                if isinstance(raw, StreamCompleteEvent):  # The turn's end: with its Turn
+                    final_message = raw.message
+                    outcome = TurnCancelled() if self.cancelled else TurnCompleted()
+                    turn = end_turn(outcome, final_message)
+                    event = replace(raw, turn=turn)
                 await resolved_handler(context, event)
                 self._record_file_changes(event)
                 self.track_task(event)
                 yield event
-                # Capture final message from StreamCompleteEvent
-                if isinstance(event, StreamCompleteEvent):
-                    final_message = event.message
             if (task := asyncio.current_task()) is not None and task.cancelling():
                 # Cancelled from outside, and the agent ended its turn with what it had
                 await self._stop_backend()
-        except asyncio.CancelledError:
+        except asyncio.CancelledError as e:
             await self._stop_backend()
+            if turn is None:  # Cancelled before it answered
+                turn = end_turn(outcome_of_error(e), None)
+            await agent.turn_completed.emit(turn)
             raise
         except Exception as e:
             agent.log.exception("Agent stream failed")
@@ -406,6 +447,7 @@ class SessionRuntime[TDeps = Any, TResult = Any]:
                 agent_name=agent.name, message="Agent stream failed", exception=e
             )
             await agent.run_failed.emit(failed_event)
+            await agent.turn_completed.emit(end_turn(outcome_of_error(e), None))
             raise
         finally:
             self.active_runs -= 1
@@ -428,6 +470,9 @@ class SessionRuntime[TDeps = Any, TResult = Any]:
                 session_id=effective_session_id,
                 store_history=store_history,
             )
+        if turn is None:  # The stream ended without an answer
+            turn = end_turn(TurnCancelled() if self.cancelled else TurnCompleted(), None)
+        await agent.turn_completed.emit(turn)  # Once its answer is stored and routed
 
     def track_task(self, event: RichAgentStreamEvent[Any]) -> None:
         """Record a task event; drop this runtime once its last task ends between turns."""

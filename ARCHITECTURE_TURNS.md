@@ -1,7 +1,7 @@
 # Turns as a first-class model
 
-Status: proposal, not started. Written 2026-11-23, revised the same day (teams demoted, see
-"How multi-agent work happens now"). Related: `ARCHITECTURE_SESSIONS_AGENTS.md` (sessions,
+Status: stage 1 done (2026-11-24), stages 2-4 open. Written 2026-11-23, revised the same day
+(teams demoted, see "How multi-agent work happens now"). Related: `ARCHITECTURE_SESSIONS_AGENTS.md` (sessions,
 runtimes) and `ARCHITECTURE_ROUTING.md` (router, triggers, session policies).
 
 ## How multi-agent work happens now
@@ -170,6 +170,19 @@ Each stage leaves everything working; only stage 4 breaks the public API.
    `StreamCompleteEvent`, ends cancelled and failed turns with it, emits `turn_completed`.
    Add `run_turn()`. The activity feed takes `idle` from the outcome. No behaviour change for
    existing callers.
+
+   **Done 2026-11-24.** `agentpool/turns.py` (not under `sessions/`: that package's import
+   cycles back into the runtime) holds `Turn`, `TurnRef` and the outcomes, under the ACP
+   server's names (`TurnCompleted`, `TurnCancelled`, `TurnLimitReached`, `TurnFailed`,
+   `TurnRefused`), which the ACP server now imports. A turn is one prompt group of
+   `SessionRuntime.run_stream` (`_run_once`): queued prompts are turns of their own. Its
+   final `StreamCompleteEvent` carries it (`turn`, before event handlers see the event);
+   `BaseAgent.turn_completed` announces every turn, completed ones after their answer is
+   stored and routed, failed and cancelled ones before the exception goes on (`run()` and
+   `run_stream()` raise as before). `run_turn()` returns the last turn, also a failed or
+   interrupted one; cancelling the caller from outside still cancels it. The activity
+   feed's `idle` takes its stop reason from the last turn's outcome (a limit stays
+   `error`). `parent` and `children` exist but are not filled yet (stage 2).
 2. **Delegation and consumers on turns.** Subagent tool calls and background tasks as child
    turns of the calling turn (the main structure today); router on `turn_completed` with
    parent links; ACP and OpenCode V2 servers on shared outcomes; storage persists outcome
@@ -187,14 +200,13 @@ the 66 files that use `ChatMessage` and is worth doing only once 1-3 have settle
 
 ## Open questions
 
-- **Names.** `run_turn()` vs. `run()` returning `Turn` right away (breaking earlier); signal
-  `turn_completed` vs. reusing `message_sent` with a richer payload.
+- **Names** (settled in stage 1): `run_turn()` next to `run()`, and a `turn_completed`
+  signal next to `message_sent`.
+- **Partial results** (settled in stage 1): `TurnCancelled` carries nothing; the partial
+  answer, if any, is the turn's `result`.
 - **What "team" should mean.** Keep `Team` / `TeamRun` as fixed fan-out / pipeline sugar,
   or redefine a team as a group of agents an orchestrator delegates to? If kept: a parallel
   team's result is a list today, which downstream agents receive as its string form.
-- **Partial results.** Should `Cancelled` carry the partial answer as `result` (as native and
-  Claude Code agents return it today) or keep `result=None` and put the partial text in the
-  outcome?
 - **Nested turns of one agent.** A native agent calling a subagent tool runs a turn of
   another node while its own turn runs. Is the child turn's `parent` the calling turn (yes),
   and does its usage roll into the parent's `usage` (probably not: the parent's own model
