@@ -76,7 +76,7 @@ The migration system uses the database URL from:
 2. Default: `sqlite:///./agentpool.db` (configured in `alembic.ini`)
 
 ### Environment Setup
-The `migrations/env.py` file is configured to:
+The `migrations/env.py` file (in `src/agentpool_storage/sql_provider/`, shipped with the package) is configured to:
 - Import all SQLModel models automatically
 - Support both sync and async database connections
 - Use UTC timezone for timestamps

@@ -87,8 +87,8 @@ def run_alembic_migrations(connection: Any) -> None:
         logger.debug("Skipping migrations, already completed for this database")
         return
 
-    # Find the migrations directory relative to this package
-    migrations_dir = Path(__file__).parents[3] / "migrations"
+    # Shipped inside the package (the wheel has no repository root)
+    migrations_dir = Path(__file__).parent / "migrations"
     if not migrations_dir.exists():
         logger.warning("Migrations directory not found, skipping Alembic migrations")
         _migrated_databases.add(db_url)
