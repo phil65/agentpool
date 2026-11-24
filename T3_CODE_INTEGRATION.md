@@ -104,9 +104,10 @@ T3 with pyt3client.
   run `completed`. ACP has no error stop reason, so a JSON-RPC error from `session/prompt`
   would make T3 mark the run `failed`. That would change behaviour for every ACP client
   (Zed, …), so it needs a decision.
-- **ACP v2.** T3 offers `protocolVersion: 2` (the preview); agentpool answers 1. T3's v2
-  path has richer usage, plans, configuration and compaction messages. Planned in
-  `ACP_V2_SERVER.md`: one server answering both versions.
+- **ACP v2.** T3 offers `protocolVersion: 2`, and `serve-acp` answers both versions since
+  2026-11-22 (`ACP_V2_SERVER.md`), so T3 gets v2: richer usage, plans, configuration and
+  compaction messages, subagents as child sessions, cancellable tasks. Not yet checked end
+  to end against T3.
 - **Fidelity (fixed 2026-11-22):** empty reasoning items (signature-only thinking
   deltas), shell commands shown as `$ Tool` (the streamed call's final input never
   reached `rawInput`), and the rate limit notice repeated per request.

@@ -132,12 +132,16 @@ queue, steer and background design than v1's request-scoped turn.
   elicitations of a child's tool calls carry the child's ID. A child takes only
   `session/cancel` (stops its task); other methods are refused with `-32602`. Not done:
   listing background children in `background`, child `usage_update`, replaying children
-  on resume. Still missing otherwise: cancelling a tool call that started no task. Flip it (v2 as the core, v1
-  adapted down) once Zed, the main v1 client, speaks v2 by default, not only behind
-  `acp-beta` (as with OpenCode v1, whose server is gone). Zed with `acp-beta` on is a
-  real v2 client to test against before that. Already in place for the flip: one tool
-  display model and stable user message IDs (`ARCHITECTURE_SESSIONS_AGENTS.md` §10.4, §11);
-  still open: stable IDs per model response and a neutral transcript.
+  on resume. Still missing otherwise: cancelling a tool call that started no task.
+
+  Flip it (v2 as the core, v1 adapted down): nothing outside our code blocks it any more.
+  v1 stays fully supported as an adapter, as Zed itself does it (its threads run on v2 types,
+  v1 connections adapted up). Zed's users still connect with v1 by default (v2 only with
+  `acp-beta`, staff by default; checked 2026-11-24), so the v1 adapter must stay complete.
+  v2 clients to test with: acptui (v2 only, handles `subagent_update`), T3 Code (asks for
+  v2), Zed with `acp-beta`. Already in place: one tool display model and stable user
+  message IDs (`ARCHITECTURE_SESSIONS_AGENTS.md` §10.4, §11); still open: stable IDs per
+  model response and a neutral transcript.
 - **A prompt during a running turn is steered into it** (since 2026-11-22; before, it
   queued as the next turn). Text prompts steer, multimodal ones queue. Not configurable
   yet; decide whether it should be (a follow-up then lands in the current answer).
