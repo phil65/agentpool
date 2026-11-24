@@ -43,11 +43,17 @@ from agentpool.agents.prompt_injection import PromptInjectionManager
 from agentpool.agents.staged_content import StagedContent
 from agentpool.prompts.convert import convert_prompts
 from agentpool.turns import (
+    TURN_METADATA_KEY,
     Turn,
     TurnCancelled,
     TurnCompleted,
+    TurnRef,
+    TurnScope,
+    current_turn,
     outcome_of_error,
+    running_turn,
     stop_reason as turn_stop_reason,
+    turn_metadata,
 )
 from agentpool.utils.time_utils import get_now
 
@@ -379,10 +385,19 @@ class SessionRuntime[TDeps = Any, TResult = Any]:
         turn: Turn[TResult] | None = None
         started_at, started = get_now(), time.perf_counter()
 
+        parent = current_turn()  # The turn this one runs within (a subagent call, routing)
+        scope = TurnScope(
+            ref=TurnRef(
+                session_id=effective_session_id or self.session.session_id,
+                turn_id=user_msg.message_id,
+                node=agent.name,
+            )
+        )
+
         def end_turn(outcome: TurnOutcome, result: ChatMessage[TResult] | None) -> Turn[TResult]:
             ended = Turn(
-                turn_id=user_msg.message_id,
-                session_id=effective_session_id or self.session.session_id,
+                turn_id=scope.ref.turn_id,
+                session_id=scope.ref.session_id,
                 node=agent.name,
                 prompt=user_msg,
                 outcome=outcome,
@@ -391,88 +406,95 @@ class SessionRuntime[TDeps = Any, TResult = Any]:
                 cost=result.cost_info if result is not None else None,
                 started_at=started_at,
                 duration=time.perf_counter() - started,
+                parent=parent.ref if parent is not None else None,
+                children=scope.children,  # Also those that end after it (background tasks)
             )
+            if result is not None:  # Stored with the answer, so stored turns are complete
+                result.metadata = {**result.metadata, TURN_METADATA_KEY: turn_metadata(ended)}
+            if parent is not None:
+                parent.children.append(ended)
             self.last_turn = ended
             return ended
 
-        await agent.message_received.emit(user_msg)
-        self.active_runs += 1
-        try:
-            if agent.hooks:
-                pre_run_result = await agent.hooks.run_pre_run_hooks(
-                    agent_name=agent.name,
-                    prompt=str(user_msg.content),  # TODO: allow UserContent for hook?
-                    session_id=effective_session_id,
-                    env=agent.env,
-                )
-                if pre_run_result.get("decision") == "deny":
-                    reason = pre_run_result.get("reason", "Blocked by pre-run hook")
-                    raise RuntimeError(f"Run blocked: {reason}")  # noqa: TRY301
+        with running_turn(scope):  # Turns started within it are its children
+            await agent.message_received.emit(user_msg)
+            self.active_runs += 1
+            try:
+                if agent.hooks:
+                    pre_run_result = await agent.hooks.run_pre_run_hooks(
+                        agent_name=agent.name,
+                        prompt=str(user_msg.content),  # TODO: allow UserContent for hook?
+                        session_id=effective_session_id,
+                        env=agent.env,
+                    )
+                    if pre_run_result.get("decision") == "deny":
+                        reason = pre_run_result.get("reason", "Blocked by pre-run hook")
+                        raise RuntimeError(f"Run blocked: {reason}")  # noqa: TRY301
 
-            context = agent.get_context(input_provider=input_provider)
-            async for raw in agent._stream_events(
-                [*pending_parts, *converted_prompts],
-                user_msg=user_msg,
-                effective_parent_id=effective_parent_id,
-                store_history=store_history,
-                message_id=message_id,
-                session_id=effective_session_id,
-                parent_id=parent_id,
-                message_history=conversation,
-                input_provider=input_provider,
-                deps=deps,
-            ):
-                event = raw
-                if isinstance(raw, StreamCompleteEvent):  # The turn's end: with its Turn
-                    final_message = raw.message
-                    outcome = TurnCancelled() if self.cancelled else TurnCompleted()
-                    turn = end_turn(outcome, final_message)
-                    event = replace(raw, turn=turn)
-                await resolved_handler(context, event)
-                self._record_file_changes(event)
-                self.track_task(event)
-                yield event
-            if (task := asyncio.current_task()) is not None and task.cancelling():
-                # Cancelled from outside, and the agent ended its turn with what it had
+                context = agent.get_context(input_provider=input_provider)
+                async for raw in agent._stream_events(
+                    [*pending_parts, *converted_prompts],
+                    user_msg=user_msg,
+                    effective_parent_id=effective_parent_id,
+                    store_history=store_history,
+                    message_id=message_id,
+                    session_id=effective_session_id,
+                    parent_id=parent_id,
+                    message_history=conversation,
+                    input_provider=input_provider,
+                    deps=deps,
+                ):
+                    event = raw
+                    if isinstance(raw, StreamCompleteEvent):  # The turn's end: with its Turn
+                        final_message = raw.message
+                        outcome = TurnCancelled() if self.cancelled else TurnCompleted()
+                        turn = end_turn(outcome, final_message)
+                        event = replace(raw, turn=turn)
+                    await resolved_handler(context, event)
+                    self._record_file_changes(event)
+                    self.track_task(event)
+                    yield event
+                if (task := asyncio.current_task()) is not None and task.cancelling():
+                    # Cancelled from outside, and the agent ended its turn with what it had
+                    await self._stop_backend()
+            except asyncio.CancelledError as e:
                 await self._stop_backend()
-        except asyncio.CancelledError as e:
-            await self._stop_backend()
-            if turn is None:  # Cancelled before it answered
-                turn = end_turn(outcome_of_error(e), None)
-            await agent.turn_completed.emit(turn)
-            raise
-        except Exception as e:
-            agent.log.exception("Agent stream failed")
-            failed_event = BaseAgent.RunFailedEvent(
-                agent_name=agent.name, message="Agent stream failed", exception=e
-            )
-            await agent.run_failed.emit(failed_event)
-            await agent.turn_completed.emit(end_turn(outcome_of_error(e), None))
-            raise
-        finally:
-            self.active_runs -= 1
-
-        if not self.active_runs:
-            # Events queued after the stream stopped draining (e.g. a background task
-            # finishing as the run ends) are not held back for the next run
-            while not self.events.empty():
-                late = BaseAgent.BackgroundEvent(
-                    agent_name=agent.name,
-                    session_id=effective_session_id,
-                    event=self.events.get_nowait(),
+                if turn is None:  # Cancelled before it answered
+                    turn = end_turn(outcome_of_error(e), None)
+                await agent.turn_completed.emit(turn)
+                raise
+            except Exception as e:
+                agent.log.exception("Agent stream failed")
+                failed_event = BaseAgent.RunFailedEvent(
+                    agent_name=agent.name, message="Agent stream failed", exception=e
                 )
-                await agent.background_event.emit(late)
-        if final_message is not None:
-            await self._finalize(
-                user_msg=user_msg,
-                final_message=final_message,
-                conversation=conversation,
-                session_id=effective_session_id,
-                store_history=store_history,
-            )
-        if turn is None:  # The stream ended without an answer
-            turn = end_turn(TurnCancelled() if self.cancelled else TurnCompleted(), None)
-        await agent.turn_completed.emit(turn)  # Once its answer is stored and routed
+                await agent.run_failed.emit(failed_event)
+                await agent.turn_completed.emit(end_turn(outcome_of_error(e), None))
+                raise
+            finally:
+                self.active_runs -= 1
+
+            if not self.active_runs:
+                # Events queued after the stream stopped draining (e.g. a background task
+                # finishing as the run ends) are not held back for the next run
+                while not self.events.empty():
+                    late = BaseAgent.BackgroundEvent(
+                        agent_name=agent.name,
+                        session_id=effective_session_id,
+                        event=self.events.get_nowait(),
+                    )
+                    await agent.background_event.emit(late)
+            if final_message is not None:
+                await self._finalize(
+                    user_msg=user_msg,
+                    final_message=final_message,
+                    conversation=conversation,
+                    session_id=effective_session_id,
+                    store_history=store_history,
+                )
+            if turn is None:  # The stream ended without an answer
+                turn = end_turn(TurnCancelled() if self.cancelled else TurnCompleted(), None)
+            await agent.turn_completed.emit(turn)  # Once its answer is stored and routed
 
     def track_task(self, event: RichAgentStreamEvent[Any]) -> None:
         """Record a task event; drop this runtime once its last task ends between turns."""

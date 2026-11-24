@@ -13,11 +13,14 @@ See ``ARCHITECTURE_TURNS.md`` (stage 1).
 from __future__ import annotations
 
 import asyncio
+from contextlib import contextmanager
+from contextvars import ContextVar
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
 
 if TYPE_CHECKING:
+    from collections.abc import Generator
     from datetime import datetime
 
     from pydantic_ai import RunUsage
@@ -131,3 +134,69 @@ def stop_reason(outcome: TurnOutcome) -> StopReason:
             return "cancelled"
         case TurnLimitReached() | TurnFailed():
             return "error"
+
+
+def outcome_name(outcome: TurnOutcome) -> str:
+    """The outcome as a word, for storage (``completed``, ``cancelled``, ...)."""
+    match outcome:
+        case TurnCompleted():
+            return "completed"
+        case TurnCancelled():
+            return "cancelled"
+        case TurnLimitReached():
+            return "limit_reached"
+        case TurnFailed():
+            return "failed"
+        case TurnRefused():
+            return "refused"
+
+
+TURN_METADATA_KEY = "turn"
+"""Key of a turn's outcome and parent in its answer's ``metadata`` (stored with it)."""
+
+
+def turn_metadata(turn: Turn[Any]) -> dict[str, Any]:
+    """What a stored answer keeps of its turn: outcome and parent (JSON)."""
+    parent = turn.parent
+    return {
+        "outcome": outcome_name(turn.outcome),
+        "parent": (
+            {"session_id": parent.session_id, "turn_id": parent.turn_id, "node": parent.node}
+            if parent is not None
+            else None
+        ),
+    }
+
+
+@dataclass
+class TurnScope:
+    """A turn while it runs: the turns started within it become its children."""
+
+    ref: TurnRef
+    children: list[Turn[Any]] = field(default_factory=list)
+
+
+_CURRENT: ContextVar[TurnScope | None] = ContextVar("agentpool_current_turn", default=None)
+"""The turn running in this context (inherited by tasks started from it)."""
+
+
+def current_turn() -> TurnScope | None:
+    """The turn running in this context, if any: a turn started now is its child."""
+    return _CURRENT.get()
+
+
+@contextmanager
+def running_turn(scope: TurnScope) -> Generator[None]:
+    """Make ``scope`` the current turn while the block runs.
+
+    Turns started within it (a subagent called by a tool, a background task, a run the
+    router delivers the answer to) take it as their parent, also when they end after it.
+    Restores the previous turn by value, not with a token, so leaving the block from
+    another context (an async generator closed elsewhere) can't fail.
+    """
+    previous = _CURRENT.get()
+    _CURRENT.set(scope)
+    try:
+        yield
+    finally:
+        _CURRENT.set(previous)

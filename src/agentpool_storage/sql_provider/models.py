@@ -186,6 +186,9 @@ class Message(AsyncAttrs, SQLModel, table=True):
     checkpoint_data: dict[str, Any] | None = Field(default=None, sa_column=Column(JSON))
     """A dictionary of checkpoints (name -> metadata)."""
 
+    metadata_json: dict[str, Any] | None = Field(default=None, sa_column=Column(JSON))
+    """The message's metadata (e.g. an answer's turn: outcome and parent)."""
+
     model_config = SQLModelConfig(use_attribute_docstrings=True)
 
 

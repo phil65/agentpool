@@ -23,6 +23,7 @@ from agentpool.delegation.teamrun import TeamRun
 from agentpool.log import get_logger
 from agentpool.messaging.compaction import summarizing_context
 from agentpool.sessions.environment import SessionEnvironment, use_session_environment
+from agentpool.turns import TurnCancelled, TurnLimitReached
 from agentpool_server.opencode_v2_server.catalog import variant_category
 from agentpool_server.opencode_v2_server.prompt_input import payload_to_prompts
 from agentpool_server.opencode_v2_server.run_converter import (
@@ -77,6 +78,7 @@ if TYPE_CHECKING:
     from agentpool.messaging.compaction import CompactionPipeline
     from agentpool.sessions import Session
     from agentpool.skills.manager import SkillsManager
+    from agentpool.turns import TurnOutcome
     from agentpool_server.opencode_v2_server.catalog import Catalog
     from agentpool_server.opencode_v2_server.interactions import SessionInputProvider
     from agentpool_server.opencode_v2_server.session import V2Session
@@ -432,6 +434,7 @@ class SessionRunner:
         )
         node = self._current_node()
         model = session.info.model
+        outcome: TurnOutcome | None = None  # The agent turn's own (its final event's)
         try:
             if node is None:
                 msg = f"Agent {session.info.agent!r} is not available"
@@ -453,18 +456,10 @@ class SessionRunner:
                     async for event in stream:
                         self.tasks.observe(event)
                         self.converter.handle(event)
+                        if isinstance(event, StreamCompleteEvent) and event.turn is not None:
+                            outcome = event.turn.outcome
             self.converter.finish()
-            if self.converter.errors:
-                error = structured_error("; ".join(self.converter.errors))
-                session.emit(
-                    SessionExecutionFailed,
-                    SessionExecutionFailedData(session_id=session.id, error=error),
-                )
-            else:
-                session.emit(
-                    SessionExecutionSucceeded,
-                    SessionExecutionSucceededData(session_id=session.id),
-                )
+            self._report_end(outcome)
         except asyncio.CancelledError:
             if self.converter is not None:
                 self.converter.interrupt()
@@ -490,6 +485,34 @@ class SessionRunner:
             self.converter = None
             self.tasks.consume_finished()
             self._status(busy=False)
+
+    def _report_end(self, outcome: TurnOutcome | None) -> None:
+        """Report how an execution ended: by its turn's outcome, else by its errors."""
+        session = self.session
+        assert self.converter is not None
+        if isinstance(outcome, TurnCancelled):  # Stopped (not by us), its partial answer kept
+            session.emit(
+                SessionExecutionInterrupted,
+                SessionExecutionInterruptedData(session_id=session.id, reason="user"),
+            )
+        elif isinstance(outcome, TurnLimitReached):
+            session.emit(
+                SessionExecutionFailed,
+                SessionExecutionFailedData(
+                    session_id=session.id, error=structured_error(outcome.message)
+                ),
+            )
+        elif self.converter.errors:
+            error = structured_error("; ".join(self.converter.errors))
+            session.emit(
+                SessionExecutionFailed,
+                SessionExecutionFailedData(session_id=session.id, error=error),
+            )
+        else:
+            session.emit(
+                SessionExecutionSucceeded,
+                SessionExecutionSucceededData(session_id=session.id),
+            )
 
     async def _compact(self, item: SessionInboxCompaction) -> None:
         """Manual compaction: summarize the conversation, then compact the agent history."""

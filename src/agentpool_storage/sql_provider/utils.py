@@ -63,6 +63,7 @@ def to_chat_message(db_message: Message) -> ChatMessage[str]:
         provider_response_id=db_message.provider_response_id,
         messages=deserialize_messages(db_message.messages),
         finish_reason=db_message.finish_reason,  # type: ignore
+        metadata=dict(db_message.metadata_json or {}),
     )
 
 

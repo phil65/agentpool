@@ -141,6 +141,7 @@ class SQLModelProvider(StorageProvider):
                 messages=serialize_messages(message.messages),
                 finish_reason=message.finish_reason,
                 timestamp=get_now(),
+                metadata_json=dict(message.metadata) or None,
             )
             session.add(msg)
             await session.commit()

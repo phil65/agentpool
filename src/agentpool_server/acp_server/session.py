@@ -23,10 +23,10 @@ from aclientp.schema import ClientCapabilities
 from exxec.acp_provider import ACPExecutionEnvironment
 from exxec.local_provider import LocalExecutionEnvironment
 import logfire
-from pydantic_ai import UsageLimitExceeded
 from slashed import CommandStore
 
 from agentpool.agents.acp_agent import ACPAgent
+from agentpool.agents.events import StreamCompleteEvent
 from agentpool.agents.modes import ConfigOptionChanged
 from agentpool.agents.staged_content import StagedContent
 from agentpool.log import get_logger
@@ -37,6 +37,7 @@ from agentpool.turns import (
     TurnFailed,
     TurnLimitReached,
     TurnRefused,
+    outcome_of_error,
 )
 from agentpool_commands.base import NodeCommand
 from agentpool_server.acp_server.converters import (
@@ -723,6 +724,7 @@ class ACPSession:
         self, contents: Sequence[UserContent | PathReference], output: TurnOutput
     ) -> TurnOutcome:
         event_count = 0
+        outcome: TurnOutcome | None = None  # The agent turn's own (its final event's)
         try:  # Use the session's persistent input provider
             # Staged content is automatically injected by run_stream
             async with self.agent.session_turn():  # Sessions share pool agents
@@ -739,21 +741,26 @@ class ACPSession:
                         # task cancels this one through the run's cancel scopes
                         continue
                     event_count += 1
+                    if isinstance(event, StreamCompleteEvent) and event.turn is not None:
+                        outcome = event.turn.outcome
                     await output.event(event)
         except asyncio.CancelledError:
             # Task was cancelled (e.g., via interrupt() or `$/cancel_request`). Answer
             # with the proper outcome instead of propagating the cancellation.
             self.log.info("Stream cancelled via CancelledError, cleaning up tool calls")
             return TurnCancelled()
-        except UsageLimitExceeded as e:
-            self.log.info("Usage limit exceeded", error=str(e))
-            return TurnLimitReached(message=str(e))
-        except Exception as e:
-            self.log.exception("Error during streaming")
-            return TurnFailed(error=e)
+        except Exception as e:  # The turn's outcome, as every server maps it
+            failed = outcome_of_error(e)
+            if isinstance(failed, TurnFailed):
+                self.log.exception("Error during streaming")
+            else:
+                self.log.info("Turn ended", outcome=type(failed).__name__, error=str(e))
+            return failed
         self.log.info("Streaming finished", events_processed=event_count)
         # An interrupted agent may end its stream normally without another event
-        return TurnCancelled() if self._cancelled else TurnCompleted()
+        if self._cancelled:
+            return TurnCancelled()
+        return outcome if outcome is not None else TurnCompleted()
 
     async def _get_context_window(self) -> int | None:
         """Context window of the agent's current model, if it can be determined."""

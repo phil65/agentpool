@@ -1,6 +1,6 @@
 # Turns as a first-class model
 
-Status: stage 1 done (2026-11-24), stages 2-4 open. Written 2026-11-23, revised the same day
+Status: stages 1 and 2 done (2026-11-24), stages 3-4 open. Written 2026-11-23, revised the same day
 (teams demoted, see "How multi-agent work happens now"). Related: `ARCHITECTURE_SESSIONS_AGENTS.md` (sessions,
 runtimes) and `ARCHITECTURE_ROUTING.md` (router, triggers, session policies).
 
@@ -187,6 +187,26 @@ Each stage leaves everything working; only stage 4 breaks the public API.
    turns of the calling turn (the main structure today); router on `turn_completed` with
    parent links; ACP and OpenCode V2 servers on shared outcomes; storage persists outcome
    and parent.
+
+   **Done 2026-11-24.** The turn running in a context is a context variable
+   (`turns.running_turn` / `current_turn`), set by value for each turn of the loop, so it
+   reaches everything started within it: a subagent run by a tool, a background task
+   (tasks inherit it, so a task outliving its turn still names it), a run the router
+   delivers the answer to (routing happens inside the turn, on `message_sent`). A turn
+   started there gets it as `parent`, and the parent lists it in `children` (the same
+   list, so children that end later appear too). `children` therefore holds every turn
+   the turn caused: subagent runs, background tasks, routed runs.
+   - The router stays on `message_sent`: teams don't produce turns until stage 3, and
+     the parent links come from the context variable anyway.
+   - The ACP server takes the outcome from the turn (and the shared `outcome_of_error`
+     for exceptions); the OpenCode V2 runner reports an execution by its turn's outcome,
+     so a turn the agent stopped itself (a denial that stops it) is `interrupted`, not
+     `succeeded`, and a usage limit fails it.
+   - Storage: an answer's `metadata` keeps its turn (`{"outcome", "parent"}`); the SQL
+     provider persists message metadata (`message.metadata_json`, migration
+     `c3d4e5f6a7b8`). Its migrations moved into the package
+     (`agentpool_storage/sql_provider/migrations/`): the wheel had none, so installed
+     copies never migrated existing databases.
 3. **Teams, thin.** Reimplement `Team` / `TeamRun` as small orchestrations over turns (member
    turns as children, one streaming path, no temporary connections, no `execute*()`), only
    to remove the duplicated paths. No new team features.
