@@ -16,7 +16,6 @@ from agentpool.models.manifest import AgentsManifest
 # Import them directly from agentpool_toolsets.builtin when needed
 from agentpool.agents import Agent, AgentContext, ClaudeCodeAgent, ACPAgent, AGUIAgent
 from agentpool.delegation import AgentPool, Team, TeamRun, BaseTeam
-from dotenv import load_dotenv
 from agentpool.messaging.messages import ChatMessage
 from agentpool.tools import Tool, ToolCallInfo, FunctionTool
 from agentpool.messaging.messagenode import MessageNode
@@ -38,7 +37,6 @@ __copyright__ = "Copyright (c) 2025 Philipp Temminghoff"
 __license__ = "MIT"
 __url__ = "https://github.com/phil65/agentpool"
 
-load_dotenv()
 register_http_filesystems()
 
 __all__ = [

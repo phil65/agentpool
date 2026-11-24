@@ -57,6 +57,11 @@ def main(
     log_level: LogLevel = t.Option("info", "--log-level", "-l", help="Log level"),  # noqa: B008
 ) -> None:
     """🤖 AgentPool CLI - Run and manage LLM agents."""
+    from dotenv import load_dotenv
+
+    # Applications load .env (the library itself must not: importing agentpool would
+    # pull in variables from any .env up the directory tree).
+    load_dotenv()
     # Configure logging globally
     log.configure_logging(level=log_level.upper())
 

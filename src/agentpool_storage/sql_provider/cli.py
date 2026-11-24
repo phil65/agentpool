@@ -133,6 +133,9 @@ def reset(
 
 def main() -> None:
     """Main entry point."""
+    from dotenv import load_dotenv
+
+    load_dotenv()
     # Set up environment
     project_root = get_project_root()
     env = os.environ.copy()
