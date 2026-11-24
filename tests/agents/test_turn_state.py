@@ -17,6 +17,7 @@ if TYPE_CHECKING:
     from collections.abc import AsyncIterator
 
     from pydantic_ai import ModelMessage
+    import pytest
 
 
 TIMEOUT = 5.0
@@ -107,8 +108,9 @@ async def test_active_session_is_the_turns_own_with_parallel_turns() -> None:
     assert seen == {"a": first.session_id, "b": second.session_id}
 
 
-async def test_native_config_options_are_kept_per_session() -> None:
+async def test_native_config_options_are_kept_per_session(monkeypatch: pytest.MonkeyPatch) -> None:
     """Set within a session, tool confirmation and model are that session's."""
+    monkeypatch.setenv("OPENAI_API_KEY", "not-used")  # the model is set up, never called
     agent = Agent(name="opts", model="test", tool_confirmation_mode="per_tool")
     first, second = Session.create("opts"), Session.create("opts")
     async with agent:

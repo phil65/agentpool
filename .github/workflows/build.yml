@@ -19,6 +19,11 @@ jobs:
         # from source); tree-sitter-language-pack (extra: coding) has the same issue.
         python_version: ["3.13", "3.14", "3.15"]
         os: ["ubuntu-latest", "macos-latest", "windows-latest"]
+        # Tests calling a paid model API (marker live_model) run in this job only.
+        include:
+          - python_version: "3.13"
+            os: "ubuntu-latest"
+            live_model: true
     steps:
       - name: Check out repository
         uses: actions/checkout@v6
@@ -54,10 +59,12 @@ jobs:
 
       - name: Run tests
         env:
-          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
-          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
-        # -m includes the integration tests that local runs leave out (see pyproject.toml)
-        run: uv run --no-group docs pytest -m "not slow and not acp_snapshot" --cov-report=xml --cov=src/agentpool/ --cov-report=term-missing
+          # Model API keys only where the paid live_model tests run
+          OPENROUTER_API_KEY: ${{ matrix.live_model && secrets.OPENROUTER_API_KEY || '' }}
+          OPENAI_API_KEY: ${{ matrix.live_model && secrets.OPENAI_API_KEY || '' }}
+        # -m includes the integration tests that local runs leave out (see pyproject.toml);
+        # the live_model tests run only in the live_model job
+        run: uv run --no-group docs pytest -m "not slow and not acp_snapshot${{ !matrix.live_model && ' and not live_model' || '' }}" --cov-report=xml --cov=src/agentpool/ --cov-report=term-missing
 
       - name: Upload test results to Codecov
         uses: codecov/codecov-action@v5

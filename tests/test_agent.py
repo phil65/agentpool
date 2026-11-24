@@ -135,6 +135,7 @@ async def test_agent_forwarding():
 
 
 @pytest.mark.integration
+@pytest.mark.live_model
 async def test_cost_tracking_with_real_model():
     """Test that cost tracking works with a real model (integration test)."""
     model = "openai:gpt-5-nano"

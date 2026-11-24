@@ -9,8 +9,8 @@ from __future__ import annotations
 from pathlib import Path
 
 import anyio
-from llmling_models import infer_model
 from pydantic_ai import BinaryContent, RunContext, RunUsage, ToolReturn
+from pydantic_ai.models.test import TestModel
 import pytest
 
 from agentpool.mcp_server import MCPClient
@@ -40,7 +40,7 @@ async def test_rich_content_image(mcp_client: MCPClient):
     ctx = RunContext(
         tool_call_id="test-call-123",
         deps=None,
-        model=infer_model("openai:gpt-5-nano"),
+        model=TestModel(),
         usage=RunUsage(),
     )
     result = await mcp_client.call_tool(

@@ -221,7 +221,8 @@ docstring-style = "google"
 
 [tool.pytest]
 # Integration tests need external services (model APIs, CLI logins, package downloads)
-# and are left out locally; CI runs them with -m "not slow and not acp_snapshot".
+# and are left out locally; CI runs them with -m "not slow and not acp_snapshot", the
+# paid live_model ones (also integration) in one job only.
 addopts = ["-m", "not slow and not acp_snapshot and not integration"]
 filterwarnings = [
   "ignore::DeprecationWarning:psygnal.*",
@@ -236,6 +237,7 @@ markers = [
   "acp_snapshot: marks tests as ACP snapshot tests (excluded by default)",
   "asyncio: mark test as async",
   "integration: tests that need external services (model APIs, CLI logins, downloads)",
+  "live_model: tests that call a paid model API (also integration; CI runs them in one job)",
   "slow: marks tests as slow",
   "unit: marks tests as unit tests",
 ]

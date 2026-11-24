@@ -116,6 +116,7 @@ async def test_basic_worker_setup(tmp_path: Path):
 
 
 @pytest.mark.integration
+@pytest.mark.live_model
 async def test_history_sharing(tmp_path: Path):
     """Test history sharing between agents."""
     config_path = write_config(WORKERS_WITH_SHARING, tmp_path)

@@ -2,10 +2,13 @@
 
 from __future__ import annotations
 
+import inspect
 import os
 from typing import Any
 
+from pydantic_ai.models import Model
 from pydantic_ai.models.test import TestModel
+from pydantic_ai.settings import ModelSettings, merge_model_settings
 import pytest
 import yamling
 
@@ -17,14 +20,55 @@ TEST_RESPONSE = "I am a test response"
 
 @pytest.fixture
 def default_model() -> str:
-    """Default model for testing."""
+    """Default model for testing (a real, paid model: its tests are ``live_model``)."""
     return "openai:gpt-5-nano"
 
 
 @pytest.fixture
 def vision_model() -> str:
-    """Vision-capable model for testing."""
+    """Vision-capable model for testing (a real, paid model: its tests are ``live_model``)."""
     return "openai:gpt-5-nano"
+
+
+LIVE_MODEL_FIXTURES = frozenset({"default_model", "vision_model"})
+"""Fixtures naming a real model: a test asking for one calls a paid model API."""
+
+LIVE_MODEL_SETTINGS = ModelSettings(thinking="minimal")
+"""Defaults for every model a ``live_model`` test runs: the least reasoning, the fewest tokens."""
+
+
+@pytest.hookimpl(tryfirst=True)  # before -m selects by markers
+def pytest_collection_modifyitems(items: list[pytest.Item]) -> None:
+    """Mark tests asking for a real model (``default_model``, ``vision_model``) ``live_model``.
+
+    Only fixtures a test requests itself count: a fixture building on ``default_model``
+    (e.g. ``valid_config``) needs no API. Live tests are also ``integration``.
+    """
+    for item in items:
+        if not isinstance(item, pytest.Function):
+            continue
+        if LIVE_MODEL_FIXTURES.isdisjoint(inspect.signature(item.function).parameters):
+            continue
+        item.add_marker(pytest.mark.live_model)
+        if item.get_closest_marker("integration") is None:
+            item.add_marker(pytest.mark.integration)
+
+
+@pytest.fixture(autouse=True)
+def live_model_settings(request: pytest.FixtureRequest, monkeypatch: pytest.MonkeyPatch) -> None:
+    """In ``live_model`` tests, models default to `LIVE_MODEL_SETTINGS` (the least reasoning).
+
+    Settings a model or run sets itself still win.
+    """
+    if request.node.get_closest_marker("live_model") is None:
+        return
+    own_settings = Model.settings.fget
+    assert own_settings is not None
+
+    def settings(self: Model) -> ModelSettings | None:
+        return merge_model_settings(LIVE_MODEL_SETTINGS, own_settings(self))
+
+    monkeypatch.setattr(Model, "settings", property(settings))
 
 
 @pytest.fixture(scope="session", autouse=True)

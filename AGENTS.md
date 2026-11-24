@@ -23,7 +23,11 @@ uv run pytest
 # Integration tests: need external services (model APIs, Claude/Codex logins, npx/uvx)
 uv run pytest -m integration
 
-# What CI runs (everything but slow and acp_snapshot)
+# Tests calling a paid model API (OPENAI_API_KEY; also integration)
+uv run pytest -m live_model
+
+# What CI runs (everything but slow and acp_snapshot); the live_model tests
+# run in one job only (ubuntu, Python 3.13), the other jobs add "and not live_model"
 uv run pytest -m "not slow and not acp_snapshot"
 
 # Run with coverage
@@ -277,6 +281,12 @@ AgentPool acts as a protocol adapter:
 - TestModel from pydantic-ai for agent testing
 - Disable observability in tests (see conftest.py)
 - Markers: `@pytest.mark.unit`, `@pytest.mark.integration`, `@pytest.mark.slow`
+- `live_model`: a test that calls a paid model API. Tests requesting the `default_model` or
+  `vision_model` fixture get it (and `integration`) automatically (`pytest_collection_modifyitems`
+  in `tests/conftest.py`); mark one using a real model id directly with
+  `@pytest.mark.integration` and `@pytest.mark.live_model`. In live tests models default to the
+  least reasoning (`thinking="minimal"`, fixture `live_model_settings`). CI runs them once
+  per pipeline: only that job gets the model API keys.
 
 ### Import Patterns
 ```python
