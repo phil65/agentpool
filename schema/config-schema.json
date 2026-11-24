@@ -41651,6 +41651,7 @@
                     "file": "#/$defs/FileStorageConfig",
                     "memory": "#/$defs/MemoryStorageConfig",
                     "sql": "#/$defs/SQLStorageConfig",
+                    "t3": "#/$defs/T3StorageConfig",
                     "zed": "#/$defs/ZedStorageConfig"
                   },
                   "propertyName": "type"
@@ -41676,6 +41677,9 @@
                   },
                   {
                     "$ref": "#/$defs/CodexStorageConfig"
+                  },
+                  {
+                    "$ref": "#/$defs/T3StorageConfig"
                   }
                 ]
               },
@@ -46322,6 +46326,118 @@
         "full-access"
       ],
       "type": "string"
+    },
+    "T3StorageConfig": {
+      "additionalProperties": false,
+      "description": "T3 Code storage configuration.\n\nRead-only provider for the threads of a T3 Code environment, read over its MCP\nendpoint (``t3_thread_list`` / ``t3_thread_read``), so the server must be running.\nSigns in like a T3 agent: ``url`` with ``token``, else a sign-in saved with\n``pyt3 login`` (``login`` picks one).",
+      "properties": {
+        "type": {
+          "const": "t3",
+          "default": "t3",
+          "description": "T3 Code storage configuration.",
+          "title": "Type",
+          "type": "string"
+        },
+        "log_messages": {
+          "default": true,
+          "description": "Whether to log messages",
+          "title": "Log messages",
+          "type": "boolean"
+        },
+        "agents": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array",
+              "uniqueItems": true
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Optional set of agent names to include. If None, logs all agents.",
+          "title": "Agent filter"
+        },
+        "log_sessions": {
+          "default": true,
+          "description": "Whether to log conversations",
+          "title": "Log conversations",
+          "type": "boolean"
+        },
+        "log_commands": {
+          "default": true,
+          "description": "Whether to log command executions",
+          "title": "Log commands",
+          "type": "boolean"
+        },
+        "login": {
+          "default": null,
+          "description": "The ``pyt3 login`` sign-in to use (the only or default one when unset).",
+          "examples": [
+            "homelab"
+          ],
+          "title": "Saved sign-in",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "url": {
+          "default": null,
+          "description": "The environment's URL (with ``token``, instead of a saved sign-in).",
+          "examples": [
+            "https://t3.example.ts.net"
+          ],
+          "title": "Environment URL",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "token": {
+          "anyOf": [
+            {
+              "format": "password",
+              "type": "string",
+              "writeOnly": true
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "An access token for ``url``.",
+          "examples": [
+            "${T3_TOKEN}"
+          ],
+          "title": "Access token"
+        },
+        "project": {
+          "default": null,
+          "description": "The project whose threads to read (an id, or its folder on the T3 host); all when unset.",
+          "examples": [
+            "/home/me/src/app",
+            "proj_123"
+          ],
+          "title": "Project",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "agent_name": {
+          "default": "t3",
+          "description": "The agent the threads are listed under.",
+          "title": "Agent name",
+          "type": "string"
+        }
+      },
+      "title": "T3StorageConfig",
+      "type": "object",
+      "x-doc-title": "T3 Code Storage"
     },
     "TTSEventHandlerConfig": {
       "additionalProperties": false,

@@ -14,8 +14,6 @@ approves it in T3 Code.
 from __future__ import annotations
 
 from contextlib import AsyncExitStack
-from datetime import UTC, datetime
-from pathlib import PurePath, PurePosixPath, PureWindowsPath
 import time
 from typing import TYPE_CHECKING, Any, ClassVar, Literal, Self, cast
 from uuid import uuid4
@@ -27,6 +25,7 @@ from agentpool.agents.capabilities import AgentCapabilities
 from agentpool.agents.events import NoticeEvent, RunErrorEvent, RunStartedEvent, StreamCompleteEvent
 from agentpool.agents.events.reconstructor import MessageReconstructor
 from agentpool.agents.exceptions import AgentNotInitializedError
+from agentpool.agents.t3_agent import threads
 from agentpool.agents.t3_agent.items import FINAL_STATUSES, ItemTracker
 from agentpool.agents.t3_agent.live import ThreadFeed
 from agentpool.log import get_logger
@@ -43,10 +42,8 @@ if TYPE_CHECKING:
     from pydantic_ai import UserContent
     from pyt3client import T3Client
     from pyt3client.models.tools import (
-        Item,
         ModelSelection,
         OrchestratorCapabilitiesOutput,
-        ThreadReadInput,
         ThreadReadOutput,
     )
     from pyt3client.native import ApprovalDecision, T3NativeClient, TurnItem
@@ -73,17 +70,11 @@ logger = get_logger(__name__)
 RUN_FINAL_STATUSES = frozenset({"completed", "failed", "cancelled", "interrupted", "rolled_back"})
 """Run statuses that end a turn (``t3_thread_wait``'s terminal statuses)."""
 
-READ_PAGE_SIZE = 100
-"""Items per ``t3_thread_read`` call (T3's maximum)."""
-
 CANCEL_GRACE_SECONDS = 15.0
 """How long a cancelled turn follows its run until the interrupt ends it."""
 
 LIVE_READ_INTERVAL = 5.0
 """With live updates: the longest a turn goes without reading the thread over ``/mcp``."""
-
-MAX_ITEM_CHARS = 20_000
-"""Text read per item; T3 cuts each read at about 30,000 characters in all."""
 
 
 def prompt_text(prompts: Sequence[UserContent]) -> str:
@@ -99,19 +90,6 @@ def prompt_text(prompts: Sequence[UserContent]) -> str:
             raise ValueError(msg)  # noqa: TRY004
         texts.append(prompt)
     return "\n\n".join(texts)
-
-
-def server_path(text: str) -> PurePath | None:
-    r"""``text`` as an absolute path on the T3 host, or None if it is no absolute path.
-
-    Paths keep the flavor they are written in, whatever this machine runs: ``/srv/app``
-    is POSIX, ``C:\src\app`` a Windows path (compared case-insensitively). ``~`` is not
-    expanded: the T3 host's home folder is unknown here.
-    """
-    if text.startswith("/"):
-        return PurePosixPath(text)
-    windows = PureWindowsPath(text)
-    return windows if windows.is_absolute() else None
 
 
 class T3Agent[TDeps = None](BaseAgent[TDeps, str]):
@@ -337,19 +315,12 @@ class T3Agent[TDeps = None](BaseAgent[TDeps, str]):
         await super().__aexit__(exc_type, exc_val, exc_tb)
 
     def _connect(self) -> T3Client:
-        from pyt3client import T3Client, credentials
-
-        if self._url is not None and self._token is not None:
-            return T3Client(self._url, self._token, client_name=f"agentpool:{self.name}")
-        try:
-            _, saved = credentials.select(credentials.load(), self._login)
-        except credentials.StoreError as exc:
-            msg = f"T3 sign-in {self._login!r}: {exc} (sign in with `pyt3 login`)"
-            raise RuntimeError(msg) from exc
-        if credentials.is_expired(saved):
-            msg = f"T3 sign-in {self._login!r} expired; sign in again with `pyt3 login`"
-            raise RuntimeError(msg)
-        return T3Client.from_credentials(saved, client_name=f"agentpool:{self.name}")
+        return threads.connect(
+            url=self._url,
+            token=self._token,
+            login=self._login,
+            client_name=f"agentpool:{self.name}",
+        )
 
     def _native_credentials(self) -> T3NativeClient | None:
         """A client for the native sign-in, if there is one (not connected yet)."""
@@ -393,24 +364,7 @@ class T3Agent[TDeps = None](BaseAgent[TDeps, str]):
 
     async def _resolve_project(self, client: T3Client) -> str:
         """The project id: ``project`` as given, or the project in that folder on the T3 host."""
-        from pyt3client.models.tools import PROJECT_LIST, ProjectListInput
-
-        if (folder := server_path(self._project)) is None:
-            return self._project
-        cursor: int | None = None
-        while True:
-            params = ProjectListInput(limit=100)
-            if cursor is not None:
-                params.cursor = cursor
-            page = await client.call(PROJECT_LIST, params)
-            for project in page.projects:
-                if server_path(project.workspace_root) == folder:
-                    return project.id
-            if page.next_cursor is None:
-                break
-            cursor = page.next_cursor.root
-        msg = f"No T3 project in {self._project!r} (add it in T3 Code first)"
-        raise RuntimeError(msg)
+        return await threads.resolve_project(client, self._project)
 
     async def get_auth_status(self) -> AuthStatus:
         """Signed in when connected; otherwise whether the saved sign-in is usable."""
@@ -645,34 +599,8 @@ class T3Agent[TDeps = None](BaseAgent[TDeps, str]):
         after: int,
         view: Literal["activity", "messages"] = "activity",
     ) -> ThreadReadOutput:
-        """The thread's items after position ``after``, oldest first, all pages in one result.
-
-        ``activity`` has every item, ``messages`` only the user's and the agent's messages.
-        ``nextPosition`` is the position of a page's last item: the next page starts after it.
-        """
-        from pyt3client.models.tools import THREAD_READ
-
-        read = await client.call(THREAD_READ, self._read_input(thread_id, after, view))
-        while read.has_more and read.next_position is not None:
-            page = await client.call(
-                THREAD_READ, self._read_input(thread_id, read.next_position.root, view)
-            )
-            read = page.model_copy(update={"items": [*read.items, *page.items]})
-        return read
-
-    @staticmethod
-    def _read_input(
-        thread_id: str, after: int, view: Literal["activity", "messages"]
-    ) -> ThreadReadInput:
-        from pyt3client.models.tools import ThreadReadInput
-
-        return ThreadReadInput(
-            thread_id=thread_id,
-            view=view,
-            after_position=after,
-            limit=READ_PAGE_SIZE,
-            max_chars_per_item=MAX_ITEM_CHARS,
-        )
+        """The thread's items after position ``after``, oldest first (see ``threads``)."""
+        return await threads.read_items(client, thread_id, after, view)
 
     async def _answer_questions(
         self,
@@ -816,14 +744,12 @@ class T3Agent[TDeps = None](BaseAgent[TDeps, str]):
         limit: int | None = None,
     ) -> list[SessionData]:
         """The project's threads, newest first."""
-        from pyt3client.models.tools import THREAD_LIST, ThreadListInput
-
         from agentpool.sessions import SessionData
 
         if self._client is None or self._project_id is None:
             return []
-        listed = await self._client.call(
-            THREAD_LIST, ThreadListInput(project_id=self._project_id, limit=limit or 50)
+        listed = await threads.list_threads(
+            self._client, project_id=self._project_id, limit=limit or 50
         )
         return [
             SessionData(
@@ -831,11 +757,11 @@ class T3Agent[TDeps = None](BaseAgent[TDeps, str]):
                 agent_name=self.name,
                 cwd=cwd,
                 sdk_session_id=thread.thread_id,
-                created_at=_timestamp(thread.created_at),
-                last_active=_timestamp(thread.updated_at),
+                created_at=threads.timestamp(thread.created_at),
+                last_active=threads.timestamp(thread.updated_at),
                 metadata={"title": thread.title},
             )
-            for thread in listed.threads
+            for thread in listed
         ]
 
     async def load_session(self, session_id: str) -> SessionData | None:
@@ -858,9 +784,9 @@ class T3Agent[TDeps = None](BaseAgent[TDeps, str]):
         self._sdk_session_id = thread_id
         self._positions[thread_id] = max((item.position for item in read.items), default=-1)
         messages = [
-            _history_message(item, session_id, self.name)
+            threads.history_message(item, session_id, self.name)
             for item in read.items
-            if item.type in ("user_message", "assistant_message")
+            if item.type in threads.MESSAGE_ITEM_TYPES
         ]
         self._history.chat_messages.clear()  # The session acting's
         self._history.chat_messages.extend(messages)
@@ -892,31 +818,3 @@ async def _ask(
             case None:
                 pass
     return answers
-
-
-def _history_message(item: Item, session_id: str, agent_name: str) -> ChatMessage[str]:
-    """A user or assistant message of a thread as a chat message.
-
-    It carries its model message: servers replay those to clients that load the session.
-    """
-    from pydantic_ai import ModelRequest, ModelResponse, TextPart, UserPromptPart
-
-    text = item.text or ""
-    if item.type == "user_message":
-        request = ModelRequest(parts=[UserPromptPart(content=text)])
-        return ChatMessage[str](
-            content=text, role="user", session_id=session_id, messages=[request]
-        )
-    response = ModelResponse(parts=[TextPart(content=text)])
-    return ChatMessage[str](
-        content=text,
-        role="assistant",
-        name=agent_name,
-        session_id=session_id,
-        messages=[response],
-    )
-
-
-def _timestamp(value: str) -> datetime:
-    parsed = datetime.fromisoformat(value)
-    return parsed if parsed.tzinfo else parsed.replace(tzinfo=UTC)

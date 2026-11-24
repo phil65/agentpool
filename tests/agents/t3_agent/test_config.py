@@ -8,7 +8,7 @@ import pytest
 
 from agentpool.agents.t3_agent import T3Agent
 from agentpool.agents.t3_agent.questions import Question, to_answer, to_elicitation
-from agentpool.agents.t3_agent.t3_agent import server_path
+from agentpool.agents.t3_agent.threads import server_path
 from agentpool.models.manifest import AgentsManifest
 from agentpool.models.t3_agents import T3AgentConfig
 

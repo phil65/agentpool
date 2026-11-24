@@ -180,11 +180,17 @@ v1 server (it reported `0.1.0`). Since 2026-11-22 `serve-opencode` is the V2 ser
 (`packages/provider-opencode`) works against our V2 API is untested. Item 1 reaches the same
 goal and works today.
 
-### 5. A T3 storage provider
+### 5. A T3 storage provider: done (2026-11-24)
 
-T3 history could join `agentpool history`, like the existing Claude, OpenCode and Zed storage
-providers, either read through `t3_thread_list` / `t3_thread_read` or from
-`statev2.sqlite` (read-only, never the live database while T3 runs).
+`storage: providers: [{type: t3}]` (`agentpool_storage/t3_provider`) reads an environment's
+threads as sessions over `/mcp` (`t3_thread_list`, `t3_thread_read` with the `messages` view),
+signed in like a T3 agent (`url` + `token`, or a `pyt3 login` sign-in). It lists threads
+(newest first, one project or all), loads their user and assistant messages with timestamps,
+and gives each thread's project folder as `cwd`. Read-only: T3 keeps its threads. Not used:
+`statev2.sqlite` (an internal schema, unsafe while T3 runs). The thread helpers it shares with
+the T3 agent are in `agentpool/agents/t3_agent/threads.py`. Like the Claude and Zed providers,
+it serves session listing and loading; `agentpool history show` needs the SQL provider's
+filtered queries. Tested against replayed `/mcp` results, not yet a live server.
 
 ## Testing notes
 

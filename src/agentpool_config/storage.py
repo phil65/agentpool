@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Annotated, Final, Literal
 
 from platformdirs import user_data_dir
-from pydantic import ConfigDict, Field
+from pydantic import ConfigDict, Field, SecretStr
 from schemez import Schema
 from tokonomics.model_names import ModelId
 from yamling import FormatType
@@ -263,6 +263,46 @@ class CodexStorageConfig(BaseStorageProviderConfig):
         return CodexStorageProvider(self)
 
 
+class T3StorageConfig(BaseStorageProviderConfig):
+    """T3 Code storage configuration.
+
+    Read-only provider for the threads of a T3 Code environment, read over its MCP
+    endpoint (``t3_thread_list`` / ``t3_thread_read``), so the server must be running.
+    Signs in like a T3 agent: ``url`` with ``token``, else a sign-in saved with
+    ``pyt3 login`` (``login`` picks one).
+    """
+
+    model_config = ConfigDict(json_schema_extra={"x-doc-title": "T3 Code Storage"})
+
+    type: Literal["t3"] = Field("t3", init=False)
+    """T3 Code storage configuration."""
+
+    login: str | None = Field(default=None, examples=["homelab"], title="Saved sign-in")
+    """The ``pyt3 login`` sign-in to use (the only or default one when unset)."""
+
+    url: str | None = Field(
+        default=None, examples=["https://t3.example.ts.net"], title="Environment URL"
+    )
+    """The environment's URL (with ``token``, instead of a saved sign-in)."""
+
+    token: SecretStr | None = Field(default=None, examples=["${T3_TOKEN}"], title="Access token")
+    """An access token for ``url``."""
+
+    project: str | None = Field(
+        default=None, examples=["/home/me/src/app", "proj_123"], title="Project"
+    )
+    """The project whose threads to read (an id, or its folder on the T3 host); all when unset."""
+
+    agent_name: str = Field(default="t3", title="Agent name")
+    """The agent the threads are listed under."""
+
+    def get_provider(self) -> StorageProvider:
+        """Create a T3 Code storage provider instance."""
+        from agentpool_storage.t3_provider import T3StorageProvider
+
+        return T3StorageProvider(self)
+
+
 StorageProviderConfig = Annotated[
     SQLStorageConfig
     | FileStorageConfig
@@ -270,7 +310,8 @@ StorageProviderConfig = Annotated[
     | ClaudeStorageConfig
     | ZedStorageConfig
     | ACPStorageConfig
-    | CodexStorageConfig,
+    | CodexStorageConfig
+    | T3StorageConfig,
     Field(discriminator="type"),
 ]
 
