@@ -24,6 +24,15 @@ LogLevel = int | str
 _LOGGING_CONFIGURED = False
 
 
+_plain_traceback = structlog.dev.plain_traceback
+"""How logged exceptions render: plain text.
+
+structlog's default (rich, with every frame's local variables) takes seconds per
+exception (an agent's locals have large reprs), and logging blocks the event loop
+meanwhile; rich without locals still takes about 3 seconds.
+"""
+
+
 def _pydantic_processor(
     logger: Any, method_name: str, event_dict: MutableMapping[str, Any]
 ) -> MutableMapping[str, Any]:
@@ -100,9 +109,7 @@ def _configure_file_logging(level: LogLevel, log_file: str, max_lines: int = 500
         structlog.processors.format_exc_info,
         structlog.processors.UnicodeDecoder(),
         logfire.StructlogProcessor(),  # Capture logs for observability
-        structlog.dev.ConsoleRenderer(
-            colors=False, exception_formatter=structlog.dev.plain_traceback
-        ),
+        structlog.dev.ConsoleRenderer(colors=False, exception_formatter=_plain_traceback),
     ]
 
     structlog.configure(
@@ -152,7 +159,9 @@ def _configure_console_logging(
 
     # Add final renderer
     if use_console_renderer:
-        processors.append(structlog.dev.ConsoleRenderer(colors=colors))
+        processors.append(
+            structlog.dev.ConsoleRenderer(colors=colors, exception_formatter=_plain_traceback)
+        )
     else:
         processors.append(structlog.processors.JSONRenderer())
 
@@ -185,7 +194,7 @@ def get_logger(name: str, log_level: LogLevel | None = None) -> structlog.stdlib
                 _pydantic_processor,
                 structlog.processors.StackInfoRenderer(),
                 logfire.StructlogProcessor(),
-                structlog.dev.ConsoleRenderer(colors=False),
+                structlog.dev.ConsoleRenderer(colors=False, exception_formatter=_plain_traceback),
             ],
             wrapper_class=structlog.stdlib.BoundLogger,
             logger_factory=structlog.stdlib.LoggerFactory(),
