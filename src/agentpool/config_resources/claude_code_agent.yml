@@ -4,7 +4,9 @@ agents:
   claude:
     type: claude_code
     display_name: "AI Assistant"
-    builtin_tools: [] # we use our own tools.
+    # Our own tools, plus Claude Code's subagents (Task): ACP v2 clients show each run
+    # as a child session, which they can cancel
+    builtin_tools: [Task]
     use_subscription: true
     description: "Claude code agent with enhanced tools"
     tools:
