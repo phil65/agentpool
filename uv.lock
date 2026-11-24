@@ -21,7 +21,7 @@ wheels = [
 
 [[package]]
 name = "aclientp"
-version = "0.5.1"
+version = "0.6.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "anyenv", extra = ["httpx2"] },
@@ -31,9 +31,9 @@ dependencies = [
     { name = "structlog" },
     { name = "upathtools" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/b6/37/e9ee82b48b733d646e6aa14b0afdc9ef70de51e022a6d1567341c60e7746/aclientp-0.5.1.tar.gz", hash = "sha256:1d45cef4ed5919ba83a779ca07f7cee3208dc36a598db258ea0a094d3c911937", size = 190497, upload-time = "2026-11-24T00:57:02.132Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/60/63/3f706dd6a10318fc6cae1414d78008dc226d80a5acdda6c245442dd520a0/aclientp-0.6.0.tar.gz", hash = "sha256:8a42991d2e892c8c335c0e06aff26c92694ed0d93f744ddc99bf85837f619674", size = 194846, upload-time = "2026-11-24T02:43:16.62Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/49/1a/8ebfe331d6b7aa1c5062f28fc362fce658e07412069a00bcbfd6773fb07f/aclientp-0.5.1-py3-none-any.whl", hash = "sha256:4a1f1a2d0a5e759a0005d08a60886897e98169024c3fc2650e86f9c8213cdd78", size = 236748, upload-time = "2026-11-24T00:57:00.811Z" },
+    { url = "https://files.pythonhosted.org/packages/dc/61/1ab1da5ce192eddb31513ce4839a2e8c71a7f268f7f34414897ada53fd37/aclientp-0.6.0-py3-none-any.whl", hash = "sha256:0b1e7126e21c9616d030491f804d8d527060d0d5cf1d771667211f4f9bef797a", size = 241595, upload-time = "2026-11-24T02:43:15.01Z" },
 ]
 
 [package.optional-dependencies]
@@ -237,7 +237,7 @@ lint = [
 
 [package.metadata]
 requires-dist = [
-    { name = "aclientp", extras = ["bridge", "http2", "tracing", "websocket"], specifier = ">=0.5.0" },
+    { name = "aclientp", extras = ["bridge", "http2", "tracing", "websocket"], specifier = ">=0.6.0" },
     { name = "ag-ui-protocol", marker = "extra == 'ag-ui'", specifier = ">=0.1.10" },
     { name = "alembic", specifier = ">=1.16.5" },
     { name = "anyenv", extras = ["httpx2"], specifier = ">=2.1.0" },

@@ -120,11 +120,27 @@ agentpool serve-acp config.yml --transport http --port 8765
 
 # Reachable from other machines: clients must send "Authorization: Bearer <token>"
 AGENTPOOL_ACP_TOKEN=... agentpool serve-acp config.yml --transport http --host 0.0.0.0
+
+# Plain WebSocket (ws://host:8765), same token rules
+AGENTPOOL_ACP_TOKEN=... agentpool serve-acp config.yml --transport websocket --host 0.0.0.0
 ```
 
-Agents run their tools on the serving machine, so binding to a non-loopback host
-requires `--token` (or `AGENTPOOL_ACP_TOKEN`). Put TLS in front (reverse proxy) when
-exposing it. Editors that only launch local agents can connect through
+Agents run their tools on the serving machine, so `--transport websocket` and
+`--transport http` follow the same rules:
+
+- Binding to a non-loopback host requires `--token` (or `AGENTPOOL_ACP_TOKEN`);
+  `serve-acp` refuses to start otherwise. On loopback the token is optional.
+- Clients send the token as `Authorization: Bearer <token>`, for WebSocket on the
+  upgrade request (e.g. `acptui connect ws://host:8765 -H "Authorization: Bearer ..."`).
+  A missing or wrong token is refused with 401 before any ACP message. Tokens in query
+  parameters are not accepted.
+- Requests with an `Origin` header (browsers) are refused with 403 unless the origin is
+  passed with `--allow-origin` (repeatable). Browsers apply no CORS to WebSockets, so
+  this keeps web pages from driving a local agent. Clients that send no `Origin`
+  (editors, CLIs) are not affected. Browsers cannot set headers on a WebSocket: browser
+  clients use `--transport http`.
+
+Put TLS in front (reverse proxy) when exposing it. Editors that only launch local agents can connect through
 `uvx --from "aclientp[http2,websocket]" aclientp-connect <url> -H "Authorization: Bearer ${TOKEN}"`
 (`http://…/acp` or `ws://…/acp`),
 and other AgentPool instances with a [remote ACP agent](../configuration/node-types/acp-agents.md).

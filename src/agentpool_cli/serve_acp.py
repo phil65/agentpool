@@ -26,30 +26,37 @@ from agentpool_cli import log
 
 
 if TYPE_CHECKING:
-    from aclientp import HttpTransport, Transport
+    from aclientp import HttpTransport, Transport, WebSocketTransport
 
 
 logger = log.get_logger(__name__)
 
 
-LOOPBACK_HOSTS = frozenset({"localhost", "127.0.0.1", "::1"})
-
-
-def _http_transport(
-    host: str, port: int, token: str | None, allow_origins: list[str]
-) -> HttpTransport:
-    """Streamable HTTP transport; refuses to expose the agents without a token.
+def _network_transport(
+    kind: Literal["websocket", "http"],
+    host: str,
+    port: int,
+    token: str | None,
+    allow_origins: list[str],
+) -> WebSocketTransport | HttpTransport:
+    """WebSocket or Streamable HTTP transport; refuses to expose the agents without a token.
 
     Agents run tools (shell, files) on this machine, so an unauthenticated endpoint is
-    only allowed on a loopback host.
+    only allowed on a loopback host. Both check the handshake before any ACP message:
+    ``Authorization: Bearer <token>`` (401 otherwise) and, for browsers, an ``Origin``
+    in ``allow_origins`` (403 otherwise), since browsers apply no CORS to WebSockets.
     """
-    from aclientp import HttpTransport
-    from aclientp.http_server import bearer_token_auth
+    from aclientp import HttpTransport, WebSocketTransport
+    from aclientp.server_auth import bearer_token_auth, is_loopback_host
 
-    if token is None and host not in LOOPBACK_HOSTS:
+    if not token and not is_loopback_host(host):
         msg = f"Serving on {host!r} requires --token (or AGENTPOOL_ACP_TOKEN)"
         raise t.BadParameter(msg)
     authenticate = bearer_token_auth(token) if token else None
+    if kind == "websocket":
+        return WebSocketTransport(
+            host=host, port=port, authenticate=authenticate, allow_origins=allow_origins
+        )
     return HttpTransport(
         host=host, port=port, authenticate=authenticate, allow_origins=allow_origins
     )
@@ -129,14 +136,21 @@ def acp_command(  # noqa: PLR0915
             "--token",
             envvar="AGENTPOOL_ACP_TOKEN",
             help=(
-                "Bearer token clients must send (http). Required when binding to a "
-                "non-loopback host"
+                "Bearer token clients must send as 'Authorization: Bearer <token>' "
+                "(websocket/http; on the WebSocket upgrade request). Required when binding "
+                "to a non-loopback host"
             ),
         ),
     ] = None,
     allow_origin: Annotated[
         list[str] | None,
-        t.Option("--allow-origin", help="CORS origin for browser clients (http); repeatable"),
+        t.Option(
+            "--allow-origin",
+            help=(
+                "Browser origin allowed to connect (websocket/http; CORS for http). "
+                "Requests from other browser origins are refused; repeatable"
+            ),
+        ),
     ] = None,
     ws_host: Annotated[
         str,
@@ -179,7 +193,7 @@ def acp_command(  # noqa: PLR0915
     the pool's default agent is used (set via 'default_agent' in config,
     or falls back to the first agent).
     """
-    from aclientp import StdioTransport, WebSocketTransport
+    from aclientp import StdioTransport
 
     from agentpool import log
     from agentpool.config_resources import ACP_ASSISTANT
@@ -198,10 +212,10 @@ def acp_command(  # noqa: PLR0915
     bind_host = host or ws_host
     bind_port = port or ws_port
     match transport:
-        case "websocket":
-            transport_config: Transport = WebSocketTransport(host=bind_host, port=bind_port)
-        case "http":
-            transport_config = _http_transport(bind_host, bind_port, token, allow_origin or [])
+        case "websocket" | "http":
+            transport_config: Transport = _network_transport(
+                transport, bind_host, bind_port, token, allow_origin or []
+            )
         case "stdio":
             transport_config = StdioTransport()
 

@@ -31,7 +31,7 @@ classifiers = [
   "Typing :: Typed",
 ]
 dependencies = [
-  "aclientp[bridge,http2,tracing,websocket]>=0.5.0",  # 0.5: IdempotencyStore, strict MCP transports
+  "aclientp[bridge,http2,tracing,websocket]>=0.6.0",  # 0.6: WebSocket auth, Origin checks
   "alembic>=1.16.5",
   "anyenv[httpx2]>=2.1.0",
   "bashkit>=0.1.11",
