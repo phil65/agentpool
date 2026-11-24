@@ -46,6 +46,7 @@ from pydantic import BaseModel, ValidationError
 
 from agentpool.log import get_logger
 from agentpool_server.acp_server.acp_agent import AgentPoolACPAgent
+from agentpool_server.acp_server.idempotency import idempotency_store
 from agentpool_server.acp_server.session import (
     get_all_commands,
     infer_stop_reason,
@@ -391,18 +392,28 @@ class AgentPoolV2Agent(V2Agent):
         wrong later ends the turn with ``stopReason: "error"``. When a turn is already
         running on the session, text prompts steer into the live run and multimodal
         prompts queue onto it without emitting a duplicate ``running`` state.
+
+        A retry with the ``idempotencyKey`` of an accepted prompt returns that prompt's
+        ``messageId`` and inserts nothing; the keys are kept in the session storage, so
+        they survive a restart. Invalid keys fail validation (``-32602``).
         """
         session = await self.v1.session_for_prompt(params.session_id)
-        blocks = to_v1(params, V1PromptRequest).prompt
-        contents = session.convert_prompt(blocks)
-        message_id = str(uuid.uuid4())
-        if session.is_running:
-            if contents and all(isinstance(c, str) for c in contents):
-                text = "\n\n".join(c for c in contents if isinstance(c, str))
-                await session.agent.steer(text, session_id=session.session_id)
-            elif contents:
-                session.agent.queue_prompt(*contents, session_id=session.session_id)
-            return v2.PromptResponse(message_id=message_id)
+        store = idempotency_store(self.v1.session_manager.storage)
+        async with store.claim(params.session_id, params.idempotency_key) as claim:
+            if claim.message_id is not None:  # A retry: the message is already in
+                return v2.PromptResponse(message_id=claim.message_id)
+            blocks = to_v1(params, V1PromptRequest).prompt
+            contents = session.convert_prompt(blocks)
+            message_id = str(uuid.uuid4())
+            if session.is_running:
+                if contents and all(isinstance(c, str) for c in contents):
+                    text = "\n\n".join(c for c in contents if isinstance(c, str))
+                    await session.agent.steer(text, session_id=session.session_id)
+                elif contents:
+                    session.agent.queue_prompt(*contents, session_id=session.session_id)
+                await claim.record(message_id)
+                return v2.PromptResponse(message_id=message_id)
+            await claim.record(message_id)
         self.v1.tasks.create_task(
             self._run_turn(session, contents), name=f"acp-v2-turn-{message_id[:8]}"
         )

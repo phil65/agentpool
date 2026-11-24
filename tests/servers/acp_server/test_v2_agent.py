@@ -9,6 +9,7 @@ import os
 import sys
 from typing import TYPE_CHECKING, Any
 
+from aclientp import RequestError
 from aclientp.schema import v2
 from aclientp.v2.agent import AgentSideConnection
 from aclientp.v2.client import Client, ClientSideConnection
@@ -19,6 +20,7 @@ import pytest
 
 from agentpool import Agent, AgentContext, AgentPool, AgentsManifest
 from agentpool_config.storage import SQLStorageConfig, StorageConfig
+from agentpool_server.acp_server import session as acp_session
 from agentpool_server.acp_server.v2_agent import AgentPoolV2Agent
 
 
@@ -105,10 +107,14 @@ async def connected(
 
 @asynccontextmanager
 async def _serve(
-    model: FunctionModel, tools: Sequence[Callable[..., Any]] = (), *, debug_commands: bool = False
+    model: FunctionModel,
+    tools: Sequence[Callable[..., Any]] = (),
+    *,
+    debug_commands: bool = False,
+    storage_url: str = "sqlite+aiosqlite:///:memory:",
 ) -> AsyncGenerator[tuple[ClientSideConnection, RecordingClient, Agent[None, str]]]:
     """A v2 connection to an agent with ``model`` (and ``tools``) in a pool."""
-    storage = StorageConfig(providers=[SQLStorageConfig(url="sqlite+aiosqlite:///:memory:")])
+    storage = StorageConfig(providers=[SQLStorageConfig(url=storage_url)])
     async with AgentPool(AgentsManifest(storage=storage)) as pool:
         agent = Agent(name="a", model=model, tools=list(tools), agent_pool=pool)
         pool.register("a", agent)
@@ -696,3 +702,131 @@ async def test_permission_requests_report_requires_action() -> None:
     conn.release.set()
     await asyncio.wait_for(both, TIMEOUT)
     assert conn.states == [("s", "requires_action"), ("s", "running")]
+
+
+# --- idempotencyKey (spec: agents advertising capabilities.session MUST deduplicate) ---
+
+
+def _counting_model(calls: list[int]) -> FunctionModel:
+    async def reply(messages: list[ModelMessage], info: AgentInfo) -> AsyncIterator[str]:
+        calls.append(1)
+        yield "ok"
+
+    return FunctionModel(stream_function=reply)
+
+
+def _keyed(session_id: str, key: str, text: str = "hi") -> v2.PromptRequest:
+    return v2.PromptRequest(
+        session_id=session_id, prompt=[v2.TextContent(text=text)], idempotency_key=key
+    )
+
+
+def _running(recorder: RecordingClient) -> int:
+    return len(recorder.of(v2.RunningStateSessionUpdate))
+
+
+async def test_prompt_retry_with_the_same_key_runs_one_turn(tmp_path: Any) -> None:
+    calls: list[int] = []
+    async with _serve(_counting_model(calls)) as (conn, recorder, _):
+        session_id = await _new_session(conn, str(tmp_path))
+        first = await conn.prompt(_keyed(session_id, "submit-1"))
+        await recorder.wait_idle()
+
+        retry = await conn.prompt(_keyed(session_id, "submit-1"))
+        await asyncio.sleep(0.1)  # a second turn would start right away
+        other = await conn.prompt(_keyed(session_id, "submit-2"))
+        await recorder.wait_idle()
+
+    assert retry.message_id == first.message_id
+    assert other.message_id != first.message_id
+    assert len(calls) == 2  # submit-1 once, submit-2 once
+    assert _running(recorder) == 2
+
+
+async def test_concurrent_attempts_with_one_key_insert_once(tmp_path: Any) -> None:
+    calls: list[int] = []
+    async with _serve(_counting_model(calls)) as (conn, recorder, _):
+        session_id = await _new_session(conn, str(tmp_path))
+        responses = await asyncio.gather(
+            *(conn.prompt(_keyed(session_id, "same")) for _ in range(3))
+        )
+        await recorder.wait_idle()
+        await asyncio.sleep(0.1)
+
+    assert len({r.message_id for r in responses}) == 1
+    assert len(calls) == 1
+
+
+async def test_keys_are_scoped_to_their_session(tmp_path: Any) -> None:
+    calls: list[int] = []
+    async with _serve(_counting_model(calls)) as (conn, recorder, _):
+        first_session = await _new_session(conn, str(tmp_path))
+        second_session = (
+            await conn.new_session(v2.NewSessionRequest(cwd=str(tmp_path)))
+        ).session_id
+        first = await conn.prompt(_keyed(first_session, "k"))
+        await recorder.wait_idle()
+        second = await conn.prompt(_keyed(second_session, "k"))
+        await recorder.wait_idle()
+
+    assert first.message_id != second.message_id
+    assert len(calls) == 2
+
+
+@pytest.mark.parametrize("key", ["", "x" * 256, 42])
+async def test_invalid_idempotency_keys_are_invalid_params(
+    connected: Any, tmp_path: Any, key: object
+) -> None:
+    conn, recorder, _ = connected
+    session_id = await _new_session(conn, str(tmp_path))
+    params = {"sessionId": session_id, "prompt": [{"type": "text", "text": "hi"}]}
+    with pytest.raises(RequestError) as exc_info:
+        await conn.connection.send_request("session/prompt", {**params, "idempotencyKey": key})
+
+    assert exc_info.value.code == -32602
+    await asyncio.sleep(0.1)
+    assert _running(recorder) == 0
+
+
+async def test_keys_survive_a_restart(tmp_path: Any) -> None:
+    """The keys are in the session storage: a retry after a restart inserts nothing."""
+    url = f"sqlite+aiosqlite:///{tmp_path / 'sessions.db'}"
+    calls: list[int] = []
+    async with _serve(_counting_model(calls), storage_url=url) as (conn, recorder, _):
+        session_id = await _new_session(conn, str(tmp_path))
+        first = await conn.prompt(_keyed(session_id, "before-restart"))
+        await recorder.wait_idle()
+    assert len(calls) == 1
+
+    async with _serve(_counting_model(calls), storage_url=url) as (conn, recorder, _):
+        await _initialize(conn)
+        retry = await conn.prompt(_keyed(session_id, "before-restart"))
+        await asyncio.sleep(0.2)
+        assert _running(recorder) == 0
+        fresh = await conn.prompt(_keyed(session_id, "after-restart"))
+        await recorder.wait_idle()
+
+    assert retry.message_id == first.message_id
+    assert fresh.message_id != first.message_id
+    assert len(calls) == 2
+
+
+async def test_unknown_mcp_transport_is_invalid_params_and_launches_nothing(
+    connected: Any, tmp_path: Any, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """v2 reads an unknown transport as UnknownMcpServer; v1 must not run it as stdio."""
+    launched: list[Any] = []
+
+    async def initialize_mcp_servers(self: acp_session.ACPSession) -> None:
+        launched.extend(self.mcp_servers or [])
+
+    monkeypatch.setattr(acp_session.ACPSession, "initialize_mcp_servers", initialize_mcp_servers)
+    conn, _, _ = connected
+    await _initialize(conn)
+    server = {"type": "websocket", "name": "x", "command": "/bin/sh", "args": [], "env": []}
+    params = {"cwd": str(tmp_path), "mcpServers": [server]}
+    with pytest.raises(RequestError) as exc_info:
+        await conn.connection.send_request("session/new", params)
+
+    assert exc_info.value.code == -32602
+    assert launched == []
