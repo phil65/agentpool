@@ -726,6 +726,8 @@ class TaskStartedEvent:
     parent_task_id: str | None = None
     depth: int = 1
     """Nesting depth (1 = started by the main agent)."""
+    stoppable: bool = False
+    """Whether ``BaseAgent.stop_task`` can stop it (servers offer cancelling its tool call)."""
     event_kind: Literal["task_started"] = "task_started"
     """Event type identifier."""
 

@@ -151,6 +151,7 @@ async def test_subagent_frames_are_wrapped() -> None:
             description="Count files",
             tool_call_id="call_agent",
             agent_type="Explore",
+            stoppable=True,  # The CLI's stop_task
         ),
         TaskUpdatedEvent(
             task_id="t1",

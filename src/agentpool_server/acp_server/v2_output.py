@@ -2,8 +2,9 @@
 
 v2 sessions reuse the v1 output: its updates reach the client through
 ``V2ClientAdapter``, which translates them. What differs is said here: v2 has no
-``current_mode_update``, it has agent-owned terminals (``TerminalTracker``) and a
-``cancelled`` tool call status.
+``current_mode_update``, it has agent-owned terminals (``TerminalTracker``), a
+``cancelled`` tool call status, and tool calls a client can cancel
+(``CancellableToolCalls``).
 """
 
 from __future__ import annotations
@@ -18,6 +19,7 @@ from agentpool.agents.modes import ConfigOptionChanged, ModeInfo
 from agentpool_server.acp_server.turns import TurnCancelled
 from agentpool_server.acp_server.v1_output import V1SessionOutput, V1TurnOutput
 from agentpool_server.acp_server.v2_client import V2ClientAdapter
+from agentpool_server.acp_server.v2_tasks import CancellableToolCalls
 from agentpool_server.acp_server.v2_terminals import TerminalTracker
 
 
@@ -36,6 +38,8 @@ class V2SessionOutput(V1SessionOutput):
     def __init__(self, session: ACPSession) -> None:
         super().__init__(session)
         self.terminals = TerminalTracker(cwd=session.cwd)
+        self.cancellable = CancellableToolCalls()
+        """Tool calls a client may cancel (``tool_call/cancel``): those of stoppable tasks."""
 
     async def send(self, updates: Sequence[v2.SessionUpdate]) -> None:
         """Send v2 updates directly (they have no v1 form)."""
@@ -50,6 +54,7 @@ class V2SessionOutput(V1SessionOutput):
     async def background_event(self, event: RichAgentStreamEvent[Any]) -> None:
         await self.send(self.terminals.updates(event))
         await super().background_event(event)
+        await self.send(self.cancellable.updates(event))
 
     async def state_changed(self, state: AgentStateChange) -> None:
         match state:
@@ -77,6 +82,7 @@ class V2TurnOutput(V1TurnOutput):
             case _:
                 pass
         await super().event(event)
+        await self._v2.send(self._v2.cancellable.updates(event))  # After the tool call's own
 
     async def finish(self, outcome: TurnOutcome) -> None:
         if isinstance(outcome, TurnCancelled) and (converter := self._converter) is not None:

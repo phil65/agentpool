@@ -457,6 +457,7 @@ class ClaudeCodeStreamedResponse(StreamedResponse):
                         agent_type=agent_type,
                         parent_task_id=message.parent_task_id,
                         depth=depth,
+                        stoppable=True,  # The CLI's stop_task
                     )
 
                 case TaskProgressSystemMessage(task_id=task_id, usage=task_usage):

@@ -197,7 +197,8 @@ class BaseAgent[TDeps = None, TResult = str](MessageNode[TDeps, TResult]):
 
         agent_name: AgentName
         session_id: str | None
-        """Session the agent was bound to (consumers route the event by it)."""
+        """The session whose turn started the work (consumers route the event by it): an
+        explicit session's id, else the agent's own ``session_id``."""
         event: RichAgentStreamEvent[Any]
         timestamp: datetime = field(default_factory=get_now)
 
@@ -1047,12 +1048,14 @@ class BaseAgent[TDeps = None, TResult = str](MessageNode[TDeps, TResult]):
         if self._active_runs:
             await self._event_queue.put(event)
             return
-        self._runtime.track_task(event)  # E.g. a background task finishing
+        runtime = self._runtime  # Of the session whose turn started the work (else default)
+        runtime.track_task(event)  # E.g. a background task finishing
+        session_id = self.session_id if runtime.is_default else runtime.session.session_id
         background = BaseAgent.BackgroundEvent(
-            agent_name=self.name, session_id=self.session_id, event=event
+            agent_name=self.name, session_id=session_id, event=event
         )
-        if (pool := self.agent_pool) is not None and self.session_id is not None:
-            pool.activity.observe(self.session_id, self.name, event)
+        if (pool := self.agent_pool) is not None and session_id is not None:
+            pool.activity.observe(session_id, self.name, event)
         await self.background_event.emit(background)
 
     async def wait(self) -> ChatMessage[TResult]:

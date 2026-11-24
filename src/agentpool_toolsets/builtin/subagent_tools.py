@@ -222,6 +222,7 @@ async def _start_in_background(
             tool_call_id=ctx.tool_call_id,
             background=True,
             agent_type=source_name,
+            stoppable=True,  # Registered as a local task below
         )
     )
     task = asyncio.create_task(

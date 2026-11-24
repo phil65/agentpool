@@ -116,9 +116,14 @@ queue, steer and background design than v1's request-scoped turn.
 
 ## Open
 
-- **v2 over v1, for now.** Every v2 update is a translated v1 update (`v2_translate.py`),
-  so v2-only features that v1 has no form for can't come through: `subagent_update`,
-  `requires_action` states, cancelling single tool calls. Flip it (v2 as the core, v1
+- **v2 over v1, for now.** v2 sessions reuse the v1 output, translated
+  (`v2_translate.py`); what v1 has no form for, the v2 output sends itself next to it
+  (`V2SessionOutput.send`, from the agent's own events): agent-owned terminals
+  (`v2_terminals.py`), the `cancelled` tool call status, `requires_action` states, and
+  `tool_call/cancel` for tool calls whose task can be stopped (`v2_tasks.py`: a task
+  marked `stoppable`, cancelled through `BaseAgent.stop_task`; the capability is withdrawn
+  when the task ends). Still missing: `subagent_update`, and cancelling a tool call that
+  started no task. Flip it (v2 as the core, v1
   adapted down) once Zed, the main v1 client, speaks v2 by default, not only behind
   `acp-beta` (as with OpenCode v1, whose server is gone). Zed with `acp-beta` on is a
   real v2 client to test against before that. Already in place for the flip: one tool
@@ -147,6 +152,8 @@ queue, steer and background design than v1's request-scoped turn.
 - aclientp is published from `~/dev/oss/aclientp`; agentpool pins it from PyPI
   (`aclientp[...]>=0.1.8`). Develop against an editable install
   (`uv pip install -e ../aclientp`, then `uv run --no-sync ...`), and release aclientp
-  before agentpool depends on the new API.
+  before agentpool depends on the new API. As of 2026-11-24: aclientp 0.5.1, its models
+  conform to the newest upstream schemas (v1 `schema-v1.35.0`, v2 `schema-v2.0.0-beta.4`,
+  `python -m aclientp.schema_reference --protocol N check` / `latest`).
 - aclientp's v2 models check themselves against the pinned upstream schema:
   `python -m aclientp.schema_reference --protocol 2 check`.

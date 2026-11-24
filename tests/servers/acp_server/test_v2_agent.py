@@ -830,3 +830,69 @@ async def test_unknown_mcp_transport_is_invalid_params_and_launches_nothing(
 
     assert exc_info.value.code == -32602
     assert launched == []
+
+
+def _capabilities(recorder: RecordingClient, tool_call_id: str) -> list[Any]:
+    """The capability changes sent for a tool call, in order."""
+    return [
+        u.capabilities
+        for u in recorder.of(v2.ToolCallSessionUpdate)
+        if u.tool_call_id == tool_call_id and v2.is_set(u.capabilities)
+    ]
+
+
+async def test_a_background_task_is_cancelled_through_its_tool_call(tmp_path: Any) -> None:
+    """``tool_call/cancel`` on the tool call that started a stoppable task stops it."""
+    from agentpool.agents.agent_tasks import TaskOutput
+    from agentpool.agents.events import TaskFinishedEvent, TaskStartedEvent
+
+    async def start_job(ctx: AgentContext) -> str:
+        """Start a job in the background."""
+
+        async def job() -> None:
+            try:
+                await asyncio.sleep(30)
+            except asyncio.CancelledError:
+                finished = TaskFinishedEvent(task_id="job1", status="cancelled")
+                await ctx.agent.emit_event(finished)
+                raise
+
+        async def no_output() -> TaskOutput:
+            return TaskOutput(output="", total_bytes=0)
+
+        started = TaskStartedEvent(
+            task_id="job1",
+            kind="shell",
+            description="job",
+            tool_call_id=ctx.tool_call_id,
+            background=True,
+            stoppable=True,
+        )
+        await ctx.events.emit_event(started)
+        ctx.agent.register_local_task("job1", asyncio.create_task(job()), no_output)
+        return "started"
+
+    async def stream(messages: list[ModelMessage], info: AgentInfo) -> AsyncIterator[Any]:
+        if len(messages) == 1:
+            yield {0: DeltaToolCall(name="start_job", json_args="{}", tool_call_id="c1")}
+        else:
+            yield "the job runs"
+
+    async with _serve(FunctionModel(stream_function=stream), [start_job]) as (conn, recorder, _):
+        session_id = await _new_session(conn, str(tmp_path))
+        await conn.prompt(_prompt(session_id))
+        assert (await recorder.wait_idle()).stop_reason == "end_turn"  # The job outlives it
+        [offered] = _capabilities(recorder, "c1")
+        assert isinstance(offered, v2.ToolCallCapabilities)
+        assert v2.is_set(offered.cancel)
+
+        request = v2.CancelToolCallRequest(session_id=session_id, tool_call_id="c1")
+        await conn.cancel_tool_call(request)
+        for _ in range(100):  # The job reports its end between turns
+            if len(_capabilities(recorder, "c1")) == 2:
+                break
+            await asyncio.sleep(0.02)
+        assert _capabilities(recorder, "c1")[-1] is None  # Withdrawn once it ended
+
+        with pytest.raises(RequestError):  # Nothing left to cancel
+            await conn.cancel_tool_call(request)

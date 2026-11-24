@@ -87,9 +87,8 @@ Open:
 - `per_task_stop_affordance` is not declared, so an interrupt still stops the CLI's background
   agents too. Declaring it spares them (Zed's behaviour), but then only `/tasks stop` ends
   them: decide whether to declare it, and whether as an option.
-- No protocol surface beyond `/tasks`: ACP v2's `tool_call/cancel` (a task's starting tool
-  call) needs the v2 server off the v1 translation (`ACP_V2_SERVER.md`); OpenCode V2 only
-  lists jobs.
+- ACP v2 clients cancel a task through the tool call that started it (`tool_call/cancel`,
+  since 2026-11-24); OpenCode V2 only lists jobs, so there `/tasks` is the way.
 - Polling a backgrounded Bash command's output file (Zed's `background-output.ts`).
 
 ## Done: 10. `/mcp` command

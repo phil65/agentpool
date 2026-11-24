@@ -432,5 +432,27 @@ class AgentPoolV2Agent(V2Agent):
         notification = v2.UpdateSessionNotification(session_id=session_id, update=state)
         await self.conn.session_update(notification)
 
+    async def cancel_tool_call(self, params: v2.CancelToolCallRequest) -> v2.CancelToolCallResponse:
+        """Cancel a tool call that offers it: stop the task it started.
+
+        Raises:
+            RequestError: The session is unknown, or the tool call can't be cancelled
+                (``invalid_params``)
+        """
+        from agentpool.agents.exceptions import UnsupportedOperationError
+        from agentpool_server.acp_server.v2_output import V2SessionOutput
+
+        session = self.v1.session_manager.get_session(params.session_id)
+        if session is None or not isinstance(output := session.output, V2SessionOutput):
+            raise RequestError.invalid_params({"details": f"No session {params.session_id!r}"})
+        if (task_id := output.cancellable.task_of(params.tool_call_id)) is None:
+            msg = f"Tool call {params.tool_call_id!r} can't be cancelled"
+            raise RequestError.invalid_params({"details": msg})
+        try:
+            await session.agent.stop_task(task_id)
+        except (KeyError, UnsupportedOperationError) as exc:
+            raise RequestError.invalid_params({"details": str(exc)}) from exc
+        return v2.CancelToolCallResponse()
+
     async def cancel(self, params: v2.CancelSessionNotification) -> None:
         await self.v1.cancel(CancelNotification(session_id=params.session_id))
