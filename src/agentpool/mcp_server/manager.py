@@ -97,7 +97,7 @@ class MCPManager:
 
         provider = MCPResourceProvider(
             server=config,
-            name=f"{self.name}_{config.client_id}",
+            name=f"{self.name}_{config.name or config.client_id}",
             owner=self.owner,
             source="pool" if self.owner == "pool" else "node",
         )
