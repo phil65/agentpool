@@ -75,6 +75,7 @@ if TYPE_CHECKING:
     from agentpool_server.acp_server.server import ACPServer
     from agentpool_server.acp_server.session import ACPSession
     from agentpool_server.acp_server.turns import TurnOutcome
+    from agentpool_server.acp_server.v2_subagents import ChildSession
 
 
 logger = get_logger(__name__)
@@ -298,6 +299,7 @@ class AgentPoolV2Agent(V2Agent):
 
     async def resume_session(self, params: v2.ResumeSessionRequest) -> v2.ResumeSessionResponse:
         """Resume a session; with ``replayFrom``, replay its history first (v1 load)."""
+        self._refuse_child(params.session_id, "session/resume")
         if v2.is_set(params.replay_from) and params.replay_from is not None:
             loaded = await self.v1.load_session(self._session_request(params, LoadSessionRequest))
             update = v2.ReplayComplete()
@@ -318,6 +320,7 @@ class AgentPoolV2Agent(V2Agent):
         )
 
     async def fork_session(self, params: v2.ForkSessionRequest) -> v2.ForkSessionResponse:
+        self._refuse_child(params.session_id, "session/fork")
         response = await self.v1.fork_session(self._session_request(params, V1ForkSessionRequest))
         return v2.ForkSessionResponse(
             session_id=response.session_id,
@@ -326,10 +329,12 @@ class AgentPoolV2Agent(V2Agent):
         )
 
     async def close_session(self, params: v2.CloseSessionRequest) -> v2.CloseSessionResponse:
+        self._refuse_child(params.session_id, "session/close")
         await self.v1.close_session(to_v1(params, V1CloseSessionRequest))
         return v2.CloseSessionResponse()
 
     async def delete_session(self, params: v2.DeleteSessionRequest) -> v2.DeleteSessionResponse:
+        self._refuse_child(params.session_id, "session/delete")
         await self.v1.delete_session(to_v1(params, V1DeleteSessionRequest))
         return v2.DeleteSessionResponse()
 
@@ -338,12 +343,14 @@ class AgentPoolV2Agent(V2Agent):
         return to_v2(response, v2.ListSessionsResponse)
 
     async def session_status(self, params: v2.SessionStatusRequest) -> v2.SessionStatusResponse:
+        self._refuse_child(params.session_id, "session/status")
         response = await self.v1.session_status(to_v1(params, V1SessionStatusRequest))
         return v2.SessionStatusResponse(status=response.status)
 
     async def session_options(self, params: v2.SessionOptionsRequest) -> v2.SessionOptionsResponse:
-        response = await self.v1.session_options(to_v1(params, V1SessionOptionsRequest))
         session_id = params.session_id if v2.is_set(params.session_id) else None
+        self._refuse_child(session_id, "session/options")
+        response = await self.v1.session_options(to_v1(params, V1SessionOptionsRequest))
         if self.v1.session_manager.get_session(session_id or "") is None:
             # The commands a new session would have
             debug = self.v1.debug_commands
@@ -359,12 +366,14 @@ class AgentPoolV2Agent(V2Agent):
     async def set_session_title(
         self, params: v2.SetSessionTitleRequest
     ) -> v2.SetSessionTitleResponse:
+        self._refuse_child(params.session_id, "session/set_title")
         response = await self.v1.set_session_title(to_v1(params, V1SetSessionTitleRequest))
         return v2.SetSessionTitleResponse(title=response.title)
 
     async def set_session_config_option(
         self, params: v2.SetSessionConfigOptionRequest
     ) -> v2.SetSessionConfigOptionResponse:
+        self._refuse_child(params.session_id, "session/set_config_option")
         match params:
             case v2.SetConfigOptionIdRequest(session_id=sid, config_id=cid, value=value):
                 request = V1SetSessionConfigOptionRequest(
@@ -397,6 +406,7 @@ class AgentPoolV2Agent(V2Agent):
         ``messageId`` and inserts nothing; the keys are kept in the session storage, so
         they survive a restart. Invalid keys fail validation (``-32602``).
         """
+        self._refuse_child(params.session_id, "session/prompt")
         session = await self.v1.session_for_prompt(params.session_id)
         store = idempotency_store(self.v1.session_manager.storage)
         async with store.claim(params.session_id, params.idempotency_key) as claim:
@@ -455,4 +465,34 @@ class AgentPoolV2Agent(V2Agent):
         return v2.CancelToolCallResponse()
 
     async def cancel(self, params: v2.CancelSessionNotification) -> None:
+        if (child := self.client.subagents.child(params.session_id)) is not None:
+            await self._cancel_child(child)
+            return
         await self.v1.cancel(CancelNotification(session_id=params.session_id))
+
+    async def _cancel_child(self, child: ChildSession) -> None:
+        """``session/cancel`` on a child: stop its task (ignored unless it advertises cancel).
+
+        The task's end (``TaskFinishedEvent``) reports the child idle with ``cancelled``.
+        """
+        from agentpool.agents.exceptions import UnsupportedOperationError
+
+        if not child.stoppable or not child.active or child.task_id is None:
+            return  # Per spec: ignored for a child without the capability
+        session = self.v1.session_manager.get_session(child.root_id)
+        if session is None:
+            return
+        try:
+            await session.agent.stop_task(child.task_id)
+        except (KeyError, UnsupportedOperationError):  # Already ended, or no longer stoppable
+            logger.debug("Child session's task not stopped", child=child.session_id)
+
+    def _refuse_child(self, session_id: str | None, method: str) -> None:
+        """Reject a method on a child session: a child takes only ``session/cancel``.
+
+        Raises:
+            RequestError: ``session_id`` is a child session (``invalid_params``)
+        """
+        if session_id is not None and self.client.subagents.child(session_id) is not None:
+            details = f"{method} is not permitted on subagent session {session_id!r}"
+            raise RequestError.invalid_params({"details": details})

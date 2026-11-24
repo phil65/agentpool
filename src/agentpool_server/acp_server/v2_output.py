@@ -30,6 +30,7 @@ if TYPE_CHECKING:
     from agentpool_server.acp_server.output import AgentStateChange
     from agentpool_server.acp_server.session import ACPSession
     from agentpool_server.acp_server.turns import TurnOutcome
+    from agentpool_server.acp_server.v2_subagents import Outgoing
 
 
 class V2SessionOutput(V1SessionOutput):
@@ -41,18 +42,45 @@ class V2SessionOutput(V1SessionOutput):
         self.cancellable = CancellableToolCalls()
         """Tool calls a client may cancel (``tool_call/cancel``): those of stoppable tasks."""
 
-    async def send(self, updates: Sequence[v2.SessionUpdate]) -> None:
-        """Send v2 updates directly (they have no v1 form)."""
+    @property
+    def _client(self) -> V2ClientAdapter:
         client = self._session.client
         assert isinstance(client, V2ClientAdapter), "v2 sessions have the v2 adapter"
+        return client
+
+    async def send(self, updates: Sequence[v2.SessionUpdate]) -> None:
+        """Send v2 updates directly (they have no v1 form)."""
         for update in updates:
-            await client.send_update(self._session.session_id, update)
+            await self._client.send_update(self._session.session_id, update)
+
+    async def send_to(self, outgoing: Outgoing) -> None:
+        """Send v2 updates, each under its session (this one or a child of it)."""
+        for session_id, update in outgoing:
+            await self._client.send_update(session_id, update)
+
+    async def subagents(self, event: RichAgentStreamEvent[Any]) -> bool:
+        """Show subagent runs as child sessions; True if ``event`` was a subagent's."""
+        registry = self._client.subagents
+        pending = registry.observe(
+            self._session.session_id, event, converter=self._converter, cwd=self._session.cwd
+        )
+        await self.send_to(pending.out)
+        if (child := pending.child) is None or pending.inner is None:
+            return False
+        async for update in child.converter.convert(pending.inner):
+            if (translated := child.translator.translate(update)) is not None:
+                await self._client.send_update(child.session_id, translated)
+        if pending.ends is not None:
+            await self.send_to(registry.finish(child, pending.ends))
+        return True
 
     def turn(self) -> V2TurnOutput:
         return V2TurnOutput(self)
 
     async def background_event(self, event: RichAgentStreamEvent[Any]) -> None:
         await self.send(self.terminals.updates(event))
+        if await self.subagents(event):  # A child session's (not the parent's)
+            return
         await super().background_event(event)
         await self.send(self.cancellable.updates(event))
 
@@ -74,6 +102,8 @@ class V2TurnOutput(V1TurnOutput):
 
     async def event(self, event: RichAgentStreamEvent[Any]) -> None:
         await self._v2.send(self._v2.terminals.updates(event))
+        if await self._v2.subagents(event):  # A child session's (not the parent's)
+            return
         match event:
             case ToolCallProgressEvent(process=ProcessSignal(exit_code=int()), items=items):
                 # The final output is in the terminal already: not again as text
@@ -85,6 +115,9 @@ class V2TurnOutput(V1TurnOutput):
         await self._v2.send(self._v2.cancellable.updates(event))  # After the tool call's own
 
     async def finish(self, outcome: TurnOutcome) -> None:
+        registry = self._v2._client.subagents
+        cancelled = isinstance(outcome, TurnCancelled)
+        await self._v2.send_to(registry.end_turn(self._session.session_id, cancelled=cancelled))
         if isinstance(outcome, TurnCancelled) and (converter := self._converter) is not None:
             pending = converter.pending_tool_calls()
             cancelled: list[v2.SessionUpdate] = [

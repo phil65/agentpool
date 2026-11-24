@@ -122,8 +122,17 @@ queue, steer and background design than v1's request-scoped turn.
   (`v2_terminals.py`), the `cancelled` tool call status, `requires_action` states, and
   `tool_call/cancel` for tool calls whose task can be stopped (`v2_tasks.py`: a task
   marked `stoppable`, cancelled through `BaseAgent.stop_task`; the capability is withdrawn
-  when the task ends). Still missing: `subagent_update`, and cancelling a tool call that
-  started no task. Flip it (v2 as the core, v1
+  when the task ends), and subagent runs as child sessions (`v2_subagents.py`, since
+  2026-11-24): a run's first event announces a child (`subagent_update` on its parent:
+  title, state, `cancel` when its task can be stopped), the tool call that started it
+  shows it (`session` content), and its events are the child's updates under the child's
+  ID (own converter and translator). The child's state is mirrored on the association; it
+  ends idle (`end_turn` / `error` / `cancelled`, with its run or task, or cancelled with
+  the parent's turn when in the foreground), else `unknown`. Permission requests and
+  elicitations of a child's tool calls carry the child's ID. A child takes only
+  `session/cancel` (stops its task); other methods are refused with `-32602`. Not done:
+  listing background children in `background`, child `usage_update`, replaying children
+  on resume. Still missing otherwise: cancelling a tool call that started no task. Flip it (v2 as the core, v1
   adapted down) once Zed, the main v1 client, speaks v2 by default, not only behind
   `acp-beta` (as with OpenCode v1, whose server is gone). Zed with `acp-beta` on is a
   real v2 client to test against before that. Already in place for the flip: one tool

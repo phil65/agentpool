@@ -29,6 +29,7 @@ from aclientp.schema import (
 from aclientp.schema.elicitation import ElicitationResponse
 
 from agentpool.log import get_logger
+from agentpool_server.acp_server.v2_subagents import SubagentSessions
 from agentpool_server.acp_server.v2_translate import UpdateTranslator, tool_call_update
 
 
@@ -114,6 +115,8 @@ class V2ClientAdapter:
         """
         self.conn = conn
         self.translator = translator
+        self.subagents = SubagentSessions()
+        """The connection's child sessions (subagent runs)."""
         self._waiting: dict[str, int] = {}
         """Requests waiting for the user, per session."""
 
@@ -140,6 +143,9 @@ class V2ClientAdapter:
     async def _send_state(self, session_id: str, state: v2.StateSessionUpdate) -> None:
         notification = v2.UpdateSessionNotification(session_id=session_id, update=state)
         await self.conn.session_update(notification)
+        if (child := self.subagents.child(session_id)) is not None:  # Mirrored on the parent
+            mirror = v2.SubagentUpdate(session_id=child.session_id, state=_association_state(state))
+            await self.send_update(child.parent_id, mirror)
 
     async def send_update(self, session_id: str, update: v2.SessionUpdate) -> None:
         """Send an update that has no v1 form (terminals, ``cancelled`` tool calls)."""
@@ -155,11 +161,21 @@ class V2ClientAdapter:
     async def request_permission(
         self, params: RequestPermissionRequest
     ) -> RequestPermissionResponse:
+        # A child's tool call is asked about in the child (where the client knows it)
+        owner = self.subagents.session_of_tool_call(
+            params.tool_call.tool_call_id, params.session_id
+        )
+        if owner != params.session_id:
+            params = params.model_copy(update={"session_id": owner})
         async with self._awaiting_user(params.session_id):
             response = await self.conn.request_permission(permission_request(params))
         return permission_response(response)
 
     async def elicitation(self, params: ElicitationRequest) -> ElicitationResponse:
+        if params.session_id is not None:  # A child's tool call asks in the child
+            owner = self.subagents.session_of_tool_call(params.tool_call_id, params.session_id)
+            if owner != params.session_id:
+                params = params.model_copy(update={"session_id": owner})
         async with self._awaiting_user(params.session_id):
             response = await self.conn.create_elicitation(elicitation_request(params))
         return ElicitationResponse.model_validate(v2.to_wire(response))
@@ -216,3 +232,16 @@ class V2ClientAdapter:
 
     async def mcp_notification(self, params: MessageMcpNotification) -> None:
         return
+
+
+def _association_state(state: v2.StateSessionUpdate) -> v2.StateUpdate:
+    """A session's ``state_update`` as the state on its parent's ``subagent_update``."""
+    match state:
+        case v2.RequiresActionStateSessionUpdate():
+            return v2.RequiresActionStateUpdate()
+        case v2.RunningStateSessionUpdate():
+            return v2.RunningStateUpdate()
+        case v2.IdleStateSessionUpdate():
+            return v2.IdleStateUpdate(stop_reason=state.stop_reason)
+        case _:
+            return v2.UnknownStateUpdate()

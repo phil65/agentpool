@@ -7,6 +7,7 @@ from contextlib import asynccontextmanager
 import json
 import os
 import sys
+from types import MappingProxyType
 from typing import TYPE_CHECKING, Any
 
 from aclientp import RequestError
@@ -25,7 +26,7 @@ from agentpool_server.acp_server.v2_agent import AgentPoolV2Agent
 
 
 if TYPE_CHECKING:
-    from collections.abc import AsyncGenerator, AsyncIterator, Callable, Sequence
+    from collections.abc import AsyncGenerator, AsyncIterator, Callable, Mapping, Sequence
 
     from anyio.streams.memory import MemoryObjectReceiveStream, MemoryObjectSendStream
     from pydantic_ai import ModelMessage
@@ -66,11 +67,13 @@ class RecordingClient(Client):
 
     def __init__(self) -> None:
         self.updates: list[v2.SessionUpdate] = []
+        self.notifications: list[v2.UpdateSessionNotification] = []
         self.idle = asyncio.Event()
         self.permission_requests: list[v2.RequestPermissionRequest] = []
 
     async def session_update(self, params: v2.UpdateSessionNotification) -> None:
         self.updates.append(params.update)
+        self.notifications.append(params)
         if isinstance(params.update, v2.IdleStateSessionUpdate):
             self.idle.set()
 
@@ -112,11 +115,20 @@ async def _serve(
     *,
     debug_commands: bool = False,
     storage_url: str = "sqlite+aiosqlite:///:memory:",
+    toolsets: Sequence[Any] = (),
+    helpers: Mapping[str, Any] = MappingProxyType({}),
 ) -> AsyncGenerator[tuple[ClientSideConnection, RecordingClient, Agent[None, str]]]:
-    """A v2 connection to an agent with ``model`` (and ``tools``) in a pool."""
+    """A v2 connection to an agent with ``model`` (and ``tools``) in a pool.
+
+    ``helpers``: more agents of the pool, by name, with their model (e.g. subagents).
+    """
     storage = StorageConfig(providers=[SQLStorageConfig(url=storage_url)])
     async with AgentPool(AgentsManifest(storage=storage)) as pool:
-        agent = Agent(name="a", model=model, tools=list(tools), agent_pool=pool)
+        for name, helper_model in helpers.items():
+            await pool.add_agent(Agent(name=name, model=helper_model))
+        agent = Agent(
+            name="a", model=model, tools=list(tools), toolsets=list(toolsets), agent_pool=pool
+        )
         pool.register("a", agent)
         to_agent_send, to_agent_recv = anyio.create_memory_object_stream[bytes](100)
         to_client_send, to_client_recv = anyio.create_memory_object_stream[bytes](100)
@@ -896,3 +908,179 @@ async def test_a_background_task_is_cancelled_through_its_tool_call(tmp_path: An
 
         with pytest.raises(RequestError):  # Nothing left to cancel
             await conn.cancel_tool_call(request)
+
+
+async def _parent_idle(recorder: RecordingClient, session_id: str) -> v2.IdleStateSessionUpdate:
+    """The first idle state of ``session_id`` itself (children report theirs too)."""
+    for _ in range(250):
+        for update in _under(recorder, session_id):
+            if isinstance(update, v2.IdleStateSessionUpdate):
+                return update
+        await asyncio.sleep(0.02)
+    raise AssertionError(f"{session_id} never went idle")
+
+
+def _under(recorder: RecordingClient, session_id: str) -> list[v2.SessionUpdate]:
+    """The updates sent under ``session_id``, in order."""
+    return [n.update for n in recorder.notifications if n.session_id == session_id]
+
+
+async def test_a_subagent_run_is_a_child_session(tmp_path: Any) -> None:
+    """The task tool's run shows as a child session: announced, linked, its own updates."""
+    from pydantic_ai.models.test import TestModel
+
+    from agentpool_config.toolsets import SubagentToolsetConfig
+
+    async def lead(messages: list[ModelMessage], info: AgentInfo) -> AsyncIterator[Any]:
+        if len(messages) == 1:
+            args = {"agent_or_team": "helper", "prompt": "say hi", "description": "Greet"}
+            yield {0: DeltaToolCall(name="task", json_args=json.dumps(args), tool_call_id="c1")}
+        else:
+            yield "delegated"
+
+    helpers = {"helper": TestModel(custom_output_text="hi from the helper")}
+    toolsets = [SubagentToolsetConfig().get_provider()]
+    storage_url = f"sqlite+aiosqlite:///{tmp_path / 'history.db'}"  # Shared by both agents
+    served = _serve(
+        FunctionModel(stream_function=lead),
+        toolsets=toolsets,
+        helpers=helpers,
+        storage_url=storage_url,
+    )
+    async with (
+        served as (
+            conn,
+            recorder,
+            _,
+        )
+    ):
+        session_id = await _new_session(conn, str(tmp_path))
+        await conn.prompt(_prompt(session_id))
+        idle = await _parent_idle(recorder, session_id)  # The child's idle comes first
+        assert idle.stop_reason == "end_turn"
+
+    announcements = [u for u in _under(recorder, session_id) if isinstance(u, v2.SubagentUpdate)]
+    child_id = announcements[0].session_id
+    assert announcements[0].title == "helper"
+    assert isinstance(announcements[0].state, v2.RunningStateUpdate)
+    # Announced before any update under the child's ID
+    first_child = next(i for i, n in enumerate(recorder.notifications) if n.session_id == child_id)
+    announced_at = next(
+        i
+        for i, n in enumerate(recorder.notifications)
+        if isinstance(n.update, v2.SubagentUpdate) and n.update.session_id == child_id
+    )
+    assert announced_at < first_child
+    # The task tool call shows it
+    links = [u for u in _under(recorder, session_id) if isinstance(u, v2.ToolCallContentChunk)]
+    assert any(
+        isinstance(u.content, v2.SessionReference) and u.content.session_id == child_id
+        for u in links
+    )
+    # The helper's answer is the child's, not the parent's
+    child_text = "".join(
+        u.content.text
+        for u in _under(recorder, child_id)
+        if isinstance(u, v2.AgentMessageChunk) and isinstance(u.content, v2.TextContent)
+    )
+    assert "hi from the helper" in child_text
+    parent_text = "".join(
+        u.content.text
+        for u in _under(recorder, session_id)
+        if isinstance(u, v2.AgentMessageChunk) and isinstance(u.content, v2.TextContent)
+    )
+    assert "hi from the helper" not in parent_text
+    # It ended: idle on the child, mirrored on the parent's association
+    state_kinds = (
+        v2.RunningStateSessionUpdate,
+        v2.IdleStateSessionUpdate,
+        v2.RequiresActionStateSessionUpdate,
+        v2.UnknownStateSessionUpdate,
+    )
+    child_states = [u for u in _under(recorder, child_id) if isinstance(u, state_kinds)]
+    assert isinstance(child_states[-1], v2.IdleStateSessionUpdate)
+    assert child_states[-1].stop_reason == "end_turn"
+    mirrored = [a.state for a in announcements if v2.is_set(a.state)]
+    assert isinstance(mirrored[-1], v2.IdleStateUpdate)
+
+
+async def test_a_stoppable_child_is_cancelled_and_refuses_other_methods(tmp_path: Any) -> None:
+    """A child advertising cancel stops its task on session/cancel; prompt is refused."""
+    from pydantic_ai import TextPart
+
+    from agentpool.agents.agent_tasks import TaskOutput
+    from agentpool.agents.events import (
+        PartStartEvent,
+        SubAgentEvent,
+        TaskFinishedEvent,
+        TaskStartedEvent,
+    )
+
+    async def start_research(ctx: AgentContext) -> str:
+        """Start a research subagent in the background."""
+
+        async def research() -> None:
+            try:
+                await asyncio.sleep(30)
+            except asyncio.CancelledError:
+                finished = TaskFinishedEvent(task_id="r1", status="cancelled")
+                await ctx.agent.emit_event(finished)
+                raise
+
+        async def no_output() -> TaskOutput:
+            return TaskOutput(output="", total_bytes=0)
+
+        started = TaskStartedEvent(
+            task_id="r1",
+            kind="agent",
+            description="research",
+            tool_call_id=ctx.tool_call_id,
+            background=True,
+            stoppable=True,
+        )
+        await ctx.events.emit_event(started)
+        ctx.agent.register_local_task("r1", asyncio.create_task(research()), no_output)
+        text = PartStartEvent(index=0, part=TextPart(content="looking into it"))
+        await ctx.events.emit_event(
+            SubAgentEvent(
+                source_name="researcher",
+                source_type="agent",
+                event=text,
+                parent_tool_call_id=ctx.tool_call_id,
+            )
+        )
+        return "started"
+
+    async def stream(messages: list[ModelMessage], info: AgentInfo) -> AsyncIterator[Any]:
+        if len(messages) == 1:
+            yield {0: DeltaToolCall(name="start_research", json_args="{}", tool_call_id="c1")}
+        else:
+            yield "it runs"
+
+    async with _serve(FunctionModel(stream_function=stream), [start_research]) as (
+        conn,
+        recorder,
+        _,
+    ):
+        session_id = await _new_session(conn, str(tmp_path))
+        await conn.prompt(_prompt(session_id))
+        idle = await _parent_idle(recorder, session_id)
+        assert idle.stop_reason == "end_turn"  # The child goes on
+        [announce, *_] = [
+            u for u in _under(recorder, session_id) if isinstance(u, v2.SubagentUpdate)
+        ]
+        child_id = announce.session_id
+        assert isinstance(announce.capabilities, v2.SubagentSessionCapabilities)
+        assert v2.is_set(announce.capabilities.cancel)
+
+        with pytest.raises(RequestError):
+            await conn.prompt(_prompt(child_id))
+        await conn.cancel(v2.CancelSessionNotification(session_id=child_id))
+        for _ in range(100):
+            states = [
+                u for u in _under(recorder, child_id) if isinstance(u, v2.IdleStateSessionUpdate)
+            ]
+            if states:
+                break
+            await asyncio.sleep(0.02)
+        assert states[-1].stop_reason == "cancelled"
