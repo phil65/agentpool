@@ -62,6 +62,7 @@ if TYPE_CHECKING:
         PermissionResult,
         PostToolUseHookInput,
         PreToolUseHookInput,
+        PreToolUseHookSpecificOutput,
         ResultMessage,
         StopReason,
         SyncHookJSONOutput,
@@ -499,14 +500,18 @@ def build_sdk_hooks_from_agent_hooks(
                     }
                 }
 
-            # Check for modified input
+            # "ask": the CLI asks for permission (our tool confirmation) even if its mode
+            # wouldn't; modified input goes along either way
             output: SyncHookJSONOutput = {}
+            specific: PreToolUseHookSpecificOutput = {"hookEventName": "PreToolUse"}
+            if decision == "ask":
+                specific["permissionDecision"] = "ask"
+                if reason := pre_result.get("reason"):
+                    specific["permissionDecisionReason"] = reason
             if modified := pre_result.get("modified_input"):
-                output["hookSpecificOutput"] = {
-                    "hookEventName": "PreToolUse",
-                    "updatedInput": modified,
-                }
-
+                specific["updatedInput"] = modified
+            if len(specific) > 1:
+                output["hookSpecificOutput"] = specific
             return output
 
         result["PreToolUse"] = [HookMatcher(matcher="*", hooks=[on_pre_tool_use])]  # pyright: ignore[reportArgumentType]

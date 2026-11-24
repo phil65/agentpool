@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, Literal
 
 from pydantic_ai.messages import ToolReturnPart
 from pydantic_ai.models.test import TestModel
@@ -118,3 +118,65 @@ async def test_a_pre_tool_hook_denial_is_reported_and_the_turn_goes_on() -> None
     [denied] = _returns(result)
     assert denied.outcome == "denied"
     assert "not on Fridays" in str(denied.content)
+
+
+def _hooked(
+    calls: list[str],
+    decision: Literal["allow", "deny", "ask"],
+    *,
+    modified: dict[str, str] | None = None,
+) -> Any:
+    from agentpool.hooks import AgentHooks, CallableHook, HookResult
+
+    def hook(**_: object) -> HookResult:
+        calls.append(f"hook:{decision}")
+        result: HookResult = {"decision": decision}
+        if modified is not None:
+            result["modified_input"] = modified
+        return result
+
+    return AgentHooks(pre_tool_use=[CallableHook(event="pre_tool_use", fn=hook)])
+
+
+async def test_a_pre_tool_hook_that_asks_makes_the_user_decide() -> None:
+    calls: list[str] = []
+    provider = MockInputProvider(tool_confirmation=Approve())
+    model = TestModel(call_tools=["delete_files"], custom_output_text="done")
+    agent = Agent("cleaner", model=model, input_provider=provider, hooks=_hooked(calls, "ask"))
+    agent.tools.register_tool(_tool(calls, confirm=False))  # Needs no confirmation itself
+    await agent.run("clean up")
+    assert [c.method for c in provider.calls] == ["get_tool_confirmation"]
+    assert calls == ["hook:ask", "a"]  # The hook ran once, before asking
+
+
+async def test_hook_input_changes_are_shown_and_kept_through_approval() -> None:
+    calls: list[str] = []
+    provider = MockInputProvider(tool_confirmation=Approve())
+    model = TestModel(call_tools=["delete_files"], custom_output_text="done")
+    hooks = _hooked(calls, "allow", modified={"pattern": "*.tmp"})
+    agent = Agent("cleaner", model=model, input_provider=provider, hooks=hooks)
+    agent.tools.register_tool(_tool(calls))
+    await agent.run("clean up")
+    assert provider.calls[0].args[0].tool_input == {"pattern": "*.tmp"}  # What would run
+    assert calls == ["hook:allow", "*.tmp"]
+
+
+async def test_the_users_edited_arguments_win_over_hook_input() -> None:
+    calls: list[str] = []
+    provider = MockInputProvider(tool_confirmation=Approve(args={"pattern": "*.log"}))
+    model = TestModel(call_tools=["delete_files"], custom_output_text="done")
+    hooks = _hooked(calls, "allow", modified={"pattern": "*.tmp"})
+    agent = Agent("cleaner", model=model, input_provider=provider, hooks=hooks)
+    agent.tools.register_tool(_tool(calls))
+    await agent.run("clean up")
+    assert calls == ["hook:allow", "*.log"]
+
+
+async def test_claude_code_passes_a_hooks_ask_to_the_cli() -> None:
+    from agentpool.agents.claude_code_agent.converters import build_sdk_hooks_from_agent_hooks
+
+    sdk_hooks = build_sdk_hooks_from_agent_hooks(_hooked([], "ask"), "cc")
+    [matcher] = sdk_hooks["PreToolUse"]
+    [callback] = matcher.hooks
+    output = await callback({"tool_name": "Bash", "tool_input": {}}, "tu1", {})  # type: ignore[arg-type]
+    assert output["hookSpecificOutput"]["permissionDecision"] == "ask"  # type: ignore[index, typeddict-item]

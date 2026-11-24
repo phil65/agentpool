@@ -28,8 +28,12 @@ if TYPE_CHECKING:
     from pydantic_ai.tools import DeferredToolApprovalResult, DeferredToolRequests
 
     from agentpool.agents.native_agent.hook_manager import NativeAgentHookManager
+    from agentpool.hooks import HookResult
     from agentpool.tools.base import Tool
 
+
+HOOK_INPUT_KEY = "hook_input"
+"""Approval metadata key of the pre-tool hooks' input changes (applied once approved)."""
 
 RUN_CTX = "_run_ctx"
 """Name of the RunContext parameter pydantic-ai sees on a wrapped tool that takes none."""
@@ -99,32 +103,14 @@ def wrap_tool[TReturn](
         tool_input: dict[str, Any],
         *args: Any,
         **kwargs: Any,
-    ) -> TReturn | ToolReturn | ToolDenied:
-        """Execute tool with pre/post hooks."""
-        # Pre-tool hooks
-        if hooks:
-            pre_result = await hooks.run_pre_tool_hooks(
-                agent_name=agent_ctx.node_name,
-                tool_name=tool.name,
-                tool_input=tool_input,
-                session_id=None,  # Could be passed through if needed
-                env=agent_ctx.agent.env,
-            )
-            if pre_result["decision"] == "deny":  # Told to the model, which goes on
-                reason = pre_result.get("reason", "Blocked by pre-tool hook")
-                return ToolDenied(f"Tool {tool.name!r} was blocked: {reason}")
-            # Apply modified input if provided
-            if modified := pre_result.get("modified_input"):
-                kwargs.update(modified)
-
-        # Execute the tool
+    ) -> TReturn | ToolReturn:
+        """Execute the tool, then run the post-tool hooks."""
         start_time = time.perf_counter()
         result: TReturn | ToolResult | ToolReturn = await execute_fn(*args, **kwargs)
         duration_ms = (time.perf_counter() - start_time) * 1000
         # Convert AgentPool ToolResult to pydantic-ai ToolReturn
         if isinstance(result, ToolResult):
             result = result.to_pydantic_ai()
-        # Post-tool hooks
         if hooks:
             post_result = await hooks.run_post_tool_hooks(
                 agent_name=agent_ctx.node_name,
@@ -135,20 +121,16 @@ def wrap_tool[TReturn](
                 session_id=None,
                 env=agent_ctx.agent.env,
             )
-
             # Inject additional context if provided by hooks
             if additional := post_result.get("additional_context"):
                 result = _inject_additional_context(result, additional)
-
         return result
 
     async def wrapped(
         ctx: RunContext, *args: Any, **kwargs: Any
     ) -> TReturn | ToolReturn | ToolDenied:
-        # Asked through pydantic-ai: the call is deferred, the user's decision comes back
-        # from the approval handler, and an approved call runs again (tool_call_approved).
-        if not ctx.tool_call_approved and needs_approval(tool, agent_ctx):
-            raise ApprovalRequired
+        if (denied := await _gate_call(tool, agent_ctx, hooks, ctx, kwargs)) is not None:
+            return denied
         if agent_ctx.data is None:
             agent_ctx.data = ctx.deps
         if agent_ctx_key:  # Inject a per-call AgentContext (avoids races between calls)
@@ -191,6 +173,51 @@ def wrap_tool[TReturn](
     return wrapped
 
 
+async def _gate_call(
+    tool: Tool,
+    agent_ctx: AgentContext,
+    hooks: NativeAgentHookManager | None,
+    ctx: RunContext,
+    kwargs: dict[str, Any],
+) -> ToolDenied | None:
+    """Pre-tool hooks and the user's decision for a call, before it runs.
+
+    The hooks run first, once: a denial is returned (told to the model), ``"ask"`` asks the
+    user even for a tool that needs no confirmation. Asking defers the call through
+    pydantic-ai (``ApprovalRequired``, answered by :func:`approval_handler`); the approved
+    call comes back (``tool_call_approved``) with the hooks' input changes kept in the
+    approval. ``kwargs`` get those changes.
+
+    Raises:
+        ApprovalRequired: The call waits for the user's decision
+    """
+    if ctx.tool_call_approved:
+        approval = ctx.tool_call_metadata
+        if isinstance(approval, dict) and isinstance(kept := approval.get(HOOK_INPUT_KEY), dict):
+            kwargs.update(kept)
+        return None
+    pre_result: HookResult = {}
+    if hooks:
+        pre_result = await hooks.run_pre_tool_hooks(
+            agent_name=agent_ctx.node_name,
+            tool_name=tool.name,
+            tool_input=dict(kwargs),
+            session_id=None,  # Could be passed through if needed
+            env=agent_ctx.agent.env,
+        )
+    modified = pre_result.get("modified_input") or {}
+    match pre_result.get("decision"):
+        case "deny":
+            reason = pre_result.get("reason", "Blocked by pre-tool hook")
+            return ToolDenied(f"Tool {tool.name!r} was blocked: {reason}")
+        case "ask":
+            raise ApprovalRequired(metadata={HOOK_INPUT_KEY: modified})
+    if needs_approval(tool, agent_ctx):
+        raise ApprovalRequired(metadata={HOOK_INPUT_KEY: modified})
+    kwargs.update(modified)
+    return None
+
+
 def needs_approval(tool: Tool, agent_ctx: AgentContext) -> bool:
     """Whether a call of ``tool`` waits for the user's decision (the agent's confirmation mode)."""
     match agent_ctx.native_agent.tool_confirmation_mode:
@@ -216,26 +243,31 @@ def approval_handler(agent_ctx: AgentContext, tools: Mapping[str, Tool]) -> Hand
 
     async def decide(ctx: RunContext[Any], requests: DeferredToolRequests) -> DeferredToolResults:
         decisions: dict[str, bool | DeferredToolApprovalResult] = {}
+        metadata: dict[str, dict[str, Any]] = {}
         stopped = False
         for call in requests.approvals:
             if stopped:
                 decisions[call.tool_call_id] = ToolDenied(Deny(stop=True).reason(call.tool_name))
                 continue
+            hook_input = requests.metadata.get(call.tool_call_id, {}).get(HOOK_INPUT_KEY) or {}
             call_ctx = replace(
                 agent_ctx,
                 tool_name=call.tool_name,
                 tool_call_id=call.tool_call_id,
-                tool_input=safe_args_as_dict(call),
+                tool_input=safe_args_as_dict(call) | hook_input,  # What would run
             )
             tool = tools.get(call.tool_name)
             match await call_ctx.decide_tool(tool.description or "" if tool else ""):
-                case Approve(args=args):
+                case Approve(args=None):
+                    decisions[call.tool_call_id] = ToolApproved()
+                    metadata[call.tool_call_id] = {HOOK_INPUT_KEY: hook_input}
+                case Approve(args=args):  # The user's arguments, as they edited them
                     decisions[call.tool_call_id] = ToolApproved(override_args=args)
                 case Deny() as denial:
                     decisions[call.tool_call_id] = ToolDenied(denial.reason(call.tool_name))
                     stopped = denial.stop
         if stopped:
             agent_ctx.stop_turn()
-        return DeferredToolResults(approvals=decisions)
+        return DeferredToolResults(approvals=decisions, metadata=metadata)
 
     return HandleDeferredToolCalls(handler=decide)
