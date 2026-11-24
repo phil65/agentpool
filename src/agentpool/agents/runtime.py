@@ -30,6 +30,7 @@ from typing import TYPE_CHECKING, Any
 
 from pydantic_ai import RunUsage
 
+from agentpool.agents.agent_tasks import RunningTask, track_task
 from agentpool.agents.events import (
     DiffContentItem,
     NoticeEvent,
@@ -81,6 +82,8 @@ class SessionRuntime[TDeps = Any, TResult = Any]:
         self.turn_message_id: str | None = None
         self.cost = Decimal(0)
         """Cost of this session's turns on this runtime so far (USD)."""
+        self.tasks: dict[str, RunningTask] = {}
+        """Tasks this session's turns started that still run, by task id."""
         """ID of the user message of the prompt group running (e.g. file changes record it)."""
 
     @property
@@ -88,6 +91,7 @@ class SessionRuntime[TDeps = Any, TResult = Any]:
         """Nothing runs, and nothing waits for the next turn."""
         return (
             self.active_runs == 0
+            and not self.tasks  # Background tasks outlive their turn
             and not self.injections.has_queued()
             and not self.injections.has_pending()
             and len(self.staged) == 0
@@ -385,6 +389,7 @@ class SessionRuntime[TDeps = Any, TResult = Any]:
             ):
                 await resolved_handler(context, event)
                 self._record_file_changes(event)
+                self.track_task(event)
                 yield event
                 # Capture final message from StreamCompleteEvent
                 if isinstance(event, StreamCompleteEvent):
@@ -423,6 +428,12 @@ class SessionRuntime[TDeps = Any, TResult = Any]:
                 session_id=effective_session_id,
                 store_history=store_history,
             )
+
+    def track_task(self, event: RichAgentStreamEvent[Any]) -> None:
+        """Record a task event; drop this runtime once its last task ends between turns."""
+        track_task(self.tasks, event, self.session.session_id)
+        if not self.is_default and self.idle:
+            self.agent._runtimes.pop(self.session.session_id, None)
 
     def _record_file_changes(self, event: RichAgentStreamEvent[Any]) -> None:
         """Record the diffs of a tool's progress as file changes of this turn.

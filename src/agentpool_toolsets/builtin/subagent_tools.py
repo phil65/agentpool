@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import datetime as dt
+import functools
 import re
 from typing import TYPE_CHECKING, Any, Literal
 
@@ -29,6 +30,7 @@ if TYPE_CHECKING:
 
     from fsspec.asyn import AsyncFileSystem
 
+    from agentpool.agents.agent_tasks import TaskOutput
     from agentpool.agents.events import RichAgentStreamEvent
     from agentpool.agents.events.events import SubAgentType
     from agentpool.messaging import MessageNode
@@ -183,6 +185,60 @@ async def _stream_task_to_fs(
                 task_id=task_id, status="completed", summary=summary, output_ref=output_path
             )
         )
+
+
+async def _read_task_output(fs: WrapperFileSystem, path: str) -> TaskOutput:
+    """What a background task has written to its output file so far."""
+    from agentpool.agents.agent_tasks import TaskOutput
+
+    try:
+        content = await fs._cat_file(path)
+    except FileNotFoundError:  # Nothing written yet
+        content = b""
+    data = content if isinstance(content, bytes) else str(content).encode()
+    return TaskOutput(output=data.decode("utf-8", errors="replace"), total_bytes=len(data))
+
+
+async def _start_in_background(
+    ctx: AgentContext,
+    description: str,
+    source_name: str,
+    stream: AsyncIterator[RichAgentStreamEvent[Any]],
+) -> str:
+    """Run a subagent task in the background, its output streamed to the internal fs.
+
+    The task is stoppable and readable through the agent (``/tasks``) while it runs.
+    Returns what the model is told.
+    """
+    task_id = _generate_task_id(description)
+    output_path = f"/tasks/{task_id}/output.md"
+    ctx.internal_fs.mkdirs(f"/tasks/{task_id}", exist_ok=True)
+    fs = WrapperFileSystem(ctx.internal_fs)
+    await ctx.events.emit_event(
+        TaskStartedEvent(
+            task_id=task_id,
+            kind="agent",
+            description=description,
+            tool_call_id=ctx.tool_call_id,
+            background=True,
+            agent_type=source_name,
+        )
+    )
+    task = asyncio.create_task(
+        _stream_task_to_fs(ctx=ctx, fs=fs, task_id=task_id, source_name=source_name, stream=stream),
+        name=f"async_task_{task_id}",
+    )
+    _background_tasks.add(task)  # A reference keeps it from being collected
+    task.add_done_callback(_background_tasks.discard)
+    ctx.agent.register_local_task(
+        task_id, task, functools.partial(_read_task_output, fs, output_path)
+    )
+    return (
+        f"Task started in background.\n"
+        f"Task ID: {task_id}\n"
+        f"Output will be written to: {output_path}\n"
+        f"Use the read tool to check the output file for results."
+    )
 
 
 class SubagentTools(StaticResourceProvider):
@@ -373,46 +429,8 @@ class SubagentTools(StaticResourceProvider):
         )
 
         if async_mode:
-            # Generate task ID and start background task
-            task_id = _generate_task_id(description)
-            output_path = f"/tasks/{task_id}/output.md"
-
-            # Create the task directory
-            fs = ctx.internal_fs
-            fs.mkdirs(f"/tasks/{task_id}", exist_ok=True)
-            fs = WrapperFileSystem(fs)
-            # Start streaming to filesystem in background
-            # Store task reference to prevent garbage collection
-            await ctx.events.emit_event(
-                TaskStartedEvent(
-                    task_id=task_id,
-                    kind="agent",
-                    description=description,
-                    tool_call_id=ctx.tool_call_id,
-                    background=True,
-                    agent_type=agent_or_team,
-                )
-            )
-            task = asyncio.create_task(
-                _stream_task_to_fs(
-                    ctx=ctx,
-                    fs=fs,
-                    task_id=task_id,
-                    source_name=agent_or_team,
-                    stream=run_stream,
-                ),
-                name=f"async_task_{task_id}",
-            )
-            # Add task to a set to prevent GC while running
-            _background_tasks.add(task)
-            task.add_done_callback(_background_tasks.discard)
-
-            return (
-                f"Task started in background.\n"
-                f"Task ID: {task_id}\n"
-                f"Output will be written to: {output_path}\n"
-                f"Use the read tool to check the output file for results.{continue_note}"
-            )
+            started = await _start_in_background(ctx, description, agent_or_team, run_stream)
+            return f"{started}{continue_note}"
 
         # Synchronous mode - stream with SubAgentEvent wrapping
         task_id = ctx.tool_call_id or _generate_task_id(description)

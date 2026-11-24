@@ -33,7 +33,7 @@ from agentpool.utils.time_utils import get_now
 
 
 if TYPE_CHECKING:
-    from collections.abc import AsyncIterator, Generator, Sequence
+    from collections.abc import AsyncIterator, Awaitable, Generator, Sequence
     from contextlib import AbstractAsyncContextManager
     from datetime import datetime
 
@@ -45,6 +45,7 @@ if TYPE_CHECKING:
     from tokonomics.model_discovery.model_info import ModelInfo
     from upathtools.filesystems import OverlayFileSystem
 
+    from agentpool.agents.agent_tasks import LocalTask, RunningTask, TaskOutput
     from agentpool.agents.auth import AuthStatus
     from agentpool.agents.context import AgentContext
     from agentpool.agents.definition import AgentDefinition
@@ -288,6 +289,8 @@ class BaseAgent[TDeps = None, TResult = str](MessageNode[TDeps, TResult]):
         )
         """Runtime of the default session (runs without an explicit ``session``)."""
         self._runtimes: dict[str, SessionRuntime[TDeps, TResult]] = {}
+        self._local_tasks: dict[str, LocalTask] = {}
+        """Tasks agentpool runs for this agent's turns (see :meth:`register_local_task`)."""
         """Runtimes of explicit sessions by session ID, while they run or have input waiting."""
         self.definition: AgentDefinition | None = None
         """What the agent was built from (set by the pool for its manifest's agents)."""
@@ -368,6 +371,84 @@ class BaseAgent[TDeps = None, TResult = str](MessageNode[TDeps, TResult]):
         """
         running = [r for r in self._runtimes_of(session_id) if r.active_runs]
         return running[0].session if running else None
+
+    def running_tasks(self, session_id: str | None = None) -> list[RunningTask]:
+        """Tasks this agent's turns started that still run (of ``session_id``, else all)."""
+        runtimes = [self._default_runtime, *self._runtimes.values()]
+        return [
+            task
+            for runtime in runtimes
+            if session_id is None or runtime.session.session_id == session_id
+            for task in runtime.tasks.values()
+        ]
+
+    async def stop_task(self, task_id: str) -> None:
+        """Stop running task ``task_id`` (a subagent run or a background command).
+
+        The task then finishes (``TaskFinishedEvent``, cancelled) and leaves
+        :meth:`running_tasks`.
+
+        Raises:
+            KeyError: If no task ``task_id`` runs
+            UnsupportedOperationError: If the agent can't stop single tasks
+        """
+        runtime, task = self._running_task(task_id)
+        if (local := self._local_tasks.get(task_id)) is not None:
+            local.task.cancel()  # It reports its end (cancelled) itself
+            return
+        with activate(self, runtime):  # The session that started it
+            await self._stop_task(task)
+
+    async def task_output(self, task_id: str) -> TaskOutput:
+        """What running task ``task_id`` has written so far.
+
+        Raises:
+            KeyError: If no task ``task_id`` runs
+            UnsupportedOperationError: If the agent can't read a task's output
+        """
+        runtime, task = self._running_task(task_id)
+        if (local := self._local_tasks.get(task_id)) is not None:
+            return await local.read_output()
+        with activate(self, runtime):
+            return await self._task_output(task)
+
+    def register_local_task(
+        self,
+        task_id: str,
+        task: asyncio.Task[Any],
+        read_output: Callable[[], Awaitable[TaskOutput]],
+    ) -> None:
+        """Make a task agentpool runs itself stoppable and readable (until it is done).
+
+        For tools that start work in the background (e.g. a subagent in async mode); the
+        task reports itself with task events, like the backend's tasks.
+        """
+        from agentpool.agents.agent_tasks import LocalTask
+
+        self._local_tasks[task_id] = LocalTask(task=task, read_output=read_output)
+        task.add_done_callback(lambda _: self._local_tasks.pop(task_id, None))
+
+    def _running_task(self, task_id: str) -> tuple[SessionRuntime[TDeps, TResult], RunningTask]:
+        for runtime in (self._default_runtime, *self._runtimes.values()):
+            if (task := runtime.tasks.get(task_id)) is not None:
+                return runtime, task
+        known = ", ".join(sorted(t.task_id for t in self.running_tasks())) or "none"
+        msg = f"No running task {task_id!r} (running: {known})"
+        raise KeyError(msg)
+
+    async def _stop_task(self, task: RunningTask) -> None:
+        """Stop ``task`` on the backend (its session's runtime is active)."""
+        from agentpool.agents.exceptions import UnsupportedOperationError
+
+        reason = "its backend can't stop a single task (interrupting the turn stops them)"
+        raise UnsupportedOperationError(self.name, f"stop task {task.task_id!r}", reason)
+
+    async def _task_output(self, task: RunningTask) -> TaskOutput:
+        """``task``'s output from the backend (its session's runtime is active)."""
+        from agentpool.agents.exceptions import UnsupportedOperationError
+
+        reason = "its backend doesn't share a task's output"
+        raise UnsupportedOperationError(self.name, f"read task {task.task_id!r}", reason)
 
     def stop_turn_soon(self, session_id: str | None = None) -> None:
         """Interrupt the turn of ``session_id`` (else the running one) in a task of its own.
@@ -966,6 +1047,7 @@ class BaseAgent[TDeps = None, TResult = str](MessageNode[TDeps, TResult]):
         if self._active_runs:
             await self._event_queue.put(event)
             return
+        self._runtime.track_task(event)  # E.g. a background task finishing
         background = BaseAgent.BackgroundEvent(
             agent_name=self.name, session_id=self.session_id, event=event
         )

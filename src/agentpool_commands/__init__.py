@@ -23,6 +23,7 @@ from agentpool_commands.mcp import (
 )
 from agentpool_commands.models import SetModelCommand
 from agentpool_commands.prompts import ListPromptsCommand, ShowPromptCommand
+from agentpool_commands.tasks import TasksCommand
 from agentpool_commands.resources import (
     ListResourcesCommand,
     ShowResourceCommand,
@@ -88,6 +89,7 @@ def get_agent_commands(**kwargs: Any) -> Sequence[BaseCommand]:
         "enable_add_mcp_server": AddMCPServerCommand(),
         "enable_add_remote_mcp_server": AddRemoteMCPServerCommand(),
         "enable_mcp": MCPCommand(),
+        "enable_tasks": TasksCommand(),
         "enable_search_history": SearchHistoryCommand(),
         "enable_get_logs": GetLogsCommand(),
     }
@@ -137,6 +139,7 @@ def get_commands(
     enable_add_mcp_server: bool = True,
     enable_add_remote_mcp_server: bool = True,
     enable_mcp: bool = True,
+    enable_tasks: bool = True,
     enable_search_history: bool = True,
     enable_get_logs: bool = True,
     enable_create_agent: bool = True,
@@ -176,6 +179,7 @@ def get_commands(
         "enable_add_mcp_server": enable_add_mcp_server,
         "enable_add_remote_mcp_server": enable_add_remote_mcp_server,
         "enable_mcp": enable_mcp,
+        "enable_tasks": enable_tasks,
         "enable_search_history": enable_search_history,
         "enable_get_logs": enable_get_logs,
     }

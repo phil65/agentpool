@@ -74,11 +74,23 @@ output); ACP's display terminal and OpenCode's metadata use it. Also fixed: `too
 comes as a single value for one tool result, so Edit/Read/Write metadata was never built.
 Open: no `tool_progress` messages seen in probes (elapsed time of long tools).
 
-## 9. Background tasks: stop and output
+## 9. Background tasks: stop and output (mostly done)
 
-We report task events. Zed also stops tasks (`stop_task`), reads their output
-(`get_task_output`), and polls the output file of a backgrounded Bash command
-(`background-output.ts`).
+Done 2026-11-24: each session's runtime keeps the tasks its turns started until they finish
+(also between turns), and agents list, stop and read them (`BaseAgent.running_tasks`,
+`stop_task`, `task_output`; `/tasks`, `/tasks stop <id>`, `/tasks output <id>`). Claude Code
+stops and reads them through the CLI process of their session (`stop_task`,
+`get_task_output`); tasks agentpool runs itself (the subagent toolset's async mode, for every
+agent type) are cancelled and read from the internal filesystem.
+
+Open:
+- `per_task_stop_affordance` is not declared, so an interrupt still stops the CLI's background
+  agents too. Declaring it spares them (Zed's behaviour), but then only `/tasks stop` ends
+  them: decide whether to declare it, and whether as an option.
+- No protocol surface beyond `/tasks`: ACP v2's `tool_call/cancel` (a task's starting tool
+  call) needs the v2 server off the v1 translation (`ACP_V2_SERVER.md`); OpenCode V2 only
+  lists jobs.
+- Polling a backgrounded Bash command's output file (Zed's `background-output.ts`).
 
 ## Done: 10. `/mcp` command
 

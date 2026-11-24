@@ -85,6 +85,7 @@ if TYPE_CHECKING:
     from tokonomics.model_names import AnthropicMaxModelName
     from toprompt import AnyPromptType
 
+    from agentpool.agents.agent_tasks import RunningTask, TaskOutput
     from agentpool.agents.auth import AuthStatus
     from agentpool.agents.events import RichAgentStreamEvent
     from agentpool.agents.modes import ConfigOption
@@ -656,6 +657,26 @@ class ClaudeCodeAgent[TDeps = None, TResult = str](BaseAgent[TDeps, TResult]):
         for name, config in self._mcp_servers.items():
             result[name] = MCPServerStatus(name=name, status="connected", server_type=config.type)
         return result
+
+    async def _stop_task(self, task: RunningTask) -> None:
+        """Stop a task through the CLI process of the session that started it."""
+        await self._task_client(task).stop_task(task.task_id)
+
+    async def _task_output(self, task: RunningTask) -> TaskOutput:
+        """Read a task's output so far from the CLI process of its session."""
+        from agentpool.agents.agent_tasks import TaskOutput
+
+        result = await self._task_client(task).get_task_output(task.task_id)
+        return TaskOutput(
+            output=result.output, total_bytes=result.total_bytes, truncated=result.truncated
+        )
+
+    def _task_client(self, task: RunningTask) -> ClaudeSDKClient:
+        """The SDK client of the CLI process running ``task`` (its session is active)."""
+        if (client := self._client) is None:
+            reason = "the CLI process of its session is gone"
+            raise UnsupportedOperationError(self.name, f"act on task {task.task_id!r}", reason)
+        return client
 
     async def reconnect_mcp_server(self, name: str) -> None:
         """Reconnect the CLI's MCP server ``name``, in every session's CLI process."""
