@@ -188,9 +188,10 @@ clawd-code-sdk 1.3.0 sends MCP server configs in the initialize request
 bridge's and configured servers' `env` / `headers` no longer show in `ps`. Connecting fails if
 the CLI doesn't report `mcp_servers_applied` (Claude Code < 2.1.261).
 
-## 20. `compact()` and `fork_session()`
+## Done: 20. `compact()` and `fork_session()`
 
-`AgentCapabilities` says Claude Code can't compact or fork on demand, and both raise
-`UnsupportedOperationError` (rewriting our copy changed nothing for the CLI). Wire them up:
-`compact()` as a `/compact` turn (`_compact_idle` already sends it), `fork_session()` through the
-SDK's fork (`clawd_code_sdk` `fork_session`, which copies the transcript with remapped IDs).
+Done 2026-11-24. `compact()` runs the CLI's `/compact` as an unstored turn of the session and
+returns once it compacted (a failure is raised); `fork_session()` copies the CLI's session
+(`clawd_code_sdk.fork_session`, fresh message UUIDs) and the fork's turns resume the copy.
+Whole sessions only: our message IDs are not the CLI's. Both refuse before the session's first
+turn. `native_compaction` and `native_fork` are on.

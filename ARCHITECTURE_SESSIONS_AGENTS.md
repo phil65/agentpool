@@ -738,7 +738,7 @@ and the migration step (§6) that should make the stopgap unnecessary.
   `set_instructions()`, environment on the runtime's exxec environment.
 - **Status (2026-11-22):** `compact()` exists, with `AgentCapabilities.native_compaction` saying
   where it works (native, Codex, OpenCode V2); the V2 server uses it and refuses up front for the
-  others. Claude Code's `/compact` isn't wired. Session instructions and env are still open:
+  others. Claude Code's `/compact` is wired since 2026-11-24. Session instructions and env are still open:
   `SessionOverrides` has `model` and `modes` (config options) only, since prepending
   instructions to the user prompt (tried) stored them again every turn.
 - **Status (2026-11-22, later):** the mechanism exists: `SessionEnvironment` (execution

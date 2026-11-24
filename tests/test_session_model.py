@@ -309,19 +309,19 @@ def test_registry_drops_least_recently_used_and_children_go_with_parent() -> Non
     assert len(registry) == 0
 
 
-async def test_agents_whose_backend_keeps_the_conversation_refuse_compact_and_fork() -> None:
-    """Rewriting our copy would change nothing for them: they say so instead of faking it."""
+async def test_agents_compact_and_fork_only_a_backend_session_that_exists() -> None:
+    """Before a backend session exists there is nothing to compact or fork: they say so."""
     from agentpool.agents import ClaudeCodeAgent, CodexAgent, OpenCodeV2Agent
     from agentpool.agents.exceptions import UnsupportedOperationError
 
-    claude = ClaudeCodeAgent(name="claude")
-    assert not claude.capabilities.native_compaction
-    with pytest.raises(UnsupportedOperationError, match="cannot compact"):
-        await claude.compact()
-    with pytest.raises(UnsupportedOperationError, match="cannot fork"):
-        await claude.fork_session()
-    # Native compaction and fork, but only of the running backend session, and whole
-    for agent in (CodexAgent(name="codex"), OpenCodeV2Agent(name="opencode")):
+    # Native compaction and fork, but only of a backend session that exists, and whole
+    for agent in (
+        ClaudeCodeAgent(name="claude"),
+        CodexAgent(name="codex"),
+        OpenCodeV2Agent(name="opencode"),
+    ):
+        assert agent.capabilities.native_compaction
+        assert agent.capabilities.native_fork
         with pytest.raises(UnsupportedOperationError):
             await agent.compact()  # Not connected: no backend session yet
         with pytest.raises(UnsupportedOperationError):

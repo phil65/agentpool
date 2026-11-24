@@ -94,8 +94,10 @@ if TYPE_CHECKING:
     from agentpool.delegation import AgentPool
     from agentpool.hooks import AgentHooks
     from agentpool.messaging import MessageHistory
+    from agentpool.messaging.compaction import CompactionPipeline
     from agentpool.models.claude_code_agents import ClaudeCodeAgentConfig, SettingSource, ToolName
     from agentpool.resource_providers import ResourceProvider
+    from agentpool.sessions import Session
     from agentpool.storage import StorageManager
     from agentpool.ui.base import InputProvider
     from agentpool_config.events import EventConfig
@@ -172,7 +174,8 @@ class ClaudeCodeAgent[TDeps = None, TResult = str](BaseAgent[TDeps, TResult]):
         structured_output=True,
         multimodal_input=True,
         live_model_discovery=True,
-        native_compaction=False,  # It auto-compacts, but compact() is not wired to /compact
+        native_compaction=True,  # /compact (it also compacts on its own)
+        native_fork=True,  # Whole sessions: the SDK copies the CLI's transcript
         background_events=True,
         concurrent_sessions=True,  # A CLI process per session (see cli_process)
         session_instructions=True,  # The process's system prompt, changes with the next turn
@@ -1491,6 +1494,68 @@ class ClaudeCodeAgent[TDeps = None, TResult = str](BaseAgent[TDeps, TResult]):
     async def _cli_settings(self) -> Mapping[str, Any]:
         assert self._client
         return (await self._client.get_settings()).effective
+
+    async def compact(
+        self,
+        pipeline: CompactionPipeline | None = None,
+        *,
+        session: Session | None = None,
+    ) -> tuple[int, int]:
+        """Compact the CLI's context of ``session`` (or the default one): ``/compact``.
+
+        Runs the CLI's ``/compact`` as a turn of the session (not stored in our history) and
+        returns once the CLI has compacted. The CLI summarizes on its own: ``pipeline`` does
+        not apply. Our copy of the conversation stays as it is.
+
+        Raises:
+            UnsupportedOperationError: Before the session's first turn (nothing to compact)
+            RuntimeError: If the CLI reports that compacting failed
+        """
+        from agentpool.agents.events import CompactionEvent
+
+        with self.use_session(session):
+            cli_session = self._sdk_session_id
+        if cli_session is None:
+            reason = "its CLI session starts with the first turn: nothing to compact yet"
+            raise UnsupportedOperationError(self.name, "compact", reason)
+        history = session.history if session is not None else self.conversation
+        count = len(history.get_history())
+        async for event in self.run_stream("/compact", session=session, store_history=False):
+            if isinstance(event, CompactionEvent) and event.phase == "failed":
+                msg = f"Claude Code could not compact: {event.error or 'no reason given'}"
+                raise RuntimeError(msg)
+        return count, count
+
+    async def fork_session(
+        self,
+        *,
+        at_message_id: str | None = None,
+        session: Session | None = None,
+    ) -> Session:
+        """Fork ``session`` (or the default one) together with its CLI session.
+
+        The CLI's transcript is copied into a new CLI session (fresh message UUIDs), which
+        the fork's turns resume.
+
+        Raises:
+            UnsupportedOperationError: At a message (our message IDs are not the CLI's), or
+                before the session's first turn (no CLI session to fork yet)
+        """
+        from clawd_code_sdk import fork_session as fork_cli_session
+
+        with self.use_session(session):
+            cli_session = self._sdk_session_id
+        if at_message_id is not None or cli_session is None:
+            reason = "only the whole conversation of a session, once its first turn ran"
+            raise UnsupportedOperationError(self.name, "fork this", reason)
+        directory = str(self.env.cwd or Path.cwd())
+        result = await asyncio.to_thread(fork_cli_session, cli_session, directory=directory)
+        forked = await self._fork_history(None, session)
+        with self.use_session(forked):
+            self._sdk_session_id = result.session_id  # The fork's turns resume the copy
+        if self.storage is not None:
+            await self.storage.update_sdk_session_id(forked.session_id, result.session_id)
+        return forked
 
     async def _compact_idle(self) -> None:
         """Send ``/compact``; the idle watcher reports it as a turn of the CLI's own."""
