@@ -308,3 +308,18 @@ def opencode_server(ctx, *args: str):
     """
     args_str = " " + " ".join(args) if args else ""
     ctx.run(f"uv run agentpool serve-opencode{args_str}")
+
+
+@duty(capture=False)
+def bump_opencode(ctx, version: str):
+    """Pin another OpenCode V2 version: download its spec, regenerate the models, run the tests.
+
+    Then review the spec diff and adapt server, agent and client (see AGENTS.md,
+    "Updating the OpenCode version").
+
+    Usage:
+        duty bump-opencode 2.4.1
+    """
+    ctx.run(f"uv run python scripts/generate_opencode_v2_models.py --version {version}")
+    ctx.run("git diff --stat -- schema/opencode-v2 src/opencode_v2_sdk")
+    ctx.run("uv run pytest -q tests/servers/opencode_v2_server tests/agents/opencode_v2_agent")

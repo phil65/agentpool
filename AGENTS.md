@@ -391,12 +391,48 @@ The project uses entry points for extensibility:
 | MCP Tasks extension (SEP-2663, `io.modelcontextprotocol/tasks`) | https://modelcontextprotocol.io/extensions/tasks/overview | fastmcp-tasks 4.2.5 (`mcp-tasks` extra) | `src/agentpool_server/mcp_server/`; design: `MCP_BACKGROUND_TASKS.md` | https://gofastmcp.com/docs/servers/tasks |
 | Agent2Agent (A2A) | https://a2a-protocol.org/v1.0.0/specification/ | A2A 1.0 via fasta2a 2.1.1 (locked; agent card `protocolVersion: "1.0"`) | `src/agentpool_server/a2a_server/` | https://github.com/a2aproject/A2A/releases, https://pypi.org/project/fasta2a/ |
 | AG-UI | https://docs.ag-ui.com/introduction | ag-ui-protocol 1.0.0 (locked Python SDK) | `src/agentpool_server/agui_server/`, `src/agentpool/agents/agui_agent/` | https://github.com/ag-ui-protocol/ag-ui/releases |
-| OpenCode V2 HTTP API | https://opencode.ai/docs/server/ | opencode 2.3.2 (`OPENCODE_VERSION` in `src/opencode_v2_sdk/_version.py`) | `src/opencode_v2_sdk/`, `src/agentpool_server/opencode_v2_server/`, `src/agentpool/agents/opencode_v2_agent/`; design: `COMPLETE_OPENCODE_METADATA.md` | https://github.com/anomalyco/opencode/releases |
+| OpenCode V2 HTTP API | https://opencode.ai/docs/server/ | opencode 2.4.1 (`OPENCODE_VERSION` in `src/opencode_v2_sdk/_version.py`) | `src/opencode_v2_sdk/`, `src/agentpool_server/opencode_v2_server/`, `src/agentpool/agents/opencode_v2_agent/`; design: `COMPLETE_OPENCODE_METADATA.md`, `src/agentpool_server/opencode_v2_server/README.md` | https://github.com/anomalyco/opencode/releases; bump: `duty bump-opencode <version>` (see below) |
 | Pi coding agent RPC mode | https://github.com/badlogic/pi-mono/blob/main/packages/coding-agent/docs/rpc.md | unpinned (tracks latest; models follow `packages/coding-agent/src/modes/rpc/rpc-client.ts`) | `src/pi_sdk/` | https://github.com/badlogic/pi-mono/releases |
 | OpenAI Chat Completions / Responses API | https://platform.openai.com/docs/api-reference/responses | unpinned (tracks latest) | `src/agentpool_server/openai_api_server/` | https://platform.openai.com/docs/changelog |
 | Claude Code CLI | https://github.com/anthropics/claude-code/blob/main/CHANGELOG.md | via clawd-code-sdk 1.5.2 (locked; CLI version in its `__cli_version__`) | `src/agentpool/agents/claude_code_agent/`; backlog: `CLAUDE_CODE_BACKLOG.md` | clawd-code-sdk AGENTS.md (Specs) |
 | Codex app-server | https://github.com/openai/codex/blob/main/codex-rs/app-server/README.md | via codexed 1.4.0 (locked) | `src/agentpool/agents/codex_agent/` | codexed AGENTS.md (Specs) |
 | T3 Code | https://github.com/pingdotgg/t3code | via pyt3client 0.3.0 (locked) | `src/agentpool/agents/t3_agent/`; design: `T3_CODE_INTEGRATION.md` | pyt3client AGENTS.md (Specs) |
+
+### Updating the OpenCode version
+
+The OpenCode V2 API is pinned to one OpenCode tag (`OPENCODE_VERSION` in
+`src/opencode_v2_sdk/_version.py`, the only place the version is set). Bump on purpose, one tag at
+a time, and only to a `v2.x.y` tag (`releases/latest` can be the V1 line).
+
+1. Review upstream (`~/dev/oss/opencode` is a read-only clone: `git fetch --tags`, no checkout
+   needed): release notes (`gh release view vX.Y.Z -R anomalyco/opencode`) and
+   `git diff vOLD..vNEW -- packages/protocol/` (`openapi.json` plus `src/groups/*.ts`, which carry
+   the endpoint descriptions). List new/removed operations, new/removed schemas, changed fields and
+   new events (members of `V2Event`).
+2. `duty bump-opencode X.Y.Z` (runs `scripts/generate_opencode_v2_models.py --version X.Y.Z`:
+   downloads `packages/protocol/openapi.json` to `schema/opencode-v2/`, regenerates
+   `src/opencode_v2_sdk/models.py`, writes `_version.py`; then runs the OpenCode V2 tests).
+   Regenerating twice must give the same output.
+3. Adapt:
+   - **Server** (`src/agentpool_server/opencode_v2_server/`): every spec operation needs a route
+     (`test_every_spec_operation_has_a_route` lists missing ones). Implement what AgentPool has a
+     counterpart for; otherwise answer like OpenCode with the feature off (empty list, typed 503
+     in `routes/misc.py`, or the error the spec names, e.g. `ForbiddenError`). New durable event
+     or message types: `projector.py`, `run_converter.py`, `events.py`. New live events: publish
+     them where the state changes. Read the reference handler
+     (`packages/server/src/handlers/`, `packages/core/src/`) and how clients use it
+     (`packages/client/src/solid/data.ts`, `packages/tui/src/`, `packages/cli/src/`).
+   - **Agent** (`src/agentpool/agents/opencode_v2_agent/`) and **client** (`src/opencode_v2_sdk/client.py`):
+     renamed/removed fields and events they consume.
+   - Tool rendering (`tool_display.py`, `COMPLETE_OPENCODE_METADATA.md`): tool renames in the
+     release notes and diffs of the TUI's tool renderers.
+4. Update the version in: the Specs row above, the server README, `docs/servers/opencode-server.md`,
+   `docs/configuration/node-types/opencode-v2-agents.md`, `test_pinned_version_matches_spec` and
+   the fake server's `/api/info` in `tests/agents/opencode_v2_agent/`
+   (`command grep -rn OLD_VERSION --exclude-dir=.venv .`).
+5. Smoke test with the real client of that tag (`gh release download vX.Y.Z -R anomalyco/opencode
+   -p opencode-linux-x64.tar.gz`) against `agentpool serve-opencode` with a `model: test` agent
+   (server README, "Testing against a real client").
 
 ## Key Files to Understand
 

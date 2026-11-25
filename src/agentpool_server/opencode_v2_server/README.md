@@ -16,12 +16,13 @@ off.
 
 | | |
 |---|---|
-| Pinned OpenCode tag | **v2.3.2** (`opencode_v2_sdk/_version.py`) |
+| Pinned OpenCode tag | **v2.4.1** (`opencode_v2_sdk/_version.py`) |
 | Spec | `schema/opencode-v2/openapi.json` (copy of `packages/protocol/openapi.json` at that tag) |
 | Models | `src/opencode_v2_sdk/models.py`, generated, **do not edit** |
 
 The spec calls itself experimental and changes often: routes were renamed between v2.3.0 and
-v2.3.2. Stay on a pinned tag and bump on purpose.
+v2.3.2, v2.4.0 added job cancelling, `experimental.job.updated` and machines. Stay on a pinned tag
+and bump on purpose (see "Upgrading to a new OpenCode version").
 
 ## Design
 
@@ -84,19 +85,22 @@ HTTP route ──► V2Session.emit(EventClass, data)
 
 ## What is and isn't supported
 
-All 173 operations of the pinned spec have a route (guarded by
+All 178 operations of the pinned spec have a route (guarded by
 `test_every_spec_operation_has_a_route`).
 
 - **Implemented:** sessions (CRUD, agent/model switch, prompt, synthetic, interrupt, inbox,
   messages, context, durable log, fork, move, compact, revert, diff, generate, environment,
   instructions, stats, export/import), permissions + saved rules, forms, fs, vcs (git), worktrees,
   commands (slash commands), skills, MCP status/resources, shells, jobs (session shells and agent
-  tasks such as subagent runs; see `tasks.py`), retries (`session.retry.scheduled`), usage limits
+  tasks such as subagent runs; see `tasks.py`; cancelled with `job.cancel`, changes published as
+  `experimental.job.updated`), retries (`session.retry.scheduled`), usage limits
   (the main agent's plan windows as OpenCode Go meters; see `usage_limits.py`), PTYs.
 - **Answered with empty lists / typed `ServiceUnavailableError` (503)**, because AgentPool has no
   counterpart: plugins and plugin RPC (`RpcError`), integrations, credentials, text/image/video/
   decision generation, voice, client MCP, MCP add/remove, persistent PTYs, media/blobs,
   automations, artifacts, references, web search, pairing, fs watch, heap dumps.
+- **Machines** (`/api/experimental/machine*`) answer `ForbiddenError` (403), like an OpenCode server
+  without the `machines` flag; the CLI then says machines are disabled.
 - Unknown routes answer `404` **without a JSON body**, like OpenCode. Clients use that to detect
   older servers.
 
@@ -123,21 +127,13 @@ These come from the interim session/agent model. They are tracked, with the code
 
 ## Upgrading to a new OpenCode version
 
-1. Pick a `v2.x.y` tag. Don't use `releases/latest`, which can be the V1 line.
-2. Set `OPENCODE_TAG` in `scripts/generate_opencode_v2_models.py` and run
-   `uv run python scripts/generate_opencode_v2_models.py --download`.
-3. Review `git diff schema/opencode-v2/openapi.json` (spec changes) and the model diff.
-4. `uv run pytest tests/servers/opencode_v2_server`. The coverage test lists new routes. New or
-   changed event and message types need `projector.py` / `run_converter.py` updates.
-5. For behaviour (not just shapes), read the reference implementation at that tag:
-   `packages/server/src/handlers/`, `packages/core/src/session/` (`message-updater.ts`,
-   `projector.ts`, `inbox.ts`), and `packages/client/src/promise/generated/client.ts` for how
-   clients call the API.
+See "Updating the OpenCode version" in the repository's `AGENTS.md` (commands, review checklist,
+where to adapt).
 
 ## Testing against a real client
 
 - Get the client binary for the pinned tag:
-  `gh release download v2.3.2 -R anomalyco/opencode -p opencode-linux-x64.tar.gz`.
+  `gh release download v2.4.1 -R anomalyco/opencode -p opencode-linux-x64.tar.gz`.
 - Non-interactive: `opencode run --server http://127.0.0.1:PORT "hello"`,
   `opencode session list --server …`, `opencode models --server …`.
 - TUI: `opencode --server http://127.0.0.1:PORT`. To see which endpoints the TUI calls, run uvicorn
