@@ -262,13 +262,13 @@ curl -X POST http://localhost:8000/v1/chat/completions \
 agents:
   # Agents become models with their names as IDs
   gpt-4-custom:
-    type: chat
-    model: openai:gpt-4
+    type: native
+    model: openai:gpt-5-mini
     system_prompt: "You are a helpful assistant."
     
   claude-coder:
     type: claude_code
-    model: anthropic:claude-sonnet-4-20250514
+    model: sonnet
     tools:
       - type: file_access
       - type: process_management

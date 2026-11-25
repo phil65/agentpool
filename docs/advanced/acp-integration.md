@@ -48,8 +48,8 @@ agentpool serve-acp agents.yml
 
 ### Available Options
 
-- `--show-messages`: Show message activity in logs
-- `--log-level`: Set logging level (debug, info, warning, error)
+See [`serve-acp`](../cli/serve-acp.md) for all options (transport, agent selection, client
+skills, protocol version, debugging). The server speaks ACP v1 and v2.
 
 ## IDE Configuration
 
@@ -181,511 +181,161 @@ This bridge architecture enables:
 
 The key insight: **AgentPool doesn't just implement ACP—it bridges multiple ACP worlds together into a unified orchestration layer**.
 
-## Tool Confirmation Modes
+## Modes and Config Options
 
-The IDE's mode selector controls **tool confirmation behavior** - how the agent handles tool executions that may affect your files or system.
-
-Available modes:
-
-- **Auto-approve**: Tools execute without confirmation (fastest workflow)
-- **Confirm destructive**: Only confirm file writes, deletions, and terminal commands  
-- **Confirm all**: Confirm every tool execution (safest)
-
-The mode affects tool confirmation, not agent selection. To work with different agents, use the `/spawn` command or configure delegation through toolsets.
+Each agent's modes and config options (permission / tool confirmation mode, model, reasoning
+effort, ...) are offered to the client as ACP session modes and config options, so the IDE's
+selectors switch them for the running session.
 
 ## External ACP Agents
 
-AgentPool can integrate external ACP-enabled agents (like Claude Code, Codex, Goose, etc.) into your agent pool through YAML configuration. This allows you to delegate tasks to specialized external agents while maintaining a unified interface.
-
-### Configuration
-
-Define external ACP agents in your manifest:
+AgentPool integrates external ACP agents (Claude Code, Codex, Goose, Gemini CLI, ...) into the
+pool. They are started from the [ACP registry](https://agentclientprotocol.com/registry), from
+a command, or reached over the network:
 
 ```yaml
-# agents.yml
 agents:
   claude:
     type: acp
-    provider: claude
+    provider: registry
+    registry_id: claude-acp
     display_name: "Claude Code"
-    description: "Claude Code through ACP"
-  
-  codex:
-    type: acp
-    provider: codex
-    display_name: "Codex"
-    description: "Codex Code through ACP"
-  
+
   goose:
     type: acp
-    provider: goose
-    display_name: "Goose"
-    description: "Block's Goose agent through ACP"
-  
-  fast-agent:
-    type: acp
-    provider: fast-agent
-    display_name: "Fast Agent"
-    description: "fast-agent through ACP"
-    model: openai.gpt-4o
+    provider: registry
+    registry_id: goose
 
-agents:
+  gemini:
+    type: acp
+    provider: registry
+    registry_id: gemini
+    extra_args: ["--model", "gemini-2.5-pro"]
+
+  custom:
+    type: acp
+    provider: custom
+    command: my-acp-server
+    args: ["--stdio"]
+
+  remote:
+    type: acp
+    provider: remote
+    url: https://example.com/api/acp
+
   coordinator:
     type: native
     model: openai:gpt-5-mini
     tools:
-      - type: agent_management  # Enables delegation to ACP agents
+      - type: subagent  # delegate to the ACP agents
 ```
 
-### Supported External Agents
-
-#### MCP-Capable Agents (with Toolset Bridging)
-
-These agents support MCP servers and can use internal AgentPool toolsets:
-
-- **claude**: Claude Code (Anthropic's coding assistant)
-  - Full MCP support via `--mcp-config`
-  - Permission modes, structured outputs
-  - Tool filtering and access control
-
-- **gemini**: Google's Gemini CLI
-  - Native MCP integration
-  - Configurable temperature, context window
-  - Multi-modal support
-
-- **auggie**: Augment Code
-  - MCP support via `--mcp-config`
-  - GitHub integration
-  - Project context awareness
-
-- **kimi**: Moonshot AI's Kimi CLI
-  - MCP support via `--mcp-config`
-  - Chinese language optimization
-  - Work directory management
-
-#### Standard ACP Agents
-
-These agents use ACP protocol but don't support MCP toolset bridging:
-
-- **codex**: OpenAI Codex (Zed integration)
-- **opencode**: OpenCode agent
-- **goose**: Block's Goose agent
-- **fast-agent**: Fast Agent with configurable models
-- **openhands**: OpenHands (formerly OpenDevin)
-- **amp**: AmpCode agent
-- **cagent**: Docker-based cagent
-- **stakpak**: Stakpak Agent
-- **vtcode**: VT Code agent
-
-### Usage with Agent Pool
-
-Once configured, external ACP agents are automatically available in the agent pool:
-
-```python
-from agentpool.delegation import AgentPool
-
-async def main():
-    async with AgentPool("agents.yml") as pool:
-        # Access external ACP agents just like regular agents
-        claude = pool.get_agents(ACPAgent)["claude"]
-        result = await claude.run("Refactor this code to use async/await")
-        
-        # Or delegate from a coordinator agent
-        coordinator = pool.agents["coordinator"]
-        result = await coordinator.run(
-            "Use the Claude agent to review and improve the codebase"
-        )
-        
-        # Check what agents are available
-        print(f"Regular agents: {list(pool.agents.keys())}")
-        print(f"ACP agents: {list(pool.get_agents(ACPAgent).keys())}")
-```
-
-The external agents are spawned as subprocess instances and communicate via the ACP protocol, with automatic lifecycle management and cleanup.
+All options: [ACP Agents](../configuration/node-types/acp-agents.md). For Claude Code and Codex,
+the dedicated `claude_code` and `codex` agent types talk to their SDKs directly and support
+more (steering, compaction, native sessions).
 
 ## ACP Agent Architecture
 
 ### How ACP Agents Operate
 
-ACP agents in AgentPool follow this execution model:
-
-1. **Process Spawning**
-   - Agent configuration defines command and arguments
-   - Process spawned in configured execution environment
-   - stdin/stdout used for JSON-RPC communication
-
-2. **Protocol Initialization**
-   - Client sends `initialize` request with capabilities
-   - Agent responds with its capabilities (MCP support, etc.)
-   - Session negotiation completes
-
-3. **Session Management**
-   - `new_session` request creates working session
-   - MCP servers passed during session creation
-   - Working directory and permissions established
-
-4. **Message Exchange**
-   - Prompts sent via `session/prompt` requests
-   - Streaming responses via session updates
-   - Tool calls handled through MCP or native protocols
-
-5. **Lifecycle Management**
-   - Automatic cleanup on pool exit
-   - Process termination and resource cleanup
-   - Error handling and recovery
+1. **Process spawning**: the agent process starts (registry entries are installed via
+   uvx / npx / binaries), or a connection to a remote agent is opened.
+2. **Initialization**: capabilities are exchanged (`initialize`, authentication if needed).
+3. **Sessions**: every AgentPool session gets its own ACP session (`session/new`, or
+   `session/load` / `session/resume` for stored ones), with the MCP servers and working
+   directory of the session.
+4. **Prompts**: `session/prompt`, streamed back as session updates that AgentPool translates
+   into its own events.
+5. **Lifecycle**: interrupts use `session/cancel`; processes are stopped with the pool.
 
 ### Execution Environments
 
-ACP agents can run in different environments based on configuration:
+ACP agents use two environments:
 
-```yaml
-agents:
-  claude_local:
-    type: acp
-    provider: claude
-    
-  claude_docker:
-    type: acp
-    provider: claude
-    environment:
-      type: docker
-      image: python:3.13-slim
-      
-  claude_e2b:
-    type: acp
-    provider: claude
-    environment:
-      type: e2b
-      template: python-sandbox
-      
-  claude_remote:
-    type: acp
-    provider: claude
-    environment:
-      type: srt  # Secure Remote Terminal
-      host: remote-server.com
-```
-
-**Environment types:**
-
-- **local**: Run on local machine (default)
-- **docker**: Run in Docker container with specified image
-- **e2b**: Run in E2B sandbox (cloud sandboxes)
-- **beam**: Run on Beam Cloud infrastructure
-- **daytona**: Run in Daytona development environment
-- **srt**: Run on remote server via Secure Remote Terminal
-
-The execution environment handles:
-
-- File system access (sandboxed or real)
-- Terminal operations (bash, command execution)
-- Network access controls
-- Resource limits and isolation
-
-### Remote Agent Operations with Client Execution Environment
-
-ACP agents support a **dual environment** model, allowing the agent process to run locally while operating on remote filesystems. This is useful when you want an agent to work on files in a Docker container, remote server, or cloud sandbox without installing the agent there.
-
-```mermaid
-flowchart LR
-    subgraph Local["Your Machine"]
-        UI[IDE / UI]
-        Agent[ACP Agent Process]
-    end
-    
-    subgraph Remote["Remote Environment"]
-        FS[Remote Filesystem]
-        Term[Remote Terminals]
-    end
-    
-    UI <-->|ACP Protocol| Agent
-    Agent -->|client_env| FS
-    Agent -->|client_env| Term
-```
-
-**Configuration:**
+| Field | Purpose |
+|---|---|
+| `environment` | Where AgentPool's tools for this agent run (string = working directory) |
+| `client_execution_environment` | Where the agent's own file and terminal requests are served (falls back to `environment`) |
 
 ```yaml
 agents:
   remote_coder:
     type: acp
-    provider: claude
-    # Agent's toolsets use this environment
-    environment: path/to/cwd
-    # Subprocess file/terminal requests go here instead
+    provider: registry
+    registry_id: claude-acp
+    environment: /path/to/project
     client_execution_environment:
       type: docker
-      image: python:3.12
-      mount: /home/user/project:/workspace
+      image: python:3.13-slim
 ```
 
-**How it works:**
+So the agent process can run locally while its file and terminal requests operate in a
+Docker container, over SSH or in a cloud sandbox. See
+[Execution Environments](../configuration/execution-environments.md) for all environment
+types.
 
-| Property | Purpose | Example |
-|----------|---------|---------|
-| `execution_environment` | Where the agent's internal toolsets operate | Local filesystem (or forwarded to UI via ACP) |
-| `client_execution_environment` | Where subprocess file/terminal requests go | Docker, SSH, E2B sandbox |
-
-!!! note "Environment Override When Using ACP Server"
-    When agents run through the ACP server (e.g., via IDE integration), the `execution_environment` 
-    setting is **overridden** by the ACP session. The session injects an `ACPExecutionEnvironment` 
-    that routes all toolset operations back to the IDE/client filesystem.
-    
-    This means:
-    
-    - **Standalone usage**: `execution_environment` controls where toolsets operate
-    - **Via ACP server**: Toolsets always operate on the client's filesystem (the IDE's workspace)
-    
-    The `client_execution_environment` is **not** overridden - it always controls where the 
-    subprocess's file/terminal requests go, regardless of how the agent is used.
-
-**Use cases:**
-
-- **Development in containers**: Agent runs locally but edits files inside a Docker container
-- **Remote server development**: Agent operates on a remote server via SSH without being installed there
-- **Sandboxed execution**: Agent runs commands in an isolated E2B sandbox for security
-
-If `client_execution_environment` is not set, it falls back to `execution_environment` (the default behavior).
+!!! note "Environment override when serving over ACP"
+    When the pool itself is served over ACP (IDE integration), the session's environment is the
+    client's (an ACP execution environment routing file and terminal operations to the IDE).
+    `client_execution_environment` is not overridden.
 
 ### Permission Model
 
-ACP agents have fine-grained permission controls:
-
 ```yaml
 agents:
-  restricted_claude:
+  restricted:
     type: acp
-    provider: claude
-    allow_file_operations: false  # Disable file read/write
-    allow_terminal: false         # Disable terminal access
-    auto_grant_permissions: false # Require user confirmation
-    permission_mode: dontAsk      # Claude-specific: deny by default
+    provider: registry
+    registry_id: claude-acp
+    allow_file_operations: false  # Disable file read/write requests
+    allow_terminal: false         # Disable terminal requests
+    auto_approve: false           # Ask the user for permission requests
 ```
 
-Permissions are enforced at multiple levels:
-
-- **Client side**: AgentPool's ACPClientHandler validates requests
-- **Agent side**: External agent's own permission system
-- **Environment side**: Execution environment provides isolation
+Permission requests of the external agent are forwarded to the user through AgentPool's input
+provider (and from there to the connected client, if any).
 
 ## Toolset Bridging via MCP
 
-### Overview
-
-For MCP-capable ACP agents (Claude, Gemini, Auggie, Kimi), agentpool can automatically expose internal toolsets via an in-process MCP server bridge. This allows external agents to use powerful internal capabilities like subagent delegation, agent management, and custom tools.
-
-### How It Works
-
-1. **Configuration**: Declare toolsets in agent config
-2. **Bridge Creation**: ToolManagerBridge spawns HTTP/SSE MCP server
-3. **Registration**: Tools registered with FastMCP server
-4. **Session Integration**: MCP server URL passed to agent session
-5. **Tool Invocation**: Agent calls tools via standard MCP protocol
-6. **Context Bridging**: Calls proxied to internal tools with full context
-
-The bridge runs **in-process** on the same event loop as the agent pool, providing zero-latency access to pool state while exposing a standard network interface to the external agent.
-
-### Configuration Example
+ACP agents that support MCP get AgentPool's tools through an in-process MCP server: the tools
+listed in `tools` are served on localhost, and the server's URL is passed to the agent's
+session. Tool calls run inside the pool with a proper `AgentContext`, so delegation tools reach
+the pool's other agents.
 
 ```yaml
 agents:
   claude_orchestrator:
     type: acp
-    provider: claude
-    description: "Claude with delegation capabilities"
-    permission_mode: acceptEdits
+    provider: registry
+    registry_id: claude-acp
     tools:
-      # Subagent delegation tools
-      - type: subagent
-      
-      # Agent lifecycle management
-      - type: agent_management
-      
-      # Custom tools
-      - type: custom
-        tools:
-          - my_custom_tool
-  specialist_a:
+      - type: subagent             # task, list_available_nodes
+      - type: search
+        web_search: tavily
+      - type: import
+        import_path: webbrowser.open
+    mcp_servers:                   # further MCP servers, passed through
+      - "npx -y @modelcontextprotocol/server-filesystem /project"
+      - type: sse
+        url: https://api.example.com/mcp
+
+  specialist:
     type: native
-    model: openai:gpt-4
+    model: openai:gpt-5-mini
     system_prompt: "Expert in data processing"
-    
-  specialist_b:
-    type: native
-    model: anthropic:claude-sonnet-4
-    system_prompt: "Expert in API design"
 ```
-
-With this configuration, the Claude agent can:
-
-- List available agents via `list_available_nodes`
-- Delegate work via `task`
-- Create new agents dynamically via `add_agent`
-- Use any custom tools you've registered
-
-### Available Toolsets
-
-All standard toolsets can be exposed to MCP-capable agents:
-
-- **subagent**: Delegation tools (`task`, `list_available_nodes`)
-- **agent_management**: Lifecycle tools (`add_agent`, `remove_agent`, `get_agent_info`)
-- **search**: Web/news search (requires provider configuration)
-- **notifications**: Send notifications via Apprise
-- **semantic_memory**: Vector-based memory and retrieval
-- **custom**: Your own tools via ResourceProvider
-
-### Usage Example
-
-Once configured, the external agent automatically has access to the tools:
 
 ```python
-async with AgentPool("config.yml") as pool:
-    claude = pool.get_agents(ACPAgent)["claude_orchestrator"]
-    
-    # Claude can now delegate to internal agents
-    result = await claude.run(
-        "Use the list_available_nodes tool to see what agents are available, "
-        "then delegate the data processing task to specialist_a"
-    )
-    
-    # The tool bridge handles the MCP protocol translation
-    # and injects proper AgentContext for internal tool execution
+from agentpool import AgentPool
+
+
+async def main():
+    async with AgentPool("config.yml") as pool:
+        claude = pool.get_agent("claude_orchestrator")
+        result = await claude.run(
+            "List the available agents, then delegate the data processing to specialist"
+        )
 ```
 
-### Tool Bridge Architecture
-
-```mermaid
-graph TB
-    subgraph External["External ACP Agent (Claude Code Process)"]
-        MCP["MCP Client<br/>• Discovers tools via MCP<br/>• Calls tools over HTTP/SSE"]
-    end
-    
-    subgraph Bridge["ToolManagerBridge (In-Process MCP Server)"]
-        FastMCP["FastMCP Server<br/>• Exposes tools as MCP endpoints<br/>• Handles MCP protocol negotiation"]
-        Context["Context Bridge<br/>• Creates synthetic AgentContext<br/>• Injects pool access for delegation<br/>• Provides progress reporting"]
-    end
-    
-    subgraph Internal["Internal Toolsets (Same Process)"]
-        Subagent["SubagentTools<br/>• task() → Execute tasks on other agents<br/>• list_available_nodes() → Pool inspection"]
-        Management["AgentManagementTools<br/>• add_agent() → Dynamic agent creation<br/>• remove_agent() → Lifecycle management"]
-    end
-    
-    MCP -->|HTTP/SSE<br/>MCP Protocol| FastMCP
-    Context -->|Direct Function Call| Subagent
-    Context -->|Direct Function Call| Management
-```
-
-**Key Features:**
-
-- **Zero IPC overhead**: Bridge runs in same process as pool
-- **Type-safe**: Full type checking from tool definition to MCP
-- **Context injection**: Tools receive proper AgentContext with pool access
-- **Auto-discovery**: Tools automatically exposed, no manual registration
-- **Per-agent isolation**: Each ACP agent gets its own bridge instance
-- **Clean lifecycle**: Bridges automatically cleaned up with pool
-
-### Advanced Configuration
-
-For more control over the bridge:
-
-```yaml
-agents:
-  claude_advanced:
-    type: acp
-    provider: claude
-    tools:
-      - type: subagent
-        # Toolset-specific config here
-        
-      - type: custom
-        tools:
-          - only_specific_tool
-          
-    # Additional MCP servers (alongside toolset bridge)
-    mcp_servers:
-      - name: filesystem
-        type: stdio
-        command: npx
-        args: ["-y", "@modelcontextprotocol/server-filesystem", "/project"]
-        
-      - name: external-api
-        type: sse
-        url: https://api.example.com/mcp
-```
-
-The agent will have access to:
-
-1. **Internal toolsets** via automatic bridge
-2. **External MCP servers** you explicitly configure
-3. **Agent's built-in tools** (if any)
-
-### Security Considerations
-
-Toolset bridging is secure by design:
-
-- ✅ **Explicit opt-in**: Only agents with `toolsets` field get bridges
-- ✅ **Scoped access**: Tools see only what AgentContext provides
-- ✅ **Permission gates**: Input providers can confirm dangerous operations
-- ✅ **Network isolation**: Bridge binds to localhost by default
-- ✅ **Process isolation**: External agent runs in separate process
-- ✅ **Environment sandboxing**: Execution environment provides additional isolation
-
-Best practices:
-
-- Use `allow_file_operations: false` for read-only agents
-- Use `auto_grant_permissions: false` for sensitive operations
-- Use sandboxed execution environments (Docker, E2B) for untrusted agents
-- Limit toolsets to only what the agent needs
-
-## Configuration
-
-### Remote Configurations
-
-You can reference remote configuration files directly:
-
-```bash
-agentpool serve-acp https://example.com/config.yml
-```
-
-### Model Provider Selection
-
-Model providers are configured per-agent via the `model_providers` field in your agent configuration:
-
-```yaml
-agents:
-  my_agent:
-    model: openai:gpt-4o
-    model_providers:
-      - openai
-      - anthropic
-```
-
-This determines which providers the agent can list in model discovery. If not set, defaults to `["models.dev"]`.
-
-Available model providers:
-
-- `anthropic`
-- `groq`
-- `mistral`
-- `openai`
-- `openrouter`
-- `github`
-- `copilot`
-- `cerebras`
-- `gemini`
-- `cohere`
-- `deepseek`
-- `requesty`
-- `xai`
-- `comet`
-- `novita`
-- `vercel-gateway`
-- `chutes`
-- `cortecs`
-- `azure`
-- `fireworks-ai`
-- `ollama`
-- `moonshotai`
-- `zai`
-
-The providers depend on environment variables being set, like `OPENAI_API_KEY`, `OPENROUTER_API_KEY`, etc.
+Only tools listed in `tools` are exposed, and they see only what their `AgentContext`
+provides. Tools that require confirmation still ask through the input provider.

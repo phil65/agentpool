@@ -51,7 +51,7 @@ async def gather_data(
 ) -> list[str]:  # Return type is enforced
     """Gather research data."""
     result = await researcher.run(f"Research: {topic}")
-    return result.data.split("\n")
+    return result.content.split("\n")
 
 @node_function(depends_on="gather_data")
 async def analyze_data(

@@ -160,10 +160,6 @@ print(f"Bytes transferred: {stats.byte_count}")
 # Message access
 for msg in stats.messages:
     print(f"{msg.name}: {msg.content}")
-
-# Error tracking
-for agent, error, time in stats.errors:
-    print(f"{agent} failed at {time}: {error}")
 ```
 
 ## Running in Background

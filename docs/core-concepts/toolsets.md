@@ -1,224 +1,100 @@
 ---
-title: Agent Toolsets
-description: Agent toolset system
+title: Tools and Toolsets
+description: How agents get their tools
 icon: material/shield-check
 ---
 
-## What are Toolsets?
+## Tools, Toolsets and Resource Providers
 
-Toolsets in AgentPool define groups of related tools that agents can access. Rather than configuring individual tool permissions, you enable entire categories of functionality through toolset configurations.
+An agent's capabilities come from its `tools` list. Each entry is one of:
 
-Think of toolsets as "skill packages" that give agents specific capabilities - from file operations to process management to agent coordination.
+- a **single tool**: a function given by import path, or a built-in AgentPool tool such as
+  `bash`, `read`, `grep` or `question` ([Tools](../configuration/tools.md));
+- a **toolset**: a group of related tools (file access, subagents, search, ...) configured
+  as one entry ([Toolsets](../configuration/toolsets/index.md));
+- a **built-in tool of the model provider** (`type: builtin`), executed by the provider
+  itself, for example web search ([Built-in Tools](../configuration/builtin-tools.md)).
 
-## Available Toolsets
-
-### Agent Management (`agent_management`)
-
-Enables agents to discover, coordinate with, and manage other agents:
-
-```yaml
-agents:
-  coordinator:
-    tools:
-      - type: agent_cli
-```
-
-**Provides tools:**
-
-- `list_available_agents` - Discover other agents in the pool
-- `list_available_teams` - Discover available teams
-- `task` - Execute tasks on other agents or teams
-- `add_agent` - Add new agents to the pool
-- `add_team` - Create new teams
-- `connect_nodes` - Connect agents/teams in workflows
-- `create_worker_agent` - Create worker agents as tools
-- `spawn_delegate` - Create temporary delegate agents
-
-### File Access (`fsspec`)
-
-File system operations via fsspec (supports local, S3, GCS, etc.):
-
-```yaml
-agents:
-  reader:
-    tools:
-      - type: file_access  # Local filesystem by default, or use url: s3://bucket, etc.
-```
-
-**Provides tools:**
-
-- `read` - Read files (text or binary)
-- `list_directory` - List directory contents with filtering
-- `write` - Write content to files
-- `delete_path` - Delete files or directories
-- `edit` - Edit files with smart matching
-- `download_file` - Download files from URLs
-
-### Resource Access (`resource_access`)
-
-Access to AgentPool resources and configurations:
-
-```yaml
-agents:
-  assistant:
-    tools:
-      - type: resource_access
-```
-
-**Provides tools:**
-
-- `load_resource` - Load resource content
-- `get_resources` - Discover available resources
-
-### Code Execution (`code_execution`)
-
-Execute Python code and system commands:
+Internally every toolset is a `ResourceProvider`: an object that provides tools (and
+optionally prompts and resources) to the agent. MCP servers are resource providers too, so
+an agent's tools are the union of its tool configs, its toolsets and its MCP servers.
 
 ```yaml
 agents:
   developer:
+    model: openai:gpt-5-mini
     tools:
-      - type: code_execution
+      - type: file_access          # toolset: read, write, edit, grep, ...
+      - type: process_management   # toolset: background processes
+      - type: subagent             # toolset: delegate to the pool's other agents
+      - type: bash                 # single tool
+      - type: import               # a function as a tool
+        import_path: webbrowser.open
+    mcp_servers:
+      - "uvx mcp-server-git"
 ```
 
-**Provides tools:**
+The same `tools` list works for Claude Code, Codex, ACP, OpenCode V2 and Antigravity agents:
+for these, AgentPool serves the configured tools to the external agent over an MCP bridge.
 
-- `execute_python` - Execute Python code (WARNING: No sandbox)
-- `execute_command` - Execute CLI commands
+## Toolsets and their Tools
 
-### Process Management (`process_management`)
+The tools of each toolset (generated from the toolset classes):
 
-Start and manage background processes:
+/// mknodes
+{{ "agentpool_config.toolsets.ToolsetConfig" | toolset_tools_table(skip=["composio"]) }}
+///
+
+## Tool Confirmation
+
+Tools can require confirmation before they run. `requires_tool_confirmation` on the agent
+decides whether that is asked (`per_tool`, the default, uses each tool's
+`requires_confirmation`; `always` / `never` override it). Confirmations are asked through the
+agent's input provider, which the protocol servers (ACP, OpenCode, AG-UI, ...) forward to
+their client.
 
 ```yaml
 agents:
-  build_manager:
+  careful:
+    model: openai:gpt-5-mini
+    requires_tool_confirmation: per_tool
     tools:
-      - type: process_management
+      - type: bash
+        requires_confirmation: true
+      - type: read
 ```
 
-**Provides tools:**
+## Code Mode
 
-- `start_process` - Start background processes
-- `get_process_output` - Check process output
-- `wait_for_process` - Wait for process completion
-- `kill_process` - Terminate processes
-- `release_process` - Clean up process resources
-- `list_processes` - Show active processes
-
-### Tool Management (`tool_management`)
-
-Register and manage tools dynamically:
+With `tool_mode: codemode` the agent's tools are wrapped in a Python execution environment:
+the model writes code that calls the tools as functions, which lets it combine several tool
+calls in one step.
 
 ```yaml
 agents:
-  admin:
-    tools:
-      - type: tool_management
-```
-
-**Provides tools:**
-
-- `register_tool` - Register importable functions as tools
-- `register_code_tool` - Create tools from code
-
-### User Interaction (`user_interaction`)
-
-Direct interaction with users:
-
-```yaml
-agents:
-  assistant:
-    tools:
-      - type: user_interaction
-```
-
-**Provides tools:**
-
-- `question` - Ask users clarifying questions
-
-### History (`history`)
-
-Access conversation history and statistics:
-
-```yaml
-agents:
-  analyst:
-    tools:
-      - type: history
-```
-
-**Provides tools:**
-
-- `search_history` - Search conversation history
-- `show_statistics` - Display usage statistics
-
-### Integrations (`integrations`)
-
-External service integrations:
-
-```yaml
-agents:
-  integrator:
-    tools:
-      - type: integrations
-```
-
-**Provides tools:**
-
-- `add_local_mcp_server` - Add local MCP servers
-- `add_remote_mcp_server` - Add remote MCP servers
-- `load_skill` - Load Claude Code Skills
-
-## Common Patterns
-
-### Basic Assistant
-
-```yaml
-agents:
-  assistant:
-    model: openai:gpt-4
-    tools:
-      - type: resource_access
-      - type: file_access
-      - type: user_interaction
-```
-
-### Team Coordinator
-
-```yaml
-agents:
-  coordinator:
-    model: openai:gpt-4
-    tools:
-      - type: agent_cli
-      - type: history
-    system_prompt: You coordinate tasks across multiple agents
-```
-
-### Developer Agent
-
-```yaml
-agents:
-  developer:
-    model: anthropic:claude-3-5-sonnet-20241022
+  scripted:
+    model: openai:gpt-5-mini
+    tool_mode: codemode
     tools:
       - type: file_access
-      - type: code_execution
-      - type: process_management
-      - type: tool_management
-    system_prompt: You are a software developer with full system access
 ```
 
+## Tools in Python
 
-## Custom Toolsets
+Tools can also be passed as callables (or import path strings) when creating an agent, and
+toolsets as `ResourceProvider` instances:
 
-You can also create custom toolsets by implementing your own provider:
+```python
+from agentpool import Agent
 
-```yaml
-agents:
-  specialized:
-    tools:
-      - type: custom
-        import_path: "mypackage.toolsets.SpecializedTools"
+
+def get_weather(city: str) -> str:
+    """Get the weather for a city."""
+    return f"Sunny in {city}"
+
+
+async def main():
+    async with Agent(model="openai:gpt-5-mini", tools=[get_weather]) as agent:
+        result = await agent.run("What's the weather in Paris?")
+        print(result.content)
 ```

@@ -42,10 +42,12 @@ Simple strings work directly - use a single string for simple cases or a list fo
 agents:
   # Simple single prompt
   helper:
+    model: openai:gpt-5-mini
     system_prompt: "You are a helpful assistant."
 
   # Multiple prompts (combined into one)
   detailed_helper:
+    model: openai:gpt-5-mini
     system_prompt:
       - "You are a helpful assistant."
       - "You provide concise answers."
@@ -58,6 +60,7 @@ Explicit static prompt definitions:
 ```yaml
 agents:
   helper:
+    model: openai:gpt-5-mini
     system_prompt:
       - type: static
         content: "You are a professional assistant."
@@ -72,6 +75,7 @@ Load prompts from Jinja2 template files:
 ```yaml
 agents:
   expert:
+    model: openai:gpt-5-mini
     system_prompt:
       - type: file
         path: "prompts/role.j2"
@@ -87,7 +91,7 @@ Reference prompts from the configured prompt library:
 
 ```yaml
 prompts:
-  system_prompt:
+  system_prompts:
     expert_analyst:
       content: |
         You are an expert data analyst.
@@ -97,6 +101,7 @@ prompts:
 
 agents:
   analyst:
+    model: openai:gpt-5-mini
     system_prompt:
       - type: library
         reference: "expert_analyst"
@@ -109,9 +114,10 @@ Generate prompts dynamically using callable functions:
 ```yaml
 agents:
   dynamic_agent:
+    model: openai:gpt-5-mini
     system_prompt:
       - type: function
-        function: "my_module:generate_context_prompt"
+        function: "my_module.generate_context_prompt"
         arguments:
           user_id: "12345"
           session_type: "technical_support"
@@ -166,6 +172,7 @@ You can combine different prompt types in a single agent:
 ```yaml
 agents:
   advanced_assistant:
+    model: openai:gpt-5-mini
     system_prompt:
       # String shortcut
       - "You are an advanced AI assistant."
@@ -187,7 +194,7 @@ agents:
 
       # Function-generated
       - type: function
-        function: "context:get_current_capabilities"
+        function: "context.get_current_capabilities"
         arguments:
           include_experimental: false
 ```
@@ -349,7 +356,7 @@ agents:
 
 ```yaml
 prompts:
-  system_prompt:
+  system_prompts:
     expert_analyst:
       content: |
         You are an expert data analyst.
@@ -383,6 +390,7 @@ prompts:
     INHERIT: prompts.yml
     agents:
       my_agent:
+        model: openai:gpt-5-mini
         system_prompt:
           - type: library
             reference: my_prompt

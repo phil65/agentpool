@@ -45,34 +45,52 @@ Your agents now appear as modes in Zed's agent panel - switch between them mid-c
 
 ### Wrap External Agents
 
-Integrate existing ACP-compatible agents (Claude Code, Goose, Codex, fast-agent) into your pool:
+Coding agents like Claude Code, Codex or any ACP agent become members of your pool:
 
 ```yaml
 agents:
   claude:
-    type: acp
-    provider: claude
-    cwd: /path/to/project
+    type: claude_code       # Claude Code via its SDK
+    model: sonnet
+  codex:
+    type: codex             # Codex app-server
   goose:
-    type: goose
+    type: acp               # any ACP agent from the ACP registry
+    provider: registry
+    registry_id: goose
 ```
 
-See [ACP Integration](../advanced/acp-integration/) for full details.
+See [Node Types](../configuration/node-types/index.md) and
+[ACP Integration](../advanced/acp-integration.md) for details.
+
+## Other Clients
+
+The same pool can be served to other clients:
+
+```bash
+agentpool serve-opencode agents.yml   # OpenCode TUI / desktop (opencode --server ...)
+agentpool ui opencode agents.yml      # start the server and the OpenCode TUI together
+agentpool serve-mcp agents.yml        # agents as MCP tools (Claude Code, Cursor, ...)
+agentpool serve-agui agents.yml       # AG-UI frontends
+agentpool serve-api agents.yml        # OpenAI-compatible API
+```
 
 ## CLI Usage
 
-Initialize and manage configurations:
-
 ```bash
-# Create starter configuration
-agentpool init agents.yml
+# Create a starter configuration (agentpool.yml in the project)
+agentpool config init
 
-# Add to your configurations
-agentpool add agents.yml
+# Run an agent once
+agentpool run assistant "What is Python?"
 
-# Start chatting
-agentpool chat assistant
+# Register a config file under a name and make it the active one
+agentpool add myagents agents.yml
+agentpool set myagents
+agentpool list-agents
 ```
+
+See the [CLI reference](../cli/index.md) for all commands.
 
 ## Configured Agents
 
@@ -83,7 +101,7 @@ Create an agent configuration:
 agents:
   assistant:
     display_name: "Technical Assistant"
-    model: openai:gpt-4
+    model: openai:gpt-5-mini
     system_prompt: You are a helpful technical assistant.
     tools:
       - type: file_access
@@ -94,14 +112,17 @@ Use it in code:
 ```python
 from agentpool import AgentPool
 
+
 async def main():
     async with AgentPool("agents.yml") as pool:
         agent = pool.get_agent("assistant")
         response = await agent.run("What is Python?")
-        print(response.data)
+        print(response.content)
+
 
 if __name__ == "__main__":
     import anyio
+
     anyio.run(main)
 ```
 
@@ -110,30 +131,25 @@ if __name__ == "__main__":
 Quick model interactions without configuration:
 
 ```python
-from agentpool import run_with_model, run_with_model_sync
+from pydantic import BaseModel
 
-# Async usage
+from agentpool.functional import run_agent, run_agent_sync
+
+
+class Analysis(BaseModel):
+    summary: str
+    key_points: list[str]
+
+
 async def main():
-    result = await run_with_model(
-        "Analyze this text",
-        model="openai:gpt-4"
-    )
-    print(result)
+    text = await run_agent("Analyze this text", model="openai:gpt-5-mini")
+    print(text)
 
     # With structured output
-    from pydantic import BaseModel
-
-    class Analysis(BaseModel):
-        summary: str
-        key_points: list[str]
-
-    result = await run_with_model(
-        "Analyze the sentiment",
-        model="openai:gpt-4",
-        output_type=Analysis
-    )
+    result = await run_agent("Analyze the sentiment", model="openai:gpt-5-mini", output_type=Analysis)
     print(f"Summary: {result.summary}")
 
+
 # Sync usage (convenience wrapper)
-result = run_with_model_sync("Quick question", model="openai:gpt-4")
+text = run_agent_sync("Quick question", model="openai:gpt-5-mini")
 ```

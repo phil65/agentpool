@@ -79,9 +79,6 @@ stats.byte_count     # Raw data transferred
 # Agent information
 stats.source_names   # Agents that sent messages
 stats.target_names   # Agents that received messages
-
-# Additional data
-stats.error_log      # Any errors that occurred
 ```
 
 ### Example: Monitored Execution
@@ -108,8 +105,7 @@ async def main():
         while run.is_running:
             print("\nCurrent status:")
             print(f"Processed messages: {stats.message_count}")
-            print(f"Active connections: {len(stats)}")
-            print(f"Errors: {len(stats.error_log)}")
+            print(f"Active connections: {stats.num_connections}")
             await anyio.sleep(0.5)
 
         # Wait for completion

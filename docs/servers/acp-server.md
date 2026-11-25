@@ -153,85 +153,78 @@ Integrate external ACP agents into your pool:
 agents:
   claude:
     type: acp
-    provider: claude
+    provider: registry       # resolved from the ACP registry and installed on demand
+    registry_id: claude-acp
     display_name: "Claude Code"
-    
+
+  my_agent:
+    type: acp
+    provider: custom         # any ACP server command
+    command: my-acp-server
+    args: ["--stdio"]
+
   coordinator:
     type: native
-    model: openai:gpt-4o
+    model: openai:gpt-5-mini
     tools:
-      - type: agent_cli  # Can delegate to claude
+      - type: subagent       # can delegate to claude and my_agent
 ```
 
-### Supported Providers
-
-**MCP-Capable** (with toolset bridging):
-
-- `claude` - Claude Code
-- `gemini` - Google Gemini CLI
-- `auggie` - Augment Code
-- `kimi` - Moonshot Kimi CLI
-
-**Standard ACP**:
-
-- `codex` - OpenAI Codex
-- `opencode` - OpenCode
-- `goose` - Block's Goose
-- `fast-agent` - Fast Agent
-- `openhands` - OpenHands
+`registry_id` is an agent ID of the [ACP registry](https://agentclientprotocol.com/registry)
+(for example `claude-acp`, `codex-acp`, `gemini`, `goose`, `opencode`, `fast-agent`, `kimi`).
+`provider: remote` connects to an ACP agent served over HTTP or WebSocket instead.
 
 ## Execution Environments
 
-ACP agents can run in different environments:
+The tools AgentPool serves to an ACP agent (and the agent's file and terminal requests) can
+run in another [execution environment](../configuration/execution-environments.md):
 
 ```yaml
 agents:
   claude_docker:
     type: acp
-    provider: claude
+    provider: registry
+    registry_id: claude-acp
     environment:
       type: docker
       image: python:3.13-slim
-      
+
   claude_e2b:
     type: acp
-    provider: claude
+    provider: registry
+    registry_id: claude-acp
     environment:
       type: e2b
       template: python-sandbox
 ```
 
-Available environments: `local`, `docker`, `e2b`, `beam`, `daytona`, `srt`
-
 ## Toolset Bridging
 
-MCP-capable agents can access internal toolsets:
+ACP agents that support MCP get AgentPool's tools through an MCP bridge:
 
 ```yaml
 agents:
   claude_orchestrator:
     type: acp
-    provider: claude
+    provider: registry
+    registry_id: claude-acp
     tools:
       - type: subagent        # Delegation tools
-      - type: agent_cli # Lifecycle tools
       - type: search          # Web search
+        web_search: tavily
 ```
 
-AgentPool automatically creates an MCP bridge, exposing these tools to the external agent.
-
 ## Permissions
-
-Fine-grained permission control:
 
 ```yaml
 agents:
   restricted:
     type: acp
-    provider: claude
+    provider: registry
+    registry_id: claude-acp
     allow_file_operations: false
     allow_terminal: false
-    auto_grant_permissions: false
+    auto_approve: false
 ```
 
 ## See Also

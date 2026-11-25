@@ -22,102 +22,64 @@ print(node)
 
 ### MessageNode
 
-The base interface that all nodes implement. A node can receive messages, process them, and emit responses. This common interface allows uniform handling regardless of implementation.
+The base interface that all nodes implement. A node receives prompts or messages, processes
+them and emits responses, so agents and teams can be handled uniformly: run, streamed,
+connected, used as tools, served over a protocol and logged to storage.
 
 ### Agents
 
-Native LLM-powered agents defined in your configuration:
+All agent types are nodes, whatever runs them:
+
+/// mknodes
+{{ "agentpool.models.manifest.AnyAgentConfig" | config_union_table }}
+///
 
 ```yaml
 agents:
-  assistant:
-    model: openai:gpt-4
+  assistant:                 # native PydanticAI agent (type: native is the default)
+    model: openai:gpt-5-mini
     system_prompt: You are a helpful assistant.
-```
-
-Agents are the most flexible nodes - they support tools, structured output, conversation history, and all framework features.
-
-### ACP Agents
-
-External coding agents integrated via the [Agent Client Protocol](https://agentclientprotocol.com/). These wrap tools like Claude Code, Goose, Codex, or fast-agent as nodes:
-
-```yaml
-agents:
   claude:
-    type: acp
-    provider: claude
-    cwd: /path/to/project
+    type: claude_code        # Claude Code via its SDK
   goose:
-    type: goose
+    type: acp                # an ACP agent from the ACP registry
+    provider: registry
+    registry_id: goose
 ```
 
-ACP agents appear alongside native agents in your pool and can be connected, composed into teams, or used as tools - just like any other node.
+Native agents support every framework feature (tools, structured output, history
+processing, ...). The others bring their own tools and loop; AgentPool adds its tools to
+them over an MCP bridge and translates their events into its own.
 
 ### Teams
 
 Groups of nodes that execute together:
 
-- **Parallel teams** (`agent1 & agent2`): All nodes run simultaneously
-- **Sequential pipelines** (`agent1 | agent2`): Output flows from one to the next
+- **Parallel teams** (`agent1 & agent2`, `mode: parallel`): all nodes run simultaneously
+- **Sequential pipelines** (`agent1 | agent2`, `mode: sequential`): output flows from one to the next
 
 Teams themselves are nodes, enabling nested composition.
 
-### Why This Matters
+## The Pool
 
-The unified node model means you can:
+An `AgentPool` loads a manifest (YAML) and owns everything defined in it: agents, teams, MCP
+servers, storage, sessions, triggers and connections. Agents in a pool can discover each other
+and delegate (`subagent` / `workers` toolsets), and the pool is what the protocol servers
+(`serve-acp`, `serve-opencode`, `serve-mcp`, ...) expose to clients.
 
-- Connect a native agent to an ACP agent
-- Build a team mixing Claude Code with your custom agents
-- Use any node as a tool for another node
-- Apply the same monitoring, logging, and storage to all nodes
+## Sessions and Turns
 
-## Core Components
+A **session** is one conversation with an agent; one pool agent can serve many sessions at
+once, and delegation runs in child sessions. A **turn** is one prompt run in a session, until
+it ends (completed, cancelled, failed, ...). See [Sessions and Turns](../core-concepts/sessions.md).
 
-### Configuration and YAML
+## Configuration in YAML
 
-AgentPool excels at static definition of agents using a YAML configuration:
+AgentPool is built around static, versionable YAML configuration validated by Pydantic
+models (with a JSON schema for IDE completion):
 
 ```yaml
 # agents.yml (AgentsManifest)
-agents:
-  analyzer:    # NativeAgentConfig
-    analyzer:
-        model: "openai:gpt-5"
-        system_prompt: ...
-        tools: [...]
-  planner:
-    model: "anthropic:claude-sonnet-4-0"
-    ...
-```
-
-The YAML schema is very detailed and well-defined and should allow setting up Agent pools via YAML without having to permanently consult the docs.
-
-It is possible to:
-
-- Define Agents (ACP, AGUI, regular) & teams
-- Assign tools, toolsets, mcp servers
-- Connect the agent to other agents with different "Connection types"
-- Define and assign respone types for structured output in YAML
-- Define and activate event triggers in YAML
-- Set up (multiple) storage providers to write the conversations, tool calls, commands and much more to databases as well as files (pretty-printed or structured)
-- Load previous conversations and even describe the Queries in the yaml file using simple syntax
-- Assign agents to other agents for agent-as-a-tool-usage
-
-
-AgentPool is built around the idea that AI agents should be:
-
-- Easily configurable through YAML
-- Fully reproducible
-- Version controllable
-- Human readable and verifiable
-- Shareable across teams and projects
-
-This means you can define complete agents, their capabilities, and their environments in pure YAML without writing any code.
-
-Define complete agents in YAML without writing code:
-
-```yaml
-# agents.yml
 agents:
   web_assistant:
     model: openai:gpt-5
@@ -128,49 +90,20 @@ agents:
     system_prompt: "You are a helpful web assistant."
 ```
 
-### Agent Pools
+In YAML you can:
 
-A Pool is a collection of agents that can:
+- define agents of every type and teams
+- assign tools, toolsets and MCP servers
+- connect nodes (forward results, with conditions, queues and filters)
+- define response types for structured output
+- set up triggers (files, webhooks, schedules, MCP events, ...)
+- configure storage providers for conversations, tool calls and commands
+- load earlier conversations with simple queries
 
-- Share resources and knowledge
-- Discover each other
-- Communicate and delegate tasks
-- Be monitored and supervised
+See [Configuration](../configuration/index.md) for the complete reference.
 
-Think of a pool as a workspace where agents can collaborate.
+## Connections and Triggers
 
-### Teams
-
-Teams are dynamic groups of agents from a pool that work together on specific tasks. They support:
-
-- Parallel execution
-- Sequential processing
-- Controlled communication
-- Result aggregation
-
-### Connections
-
-Connections define how agents communicate. They include:
-
-- Direct message forwarding
-- Context sharing
-- Task delegation
-- Response awaiting
-
-Connections can be:
-
-- One-to-one
-- One-to-many
-- Temporary or permanent
-- Conditional or unconditional
-- Queued, accumulated, debounced, filtered
-- Team-to-Team, Team-to-Callable, Team-to-Agent
-
-### Tasks
-
-Tasks are pre-defined operations that agents can execute. They include:
-
-- Prompt templates
-- Required tools
-- Knowledge sources
-- Expected result types
+**Connections** forward a node's results to other nodes, files or callables (one-to-one or
+one-to-many, queued, filtered, conditional). **Triggers** start a node on outside events: file
+changes, webhooks, schedules, emails, MCP events or events of connections.

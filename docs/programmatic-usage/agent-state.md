@@ -11,7 +11,7 @@ An agent maintains several types of state that influence its behavior. While som
 ## Core State Components
 
 - **System Prompts**: Define the agent's role and behavior guidelines
-- **Tools**: Available functions and capabilities
+- **Tools**: Available functions and capabilities (`agent.tools`, see [Tools](tools.md))
 - **Memory/History**: Past conversation context
 - **Model**: The used LLM model
 - **Connections**: Active connections, to whom the own results get forwarded to.
@@ -20,8 +20,6 @@ An agent maintains several types of state that influence its behavior. While som
 
 ```python
 async with Agent(...) as agent:
-    # Register tools
-    agent.tools.register_tool(my_tool)
     # Change model
     await agent.set_model("openai:gpt-5-nano")
     # Clear conversation history
@@ -55,27 +53,29 @@ async with agent.temporary_state(
 
 ## Memory Management
 
-Control message history size and persistence:
+Control history tracking and loading of earlier conversations:
 
 ```python
-# No message history
-agent = Agent(session=False)
-# Keep max 1000 tokens in context window
-agent = Agent(session=1000)
-# Complex memory configuration
-agent = Agent(session=MemoryConfig(
-    max_messages=5,  # Keep last 5 messages
-    max_tokens=1000,  # And stay under 1000 tokens
-    enable=True      # Enable history logging
-))
+from agentpool_config.session import MemoryConfig, SessionQuery
+
+# No history tracking
+agent = Agent(model="openai:gpt-5-mini", session=False)
+# Memory configuration: history tracking, storage provider, history processors
+agent = Agent(
+    model="openai:gpt-5-mini",
+    session=MemoryConfig(enable=True, history_processors=["my_module.keep_last_ten"]),
+)
 
 # Recover previous session
-agent = Agent(session="previous_chat_id")
-agent = Agent(session=SessionQuery(
-    name="previous_chat",
-    since="1h",  # Last hour's messages
-    roles={"user", "assistant"}
-))
+agent = Agent(model="openai:gpt-5-mini", session="previous_chat_id")
+agent = Agent(
+    model="openai:gpt-5-mini",
+    session=SessionQuery(
+        name="previous_chat",
+        since="1h",  # Last hour's messages
+        roles={"user", "assistant"},
+    ),
+)
 ```
 
 

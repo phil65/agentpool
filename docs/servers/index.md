@@ -17,6 +17,11 @@ AgentPool can expose agents through multiple server protocols, enabling integrat
 | [MCP Server](mcp-server.md) | Model Context Protocol | Expose tools to other agents | `agentpool serve-mcp` |
 | [AG-UI Server](agui-server.md) | AG-UI Protocol | AG-UI compatible clients | `agentpool serve-agui` |
 | [OpenAI API Server](openai-api-server.md) | OpenAI API | Drop-in OpenAI replacement | `agentpool serve-api` |
+| Vercel AI Server | Vercel AI Data Stream Protocol | Vercel AI SDK frontends (`POST /chat`) | [`agentpool serve-vercel`](../cli/serve-vercel.md) |
+
+The OpenCode server can also be started together with a client: `agentpool ui opencode`
+(TUI) and `agentpool ui desktop` (desktop app); `agentpool ui toad` starts the Toad TUI over
+ACP.
 
 ## Architecture Overview
 

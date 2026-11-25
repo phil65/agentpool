@@ -136,10 +136,12 @@ agents:
     type: agui
     endpoint: http://localhost:8000/agent/run
     tools:
-      - import_path: myapp.tools.confirm_action
+      - type: import
+        import_path: myapp.tools.confirm_action
         name: confirm_action
         description: Ask user to confirm important actions
-      - import_path: myapp.tools.fetch_data
+      - type: import
+        import_path: myapp.tools.fetch_data
         name: fetch_data
         description: Retrieve data from local sources
 ```
@@ -165,20 +167,21 @@ AG-UI agents work seamlessly with the agent pool:
 agents:
   local_assistant:
     type: native
-    model: openai:gpt-4
+    model: openai:gpt-5-mini
     system_prompt: You are a helpful assistant
   remote_specialist:
     type: agui
     endpoint: http://specialist-server.com/agent/run
     tools:
-      - import_path: tools.confirm
+      - type: import
+        import_path: myapp.tools.confirm
       
 teams:
   hybrid_team:
+    mode: parallel
     members:
       - local_assistant
       - remote_specialist
-    strategy: parallel
 ```
 
 Use in code:
@@ -244,11 +247,13 @@ agents:
     type: agui
     endpoint: http://localhost:8000/agent/run
     tools:
-      - import_path: mypackage.tools.tool_one
+      - type: import
+        import_path: mypackage.tools.tool_one
         name: custom_name          # Override name
         description: Custom desc   # Override description
-        enabled: true             # Can disable individual tools
-      - import_path: mypackage.tools.tool_two
+        enabled: true              # Can disable individual tools
+      - type: import
+        import_path: mypackage.tools.tool_two
 ```
 
 ### With MCP Servers

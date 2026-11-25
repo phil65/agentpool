@@ -127,8 +127,8 @@ storage:
     - type: sql               # Main history storage
       url: sqlite:///history.db
 
-    - type: text_file         # Additional logging
-      path: logs/output.txt
+    - type: file              # Additional log file (format from the extension)
+      path: logs/history.yml
 ```
 
 ## Usage Examples

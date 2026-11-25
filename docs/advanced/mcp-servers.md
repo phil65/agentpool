@@ -21,6 +21,7 @@ Simple command-line style configuration:
 ```yaml
 agents:
   my_agent:
+    model: openai:gpt-5-mini
     mcp_servers:
       - "uvx python-mcp-server --arg1 value1"
       - "node js-mcp-server.js"
@@ -33,6 +34,7 @@ Detailed configuration with environment variables and options:
 ```yaml
 agents:
   my_agent:
+    model: openai:gpt-5-mini
     mcp_servers:
       - type: stdio
         command: "pipx"

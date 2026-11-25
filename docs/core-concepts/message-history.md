@@ -6,116 +6,99 @@ icon: material/history
 
 ## Overview
 
-The MessageHistory handles message history and context for agents. It provides:
+Each [session](sessions.md) keeps its conversation in a `MessageHistory`. For the agent's
+default session it is available as `agent.conversation`. It provides:
 
-- Message history storage and retrieval
-- Conversation context management
-- Session recovery
-- Token counting and limiting
-- Message filtering
+- the messages of the conversation (`ChatMessage` objects)
+- context messages added outside of runs
+- loading earlier conversations from [storage](storage.md)
+- temporary history changes (`temporary_state()`)
 
-## Core Functionality
-
-### Managing History
+## Managing History
 
 ```python
-# Access Message history
 history = agent.conversation
-# Get message history
-messages = history.get_history()
-# Get specific messages
-recent = history[-5:]  # Last 5 messages
-agent_msgs = history["other_agent"]  # Messages from specific agent
-# Clear history
-await history.clear()
-# Set history
-history.set_history(new_messages)
+
+messages = history.get_history()     # all messages
+history.set_history(messages[-10:])  # replace the history
+await history.clear()                # start over
+
+# Run with a temporary history, restored afterwards
+async with history.temporary_state(["Earlier context"], replace_history=True):
+    await agent.run("A question without the rest of the conversation")
 ```
 
-### Context Management
+## Context
+
+Context is added to the conversation without running the agent:
 
 ```python
-# Add context
 history.add_context_message(
-    content="Important background info",
+    "Important background info",
     source="documentation",
-    metadata={"type": "background"}
+    type="background",  # further keyword arguments are stored as metadata
 )
+await history.load_context_source("docs/api.md")  # a file or URL
 
-# Load context from sources
-await history.load_context_source("docs/api.md")
-await history.add_context_from_prompt(system_prompt)
-
-# Format history for context
-history_text = await history.format_history(
-    max_tokens=1000,
-    num_messages=5
-)
+# Format the history as text, for example for another agent
+text = await history.format_history(max_tokens=1000, num_messages=5)
 ```
 
+## Loading Earlier Conversations
 
-## Session Management
-
-Sessions allow conversation recovery and continuation:
-
-```python
-# Create agent with session
-agent = pool.get_agent(
-    "assistant",
-    session="previous_chat"  # Session ID
-)
-# Or with query
-agent = pool.get_agent(
-    "assistant",
-    session=SessionQuery(
-        name="previous_chat",
-        since="1h",
-        roles={"assistant", "user"}
-    )
-)
-```
-
-## YAML Configuration
-
-Session configuration is part of the agent definition:
+The `session` field of a native agent loads a stored conversation when the agent starts,
+by name or by a query (see [Session configuration](../configuration/session.md)):
 
 ```yaml
 agents:
   my_agent:
     model: openai:gpt-5
-    description: "Support assistant"
-
-    # Session configuration
     session:
-      name: support_chat        # Session identifier
+      name: support_chat       # Session identifier
       since: 1h                # Time period to load
       until: 5m                # Up to this time ago
-      agents: [support, user]   # Only these agents
+      agents: [support]        # Only messages of these agents
       roles: [user, assistant] # Only these roles
       contains: "error"        # Text search
       limit: 50                # Max messages
-      include_forwarded: true  # Include forwarded messages
 ```
 
-You can also provide just the session ID:
-
-```yaml
-agents:
-  my_agent:
-    session: previous_chat  # Simple form with just ID
-```
-
-When using `Agent.__init__()`:
+The same works in Python:
 
 ```python
-# With session query
-async with Agent(
-    ...,
-    session=SessionQuery(name="support_chat", since="1h")
-) as agent:
-    ...
+from agentpool import Agent
+from agentpool_config.session import SessionQuery
 
-# With simple session ID
-async with Agent(..., session="previous_chat") as agent:
-    ...
+
+async def main():
+    async with Agent(
+        model="openai:gpt-5-mini",
+        session=SessionQuery(name="support_chat", since="1h"),
+    ) as agent:
+        ...
 ```
+
+The stored history of an agent is available with `await agent.get_message_history(limit=50)`.
+
+## Compaction
+
+Long conversations can be compacted: `await agent.compact()` shrinks the history of a session
+(filtering, truncating or summarizing messages). The steps are configured in the manifest's
+`compaction` section:
+
+```yaml
+compaction:
+  preset: balanced  # or: minimal, summarizing
+
+agents:
+  assistant:
+    model: openai:gpt-5-mini
+```
+
+/// mknodes
+{{ "agentpool_config.compaction.CompactionConfig" | schema_to_markdown(display_mode="yaml", header_style="pymdownx", as_listitem=False, wrapped_in="compaction", header_level=3) }}
+///
+
+/// mknodes
+{{ "agentpool_config.compaction.CompactionStepConfig" | union_to_markdown(display_mode="yaml", header_style="pymdownx", header_level=3, wrapped_in="steps") }}
+///

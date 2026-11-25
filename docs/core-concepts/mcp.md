@@ -30,100 +30,48 @@ agents:
           PYTHONPATH: src
           DEBUG: "1"
 
-      # SSE server (coming soon)
+      # Remote servers
+      - type: streamable-http
+        url: "http://localhost:3001/mcp"
       - type: sse
-        url: "http://localhost:3001/events"
+        url: "http://localhost:3002/sse"
 ```
 
 ### In Agent Constructor
 
 ```python
-from agentpool import Agent, StdioMCPServerConfig
+from agentpool import Agent
+from agentpool_config.mcp_server import StdioMCPServerConfig
 
-# Create agent with MCP servers
 agent = Agent(
+    model="openai:gpt-5-mini",
     mcp_servers=[
         # String form
         "python -m myserver",
-
         # Full configuration
-        StdioMCPServerConfig(
-            command="python",
-            args=["-m", "codetools"],
-            env_vars={"DEBUG": "1"}
-        )
-    ]
+        StdioMCPServerConfig(command="python", args=["-m", "codetools"], env={"DEBUG": "1"}),
+    ],
 )
 ```
 
 ## Initialization
 
-MCP servers are initialized when the agent enters its async context:
+MCP servers are connected when the agent enters its async context and closed when it exits:
 
 ```python
-async with Agent(mcp_servers=servers) as agent:
-    # MCP servers are now connected
-    # Tools are available
+async with Agent(model="openai:gpt-5-mini", mcp_servers=servers) as agent:
+    tools = await agent.tools.get_tools()  # includes the MCP servers' tools
     await agent.run("Use MCP tools...")
-
-# MCP servers are automatically cleaned up
 ```
 
-The initialization process:
+MCP tools become available like any other agent tool. Servers can also provide prompts,
+resources and skills (MCP Skills extension), and send events (MCP Events extension, used by
+`mcp_event` triggers). At runtime, `/mcp` commands (or `agent.set_mcp_server_enabled()` /
+`agent.reconnect_mcp_server()`) enable, disable and reconnect an agent's servers.
 
-1. Creates MCP clients for each server
-2. Establishes connections
-3. Retrieves available tools
-4. Registers tools with the agent
-
-## Using MCP Tools
-
-MCP tools become available like any other agent tool:
-
-```python
-async with Agent(mcp_servers=servers) as agent:
-    # List available tools
-    tools = await agent.tools.get_tools(source="mcp")
-
-    # Use MCP tools in prompts
-    result = await agent.run("""
-        Analyze this code using the code_analyzer tool
-        from the MCP server
-    """)
-```
-
-Tools are automatically converted to AgentPool's tool format with proper typing and documentation.
+Pool-level servers (the manifest's top-level `mcp_servers`) are shared by all agents.
 
 ## Configuration Options
 
-### StdioMCPServerConfig
-
-```python
-class StdioMCPServerConfig:
-    """MCP server using stdio communication."""
-    command: str
-    """Command to execute"""
-
-    args: list[str]
-    """Command arguments"""
-
-    env: dict[str, str] | None
-    """Environment variables"""
-
-    enabled: bool = True
-    """Whether server is active"""
-```
-
-### SSEMCPServerConfig (Coming Soon)
-
-```python
-class SSEMCPServerConfig:
-    """MCP server using SSE transport."""
-    url: str
-    """Server endpoint URL"""
-
-    enabled: bool = True
-    """Whether server is active"""
-```
-
-MCP integration allows agents to seamlessly use tools from external services while maintaining AgentPool's type safety and resource management.
+See [MCP configuration](../configuration/mcp.md) for all options of the server types
+(`stdio`, `sse`, `streamable-http`).

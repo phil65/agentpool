@@ -1,160 +1,100 @@
 ---
-title: Basic Agent
-description: Core Agent implementation and features
+title: Agents
+description: Agent types and the interface they share
 icon: material/account
 ---
 
-## Core Interface
+## Agent Types
 
-### Running Queries
+Every agent in a pool implements the same interface (`BaseAgent`), whatever runs it:
 
-The agent provides three main ways to execute queries:
+/// mknodes
+{{ "agentpool.models.manifest.AnyAgentConfig" | config_union_table }}
+///
 
-```python
-# Basic async run
-result = await agent.run(
-    "What is 2+2?",
-    output_type=int,  # Optional type for structured responses (and a generic type)
-    deps=my_deps,     # Optional dependencies
-    model="gpt-5-mini"     # Optional model override
-)
+So a Claude Code agent, a Codex agent and a native PydanticAI agent can be run, streamed,
+steered, delegated to, combined into teams and served over any protocol the same way. See
+[Node Types](../configuration/node-types/index.md) for their configuration.
 
-# Streaming responses
-async for event in agent.run_stream("Count to 10"):
-    print(chunk)  # Pydantic-AI event
-
-# Synchronous wrapper (convenience)
-result = agent.run.sync("Hello!")
-```
-
-### Conversation Management
-
-The agent maintains conversation history and context through its `conversation` property:
+## Running an Agent
 
 ```python
-# Access conversation manager
-agent.conversation.add_context_message("Important context")
-history = agent.conversation.get_history()
-await agent.conversation.clear()
+from agentpool import AgentPool
+
+
+async def main():
+    async with AgentPool("agents.yml") as pool:
+        agent = pool.get_agent("assistant")
+
+        # Run and get the final message
+        message = await agent.run("What is 2+2?")
+        print(message.content)
+
+        # Stream events (text deltas, tool calls, ...)
+        async for event in agent.run_stream("Count to 10"):
+            print(event)
+
+        # Run a turn and inspect how it ended
+        turn = await agent.run_turn("Summarize the README")
+        print(turn.outcome, turn.usage)
 ```
 
-### Tool Management
-
-Tools are managed through the `tools` property:
-
-```python
-# Register a tool
-agent.tools.register_tool(my_tool)
-tools = await agent.tools.get_tools()
-```
-
-## Signals
-
-The agent emits various signals that can be connected to:
-
-```python
-# Message signals
-agent.message_sent.connect(handle_message)
-agent.message_received.connect(handle_message)
-```
-
-## Continuous Operation
-
-Agents can run continuously:
-
-```python
-# Run with static prompt
-await agent.run_in_background(
-    "Monitor the system",
-    interval=60,
-    max_count=10
-)
-
-# Run with dynamic prompt
-def get_prompt(ctx):
-    return f"Check status of {ctx.data.system}"
-
-await agent.run_in_background(get_prompt)
-```
-
-## Agents with output types
+A native agent can also be created directly:
 
 ```python
 from agentpool import Agent
-from pydantic import BaseModel
 
-class AnalysisResult(BaseModel):
-    sentiment: float
-    topics: list[str]
 
-# Create structured agent directly
-agent = Agent(base_agent, output_type=AnalysisResult)
-
+async def main():
+    async with Agent(model="openai:gpt-5-mini", system_prompt="Be brief.") as agent:
+        message = await agent.run("Hello!")
 ```
 
-## YAML Configuration
+Runs belong to a [session](sessions.md): pass `session=` to run in a specific conversation;
+otherwise the agent's default session is used.
 
-When defining structured agents in YAML, use the `output_type` field to specify either an inline response definition or reference a shared one:
+## Structured Output
 
-```yaml
-agents:
-  analyzer:
-    provider:
-       type: pydantic_ai
-       model: openai:gpt-5
-    output_type: AnalysisResult  # Reference shared definition
-    system_prompt: You analyze text and provide structured results.
-
-  validator:
-    provider:
-       type: pydantic_ai
-       model: openai:gpt-5
-    output_type:  # Inline definition
-      type: inline
-      fields:
-        is_valid:
-          type: bool
-          description: "Whether the input is valid"
-        issues:
-          type: list[str]
-          description: "List of validation issues"
-
-responses:
-  AnalysisResult:
-    response_schema:
-      type: inline
-      description: "Text analysis result"
-      fields:
-        sentiment:
-          type: float
-          description: "Sentiment score between -1 and 1"
-        topics:
-          type: list[str]
-          description: "Main topics discussed"
-```
-
-## Important Note on Usage Patterns
-
-There are two distinct ways to use structured agents, which should not be mixed:
-
-### Programmatic Usage (Type-Safe)
+Native agents return typed results when given an `output_type`:
 
 ```python
+from pydantic import BaseModel
+
+from agentpool import Agent
+
+
 class AnalysisResult(BaseModel):
     sentiment: float
     topics: list[str]
 
-agent = Agent(..., output_type=AnalysisResult)
+
+async def main():
+    async with Agent(model="openai:gpt-5-mini", output_type=AnalysisResult) as agent:
+        message = await agent.run("Analyze: 'I love this product!'")
+        result: AnalysisResult = message.content
 ```
 
-### Declarative Usage (YAML Configuration)
+In YAML, `output_type` references a [response definition](../configuration/responses.md).
 
-The usage of Agents with structured outputs in pure-YAML workflows is still in its infancy.
-You can do it, but in the end there is no real "structured communication" happening
-yet. If an Agent gets a BaseModel as its input, its getting formatted in a
-Human/LLM-friendly way and processed as text input.
+## Runtime Control
 
-!!! warning
-    Never mix these patterns by referencing manifest response definitions in programmatic code,
-    as this breaks type safety.
-    Always use concrete Python types when working programmatically with structured agents.
+| Method | Purpose |
+|---|---|
+| `set_model(model)` / `get_available_models()` | Switch the model, list the models the agent can use |
+| `get_modes()` / `set_mode(mode, category_id=...)` | Modes and config options (permission mode, reasoning effort, ...) |
+| `steer(text)` / `queue_prompt(prompt)` / `interrupt()` | Talk to or stop a running turn |
+| `compact()` / `fork_session()` / `start_new_session()` | Manage the conversation |
+| `get_stats()` / `get_message_history()` | Usage statistics and stored history |
+| `to_tool()` | Use the agent as a tool of another agent |
+| `run_in_background(prompt, interval=..., max_count=...)` | Run repeatedly in the background |
+
+## Signals
+
+Agents emit signals that can be connected to:
+
+```python
+agent.message_sent.connect(lambda message: print("sent", message.content))
+agent.message_received.connect(lambda message: print("received", message.content))
+agent.turn_completed.connect(lambda turn: print("turn ended", turn.outcome))
+agent.run_failed.connect(lambda event: print("failed", event))
+```

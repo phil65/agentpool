@@ -25,11 +25,12 @@ Events flow through the system in this order:
 
 ### File Watch Events
 
-Monitor file system changes and trigger agent actions:ä
+Monitor file system changes and trigger agent actions:
 
 ```yaml
 agents:
   code_monitor:
+    model: openai:gpt-5-mini
     triggers:
       - type: "file"
         name: "python_watcher"        # Unique identifier
@@ -50,6 +51,7 @@ Listen for HTTP requests:
 ```yaml
 agents:
   api_handler:
+    model: openai:gpt-5-mini
     triggers:
       - type: "webhook"
         name: "github_webhook"
@@ -63,20 +65,23 @@ agents:
 
 ### Common Properties
 
-All event types share these base properties:
+All trigger types share these base properties:
 
 ```yaml
 triggers:
-  - name: "my_trigger"               # Unique identifier
+  - type: time
+    name: "my_trigger"               # Unique identifier
     enabled: true                    # Whether trigger is active
-    knowledge:                       # Optional knowledge to load
-      paths: ["context/*.md"]        # Files to load as context
-      resources:                     # AgentPool resources
-        - type: "cli"
-          command: "git status"
-      prompts:                       # Context prompts
-        - "Consider this background information..."
+    session: target                  # Session policy (see below)
+    template: "{{ content }}"        # Jinja2 template turning the event into a prompt
+    include_metadata: true
+    include_timestamp: true
+    schedule: "0 9 * * 1-5"
+    prompt: "Write the weekday report"
 ```
+
+The full list of trigger types and their options is in
+[Event Sources](../configuration/event-sources.md).
 
 ### Multiple Triggers
 
@@ -85,6 +90,7 @@ Agents can have multiple triggers of different types:
 ```yaml
 agents:
   project_assistant:
+    model: openai:gpt-5-mini
     triggers:
       # Watch for code changes
       - type: "file"
@@ -98,10 +104,11 @@ agents:
         port: 8000
         path: "/github"
 
-      # Manual review trigger
-      - type: "manual"
-        name: "review_code"
-        prompt: "Review latest changes"
+      # Daily review
+      - type: "time"
+        name: "daily_review"
+        schedule: "0 18 * * *"
+        prompt: "Review today's changes"
 ```
 
 ## Event Handling
@@ -113,6 +120,7 @@ Configure how agents handle events through system prompts:
 ```yaml
 agents:
   file_monitor:
+    model: openai:gpt-5-mini
     system_prompt: |
         You monitor file changes and analyze their impact.
         When receiving file change events:
@@ -234,8 +242,8 @@ Run agents in event-watching mode to handle events:
 # Start watching with default configuration
 agentpool watch agents.yml
 
-# With specific log level
-agentpool watch agents.yml --log-level DEBUG
+# With debug logging (a global option)
+agentpool --log-level debug watch agents.yml
 ```
 
 The agents will:
@@ -278,6 +286,7 @@ class WebhookEventData(EventData):
 ```yaml
 agents:
   code_reviewer:
+    model: openai:gpt-5-mini
     triggers:
       - type: "file"
         name: "pr_watch"
@@ -290,6 +299,7 @@ agents:
 ```yaml
 agents:
   config_monitor:
+    model: openai:gpt-5-mini
     triggers:
       - type: "file"
         name: "config_watch"

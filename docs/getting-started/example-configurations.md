@@ -26,7 +26,7 @@ from agentpool import AgentPool
 async with AgentPool("agents.yml") as pool:
     agent = pool.get_agent("url_opener")
     result = await agent.run("Open the Python website")
-    print(result.data)
+    print(result.content)
 ```
 
 ## Structured Responses
@@ -48,15 +48,15 @@ Create an agent that interacts with the file system:
 Use the file manager:
 
 ```python
-from agentpool import Agent
+from agentpool import AgentPool
 
-async with AgentPool("agents.yml" as pool:
+async with AgentPool("agents.yml") as pool:
     agent = pool.get_agent("file_manager")
     # List files
     result = await agent.run("What files are in the current directory?")
-    print(result.data)
+    print(result.content)
 
     # Read a file
     result = await agent.run("Show me the contents of config.py")
-    print(result.data)
+    print(result.content)
 ```

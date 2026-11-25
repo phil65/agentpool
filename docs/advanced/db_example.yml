@@ -4,8 +4,6 @@ agents:
     model: openai:gpt-5-mini
     session:
       enable: true # Enable/disable memory tracking
-      max_tokens: 4000 # Rolling window token limit
-      max_messages: 100 # Rolling window message limit
       provider: "sql" # Optional storage provider override
       session: # Initial session loading
         name: my_session # Optional session identifier
@@ -14,4 +12,3 @@ agents:
           - user
           - assistant
         contains: "analysis" # Filter by content
-        include_forwarded: true

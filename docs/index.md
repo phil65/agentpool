@@ -37,12 +37,21 @@ AgentPool excels at static YAML-based agent configuration:
 
 Everything is a MessageNode - enabling seamless composition:
 
-- **Native** agents with a large set of default tools
-- **ACP** agents
-- **AG-UI** agents
+- **Native** PydanticAI agents with a large set of tools and toolsets
+- **Claude Code**, **Codex**, **OpenCode V2**, **Antigravity** and **T3 Code** agents
+- **ACP** and **AG-UI** agents (local or remote)
 - Teams (parallel and sequential)
-- Human-in-the-loop-agents
-- All nodes share the same interface
+- All nodes share the same interface: run, stream, steer, delegate, serve
+
+### 🌐 One Pool, Many Protocols
+
+The same pool is served to IDEs and tools: ACP (Zed, Toad), OpenCode (TUI / desktop), MCP
+(Claude Code, Cursor, other agents), AG-UI, the OpenAI API and the Vercel AI protocol.
+
+### 💬 Sessions
+
+Each conversation is a session: one agent serves many at once, delegation runs in child
+sessions, and sessions are stored, resumed and forked.
 
 
 ## Dependencies
@@ -64,7 +73,7 @@ MIT License - see [LICENSE](https://github.com/phil65/agentpool/blob/main/LICENS
 agents:
   assistant:
     display_name: "Technical Assistant"
-    model: openai:gpt-4
+    model: openai:gpt-5-mini
     system_prompt: You are a helpful technical assistant.
     tools:
       - type: file_access
@@ -79,7 +88,7 @@ async def main():
     async with AgentPool("agents.yml") as pool:
         agent = pool.get_agent("assistant")
         response = await agent.run("What is Python?")
-        print(response.data)
+        print(response.content)
 
 if __name__ == "__main__":
     import anyio

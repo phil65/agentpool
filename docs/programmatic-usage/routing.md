@@ -75,7 +75,7 @@ Filter functions can make routing decisions based on:
 def least_busy(context: EventContext):
     return not context.target.is_busy()
 
-source >> team.when(least_busy)
+(source >> team).when(least_busy)
 ```
 
 #### Cost-Aware Routing
@@ -84,7 +84,7 @@ source >> team.when(least_busy)
 def within_budget(context: EventContext):
     return context.stats.total_cost < 1.0  # $1 limit
 
-source >> target.when(within_budget)
+(source >> target).when(within_budget)
 ```
 
 ### Context Object
@@ -105,7 +105,7 @@ class EventContext:
     stats: TalkStats
     """Statistics for the current connection."""
 
-    registry: ConnectionRegistry
+    registry: ConnectionRegistry | None
     """Registry of all named connections."""
 
     talk: Talk
@@ -132,7 +132,7 @@ def check_condition(ctx: EventContext) -> bool:
         return False
 
     # Look up other connection
-    if other := ctx.registry.get("other_connection"):
+    if ctx.registry and (other := ctx.registry.get("other_connection")):
         if other.stats.message_count > 5:
             return False
 

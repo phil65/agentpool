@@ -129,6 +129,7 @@ This command:
 ```yaml
 agents:
   file_processor:
+    model: openai:gpt-5-mini
     triggers:
       - type: file
         name: watch_docs
@@ -137,6 +138,7 @@ agents:
         enabled: true
 
   api_handler:
+    model: openai:gpt-5-mini
     triggers:
       - type: webhook
         name: api_endpoint

@@ -28,18 +28,21 @@ agents:
     description: Agent with local tool execution
     tools:
       # User confirmation tool
-      - import_path: myapp.tools.confirm_action
+      - type: import
+        import_path: myapp.tools.confirm_action
         name: confirm_action
         description: Ask user to confirm important actions
         enabled: true
 
       # Data retrieval tool
-      - import_path: myapp.tools.fetch_data
+      - type: import
+        import_path: myapp.tools.fetch_data
         name: fetch_data
         description: Retrieve data from local database
 
       # File operations
-      - import_path: myapp.tools.read_file
+      - type: import
+        import_path: myapp.tools.read_file
         description: Read files from local filesystem
 
   # Managed agent (auto-start/stop)
@@ -50,7 +53,8 @@ agents:
     startup_delay: 3.0
     description: Automatically managed AG-UI server
     tools:
-      - import_path: myapp.tools.local_tool
+      - type: import
+        import_path: myapp.tools.local_tool
 
   # Agent with MCP servers
   enhanced_agent:
@@ -78,7 +82,8 @@ agents:
     model: openai:gpt-4
     system_prompt: You are a helpful local assistant
     tools:
-      - import_path: local_tools.calculator
+      - type: import
+        import_path: local_tools.calculator
 
   coordinator:
     type: native

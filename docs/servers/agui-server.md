@@ -127,13 +127,13 @@ graph LR
 # config.yml
 agents:
   assistant:
-    type: chat
-    model: openai:gpt-4
+    type: native
+    model: openai:gpt-5-mini
     system_prompt: "You are a helpful assistant."
     
   coder:
     type: claude_code
-    model: anthropic:claude-sonnet-4-20250514
+    model: sonnet
     tools:
       - type: file_access
       - type: process_management

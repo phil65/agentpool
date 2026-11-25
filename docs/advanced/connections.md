@@ -71,6 +71,7 @@ Connections can be defined in agent configuration:
 ```yaml
 agents:
   analyzer:
+    model: openai:gpt-5-mini
     # ... other config ...
     connections:
       - type: node

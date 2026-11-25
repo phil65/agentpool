@@ -189,6 +189,7 @@ AgentPool can also **consume** MCP servers (act as client):
 ```yaml
 agents:
   my_agent:
+    model: openai:gpt-5-mini
     mcp_servers:
       - type: stdio
         command: uvx
@@ -199,6 +200,16 @@ agents:
 ```
 
 See [MCP Server Integration](../advanced/mcp-servers.md) for consuming MCP servers.
+
+## Configuration Reference
+
+/// mknodes
+{{ "agentpool_config.pool_server.MCPPoolServerConfig" | schema_to_markdown(display_mode="yaml", header_style="pymdownx", as_listitem=False, wrapped_in="pool_server", header_level=3) }}
+///
+
+/// mknodes
+{{ "agentpool_config.pool_server.MCPAuthConfig" | union_to_markdown(display_mode="yaml", header_style="pymdownx", as_listitem=False, wrapped_in="auth", header_level=3) }}
+///
 
 ## See Also
 

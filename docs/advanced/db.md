@@ -81,6 +81,7 @@ Sessions can be recovered in multiple ways:
 ```yaml
 agents:
   assistant:
+    model: openai:gpt-5-mini
     session: "my_session_name"  # Simple session identifier
 ```
 
@@ -89,6 +90,7 @@ agents:
 ```yaml
 agents:
   assistant:
+    model: openai:gpt-5-mini
     session:
       name: my_session_name    # Optional session identifier
       agents:                  # Filter by specific agents
@@ -99,7 +101,6 @@ agents:
       roles:                  # Only specific message types
         - user
         - assistant
-      include_forwarded: true # Include forwarded messages
 ```
 
 ### Programmatic Recovery
@@ -129,9 +130,9 @@ storage:
       pool_size: 5
       auto_migration: true
 
-    - type: text_file        # Text log file
-      path: "chat.log"
-      format: chronological
+    - type: file             # Structured log file
+      path: "chat.json"
+      format: json
       encoding: utf-8
 
     - type: file            # Structured file storage

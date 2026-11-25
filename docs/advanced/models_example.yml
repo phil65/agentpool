@@ -2,7 +2,8 @@
 agents:
   tuned_agent:
     model:
-      identifier: openai:gpt-10-turbo-ultra-mega
+      type: string
+      identifier: openai:gpt-5-mini
       max_tokens: 2000 # Maximum tokens to generate
       temperature: 0.7 # Randomness (0.0 - 2.0)
       top_p: 0.9 # Nucleus sampling threshold
@@ -31,7 +32,8 @@ agents:
   cautious_agent:
     display_name: "Careful Claude"
     model:
-      identifier: anthropic:claude-sonnet-4-0
+      type: string
+      identifier: anthropic:claude-sonnet-4-5
       temperature: 0.3 # More deterministic
       max_tokens: 2000
       timeout: 120.0 # Longer timeout

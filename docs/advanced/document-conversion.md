@@ -31,11 +31,8 @@ await agent.conversation.add_context_from_path(
     convert_to_md=True  # Enable markdown conversion
 )
 
-# Add raw content
-await agent.conversation.add_context_message(
-    html_content,
-    mime_type="text/html"  # Helps converter selection
-)
+# Add raw text
+agent.conversation.add_context_message(text, source="notes.txt")
 ```
 
 ### Automatic Conversion
@@ -57,13 +54,31 @@ await agent.run(
 
 ## Configuration
 
-Document conversion is configured globally in your agent manifest:
+Document conversion is configured globally in the manifest's `conversion` section; the
+converters come from [docler](https://github.com/phil65/docler):
 
 ```yaml
 conversion:
+  default_provider: markitdown
+  max_size: 10485760      # bytes
   providers:
-    - type: markitdown  # Uses MarkItDown for document conversion
-      enabled: true
-      llm_model: gpt-5  # Optional, for image descriptions
-    # More providers will be added soon
+    - type: markitdown
+    - type: marker
 ```
+
+The same converter configs are used by toolsets that convert documents (for example the
+`file_access` toolset's `conversion` option).
+
+/// mknodes
+{{ "agentpool_config.converters.ConversionConfig" | schema_to_markdown(display_mode="yaml", header_style="pymdownx", as_listitem=False, wrapped_in="conversion", header_level=3) }}
+///
+
+## Available Converters
+
+/// mknodes
+{{ "docler_config.ConverterConfig" | config_union_table }}
+///
+
+/// mknodes
+{{ "docler_config.ConverterConfig" | union_to_markdown(display_mode="yaml", header_style="pymdownx", header_level=3, wrapped_in="providers") }}
+///
