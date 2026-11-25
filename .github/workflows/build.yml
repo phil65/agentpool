@@ -10,7 +10,8 @@ env:
 jobs:
   test:
     runs-on: ${{ matrix.os }}
-    continue-on-error: true
+    # Only the 3.15 pre-release and the live model job (external paid API) may fail.
+    continue-on-error: ${{ matrix.python_version == '3.15' || matrix.live_model == true }}
     timeout-minutes: 30
     strategy:
       matrix:
