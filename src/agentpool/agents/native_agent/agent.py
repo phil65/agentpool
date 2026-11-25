@@ -270,7 +270,7 @@ class Agent[TDeps = None, OutputDataT = str](BaseAgent[TDeps, OutputDataT]):
             event_configs=agent_config.triggers if agent_config else [],
             env=env,
             input_provider=input_provider,
-            output_type=to_type(output_type),  # type: ignore[arg-type]
+            output_type=to_type(output_type),  # type: ignore[arg-type]  # ty:ignore[invalid-argument-type]
             event_handlers=event_handlers,
             commands=all_commands,
             hooks=hooks,

@@ -289,7 +289,7 @@ class ClaudeCodeAgent[TDeps = None, TResult = str](BaseAgent[TDeps, TResult]):
             event_configs=event_configs,
             env=env,
             input_provider=input_provider,
-            output_type=output_type or str,  # type: ignore[arg-type]
+            output_type=output_type or str,  # type: ignore[arg-type]  # ty:ignore[invalid-argument-type]
             event_handlers=event_handlers,
             commands=commands,
             hooks=hooks,

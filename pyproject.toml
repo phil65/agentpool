@@ -173,7 +173,7 @@ dev = [
   "pytest-timeout>=2.4.0",
   "pytest-xdist",
   "syrupy>=4.0.0",
-  "ty>=0.0.23",
+  "ty==0.0.110",
 ]
 benchmark = ["pyinstrument"]
 docs = [
