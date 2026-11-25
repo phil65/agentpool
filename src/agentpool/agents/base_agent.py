@@ -1555,7 +1555,7 @@ class BaseAgent[TDeps = None, TResult = str](MessageNode[TDeps, TResult]):
             ):
                 pass
         except asyncio.CancelledError:
-            interrupted = runtime.cancelled and (turn := runtime.last_turn) is not None
+            interrupted = runtime.interrupted and (turn := runtime.last_turn) is not None
             if not interrupted or (task := asyncio.current_task()) is None:
                 raise  # Cancelled from outside: not ours to answer
             task.uncancel()

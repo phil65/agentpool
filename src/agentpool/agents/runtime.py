@@ -89,6 +89,9 @@ class SessionRuntime[TDeps = Any, TResult = Any]:
         self.session = session
         self.is_default = default
         self.cancelled = False
+        """The running turn was cancelled (``interrupt()`` or its task cancelled)."""
+        self.interrupted = False
+        """The running turn was cancelled through ``interrupt()`` (not its task from outside)."""
         self.task: asyncio.Task[Any] | None = None
         """Task of the running ``run_stream`` (agents cancel it on interrupt)."""
         self.active_runs = 0
@@ -121,7 +124,7 @@ class SessionRuntime[TDeps = Any, TResult = Any]:
         """The session as passed to the run: None for the agent's default session."""
         return None if self.is_default else self.session
 
-    async def run_stream(
+    async def run_stream(  # noqa: PLR0915
         self,
         *prompts: PromptCompatible,
         store_history: bool = True,
@@ -159,8 +162,10 @@ class SessionRuntime[TDeps = Any, TResult = Any]:
 
         with activate(agent, self):  # Turn state below is this session's
             # Reset cancellation state and track current task
-            self.cancelled = False
-            self.task = asyncio.current_task()
+            self.cancelled = self.interrupted = False
+            self.task = run_task = asyncio.current_task()
+            # Cancellations requested before the run: only newer ones are the run's own
+            baseline = run_task.cancelling() if run_task is not None else 0
             # Queue the initial prompts
             self.injections.insert_queued(prompts)
             self._report_state("running")
@@ -170,16 +175,18 @@ class SessionRuntime[TDeps = Any, TResult = Any]:
             usage = RunUsage()
             try:
                 # Process queued prompts until queue is empty
-                prompt_message_id = user_message_id  # The given prompts' (the first group)
+                # The given IDs are the first group's: queued groups get their own
+                prompt_message_id, reply_message_id = user_message_id, message_id
                 while self.injections.has_queued() and not self.cancelled:
                     current_prompts = self.injections.pop_queued()
                     if current_prompts is None:
                         break
                     group_message_id, prompt_message_id = prompt_message_id, None
+                    group_reply_id, reply_message_id = reply_message_id, None
                     async for event in self._run_once(
                         *current_prompts,
                         store_history=store_history,
-                        message_id=message_id,
+                        message_id=group_reply_id,
                         user_message_id=group_message_id,
                         session_id=effective_session_id,
                         parent_id=parent_id,
@@ -194,6 +201,13 @@ class SessionRuntime[TDeps = Any, TResult = Any]:
                         yield event
                     # After each iteration, flush unconsumed injections to queue
                     self.injections.flush_pending_to_queue()
+                # Cancelled from outside, and the agent ended its turn instead of raising
+                # (native, Claude Code): the turn is stored, the cancellation goes on
+                swallowed = (
+                    run_task is not None
+                    and run_task.cancelling() > baseline
+                    and not self.interrupted
+                )
                 if not self.cancelled:
                     stop_reason = "end_turn"
             except Exception as e:
@@ -208,6 +222,8 @@ class SessionRuntime[TDeps = Any, TResult = Any]:
                 self.injections.clear()  # Clean slate for next run
                 if not self.is_default and self.idle:
                     agent._runtimes.pop(self.session.session_id, None)
+        if swallowed:
+            raise asyncio.CancelledError
 
     def _report_event(self, event: RichAgentStreamEvent[Any]) -> None:
         """Report what a turn's event says about the session to the pool's activity feed."""
@@ -383,6 +399,7 @@ class SessionRuntime[TDeps = Any, TResult = Any]:
         # Stream events from implementation
         final_message: ChatMessage[TResult] | None = None
         turn: Turn[TResult] | None = None
+        announced = False  # turn_completed emitted (with the answer, before it is yielded)
         started_at, started = get_now(), time.perf_counter()
 
         parent = current_turn()  # The turn this one runs within (a subagent call, routing)
@@ -416,6 +433,9 @@ class SessionRuntime[TDeps = Any, TResult = Any]:
             self.last_turn = ended
             return ended
 
+        def _cancel_requested() -> bool:
+            return (task := asyncio.current_task()) is not None and task.cancelling() > 0
+
         with running_turn(scope):  # Turns started within it are its children
             await agent.message_received.emit(user_msg)
             self.active_runs += 1
@@ -446,22 +466,40 @@ class SessionRuntime[TDeps = Any, TResult = Any]:
                 ):
                     event = raw
                     if isinstance(raw, StreamCompleteEvent):  # The turn's end: with its Turn
+                        if _cancel_requested():
+                            # Cancelled from outside, and the agent ended its turn with what
+                            # it had
+                            await self._stop_backend()
                         final_message = raw.message
                         outcome = TurnCancelled() if self.cancelled else TurnCompleted()
                         turn = end_turn(outcome, final_message)
                         event = replace(raw, turn=turn)
-                    await resolved_handler(context, event)
+                        await resolved_handler(context, event)
+                        # Stored and announced before the consumer sees the end: one that
+                        # stops iterating there (``break``) must not lose the turn
+                        await self._finalize(
+                            user_msg=user_msg,
+                            final_message=final_message,
+                            conversation=conversation,
+                            session_id=effective_session_id,
+                            store_history=store_history,
+                        )
+                        announced = True
+                        await agent.turn_completed.emit(turn)
+                    else:
+                        await resolved_handler(context, event)
                     self._record_file_changes(event)
                     self.track_task(event)
                     yield event
-                if (task := asyncio.current_task()) is not None and task.cancelling():
+                if _cancel_requested():
                     # Cancelled from outside, and the agent ended its turn with what it had
                     await self._stop_backend()
             except asyncio.CancelledError as e:
                 await self._stop_backend()
                 if turn is None:  # Cancelled before it answered
                     turn = end_turn(outcome_of_error(e), None)
-                await agent.turn_completed.emit(turn)
+                if not announced:
+                    await agent.turn_completed.emit(turn)
                 raise
             except Exception as e:
                 agent.log.exception("Agent stream failed")
@@ -469,7 +507,8 @@ class SessionRuntime[TDeps = Any, TResult = Any]:
                     agent_name=agent.name, message="Agent stream failed", exception=e
                 )
                 await agent.run_failed.emit(failed_event)
-                await agent.turn_completed.emit(end_turn(outcome_of_error(e), None))
+                if not announced:
+                    await agent.turn_completed.emit(end_turn(outcome_of_error(e), None))
                 raise
             finally:
                 self.active_runs -= 1
@@ -484,17 +523,9 @@ class SessionRuntime[TDeps = Any, TResult = Any]:
                         event=self.events.get_nowait(),
                     )
                     await agent.background_event.emit(late)
-            if final_message is not None:
-                await self._finalize(
-                    user_msg=user_msg,
-                    final_message=final_message,
-                    conversation=conversation,
-                    session_id=effective_session_id,
-                    store_history=store_history,
-                )
-            if turn is None:  # The stream ended without an answer
+            if not announced:  # The stream ended without an answer
                 turn = end_turn(TurnCancelled() if self.cancelled else TurnCompleted(), None)
-            await agent.turn_completed.emit(turn)  # Once its answer is stored and routed
+                await agent.turn_completed.emit(turn)
 
     def track_task(self, event: RichAgentStreamEvent[Any]) -> None:
         """Record a task event; drop this runtime once its last task ends between turns."""
@@ -581,7 +612,7 @@ class SessionRuntime[TDeps = Any, TResult = Any]:
     async def interrupt(self) -> None:
         """Cancel this session's running turn (the agent's ``_interrupt`` acts on it)."""
         with activate(self.agent, self):
-            self.cancelled = True
+            self.cancelled = self.interrupted = True
             await self.agent._interrupt()
 
 
