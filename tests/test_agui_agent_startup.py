@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import socket
 import sys
 
 import pytest
@@ -10,13 +11,20 @@ from agentpool.agents.agui_agent import AGUIAgent
 from agentpool.agents.events import StreamCompleteEvent
 
 
+def _free_port() -> int:
+    with socket.socket() as sock:
+        sock.bind(("127.0.0.1", 0))
+        return sock.getsockname()[1]
+
+
 @pytest.mark.skipif(sys.platform == "win32", reason="Hangs on Windows CI")
 async def test_agui_agent_with_managed_server():
     """Test AGUIAgent with automatic server lifecycle management."""
+    port = _free_port()
     agent = AGUIAgent(
-        endpoint="http://127.0.0.1:8765/agent/run",
+        endpoint=f"http://127.0.0.1:{port}/agent/run",
         name="test-agent",
-        startup_command="uv run python tests/test_server_agui.py",
+        startup_command=f"uv run python tests/test_server_agui.py --port {port}",
     )
 
     async with agent:
@@ -35,10 +43,11 @@ async def test_agui_agent_with_managed_server():
 @pytest.mark.skipif(sys.platform == "win32", reason="Hangs on Windows CI")
 async def test_agui_agent_streaming_with_managed_server():
     """Test AGUIAgent streaming with managed server."""
+    port = _free_port()
     agent = AGUIAgent(
-        endpoint="http://127.0.0.1:8766/agent/run",
+        endpoint=f"http://127.0.0.1:{port}/agent/run",
         name="test-agent",
-        startup_command="uv run python tests/test_server_agui.py --port 8766",
+        startup_command=f"uv run python tests/test_server_agui.py --port {port}",
     )
 
     async with agent:
