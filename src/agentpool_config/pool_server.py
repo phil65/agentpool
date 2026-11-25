@@ -364,11 +364,11 @@ class OpenAIAPIPoolServerConfig(BasePoolServerConfig):
     """OpenAI API server type."""
 
     host: str = Field(
-        default="0.0.0.0",
+        default="localhost",
         title="Server host",
         examples=["localhost", "0.0.0.0", "127.0.0.1"],
     )
-    """Host to bind server to."""
+    """Host to bind server to. A non-loopback host requires ``api_key``."""
 
     port: int = Field(
         default=8000,
@@ -377,9 +377,6 @@ class OpenAIAPIPoolServerConfig(BasePoolServerConfig):
         examples=[8000, 8080, 9000],
     )
     """Port to listen on."""
-
-    cors: bool = Field(default=True, title="Enable CORS")
-    """Whether to enable CORS middleware."""
 
     docs: bool = Field(default=True, title="Enable API docs")
     """Whether to enable API documentation endpoints."""
@@ -397,11 +394,11 @@ class OpenAIAPIPoolServerConfig(BasePoolServerConfig):
     """Whether to raise exceptions during server start."""
 
     cors_origins: list[str] = Field(
-        default_factory=lambda: ["*"],
+        default_factory=list,
         title="CORS origins",
-        examples=[["*"], ["https://example.com", "https://app.com"]],
+        examples=[["https://example.com", "https://app.com"]],
     )
-    """Allowed CORS origins."""
+    """Browser origins allowed to call the API (empty: no CORS; ``"*"`` requires ``api_key``)."""
 
 
 PoolServerConfig = Annotated[

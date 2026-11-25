@@ -49,6 +49,7 @@ if TYPE_CHECKING:
     from openai.types.responses import (
         ResponseStatus,
     )
+    from pydantic_ai import UserContent
 
     from agentpool.agents.events import RichAgentStreamEvent
     from agentpool.common_types import SupportsRunStream
@@ -61,18 +62,14 @@ SERVER_LABEL = "agentpool"
 
 async def stream_responses(
     agent: SupportsRunStream[Any],
-    request: ResponseRequest,
+    content_parts: list[UserContent],
     adapter: ResponsesStreamAdapter,
 ) -> AsyncGenerator[str]:
-    """Stream a responses API request through the adapter."""
-    from fastapi import HTTPException
+    """Stream a responses API request through the adapter.
 
-    from agentpool_server.openai_api_server.responses.models import extract_user_content
-
-    try:
-        content_parts = extract_user_content(request)
-    except ValueError as e:
-        raise HTTPException(400, str(e)) from e
+    ``content_parts`` come from ``extract_user_content``, validated before the
+    streaming response starts (an error raised here could not change the status).
+    """
 
     async def _event_gen() -> AsyncGenerator[Any]:
         async for event in agent.run_stream(*content_parts):

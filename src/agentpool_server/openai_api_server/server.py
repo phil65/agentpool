@@ -2,9 +2,17 @@
 
 from __future__ import annotations
 
+import hmac
+import ipaddress
 from typing import TYPE_CHECKING, Annotated, Any
 
 import anyenv
+
+# FastAPI resolves the endpoint annotations at runtime (``from __future__ import
+# annotations``): Header, the response classes and the request body models must be
+# runtime imports, or FastAPI reads them from the query string.
+from fastapi import Header
+from fastapi.responses import Response, StreamingResponse
 from openai.pagination import SyncPage
 from openai.types.chat import ChatCompletion, ChatCompletionMessage
 from openai.types.chat.chat_completion import Choice
@@ -13,20 +21,35 @@ from openai.types.completion_usage import CompletionUsage
 from agentpool.log import get_logger
 from agentpool_server import BaseServer
 from agentpool_server.openai_api_server.completions.helpers import stream_response
-from agentpool_server.openai_api_server.completions.models import OpenAIModelInfo
+from agentpool_server.openai_api_server.completions.models import (
+    ChatCompletionRequest,
+    OpenAIModelInfo,
+)
 from agentpool_server.openai_api_server.responses.helpers import handle_request
+from agentpool_server.openai_api_server.responses.models import (
+    ResponseRequest,  # noqa: TC001 (request body model, resolved by FastAPI at runtime)
+)
 
 
 if TYPE_CHECKING:
-    from fastapi import Header
-    from fastapi.responses import Response, StreamingResponse
+    from collections.abc import AsyncGenerator, Sequence
+
     from openai.types.responses import Response as ResponsesResponse
 
     from agentpool import AgentPool
     from agentpool.agents.base_agent import BaseAgent
-    from agentpool_server.openai_api_server.completions.models import ChatCompletionRequest
-    from agentpool_server.openai_api_server.responses.models import ResponseRequest
+
 logger = get_logger(__name__)
+
+
+def is_loopback_host(host: str) -> bool:
+    """Whether ``host`` only accepts connections from this machine."""
+    if host == "localhost":
+        return True
+    try:
+        return ipaddress.ip_address(host).is_loopback
+    except ValueError:
+        return False
 
 
 class OpenAIAPIServer(BaseServer):
@@ -42,9 +65,9 @@ class OpenAIAPIServer(BaseServer):
         pool: AgentPool,
         *,
         name: str | None = None,
-        host: str = "0.0.0.0",
+        host: str = "localhost",
         port: int = 8000,
-        cors: bool = True,
+        cors_origins: Sequence[str] = (),
         api_key: str | None = None,
         raise_exceptions: bool = False,
     ) -> None:
@@ -53,15 +76,27 @@ class OpenAIAPIServer(BaseServer):
         Args:
             pool: AgentPool with a main agent to serve
             name: Optional Server name (auto-generated if None)
-            host: Host to bind server to
+            host: Host to bind server to. A non-loopback host requires ``api_key``.
             port: Port to bind server to
-            cors: Whether to enable CORS middleware
-            api_key: Optional API key for authentication
+            cors_origins: Browser origins allowed to call the API (CORS). Empty
+                (default): no CORS, browsers on other origins cannot call it.
+                ``"*"`` (any origin) requires ``api_key``.
+            api_key: API key clients must send as ``Authorization: Bearer <key>``.
+                None: no authentication (only allowed on a loopback host).
             raise_exceptions: Whether to raise exceptions during server start
+
+        Raises:
+            ValueError: A non-loopback host or ``"*"`` origin without an API key
         """
         from fastapi import Depends, FastAPI
         import logfire
 
+        if api_key is None and not is_loopback_host(host):
+            msg = f"OpenAIAPIServer on non-loopback host {host!r} requires an api_key"
+            raise ValueError(msg)
+        if api_key is None and "*" in cors_origins:
+            msg = "OpenAIAPIServer with CORS origin '*' requires an api_key"
+            raise ValueError(msg)
         super().__init__(pool, name=name, raise_exceptions=raise_exceptions)
         self.host = host
         self.port = port
@@ -70,20 +105,21 @@ class OpenAIAPIServer(BaseServer):
         self._last_response_id: str | None = None
         logfire.instrument_fastapi(self.app)
 
-        if cors:
+        if cors_origins:
             from fastapi.middleware.cors import CORSMiddleware
 
+            # Auth is a bearer header, not cookies: no credentials mode
             self.app.add_middleware(
                 CORSMiddleware,
-                allow_origins=["*"],
-                allow_credentials=True,
-                allow_methods=["*"],
-                allow_headers=["*"],
+                allow_origins=list(cors_origins),
+                allow_credentials=False,
+                allow_methods=["GET", "POST"],
+                allow_headers=["Authorization", "Content-Type"],
             )
 
         # Add routes with authentication dependency
         dep = Depends(self.verify_api_key)
-        self.app.get("/v1/models")(self.list_models)
+        self.app.get("/v1/models", dependencies=[dep])(self.list_models)
         self.app.post("/v1/chat/completions", dependencies=[dep], response_model=None)(
             self.create_chat_completion
         )
@@ -96,17 +132,18 @@ class OpenAIAPIServer(BaseServer):
         """The main agent serving requests."""
         return self.pool.main_agent
 
-    def verify_api_key(
-        self, authorization: Annotated[str | None, Header(alias="Authorization")] = None
-    ) -> None:
-        """Verify API key if configured."""
+    def verify_api_key(self, authorization: Annotated[str | None, Header()] = None) -> None:
+        """Verify the bearer token if an API key is configured (no-op otherwise)."""
         from fastapi import HTTPException
 
+        if self.api_key is None:
+            return
         if not authorization:
             raise HTTPException(401, "Missing API key")
-        if not authorization.startswith("Bearer "):
+        scheme, _, token = authorization.partition(" ")
+        if scheme.lower() != "bearer" or not token:
             raise HTTPException(401, "Invalid authorization format")
-        if self.api_key and authorization != f"Bearer {self.api_key}":
+        if not hmac.compare_digest(token.strip().encode(), self.api_key.encode()):
             raise HTTPException(401, "Invalid API key")
 
     async def list_models(self) -> SyncPage[OpenAIModelInfo]:
@@ -142,9 +179,6 @@ class OpenAIAPIServer(BaseServer):
 
     async def create_chat_completion(self, request: ChatCompletionRequest) -> Response:
         """Handle chat completion requests."""
-        from fastapi import Response
-        from fastapi.responses import StreamingResponse
-
         agent = self.agent
         content = request.messages[-1].content or ""
         if request.stream:
@@ -182,9 +216,14 @@ class OpenAIAPIServer(BaseServer):
         self,
         req_body: ResponseRequest,
     ) -> ResponsesResponse | StreamingResponse:
-        """Handle response creation requests."""
+        """Handle response creation requests.
+
+        The server keeps one conversation (the agent's), so only the most recent
+        response ID can be continued. It is recorded once a response completed.
+        """
         from fastapi import HTTPException
-        from fastapi.responses import StreamingResponse
+
+        from agentpool_server.openai_api_server.responses.models import extract_user_content
 
         # Validate previous_response_id if provided
         if (
@@ -196,6 +235,11 @@ class OpenAIAPIServer(BaseServer):
                 f"Response '{req_body.previous_response_id}' not found. "
                 "Only the most recent response ID is supported for continuation.",
             )
+        # Validate the input before streaming starts (afterwards the status is sent)
+        try:
+            content_parts = extract_user_content(req_body)
+        except ValueError as e:
+            raise HTTPException(400, str(e)) from e
 
         try:
             if req_body.stream:
@@ -205,12 +249,14 @@ class OpenAIAPIServer(BaseServer):
                 )
 
                 adapter = ResponsesStreamAdapter(req_body)
-                self._last_response_id = adapter.response_id
-                return StreamingResponse(
-                    stream_responses(self.agent, req_body, adapter),
-                    media_type="text/event-stream",
-                )
-            response = await handle_request(req_body, self.agent)
+
+                async def _stream() -> AsyncGenerator[str]:
+                    async for line in stream_responses(self.agent, content_parts, adapter):
+                        yield line
+                    self._last_response_id = adapter.response_id
+
+                return StreamingResponse(_stream(), media_type="text/event-stream")
+            response = await handle_request(req_body, self.agent, content_parts)
             self._last_response_id = response.id
         except HTTPException:
             raise
@@ -291,7 +337,7 @@ if __name__ == "__main__":
         agent = Agent(name="gpt-5-mini", model="openai:gpt-5-mini")
         await pool.add_agent(agent)
         async with (
-            OpenAIAPIServer(pool, host="0.0.0.0", port=8000) as server,
+            OpenAIAPIServer(pool, port=8000) as server,
             server.run_context(),
         ):
             await anyio.sleep(1)  # Wait for server to start

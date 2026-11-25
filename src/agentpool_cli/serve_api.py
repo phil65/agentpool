@@ -23,7 +23,21 @@ def api_command(
     config: Annotated[str | None, t.Argument(help="Path to agent configuration")] = None,
     host: Annotated[str, t.Option(help="Host to bind server to")] = "localhost",
     port: Annotated[int, t.Option(help="Port to listen on")] = 8000,
-    cors: Annotated[bool, t.Option(help="Enable CORS")] = True,
+    cors_origin: Annotated[
+        list[str] | None,
+        t.Option(
+            "--cors-origin",
+            help="Browser origin allowed to call the API (repeatable; '*' needs --api-key)",
+        ),
+    ] = None,
+    api_key: Annotated[
+        str | None,
+        t.Option(
+            "--api-key",
+            envvar="AGENTPOOL_API_KEY",
+            help="Require 'Authorization: Bearer <key>' (needed for a non-loopback --host)",
+        ),
+    ] = None,
     agent: Annotated[
         str | None,
         t.Option("--agent", help="Name of specific agent to use (defaults to pool's default)"),
@@ -36,6 +50,9 @@ def api_command(
 
     This creates an OpenAI-compatible API server backed by a single agent.
     Model listing uses the agent's model discovery.
+
+    Without --api-key the server only binds to loopback hosts and needs no
+    authentication; CORS is off unless --cors-origin is given.
     """
     import uvicorn
 
@@ -58,11 +75,16 @@ def api_command(
     if show_messages:
         pool.main_agent.message_sent.connect(on_message)
 
-    server = OpenAIAPIServer(pool, cors=cors)
+    try:
+        server = OpenAIAPIServer(
+            pool, host=host, port=port, cors_origins=cors_origin or (), api_key=api_key
+        )
+    except ValueError as e:
+        raise t.BadParameter(str(e)) from e
 
     # Get log level from the global context
     log_level = ctx.obj.get("log_level", "info") if ctx.obj else "info"
-    uvicorn.run(server.app, host=host, port=port, log_level=log_level.lower())
+    uvicorn.run(server.app, host=server.host, port=server.port, log_level=log_level.lower())
 
 
 if __name__ == "__main__":

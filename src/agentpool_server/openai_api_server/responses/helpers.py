@@ -18,21 +18,18 @@ from openai.types.responses.response_usage import InputTokensDetails, OutputToke
 
 if TYPE_CHECKING:
     from openai.types.responses import ResponseOutputItem
+    from pydantic_ai import UserContent
 
     from agentpool.agents.base_agent import BaseAgent
     from agentpool_server.openai_api_server.responses.models import ResponseRequest
 
 
-async def handle_request(request: ResponseRequest, agent: BaseAgent[Any, Any]) -> Response:
-    from fastapi import HTTPException
-
-    from agentpool_server.openai_api_server.responses.models import extract_user_content
-
-    try:
-        content_parts = extract_user_content(request)
-    except ValueError as e:
-        raise HTTPException(400, str(e)) from e
-
+async def handle_request(
+    request: ResponseRequest,
+    agent: BaseAgent[Any, Any],
+    content_parts: list[UserContent],
+) -> Response:
+    """Run the agent on ``content_parts`` (validated input of ``request``)."""
     message = await agent.run(*content_parts)
     text = ResponseOutputText(text=str(message.content), annotations=[], type="output_text")
     output_msg_id = f"msg_{uuid4().hex}"

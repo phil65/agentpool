@@ -35,7 +35,7 @@ class ChatCompletionRequest(Schema):
     """OpenAI chat completion request."""
 
     model: str
-    messages: list[OpenAIMessage]
+    messages: list[OpenAIMessage] = Field(min_length=1)
     stream: bool = False
     temperature: float | None = None
     max_tokens: int | None = None

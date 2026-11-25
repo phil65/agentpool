@@ -24,8 +24,14 @@ POST /v1/responses           -> Responses API
 # Run with default settings
 agentpool serve-api config.yml
 
-# Custom host and port
-agentpool serve-api config.yml --host 0.0.0.0 --port 8000
+# Custom port, with an API key
+agentpool serve-api config.yml --port 8000 --api-key "$KEY"
+
+# Reachable from other machines: an API key is required
+agentpool serve-api config.yml --host 0.0.0.0 --api-key "$KEY"
+
+# Allow a browser app on another origin to call the API
+agentpool serve-api config.yml --api-key "$KEY" --cors-origin https://app.example.com
 ```
 
 See [`serve-api`](../cli/serve-api.md) for all CLI options.
@@ -44,11 +50,10 @@ async def main():
     
     server = OpenAIAPIServer(
         pool,
-        host="0.0.0.0",
+        host="0.0.0.0",  # non-loopback hosts require an api_key
         port=8000,
-        api_key="your-secret-key",  # Optional authentication
-        cors=True,
-        docs=True,
+        api_key="your-secret-key",
+        cors_origins=["https://app.example.com"],  # default: no CORS
     )
     
     async with server, server.run_context():
@@ -157,9 +162,7 @@ Alternative responses API format:
 }
 ```
 
-## Authentication
-
-The server supports optional API key authentication:
+## Authentication and security
 
 ```python
 server = OpenAIAPIServer(
@@ -168,7 +171,8 @@ server = OpenAIAPIServer(
 )
 ```
 
-Clients must include the key in the `Authorization` header:
+With an API key, every endpoint (including `GET /v1/models`) requires it in the
+`Authorization` header (compared in constant time):
 
 ```bash
 curl -X POST http://localhost:8000/v1/chat/completions \
@@ -176,6 +180,19 @@ curl -X POST http://localhost:8000/v1/chat/completions \
   -H "Content-Type: application/json" \
   -d '{"model": "assistant", "messages": [{"role": "user", "content": "Hi"}]}'
 ```
+
+The server runs the agent with all its tools, so it is locked down by default:
+
+- **Host**: binds `localhost` by default. Without an `api_key` (CLI: `--api-key` or
+  `AGENTPOOL_API_KEY`) the server refuses to start on a non-loopback host.
+- **No key**: on a loopback host the API needs no authentication.
+- **CORS**: off by default, so web pages on other origins cannot call the API (a
+  local key-less server would otherwise let any website drive the agent). Allow specific
+  origins with `cors_origins` / `--cors-origin`; `"*"` requires an API key. Credentials
+  mode is never enabled (the key is a header, not a cookie).
+- **Responses API**: the server keeps one conversation (the agent's). Only the most recent
+  completed response can be continued with `previous_response_id`, so concurrent clients
+  share and clobber it.
 
 ## Client Integration
 
@@ -278,7 +295,7 @@ Agents are accessible as models: `gpt-4-custom`, `claude-coder`, etc.
 
 ## API Documentation
 
-When `docs=True` (default), the server provides interactive API documentation:
+The server provides interactive API documentation:
 
 - **Swagger UI**: `http://localhost:8000/docs`
 - **ReDoc**: `http://localhost:8000/redoc`

@@ -84,6 +84,9 @@ def extract_user_content(request: ResponseRequest) -> list[UserContent]:
     match request.input:
         case str():
             return [request.input]
+        case []:
+            msg = "'input' must not be an empty list"
+            raise ValueError(msg)
         case list():
             last_msg = request.input[-1]
             msg_content = last_msg["content"]
