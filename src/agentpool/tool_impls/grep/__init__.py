@@ -10,6 +10,7 @@ from agentpool_config.tools import ToolHints
 
 if TYPE_CHECKING:
     from exxec import ExecutionEnvironment
+    from fsspec.asyn import AsyncFileSystem
 
 __all__ = ["GrepTool", "create_grep_tool"]
 
@@ -30,6 +31,7 @@ HINTS = ToolHints(read_only=True, idempotent=True)
 def create_grep_tool(
     *,
     env: ExecutionEnvironment | None = None,
+    fs: AsyncFileSystem | None = None,
     cwd: str | None = None,
     max_output_kb: int = 64,
     use_subprocess_grep: bool = True,
@@ -41,6 +43,7 @@ def create_grep_tool(
 
     Args:
         env: Execution environment to use. Falls back to agent.env if not set.
+        fs: Filesystem to operate on instead of the environment's (custom filesystems).
         cwd: Working directory for resolving relative paths.
         max_output_kb: Maximum output size in KB (default: 64KB).
         use_subprocess_grep: Use ripgrep/grep subprocess if available (default: True).
@@ -73,6 +76,7 @@ def create_grep_tool(
         category=CATEGORY,
         hints=HINTS,
         env=env,
+        fs=fs,
         cwd=cwd,
         max_output_kb=max_output_kb,
         use_subprocess_grep=use_subprocess_grep,

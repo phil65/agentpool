@@ -146,6 +146,11 @@ class FSSpecTools(ResourceProvider):
         self._max_image_size = max_image_size
         self._max_image_bytes = max_image_bytes
 
+    @property
+    def _custom_fs(self) -> bool:
+        """Whether the toolset wraps a filesystem that is not an execution env's."""
+        return self._fs is not None and self.execution_env is None
+
     def _get_fs(self, agent_ctx: AgentContext) -> AsyncFileSystem:
         """Get filesystem, falling back to agent's env if not set."""
         return agent_ctx.agent.env.get_fs() if self._fs is None else self._fs
@@ -153,6 +158,10 @@ class FSSpecTools(ResourceProvider):
     def _get_diagnostics_manager(self, agent_ctx: AgentContext) -> DiagnosticsManager | None:
         """Get or create the diagnostics manager."""
         if not self._enable_diagnostics:
+            return None
+        if self._custom_fs:
+            # Custom filesystem: checkers would run on the agent's (host) env,
+            # where the paths don't exist (or are different files).
             return None
         if self._diagnostics is None:
             env = self.execution_env or agent_ctx.agent.env
@@ -203,12 +212,13 @@ class FSSpecTools(ResourceProvider):
         Otherwise returns the path as-is.
         """
         # Get cwd: explicit toolset cwd > execution_env.cwd > agent.env.cwd
+        # (a custom filesystem never uses the agent env's cwd)
         cwd: str | None = None
         if self.cwd:
             cwd = self.cwd
         elif self.execution_env and self.execution_env.cwd:
             cwd = self.execution_env.cwd
-        elif agent_ctx.agent.env and agent_ctx.agent.env.cwd:
+        elif not self._custom_fs and agent_ctx.agent.env and agent_ctx.agent.env.cwd:
             cwd = agent_ctx.agent.env.cwd
 
         if cwd and not (path.startswith("/") or (len(path) > 1 and path[1] == ":")):
@@ -219,10 +229,13 @@ class FSSpecTools(ResourceProvider):
         """Get filesystem tools."""
         if self._tools is not None:
             return self._tools
-        # Create standalone tools with toolset's configuration
-        list_dir_tool = create_list_directory_tool(env=self.execution_env, cwd=self.cwd)
+        # Create standalone tools with toolset's configuration. A custom filesystem
+        # (no execution env) is passed on, so the tools never use the agent's env.
+        fs = self._fs if self.execution_env is None else None
+        list_dir_tool = create_list_directory_tool(env=self.execution_env, fs=fs, cwd=self.cwd)
         read_tool = create_read_tool(
             env=self.execution_env,
+            fs=fs,
             converter=self.converter,  # Pass converter for automatic markdown conversion
             cwd=self.cwd,
             max_file_size_kb=self.max_file_size // 1024,
@@ -234,13 +247,14 @@ class FSSpecTools(ResourceProvider):
 
         grep_tool = create_grep_tool(
             env=self.execution_env,
+            fs=fs,
             cwd=self.cwd,
             max_output_kb=self.max_grep_output // 1024,
             use_subprocess_grep=self.use_subprocess_grep,
         )
 
-        delete_tool = create_delete_path_tool(env=self.execution_env, cwd=self.cwd)
-        download_tool = create_download_file_tool(env=self.execution_env, cwd=self.cwd)
+        delete_tool = create_delete_path_tool(env=self.execution_env, fs=fs, cwd=self.cwd)
+        download_tool = create_download_file_tool(env=self.execution_env, fs=fs, cwd=self.cwd)
         self._tools = [
             list_dir_tool,
             read_tool,
@@ -1004,8 +1018,9 @@ class FSSpecTools(ResourceProvider):
         try:
             # Try subprocess grep if configured and available
             if self.use_subprocess_grep:
-                # Get execution environment for running grep command
-                env = self.execution_env or agent_ctx.agent.env
+                # Get execution environment for running grep command (never the
+                # agent's env for a custom filesystem: it would search the host)
+                env = self.execution_env or (None if self._custom_fs else agent_ctx.agent.env)
                 if env is not None:
                     # Detect and cache grep backend
                     if self._grep_backend is None:
@@ -1108,7 +1123,7 @@ class FSSpecTools(ResourceProvider):
             # Ensure target directory exists
             await fs._makedirs(target_dir, exist_ok=True)
             async with (
-                httpx2.AsyncClient(verify=False) as client,
+                httpx2.AsyncClient() as client,
                 client.stream("GET", url, timeout=30.0) as response,
             ):
                 response.raise_for_status()

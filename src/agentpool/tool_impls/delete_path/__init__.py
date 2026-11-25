@@ -10,6 +10,7 @@ from agentpool_config.tools import ToolHints
 
 if TYPE_CHECKING:
     from exxec import ExecutionEnvironment
+    from fsspec.asyn import AsyncFileSystem
 
 __all__ = ["DeletePathTool", "create_delete_path_tool"]
 
@@ -29,6 +30,7 @@ HINTS = ToolHints(destructive=True)
 def create_delete_path_tool(
     *,
     env: ExecutionEnvironment | None = None,
+    fs: AsyncFileSystem | None = None,
     cwd: str | None = None,
     name: str = NAME,
     description: str = DESCRIPTION,
@@ -38,6 +40,7 @@ def create_delete_path_tool(
 
     Args:
         env: Execution environment to use. Falls back to agent.env if not set.
+        fs: Filesystem to operate on instead of the environment's (custom filesystems).
         cwd: Working directory for resolving relative paths.
         name: Tool name override.
         description: Tool description override.
@@ -65,6 +68,7 @@ def create_delete_path_tool(
         category=CATEGORY,
         hints=HINTS,
         env=env,
+        fs=fs,
         cwd=cwd,
         requires_confirmation=requires_confirmation,
     )

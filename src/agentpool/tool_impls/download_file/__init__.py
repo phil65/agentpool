@@ -10,6 +10,7 @@ from agentpool_config.tools import ToolHints
 
 if TYPE_CHECKING:
     from exxec import ExecutionEnvironment
+    from fsspec.asyn import AsyncFileSystem
 
 __all__ = ["DownloadFileTool", "create_download_file_tool"]
 
@@ -30,6 +31,7 @@ HINTS = ToolHints(open_world=True)
 def create_download_file_tool(
     *,
     env: ExecutionEnvironment | None = None,
+    fs: AsyncFileSystem | None = None,
     cwd: str | None = None,
     chunk_size: int = 8192,
     timeout: float = 30.0,
@@ -41,6 +43,7 @@ def create_download_file_tool(
 
     Args:
         env: Execution environment to use. Falls back to agent.env if not set.
+        fs: Filesystem to operate on instead of the environment's (custom filesystems).
         cwd: Working directory for resolving relative paths.
         chunk_size: Size of chunks to download in bytes (default: 8192).
         timeout: Request timeout in seconds (default: 30.0).
@@ -73,6 +76,7 @@ def create_download_file_tool(
         category=CATEGORY,
         hints=HINTS,
         env=env,
+        fs=fs,
         cwd=cwd,
         chunk_size=chunk_size,
         timeout=timeout,

@@ -10,6 +10,7 @@ from agentpool_config.tools import ToolHints
 
 if TYPE_CHECKING:
     from exxec import ExecutionEnvironment
+    from fsspec.asyn import AsyncFileSystem
 
     from agentpool.prompts.conversion_manager import ConversionManager
 
@@ -33,6 +34,7 @@ HINTS = ToolHints(read_only=True, idempotent=True)
 def create_read_tool(
     *,
     env: ExecutionEnvironment | None = None,
+    fs: AsyncFileSystem | None = None,
     converter: ConversionManager | None = None,
     cwd: str | None = None,
     max_file_size_kb: int = 64,
@@ -48,6 +50,7 @@ def create_read_tool(
 
     Args:
         env: Execution environment to use. Falls back to agent.env if not set.
+        fs: Filesystem to operate on instead of the environment's (custom filesystems).
         converter: Optional converter for binary files. If set, converts supported
             file types to markdown instead of returning BinaryContent.
         cwd: Working directory for resolving relative paths.
@@ -93,6 +96,7 @@ def create_read_tool(
         category=CATEGORY,
         hints=HINTS,
         env=env,
+        fs=fs,
         converter=converter,
         cwd=cwd,
         max_file_size_kb=max_file_size_kb,

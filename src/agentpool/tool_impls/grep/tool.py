@@ -41,6 +41,13 @@ class GrepTool(Tool[ToolResult]):
     env: ExecutionEnvironment | None = None
     """Execution environment to use. Falls back to agent.env if not set."""
 
+    fs: AsyncFileSystem | None = None
+    """Filesystem to operate on (takes precedence over ``env``).
+
+    Set for a custom filesystem: the tool then never touches the agent's
+    environment (no host filesystem, cwd or subprocesses).
+    """
+
     cwd: str | None = None
     """Working directory for resolving relative paths."""
 
@@ -58,7 +65,9 @@ class GrepTool(Tool[ToolResult]):
         return self._grep
 
     def _get_fs(self, ctx: AgentContext) -> AsyncFileSystem:
-        """Get filesystem from env, falling back to agent's env if not set."""
+        """Get the filesystem: explicit fs, then env, then the agent's env."""
+        if self.fs is not None:
+            return self.fs
         return ctx.agent.env.get_fs() if self.env is None else self.env.get_fs()
 
     def _resolve_path(self, path: str, ctx: AgentContext) -> str:
@@ -68,7 +77,7 @@ class GrepTool(Tool[ToolResult]):
             cwd = self.cwd
         elif self.env and self.env.cwd:
             cwd = self.env.cwd
-        elif ctx.agent.env and ctx.agent.env.cwd:
+        elif self.fs is None and ctx.agent.env and ctx.agent.env.cwd:
             cwd = ctx.agent.env.cwd
 
         if cwd and not (path.startswith("/") or (len(path) > 1 and path[1] == ":")):
@@ -117,8 +126,10 @@ class GrepTool(Tool[ToolResult]):
         try:
             # Try subprocess grep if configured and available
             if self.use_subprocess_grep:
-                # Get execution environment for running grep command
-                env = self.env or ctx.agent.env
+                # Get execution environment for running grep command. A custom fs
+                # without an env is searched in-process only: a subprocess would
+                # search the agent's (host) filesystem instead.
+                env = self.env or (ctx.agent.env if self.fs is None else None)
                 if env is not None:
                     # Detect and cache grep backend
                     if self._grep_backend is None:

@@ -70,6 +70,19 @@ toolset = FSSpecTools()
 print(generate_tool_docs(toolset))
 ```
 
+## Custom filesystems and security
+
+With an `fs` (any filesystem that is not an execution environment's), every tool of the
+toolset (`read`, `list_directory`, `grep`, `write`, the edit tools, `delete_path`,
+`download_file`) works on that filesystem only, never on the agent's environment:
+
+- relative paths resolve against the toolset's `cwd` only (not the agent env's working directory),
+- `grep` searches in-process (no `rg`/`grep` subprocess, which would search the host),
+- post-write diagnostics and the document converter are skipped (they read host paths).
+
+`download_file` verifies TLS certificates (there is no opt-out). URLs without a usable
+file name (`/`, `/.`, `/..`) are saved as `downloaded_file`.
+
 ## Configuration Reference
 
 /// mknodes

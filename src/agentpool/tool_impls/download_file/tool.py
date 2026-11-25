@@ -43,6 +43,13 @@ class DownloadFileTool(Tool[dict[str, Any]]):
     env: ExecutionEnvironment | None = None
     """Execution environment to use. Falls back to agent.env if not set."""
 
+    fs: AsyncFileSystem | None = None
+    """Filesystem to operate on (takes precedence over ``env``).
+
+    Set for a custom filesystem: the tool then never touches the agent's
+    environment (no host filesystem, cwd or subprocesses).
+    """
+
     cwd: str | None = None
     """Working directory for resolving relative paths."""
 
@@ -57,7 +64,9 @@ class DownloadFileTool(Tool[dict[str, Any]]):
         return self._download_file
 
     def _get_fs(self, ctx: AgentContext) -> AsyncFileSystem:
-        """Get filesystem from env, falling back to agent's env if not set."""
+        """Get the filesystem: explicit fs, then env, then the agent's env."""
+        if self.fs is not None:
+            return self.fs
         return ctx.agent.env.get_fs() if self.env is None else self.env.get_fs()
 
     def _resolve_path(self, path: str, ctx: AgentContext) -> str:
@@ -67,7 +76,7 @@ class DownloadFileTool(Tool[dict[str, Any]]):
             cwd = self.cwd
         elif self.env and self.env.cwd:
             cwd = self.env.cwd
-        elif ctx.agent.env and ctx.agent.env.cwd:
+        elif self.fs is None and ctx.agent.env and ctx.agent.env.cwd:
             cwd = ctx.agent.env.cwd
 
         if cwd and not (path.startswith("/") or (len(path) > 1 and path[1] == ":")):
@@ -107,8 +116,10 @@ class DownloadFileTool(Tool[dict[str, Any]]):
         msg = f"Downloading: {url}"
         await ctx.events.tool_call_start(title=msg, kind="read", locations=[url])
 
-        # Extract filename from URL
-        filename = Path(urlparse(url).path).name or "downloaded_file"
+        # Extract filename from URL ("", "." and ".." are no file names)
+        filename = Path(urlparse(url).path).name
+        if filename in ("", ".", ".."):
+            filename = "downloaded_file"
         full_path = f"{target_dir.rstrip('/')}/{filename}"
 
         try:
@@ -117,7 +128,7 @@ class DownloadFileTool(Tool[dict[str, Any]]):
             await fs._makedirs(target_dir, exist_ok=True)
 
             async with (
-                httpx2.AsyncClient(verify=False) as client,
+                httpx2.AsyncClient() as client,  # verifies TLS certificates
                 client.stream("GET", url, timeout=self.timeout) as response,
             ):
                 response.raise_for_status()
@@ -136,7 +147,8 @@ class DownloadFileTool(Tool[dict[str, Any]]):
 
                     if total and (size % (effective_chunk_size * 100) == 0 or size == total):
                         progress = size / total * 100
-                        speed_mbps = (size / 1_048_576) / (time.time() - start_time)
+                        elapsed = max(time.time() - start_time, 1e-6)
+                        speed_mbps = (size / 1_048_576) / elapsed
                         progress_msg = f"\r{filename}: {progress:.1f}% ({speed_mbps:.1f} MB/s)"
                         await ctx.events.progress(progress, 100, progress_msg)
                         await anyio.sleep(0)

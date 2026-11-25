@@ -44,6 +44,13 @@ class ReadTool(Tool[ToolResult]):
     env: ExecutionEnvironment | None = None
     """Execution environment to use. Falls back to agent.env if not set."""
 
+    fs: AsyncFileSystem | None = None
+    """Filesystem to operate on (takes precedence over ``env``).
+
+    Set for a custom filesystem: the tool then never touches the agent's
+    environment (no host filesystem, cwd or subprocesses).
+    """
+
     converter: ConversionManager | None = None
     """Optional converter for binary files. If set and supports the file type, returns markdown."""
 
@@ -72,7 +79,9 @@ class ReadTool(Tool[ToolResult]):
         return self._read
 
     def _get_fs(self, ctx: AgentContext) -> AsyncFileSystem:
-        """Get filesystem from env, falling back to agent's env if not set."""
+        """Get the filesystem: explicit fs, then env, then the agent's env."""
+        if self.fs is not None:
+            return self.fs
         return ctx.agent.env.get_fs() if self.env is None else self.env.get_fs()
 
     def _resolve_path(self, path: str, ctx: AgentContext) -> str:
@@ -83,7 +92,7 @@ class ReadTool(Tool[ToolResult]):
             cwd = self.cwd
         elif self.env and self.env.cwd:
             cwd = self.env.cwd
-        elif ctx.agent.env and ctx.agent.env.cwd:
+        elif self.fs is None and ctx.agent.env and ctx.agent.env.cwd:
             cwd = ctx.agent.env.cwd
 
         if cwd and not (path.startswith("/") or (len(path) > 1 and path[1] == ":")):
@@ -149,8 +158,9 @@ class ReadTool(Tool[ToolResult]):
             mime_type = guess_type(path)
             # Fast path: known binary MIME types (images, audio, video, etc.)
             if is_binary_mime(mime_type):
-                # Try converter first if available
-                if self.converter is not None:
+                # Try converter first if available (it reads the path itself, so
+                # not for a custom filesystem: it would read the host file)
+                if self.converter is not None and self.fs is None:
                     try:
                         content = await self.converter.convert_file(path)
                         await ctx.events.file_operation("read", path=path, success=True)
@@ -180,8 +190,9 @@ class ReadTool(Tool[ToolResult]):
             # Read content and probe for binary (git-style null byte detection)
             data = await self._get_fs(ctx)._cat_file(path)
             if is_binary_content(data):
-                # Try converter first if available
-                if self.converter is not None:
+                # Try converter first if available (it reads the path itself, so
+                # not for a custom filesystem: it would read the host file)
+                if self.converter is not None and self.fs is None:
                     try:
                         content = await self.converter.convert_file(path)
                         await ctx.events.file_operation("read", path=path, success=True)
