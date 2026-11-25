@@ -20,9 +20,13 @@ Normalization steps (all deterministic, so regenerating gives stable diffs):
    ``type`` property get an OpenAPI discriminator, so pydantic validates them as tagged
    unions.
 
+The pinned version lives in ``src/opencode_v2_sdk/_version.py`` (``OPENCODE_VERSION``), which
+this script writes.
+
 Usage:
-    uv run python scripts/generate_opencode_v2_models.py            # use pinned spec on disk
-    uv run python scripts/generate_opencode_v2_models.py --download # re-download pinned tag
+    uv run python scripts/generate_opencode_v2_models.py                   # spec on disk
+    uv run python scripts/generate_opencode_v2_models.py --download        # re-download pinned tag
+    uv run python scripts/generate_opencode_v2_models.py --version 2.4.1   # pin, download, generate
 """
 
 from __future__ import annotations
@@ -39,10 +43,8 @@ from typing import Any
 import urllib.request
 
 
-OPENCODE_TAG = "v2.3.2"
 SPEC_URL = (
-    f"https://raw.githubusercontent.com/anomalyco/opencode/{OPENCODE_TAG}"
-    "/packages/protocol/openapi.json"
+    "https://raw.githubusercontent.com/anomalyco/opencode/v{version}/packages/protocol/openapi.json"
 )
 PROJECT_ROOT = Path(__file__).parent.parent
 SPEC_FILE = PROJECT_ROOT / "schema" / "opencode-v2" / "openapi.json"
@@ -450,16 +452,25 @@ def union_aliases(normalized: JsonObj, primitives: JsonObj, generated: str) -> s
     return header + "\n".join(lines) + "\n"
 
 
-def download_spec() -> None:
-    print(f"Downloading {SPEC_URL} ...")
-    with urllib.request.urlopen(SPEC_URL) as response:
+def pinned_version() -> str:
+    """The pinned OpenCode version (``OPENCODE_VERSION`` in ``_version.py``)."""
+    match = re.search(r'^OPENCODE_VERSION = "([^"]+)"$', VERSION_FILE.read_text(), re.MULTILINE)
+    if match is None:
+        raise SystemExit(f"No OPENCODE_VERSION in {VERSION_FILE}")
+    return match.group(1)
+
+
+def download_spec(version: str) -> None:
+    url = SPEC_URL.format(version=version)
+    print(f"Downloading {url} ...")
+    with urllib.request.urlopen(url) as response:
         data = json.loads(response.read())
     SPEC_FILE.parent.mkdir(parents=True, exist_ok=True)
     SPEC_FILE.write_text(json.dumps(data, indent=2, sort_keys=False) + "\n")
     print(f"  Saved to {SPEC_FILE}")
 
 
-def generate() -> None:
+def generate(version: str) -> None:
     spec = json.loads(SPEC_FILE.read_text())
     normalizer = Normalizer(spec)
     normalized = normalizer.run()
@@ -498,7 +509,7 @@ def generate() -> None:
         "--use-double-quotes",
         "--disable-timestamp",
         "--custom-file-header",
-        f'"""OpenCode V2 HTTP API models (generated from opencode {OPENCODE_TAG}, do not edit)."""',
+        f'"""OpenCode V2 HTTP API models (generated from opencode v{version}, do not edit)."""',
     ]
     print("Running datamodel-codegen ...")
     result = subprocess.run(cmd, capture_output=True, text=True, check=False)
@@ -512,7 +523,7 @@ def generate() -> None:
     subprocess.run(["uv", "run", "ruff", "format", "-q", str(OUTPUT_FILE)], check=True)
     VERSION_FILE.write_text(
         '"""Pinned OpenCode version the V2 models were generated from."""\n\n'
-        f'OPENCODE_VERSION = "{OPENCODE_TAG.removeprefix("v")}"\n'
+        f'OPENCODE_VERSION = "{version}"\n'
     )
     content = OUTPUT_FILE.read_text()
     print(f"  {OUTPUT_FILE}: {content.count(chr(10))} lines, {content.count('class ')} classes")
@@ -521,10 +532,15 @@ def generate() -> None:
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--download", action="store_true", help="Re-download the pinned spec")
+    parser.add_argument(
+        "--version",
+        help="Pin this OpenCode version (a v2.x.y tag without 'v'); implies --download",
+    )
     args = parser.parse_args()
-    if args.download or not SPEC_FILE.exists():
-        download_spec()
-    generate()
+    version = (args.version or pinned_version()).removeprefix("v")
+    if args.version or args.download or not SPEC_FILE.exists():
+        download_spec(version)
+    generate(version)
 
 
 if __name__ == "__main__":

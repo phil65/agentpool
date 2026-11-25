@@ -37,6 +37,10 @@ from agentpool_server.opencode_v2_server.session_environment import (
 )
 from agentpool_server.opencode_v2_server.tasks import TaskTracker
 from opencode_v2_sdk.models import (
+    ExperimentalJobUpdated,
+    ExperimentalJobUpdatedData,
+    JobShell,
+    JobSubagent,
     SessionCompactionEnded,
     SessionCompactionEndedData,
     SessionCompactionFailed,
@@ -221,11 +225,34 @@ class SessionRunner:
     """Subagent runs and background commands started by the agent (listed as jobs)."""
 
     def __post_init__(self) -> None:
-        self.tasks = TaskTracker(session_id=self.session.id)
+        self.tasks = TaskTracker(session_id=self.session.id, on_change=self._job_changed)
         self._background: RunEventConverter | None = None
         """Converter of a turn the agent took on its own, while it runs."""
         self._background_done = asyncio.Event()
         self._background_done.set()
+
+    def _job_changed(self, job: JobShell | JobSubagent) -> None:
+        self.session.emit_sink(ExperimentalJobUpdated, ExperimentalJobUpdatedData(info=job))
+
+    async def cancel_task(self, task_id: str) -> None:
+        """Stop an agent task of the session (``job.cancel``).
+
+        Tried on the session's agent first, then on the other pool agents (a subagent's
+        task). Does nothing if no agent runs it or its agent can't stop single tasks.
+        """
+        from agentpool.agents.exceptions import UnsupportedOperationError
+
+        node = self._current_node()
+        agents = [node] if isinstance(node, BaseAgent) else []
+        agents += [a for a in self.catalog.pool.all_agents.values() if a is not node]
+        for agent in agents:
+            try:
+                await agent.stop_task(task_id)
+            except KeyError:
+                continue
+            except UnsupportedOperationError as e:
+                logger.info("Job not cancelled", task_id=task_id, reason=str(e))
+            return
 
     async def on_background_event(self, event: RichAgentStreamEvent[Any]) -> None:
         """An event the session's agent produced between turns.

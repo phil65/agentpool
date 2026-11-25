@@ -1,4 +1,4 @@
-"""Async HTTP and SSE client for the OpenCode V2 (v2.3.2) server API."""
+"""Async HTTP and SSE client for the OpenCode V2 server API (pinned in ``_version.py``)."""
 
 from __future__ import annotations
 

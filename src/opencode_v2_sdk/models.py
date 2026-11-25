@@ -1,4 +1,4 @@
-"""OpenCode V2 HTTP API models (generated from opencode v2.3.2, do not edit)."""
+"""OpenCode V2 HTTP API models (generated from opencode v2.4.1, do not edit)."""
 
 from __future__ import annotations
 from typing import Annotated, Any, Literal
@@ -59,11 +59,17 @@ class AutomationActionCode(BaseModel):
     args: Any | None = None
 
 
+class AutomationActionShell(BaseModel):
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)
+    type: Literal["shell"] = "shell"
+    command: Annotated[str, Field(min_length=1)]
+
+
 class AutomationCodeActionInput(BaseModel):
     model_config = ConfigDict(extra="forbid", populate_by_name=True)
     type: Literal["code"] = "code"
     code: Annotated[str, Field(min_length=1)]
-    '\n    Code Mode JavaScript run on each trigger with no model (no fetch; 30s, 20 tool calls, 32 KB output cap). Call tools statically as tools.<ns>.<tool>(...) or tools["ns-name"].tool(...); each is authorized once at creation to run unattended. Receives input = { state, now, runs, args } (also globals): state starts null, now is epoch ms, runs counts earlier runs. Event triggers also receive input.event = { id, timestamp, data }; data follows the event type\'s payloadSchema. Return nothing, or { state?, done?, send? }. JSON state is kept for the next run; done: true stops. lastOutput shows the delivery target and any logs. Return at most one send per run. { send: { prompt } } steers the creating session; { send: { prompt, to: { subagent } } } starts a permitted child that does not report back. No session IDs. Omit send to stay quiet. A rejected send commits neither state nor done. Example code string: if (runs < 2) return; return { done: true, send: { prompt: "Three checks elapsed. Review the build." } }\n    '
+    '\n    Code Mode JavaScript run on each trigger with no model (32 KB output cap). Call tools statically as tools.<ns>.<tool>(...) or tools["ns-name"].tool(...); each is authorized once at creation to run unattended. Receives input = { state, now, runs, args } (also globals): state starts null, now is epoch ms, runs counts earlier runs. Event triggers also receive input.event = { id, timestamp, data }; data follows the event type\'s payloadSchema. Return nothing, or { state?, done?, send? }. JSON state is kept for the next run; done: true stops. lastOutput shows the delivery target and any logs. Return at most one send per run. { send: { prompt } } steers the creating session; { send: { prompt, to: { subagent } } } starts a permitted child that does not report back. No session IDs. Omit send to stay quiet. A rejected send commits neither state nor done. Example code string: if (runs < 2) return; return { done: true, send: { prompt: "Three checks elapsed. Review the build." } }\n    '
     args: Any | None = None
 
 
@@ -80,6 +86,13 @@ class AutomationNotFoundErrorEncoded(BaseModel):
     )
     automation_id: Annotated[str, Field(alias="automationID")]
     message: str
+
+
+class AutomationShellActionInput(BaseModel):
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)
+    type: Literal["shell"] = "shell"
+    command: Annotated[str, Field(min_length=1)]
+    "\n    The fixed shell command to run on each trigger without a model.\n    "
 
 
 class AutomationTargetVariant0(BaseModel):
@@ -127,11 +140,10 @@ class AutomationTriggerEvery(BaseModel):
 
 class BlobInfo(BaseModel):
     model_config = ConfigDict(extra="forbid", populate_by_name=True)
-    id: Annotated[str, Field(pattern="^video_[0-9a-f]{12}[0-9A-Za-z]{14}_(0|[1-9][0-9]{0,2})$")]
+    id: Annotated[str, Field(pattern="^blob_[0-9a-f]{12}[0-9A-Za-z]{14}$")]
+    "\n    A stored blob, such as a generated video, which outlives the job that made it\n    "
     mime: str
     bytes: float
-    expires_at: Annotated[float, Field(alias="expiresAt")]
-    "\n    Epoch milliseconds after which the blob may be deleted. Read it with GET /api/experimental/blob/:id\n    "
 
 
 class BlobNotFoundErrorEncoded(BaseModel):
@@ -230,6 +242,13 @@ class ConfigInfoEncodedExperimentalPoliciesItem(BaseModel):
     ]
     resource: str
     effect: Literal["allow", "deny"]
+
+
+class ConfigInfoEncodedExperimentalVideoGenerateVariant1ModelVariant1(BaseModel):
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)
+    provider_id: Annotated[str, Field(alias="providerID", pattern="^[^/#]+$")]
+    model: Annotated[str, Field(pattern="^[^#]+$")]
+    variant: Annotated[str | None, Field(pattern="^[^#]+$")] = None
 
 
 class ConfigInfoEncodedLspVariant1ValueVariant0(BaseModel):
@@ -911,6 +930,17 @@ class JobTime(BaseModel):
     completed: float | None = None
 
 
+class JobVideo(BaseModel):
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)
+    kind: Literal["video"] = "video"
+    id: str
+    session_id: Annotated[str, Field(alias="sessionID", pattern="^ses")]
+    status: Literal["running", "completed", "error", "cancelled"]
+    title: str | None = None
+    time: JobTime
+    path: str
+
+
 class LocationPublicInfoProject(BaseModel):
     model_config = ConfigDict(extra="forbid", populate_by_name=True)
     id: str
@@ -937,6 +967,33 @@ class LocationShutdown(BaseModel):
     type: Literal["location.shutdown"] = "location.shutdown"
     location: LocationRef | None = None
     data: Any
+
+
+class MachineInfoConnection(BaseModel):
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)
+    kind: Literal["websocket", "iroh"]
+    path: Literal["direct", "relayed"] | None = None
+    rtt: float | Literal["Infinity", "-Infinity", "NaN"] | None = None
+
+
+class MachineInviteReachItemIroh(BaseModel):
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)
+    type: Literal["iroh"] = "iroh"
+
+
+class MachineNotFoundErrorEncoded(BaseModel):
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)
+    field_tag: Annotated[Literal["MachineNotFoundError"], Field(alias="_tag")] = (
+        "MachineNotFoundError"
+    )
+    machine: str
+    message: str
+
+
+class MachineReach(BaseModel):
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)
+    type: Literal["url"] = "url"
+    url: str
 
 
 class McpLocalConfigEncodedTimeout(BaseModel):
@@ -1083,6 +1140,13 @@ class ModelRef(BaseModel):
     id: str
     provider_id: Annotated[str, Field(alias="providerID")]
     variant: str | None = None
+
+
+class ModelSpeed(BaseModel):
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)
+    base: str
+    id: str
+    faster: bool
 
 
 class ModelUpdated(BaseModel):
@@ -2936,6 +3000,8 @@ class VideoNotFoundErrorEncoded(BaseModel):
 class VoiceModel(BaseModel):
     model_config = ConfigDict(extra="forbid", populate_by_name=True)
     model: str
+    name: str
+    engine: str
     provider: str
     transports: list[Literal["webrtc", "websocket"]]
     available: bool
@@ -3152,6 +3218,11 @@ class ConfigInfoEncodedCompaction(BaseModel):
 class ConfigInfoEncodedExperimentalImageGenerateVariant1(BaseModel):
     model_config = ConfigDict(extra="forbid", populate_by_name=True)
     model: str | ConfigInfoEncodedExperimentalImageGenerateVariant1ModelVariant1 | None = None
+
+
+class ConfigInfoEncodedExperimentalVideoGenerateVariant1(BaseModel):
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)
+    model: str | ConfigInfoEncodedExperimentalVideoGenerateVariant1ModelVariant1 | None = None
 
 
 class ConfigInfoEncodedMedia(BaseModel):
@@ -3825,6 +3896,31 @@ class LocationPublicInfo(BaseModel):
     project: LocationPublicInfoProject
 
 
+class MachineAddPayload(BaseModel):
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)
+    name: str
+    reach: list[MachineReach]
+    replace: bool | None = None
+
+
+class MachineInfo(BaseModel):
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)
+    id: str
+    online: bool
+    paired: bool
+    os: str | None = None
+    arch: str | None = None
+    connection: MachineInfoConnection | None = None
+
+
+class MachineInvite(BaseModel):
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)
+    name: str
+    join: str
+    expires: Annotated[int, Field(ge=-9007199254740991, le=9007199254740991)]
+    reach: list[Annotated[MachineReach | MachineInviteReachItemIroh, Field(discriminator="type")]]
+
+
 class McpLocalConfigEncoded(BaseModel):
     model_config = ConfigDict(extra="forbid", populate_by_name=True)
     type: Literal["local"] = "local"
@@ -3835,7 +3931,7 @@ class McpLocalConfigEncoded(BaseModel):
     codemode: bool | None = None
     timeout: McpLocalConfigEncodedTimeout | None = None
     protocol: Literal["legacy", "auto", "2026-07-28"] | None = None
-    '\n    MCP protocol negotiation. "legacy" (default) opens with the initialize handshake and speaks protocol revisions up to 2025-11-25. "auto" probes for the 2026-07-28 revision and falls back to legacy when the server does not support it. "2026-07-28" requires that revision and fails otherwise.\n    '
+    '\n    MCP protocol negotiation. "auto" (default) probes for the 2026-07-28 revision and falls back to legacy when the server does not support it. "legacy" opens with the initialize handshake and speaks protocol revisions up to 2025-11-25. "2026-07-28" requires that revision and fails otherwise.\n    '
     pool: bool | None = None
 
 
@@ -3849,7 +3945,7 @@ class McpRemoteConfigEncoded(BaseModel):
     codemode: bool | None = None
     timeout: McpRemoteConfigEncodedTimeout | None = None
     protocol: Literal["legacy", "auto", "2026-07-28"] | None = None
-    '\n    MCP protocol negotiation. "legacy" (default) opens with the initialize handshake and speaks protocol revisions up to 2025-11-25. "auto" probes for the 2026-07-28 revision and falls back to legacy when the server does not support it. "2026-07-28" requires that revision and fails otherwise.\n    '
+    '\n    MCP protocol negotiation. "auto" (default) probes for the 2026-07-28 revision and falls back to legacy when the server does not support it. "legacy" opens with the initialize handshake and speaks protocol revisions up to 2025-11-25. "2026-07-28" requires that revision and fails otherwise.\n    '
     pool: bool | None = None
 
 
@@ -3933,6 +4029,11 @@ class ModelCost(BaseModel):
     input: float
     output: float
     cache: ModelCostCache
+
+
+class ModelInfoExperimental(BaseModel):
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)
+    speed: ModelSpeed | None = None
 
 
 class PermissionReplied(BaseModel):
@@ -4209,7 +4310,7 @@ class SessionCreateBody(BaseModel):
     model_config = ConfigDict(extra="forbid", populate_by_name=True)
     id: str | None = None
     parent_id: Annotated[str | None, Field(alias="parentID")] = None
-    "\n    Set parentID to create a subagent session at the parent's location; set agent to choose its agent (otherwise it uses the default) and start it with session.prompt. After each completed round, the child sends a `<subagent>` report to the parent's inbox and wakes the parent unless it has a staged revert.\n    "
+    "\n    Set parentID to create a subagent session at the parent's location; set agent to choose its agent (otherwise it uses the default) and start it with session.prompt. After each completed round, the child sends a `<background-result kind=\"subagent\">` report to the parent's inbox and wakes the parent unless it has a staged revert.\n    "
     title: str | None = None
     agent: str | None = None
     model: ModelRef | None = None
@@ -5045,13 +5146,17 @@ class ConfigInfoEncodedExperimental(BaseModel):
     all_flags: bool | None = None
     todo: bool | None = None
     media_blob: bool | None = None
-    automations: bool | None = None
     artifacts: bool | None = None
-    video_generate: bool | None = None
     console_watches: bool | None = None
-    mcp_events: bool | None = None
+    recommended_api: bool | None = None
+    model_speeds: bool | None = None
     full_codemode: bool | None = None
-    schedules: bool | None = None
+    machines: bool | None = None
+    home_memory: bool | None = None
+    project_overlay: bool | None = None
+    opencode_api: bool | None = None
+    sqlite_fts: bool | None = None
+    video_generate: bool | ConfigInfoEncodedExperimentalVideoGenerateVariant1 | None = None
     part_rows: bool | None = None
     image_generate: bool | ConfigInfoEncodedExperimentalImageGenerateVariant1 | None = None
     subagent_depth: Annotated[int | None, Field(ge=0, le=9007199254740991)] = None
@@ -5082,6 +5187,16 @@ class ExperimentalArtifactsGetResponse(BaseModel):
     model_config = ConfigDict(extra="forbid", populate_by_name=True)
     location: LocationPublicRef
     data: ArtifactContent
+
+
+class ExperimentalMachineAddResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)
+    data: MachineInvite
+
+
+class ExperimentalMachineListResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)
+    data: list[MachineInfo]
 
 
 class ExperimentalMcpAddBody(BaseModel):
@@ -5829,11 +5944,12 @@ class AutomationCreatePayload(BaseModel):
         | AutomationTriggerEvent,
         Field(discriminator="type"),
     ]
-    '\n    When it runs: { type: "at", at: "in 20 minutes" | "2026-10-27T09:00" }, { type: "every", every: "1 hour" } or { type: "cron", cron: "0 9 * * 1-5" }, each with an optional tz. Or { type: "event", server, event, args? } for a connected MCP server advertising push delivery (requires mcp_events).\n    '
+    '\n    When it runs: { type: "at", at: "in 20 minutes" | "2026-10-27T09:00" }, { type: "every", every: "1 hour" } or { type: "cron", cron: "0 9 * * 1-5" }, each with an optional tz. Or { type: "event", server, event, args? } for a connected MCP server advertising push delivery.\n    '
     action: Annotated[
-        AutomationPromptActionInput | AutomationCodeActionInput, Field(discriminator="type")
+        AutomationPromptActionInput | AutomationCodeActionInput | AutomationShellActionInput,
+        Field(discriminator="type"),
     ]
-    '\n    What it does: { type: "prompt", prompt, to? } sends a prompt; { type: "code", code, args? } runs Code Mode with no model.\n    '
+    '\n    What it does: { type: "prompt", prompt, to? } sends a prompt; { type: "code", code, args? } runs Code Mode; { type: "shell", command } runs a fixed shell command.\n    '
     expires: str | None = None
 
 
@@ -5852,7 +5968,10 @@ class AutomationInfo(BaseModel):
         Field(discriminator="type"),
     ]
     tz: str
-    action: Annotated[AutomationActionPrompt | AutomationActionCode, Field(discriminator="type")]
+    action: Annotated[
+        AutomationActionPrompt | AutomationActionCode | AutomationActionShell,
+        Field(discriminator="type"),
+    ]
     expires: float | None = None
     status: Literal["active", "paused", "done"]
     next_due_at: Annotated[float | None, Field(alias="nextDueAt")] = None
@@ -5935,7 +6054,12 @@ class ExperimentalAutomationResumeResponse(BaseModel):
 
 class ExperimentalJobListResponse(BaseModel):
     model_config = ConfigDict(extra="forbid", populate_by_name=True)
-    data: list[JobShell | JobSubagent | JobImage | JobCodeMode]
+    data: list[JobShell | JobSubagent | JobImage | JobVideo | JobCodeMode]
+
+
+class ExperimentalJobUpdatedData(BaseModel):
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)
+    info: JobShell | JobSubagent | JobImage | JobVideo | JobCodeMode
 
 
 class ExperimentalPersistentPtyReadResponse(BaseModel):
@@ -6365,6 +6489,16 @@ class ConfigProviderEncoded(BaseModel):
     models: dict[str, ConfigModelEncoded] | None = None
 
 
+class ExperimentalJobUpdated(BaseModel):
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)
+    id: Annotated[str, Field(pattern="^evt_")]
+    created: float
+    metadata: dict[str, Any] | None = None
+    type: Literal["experimental.job.updated"] = "experimental.job.updated"
+    location: LocationRef | None = None
+    data: ExperimentalJobUpdatedData
+
+
 class ExperimentalSessionStatsResponse(BaseModel):
     model_config = ConfigDict(extra="forbid", populate_by_name=True)
     data: SessionStatsInfo
@@ -6422,6 +6556,7 @@ class ModelInfo(BaseModel):
     body: dict[str, Any] | None = None
     capabilities: ModelCapabilities
     variants: list[ModelVariant]
+    experimental: ModelInfoExperimental | None = None
     time: ModelInfoTime
     cost: list[ModelCost]
     status: Literal["alpha", "beta", "deprecated", "active"]
@@ -6550,6 +6685,7 @@ class ConfigInfoEncoded(BaseModel):
     enterprise: ConfigInfoEncodedEnterprise | None = None
     username: str | None = None
     timezone: str | None = None
+    automations: bool | None = None
     permissions: list[PermissionRule] | None = None
     policies: list[ConfigInfoEncodedPoliciesItem] | None = None
     agents: dict[str, ConfigAgentEncoded] | None = None
@@ -6870,6 +7006,7 @@ class V2Event(
         | ShellCreated
         | ShellExited
         | ShellDeleted
+        | ExperimentalJobUpdated
         | FormCreated
         | FormReplied
         | FormCancelled
@@ -6974,6 +7111,7 @@ class V2Event(
         | ShellCreated
         | ShellExited
         | ShellDeleted
+        | ExperimentalJobUpdated
         | FormCreated
         | FormReplied
         | FormCancelled
@@ -7103,10 +7241,12 @@ class SessionEventDurable(
 
 
 type AutomationAction = Annotated[
-    AutomationActionPrompt | AutomationActionCode, Field(discriminator="type")
+    AutomationActionPrompt | AutomationActionCode | AutomationActionShell,
+    Field(discriminator="type"),
 ]
 type AutomationActionInput = Annotated[
-    AutomationPromptActionInput | AutomationCodeActionInput, Field(discriminator="type")
+    AutomationPromptActionInput | AutomationCodeActionInput | AutomationShellActionInput,
+    Field(discriminator="type"),
 ]
 type AutomationTarget = AutomationTargetVariant0 | AutomationTargetVariant1
 type AutomationTrigger = Annotated[
@@ -7180,7 +7320,7 @@ type IntegrationMethod = Annotated[
     | IntegrationEnvMethod,
     Field(discriminator="type"),
 ]
-type JobInfo = JobShell | JobSubagent | JobImage | JobCodeMode
+type JobInfo = JobShell | JobSubagent | JobImage | JobVideo | JobCodeMode
 type ModelReasoningField = Literal["reasoning", "reasoning_content", "reasoning_text"] | str
 type ModelType = Literal["chat", "decision", "image", "video"] | str
 type PermissionSource = PermissionSourceTool
@@ -7275,7 +7415,7 @@ type InstructionEntryKey = str
 type IntegrationAttemptID = str
 type IntegrationID = str
 type IntegrationMethodID = str
-type JobKind = Literal["shell", "subagent", "image", "codemode"]
+type JobKind = Literal["shell", "subagent", "image", "video", "codemode"]
 type JobStatus = Literal["running", "completed", "error", "cancelled"]
 type McpProtocol = Literal["legacy", "auto", "2026-07-28"]
 type MediaHash = str

@@ -4,7 +4,8 @@ Listing endpoints answer with empty collections so clients render normally; muta
 endpoints answer with a typed ``ServiceUnavailableError`` (503). Covered: plugins,
 integrations, credentials, generation (text/image/video/decisions), voice, client MCP,
 persistent PTYs, media/blobs, automations, artifacts, references, web search, usage
-limits, plugin RPC and debugging.
+limits, plugin RPC and debugging. Machines answer ``ForbiddenError`` (403), like an OpenCode
+server without the ``machines`` flag.
 """
 
 from __future__ import annotations
@@ -26,6 +27,7 @@ from opencode_v2_sdk.models import (
     ExperimentalAutomationListResponse,
     ExperimentalPersistentPtyListResponse,
     ExperimentalUsageLimitsResponse,
+    ForbiddenErrorEncoded,
     IntegrationListResponse,
     PluginListResponse,
     ReferenceListResponse,
@@ -147,6 +149,20 @@ async def rpc_call(rpc_id: str, method: str) -> Response:
     """Plugin RPC: no OpenCode plugins run here, so every call fails with ``RpcError``."""
     message = f"No plugin {rpc_id!r} (method {method!r}) on this server"
     raise ApiError(400, RpcErrorEncoded(type="NotFound", message=message))
+
+
+# --- machines ------------------------------------------------------------------------------
+
+MACHINES_DISABLED = "Machines are not supported by AgentPool (OpenCode's machines flag is off)"
+
+
+@router.get("/api/experimental/machine")
+@router.post("/api/experimental/machine")
+@router.get("/api/experimental/machine/link")
+@router.delete("/api/experimental/machine/{name}")
+async def machines() -> Response:
+    """Machines (linking other OpenCode servers): refused like a server with the flag off."""
+    raise ApiError(403, ForbiddenErrorEncoded(message=MACHINES_DISABLED))
 
 
 # --- unsupported mutations -----------------------------------------------------------------

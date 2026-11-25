@@ -13,6 +13,10 @@ from agentpool.utils import identifiers
 from agentpool.utils.time_utils import now_ms
 from agentpool_server.opencode_v2_server.events import build_event
 from opencode_v2_sdk.models import (
+    ExperimentalJobUpdated,
+    ExperimentalJobUpdatedData,
+    JobShell,
+    JobTime,
     ShellCreated,
     ShellCreatedData,
     ShellDeleted,
@@ -82,6 +86,31 @@ class ShellProcess:
             truncated=cursor < self.dropped,
         )
 
+    def job(self) -> JobShell | None:
+        """The shell as an OpenCode job, if a session started it (``sessionID`` metadata)."""
+        owner = self.info.metadata.get("sessionID")
+        if not isinstance(owner, str):
+            return None
+        status: Literal["running", "completed", "error", "cancelled"]
+        match self.info.status:
+            case "running":
+                status = "running"
+            case "exited":
+                status = "completed" if self.info.exit == 0 else "error"
+            case "timeout":
+                status = "error"
+            case "killed":
+                status = "cancelled"
+        return JobShell(
+            id=self.info.id,
+            session_id=owner,
+            status=status,
+            title=self.info.command,
+            time=JobTime(started=self.info.time.started, completed=self.info.time.completed),
+            shell_id=self.info.id,
+            command=self.info.command,
+        )
+
 
 @dataclass
 class ShellManager:
@@ -144,6 +173,7 @@ class ShellManager:
         self.publish(
             _event(ShellCreated, ShellCreatedData(info=info), directory), "shell.created", directory
         )
+        self._publish_job(entry)
         entry.task = asyncio.create_task(self._run(entry, timeout, on_exit), name=f"shell-{sid}")
         return entry
 
@@ -188,12 +218,32 @@ class ShellManager:
         entry.done.set()
         data = ShellExitedData(id=entry.info.id, exit=entry.info.exit, status=status)
         self.publish(_event(ShellExited, data, entry.directory), "shell.exited", entry.directory)
+        self._publish_job(entry)
         if on_exit is not None:
             on_exit(entry)
+
+    def _publish_job(self, entry: ShellProcess) -> None:
+        """Publish ``experimental.job.updated`` for a shell a session started."""
+        if (job := entry.job()) is None:
+            return
+        data = ExperimentalJobUpdatedData(info=job)
+        event = _event(ExperimentalJobUpdated, data, entry.directory)
+        self.publish(event, "experimental.job.updated", entry.directory)
 
     def get(self, shell_id: str) -> ShellProcess | None:
         """A tracked shell."""
         return self.shells.get(shell_id)
+
+    async def kill(self, shell_id: str) -> bool:
+        """Kill a running shell, keeping it (status ``killed``). False if it isn't running."""
+        entry = self.shells.get(shell_id)
+        if entry is None or entry.process is None or entry.process.returncode is not None:
+            return False
+        entry.info = entry.info.model_copy(update={"status": "killed"})
+        entry.process.kill()
+        if entry.task is not None:
+            await asyncio.wait({entry.task}, timeout=5)
+        return True
 
     async def remove(self, shell_id: str) -> bool:
         """Kill (if running) and forget a shell."""

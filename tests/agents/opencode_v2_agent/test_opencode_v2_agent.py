@@ -79,7 +79,7 @@ class _FakeV2Server:
     def _handle_static(self, path: str) -> httpx2.Response | None:
         static_payloads: dict[str, dict[str, Any]] = {
             "/api/info": {
-                "version": "2.3.2",
+                "version": "2.4.1",
                 "pid": 123,
                 "urls": ["http://v2.test"],
                 "paths": {"tmp": "/tmp"},

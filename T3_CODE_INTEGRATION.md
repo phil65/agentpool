@@ -177,7 +177,7 @@ naturally, though, because a T3 agent can be a team member.
 T3's OpenCode provider can connect to an external server by URL and password, and checks the
 version (≥ 1.14.19, or 2.0.18 for OpenCode 2). This was blocked while `serve-opencode` was the
 v1 server (it reported `0.1.0`). Since 2026-11-22 `serve-opencode` is the V2 server and reports
-2.3.2 (`opencode_v2_sdk/_version.py`), so the check should pass. Whether T3's adapter
+the pinned version (2.4.1, `opencode_v2_sdk/_version.py`), so the check should pass. Whether T3's adapter
 (`packages/provider-opencode`) works against our V2 API is untested. Item 1 reaches the same
 goal and works today.
 

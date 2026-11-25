@@ -8,7 +8,7 @@ description: Drive an OpenCode v2.3+ HTTP/SSE server as an AgentPool agent
 icon: simple/opencode
 ---
 
-OpenCode V2 agents connect to an [OpenCode](https://github.com/anomalyco/opencode) v2.3+ HTTP/SSE server (aligned with OpenCode v2.3.2 via `opencode_v2_sdk`), either by spawning a private `opencode serve` process automatically or by connecting to an already-running OpenCode V2 server (such as `opencode serve` or `agentpool serve-opencode`).
+OpenCode V2 agents connect to an [OpenCode](https://github.com/anomalyco/opencode) v2.3+ HTTP/SSE server (aligned with OpenCode v2.4.1 via `opencode_v2_sdk`), either by spawning a private `opencode serve` process automatically or by connecting to an already-running OpenCode V2 server (such as `opencode serve` or `agentpool serve-opencode`).
 
 ## How it works
 

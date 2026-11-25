@@ -36,7 +36,6 @@ from opencode_v2_sdk.models import (
     ExperimentalSessionSkillBody,
     JobShell,
     JobSubagent,
-    JobTime,
     McpListResponse,
     McpResource,
     McpResourceCatalog,
@@ -346,33 +345,8 @@ async def session_shell(session: SessionDep, body: SessionShellBody, state: Stat
 
 
 def _shell_jobs(state: ServerState, sessions: set[str]) -> list[JobShell]:
-    jobs = []
-    for entry in state.shells.shells.values():
-        owner = entry.info.metadata.get("sessionID")
-        if not isinstance(owner, str) or owner not in sessions:
-            continue
-        status: Literal["running", "completed", "error", "cancelled"]
-        match entry.info.status:
-            case "running":
-                status = "running"
-            case "exited":
-                status = "completed" if entry.info.exit == 0 else "error"
-            case "timeout":
-                status = "error"
-            case "killed":
-                status = "cancelled"
-        jobs.append(
-            JobShell(
-                id=entry.info.id,
-                session_id=owner,
-                status=status,
-                title=entry.info.command,
-                time=JobTime(started=entry.info.time.started, completed=entry.info.time.completed),
-                shell_id=entry.info.id,
-                command=entry.info.command,
-            )
-        )
-    return jobs
+    jobs = (entry.job() for entry in state.shells.shells.values())
+    return [job for job in jobs if job is not None and job.session_id in sessions]
 
 
 async def _descendants(state: ServerState, session_id: str) -> set[str]:
@@ -412,3 +386,19 @@ async def job_list(
     if status is not None:
         jobs = [j for j in jobs if j.status == status]
     return ok(ExperimentalJobListResponse(data=list(jobs)))
+
+
+@router.post("/api/experimental/job/{job_id}/cancel", status_code=204)
+async def job_cancel(job_id: str, state: StateDep) -> Response:
+    """Cancel a running job: kill a session's shell command or stop an agent task.
+
+    Like OpenCode, cancelling an unknown or finished job does nothing (204).
+    """
+    if state.shells.get(job_id) is not None:
+        await state.shells.kill(job_id)
+        return Response(status_code=204)
+    for runner in state.runners.values():
+        if job_id in runner.tasks.tasks:
+            await runner.cancel_task(job_id)
+            break
+    return Response(status_code=204)

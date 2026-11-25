@@ -59,7 +59,7 @@ def test_every_spec_operation_has_a_route(app: FastAPI) -> None:
 
 
 def test_pinned_version_matches_spec() -> None:
-    assert OPENCODE_VERSION == "2.3.2"
+    assert OPENCODE_VERSION == "2.4.1"
     assert len(json.loads(SPEC.read_text())["paths"]) > 100
 
 
@@ -168,6 +168,15 @@ def test_retry_is_shown_on_the_retried_step() -> None:
     (started,) = [data for cls, data in emitted if cls is models.SessionStepStarted]
     assert retry.assistant_message_id == started.assistant_message_id
     assert (retry.attempt, retry.at, retry.error.message) == (1, 1500, "overloaded")
+
+
+def test_task_changes_are_reported() -> None:
+    changes: list[models.JobShell | models.JobSubagent] = []
+    tracker = TaskTracker(session_id="ses_1", on_change=changes.append)
+    tracker.observe(TaskStartedEvent(task_id="t1", kind="agent", description="Count"))
+    tracker.observe(TaskFinishedEvent(task_id="t1", status="cancelled"))
+    tracker.observe(TaskFinishedEvent(task_id="unknown", status="completed"))
+    assert [(job.id, job.status) for job in changes] == [("t1", "running"), ("t1", "cancelled")]
 
 
 def test_tasks_are_listed_as_jobs() -> None:

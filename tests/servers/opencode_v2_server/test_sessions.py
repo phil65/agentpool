@@ -21,7 +21,8 @@ from agentpool.agents.usage_limits import UsageLimits, UsageWindow
 from agentpool.messaging import ChatMessage
 from agentpool_server.opencode_v2_server.event_store import EventStore
 from agentpool_server.opencode_v2_server.session import V2Session
-from opencode_v2_sdk.models import TuiToastShow
+from opencode_v2_sdk._version import OPENCODE_VERSION
+from opencode_v2_sdk.models import ExperimentalJobUpdated, TuiToastShow
 
 from .conftest import create_session, messages, prompt_and_wait, wait_for
 
@@ -34,7 +35,7 @@ if TYPE_CHECKING:
 
 async def test_info_and_location(client: AsyncClient) -> None:
     info = (await client.get("/api/info")).json()
-    assert info["version"] == "2.3.2"
+    assert info["version"] == OPENCODE_VERSION
     location = (await client.get("/api/location")).json()
     assert location["project"]["id"]
 
@@ -403,7 +404,9 @@ async def test_background_events_reach_the_bound_session(
     jobs = (await client.get("/api/experimental/job", params={"sessionID": sid})).json()["data"]
     # Listed (finished) until an execution consumes it
     assert [(job["id"], job["status"]) for job in jobs] == [("bg1", "completed")]
-    ((toast_cls, toast),) = emitted
+    (job_cls, job_update), (toast_cls, toast) = emitted
+    assert job_cls is ExperimentalJobUpdated
+    assert (job_update.info.id, job_update.info.status) == ("bg1", "completed")
     assert toast_cls is TuiToastShow
     assert toast.message == "Scan finished"
     # Events of other sessions are not routed here
@@ -411,7 +414,7 @@ async def test_background_events_reach_the_bound_session(
         agent_name=agent.name, session_id="ses_other", event=NoticeEvent(title="elsewhere")
     )
     await agent.background_event.emit(other)
-    assert len(emitted) == 1
+    assert len(emitted) == 2
 
 
 async def test_turn_the_agent_took_on_its_own_is_an_execution(
@@ -440,3 +443,69 @@ async def test_turn_the_agent_took_on_its_own_is_an_execution(
     assert not state.runners[sid].running
     # A new prompt still works afterwards
     await prompt_and_wait(client, sid, "again")
+
+
+async def test_cancel_shell_job(client: AsyncClient, state: ServerState) -> None:
+    sid = await create_session(client)
+    updates: list[Any] = []
+    publish = state.shells.publish
+
+    def record(event: Any, kind: str, directory: str) -> None:
+        if isinstance(event, ExperimentalJobUpdated):
+            updates.append(event.data.info)
+        publish(event, kind, directory)
+
+    state.shells.publish = record
+    await client.post(f"/api/session/{sid}/shell", json={"command": "sleep 30"})
+
+    async def listed() -> list[dict[str, Any]]:
+        response = await client.get("/api/experimental/job", params={"sessionID": sid})
+        return response.json()["data"]
+
+    await wait_for(listed)
+    (job,) = await listed()
+    assert job["status"] == "running"
+    response = await client.post(f"/api/experimental/job/{job['id']}/cancel")
+    assert response.status_code == 204
+    (job,) = await listed()
+    assert job["status"] == "cancelled"
+    assert [(u.id, u.status) for u in updates] == [
+        (job["id"], "running"),
+        (job["id"], "cancelled"),
+    ]
+    # Cancelling a finished or unknown job does nothing
+    assert (await client.post(f"/api/experimental/job/{job['id']}/cancel")).status_code == 204
+    assert (await client.post("/api/experimental/job/nope/cancel")).status_code == 204
+
+
+async def test_cancel_agent_task_job(
+    client: AsyncClient, state: ServerState, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    sid = await create_session(client)
+    await prompt_and_wait(client, sid, "hi")  # Creates the session's runner
+    runner = state.runners[sid]
+    emitted: list[tuple[type[Any], Any]] = []
+    monkeypatch.setattr(runner.session, "emit_sink", lambda cls, data: emitted.append((cls, data)))
+    runner.tasks.observe(TaskStartedEvent(task_id="bg1", kind="agent", description="Scan"))
+    stopped: list[str] = []
+
+    async def stop_task(task_id: str) -> None:
+        stopped.append(task_id)
+
+    monkeypatch.setattr(state.pool.main_agent, "stop_task", stop_task)
+    assert (await client.post("/api/experimental/job/bg1/cancel")).status_code == 204
+    assert stopped == ["bg1"]
+    ((cls, update),) = emitted
+    assert cls is ExperimentalJobUpdated
+    assert (update.info.id, update.info.status) == ("bg1", "running")
+
+
+async def test_machines_are_forbidden(client: AsyncClient) -> None:
+    for method, path in [
+        ("GET", "/api/experimental/machine"),
+        ("POST", "/api/experimental/machine"),
+        ("DELETE", "/api/experimental/machine/gpu"),
+    ]:
+        response = await client.request(method, path)
+        assert response.status_code == 403
+        assert response.json()["_tag"] == "ForbiddenError"

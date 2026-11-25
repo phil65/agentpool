@@ -6,7 +6,7 @@ icon: material/code-braces
 
 # OpenCode Server
 
-The OpenCode server implements the [OpenCode](https://github.com/anomalyco/opencode) **V2** HTTP + SSE API protocol (pinned to v2.3.2), allowing the OpenCode V2 TUI, desktop, and web clients—or another AgentPool `opencode_v2` agent—to drive your AgentPool agents and teams.
+The OpenCode server implements the [OpenCode](https://github.com/anomalyco/opencode) **V2** HTTP + SSE API protocol (pinned to v2.4.1), allowing the OpenCode V2 TUI, desktop, and web clients—or another AgentPool `opencode_v2` agent—to drive your AgentPool agents and teams.
 
 ## Quick Start
 
