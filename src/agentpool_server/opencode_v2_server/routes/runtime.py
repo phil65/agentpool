@@ -307,7 +307,7 @@ async def shell_output(
     try:
         start = int(float(cursor)) if cursor else 0
         count = int(float(limit)) if limit else None
-    except ValueError:
+    except ValueError, OverflowError:  # OverflowError: "inf"
         raise invalid_request("cursor and limit must be numbers") from None
     return ok(ShellOutputResponse(location=public_ref(directory), data=entry.read(start, count)))
 

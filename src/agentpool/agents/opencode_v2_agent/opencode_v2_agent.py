@@ -239,6 +239,8 @@ class OpenCodeV2Agent[TDeps = None](BaseAgent[TDeps, str]):
         self._sse_ready = asyncio.Event()
         self._sse_error: BaseException | None = None
         self._turn_queue: asyncio.Queue[Any] | None = None
+        self._turn_v2_session_id: str | None = None
+        """V2 session of the running turn (the SSE task can't see the turn's session)."""
         self._turn_input_provider: InputProvider | None = None
         self._interaction_tasks: set[asyncio.Task[Any]] = set()
         self._idle_tracker: V2EventTracker | None = None
@@ -659,14 +661,16 @@ class OpenCodeV2Agent[TDeps = None](BaseAgent[TDeps, str]):
             self._sse_ready.set()
 
     async def _dispatch_sse_event(self, client: OpenCodeV2Client, event: Any) -> None:
-        sid = self._sdk_session_id
+        # The SSE task runs outside any session context, so ``_sdk_session_id`` is the
+        # default session's here: a turn of an explicit session has its own V2 session.
+        ours = {self._sdk_session_id, self._turn_v2_session_id} - {None}
         provider = self._turn_input_provider or self._input_provider
-        if isinstance(event, PermissionAsked) and sid and event.data.session_id == sid:
+        if isinstance(event, PermissionAsked) and event.data.session_id in ours:
             task = asyncio.create_task(self._handle_permission(client, event.data, provider))
             self._interaction_tasks.add(task)
             task.add_done_callback(self._interaction_tasks.discard)
             return
-        if isinstance(event, FormCreated) and sid and event.data.form.session_id == sid:
+        if isinstance(event, FormCreated) and event.data.form.session_id in ours:
             task = asyncio.create_task(self._handle_form(client, event.data.form, provider))
             self._interaction_tasks.add(task)
             task.add_done_callback(self._interaction_tasks.discard)
@@ -815,6 +819,7 @@ class OpenCodeV2Agent[TDeps = None](BaseAgent[TDeps, str]):
 
         queue: asyncio.Queue[Any] = asyncio.Queue()
         self._turn_queue = queue
+        self._turn_v2_session_id = v2_session_id
         self._turn_input_provider = provider
         try:
             async with self._tool_bridge.set_run_context(run_context, prompt=prompts):
@@ -830,6 +835,7 @@ class OpenCodeV2Agent[TDeps = None](BaseAgent[TDeps, str]):
                         yield native_event
         finally:
             self._turn_queue = None
+            self._turn_v2_session_id = None
             self._turn_input_provider = None
 
         for event in tracker.flush_open_tools():

@@ -337,9 +337,13 @@ class SessionRunner:
     # --- scheduling ----------------------------------------------------------------------
 
     def schedule(self) -> None:
-        """Start draining the inbox unless already draining."""
+        """Start draining the inbox unless already draining.
+
+        Also during a turn the agent took on its own: the drain waits for it to end
+        (``_execute``), so prompts sent meanwhile are not stranded.
+        """
         self._resume = True
-        if not self.active:
+        if self._drain_task is None or self._drain_task.done():
             self._drain_task = asyncio.create_task(
                 self._drain(), name=f"v2-drain-{self.session.id}"
             )

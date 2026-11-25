@@ -73,7 +73,10 @@ class EventStore:
         lines = "".join(json.dumps(dump_model(e), separators=(",", ":")) + "\n" for e in events)
         async with self._lock(session_id):
             await path.parent.mkdir(parents=True, exist_ok=True)
-            await path.write_text(lines, encoding="utf-8")
+            # Atomic: readers and a crash see the old log or the new one, never a truncated one
+            temp = path.with_name(f"{path.name}.tmp")
+            await temp.write_text(lines, encoding="utf-8")
+            await temp.replace(path)
 
     async def load(self, session_id: str) -> list[DurableSessionEvent] | None:
         """Load a session's log, or None if there is none.
@@ -82,10 +85,11 @@ class EventStore:
         version) are skipped with a warning.
         """
         path = anyio.Path(self._path(session_id))
-        if not await path.exists():
-            return None
+        async with self._lock(session_id):
+            if not await path.exists():
+                return None
+            text = await path.read_text(encoding="utf-8")
         events: list[DurableSessionEvent] = []
-        text = await path.read_text(encoding="utf-8")
         for number, line in enumerate(text.splitlines(), start=1):
             if not line.strip():
                 continue

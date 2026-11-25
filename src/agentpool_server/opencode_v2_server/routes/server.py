@@ -14,7 +14,8 @@ from typing import TYPE_CHECKING
 from fastapi import APIRouter, Query
 from fastapi.responses import JSONResponse, Response, StreamingResponse
 
-from agentpool_server.opencode_v2_server.bus import sse_frame
+from agentpool.log import get_logger
+from agentpool_server.opencode_v2_server.bus import SubscriberOverflowError, sse_frame
 from agentpool_server.opencode_v2_server.deps import DirectoryDep, StateDep, V2Response, ok
 from agentpool_server.opencode_v2_server.errors import location_not_found, unavailable
 from agentpool_server.opencode_v2_server.events import dump_model, new_event_id
@@ -33,6 +34,8 @@ from opencode_v2_sdk.models import (
 if TYPE_CHECKING:
     from collections.abc import AsyncGenerator
 
+
+logger = get_logger(__name__)
 
 router = APIRouter(tags=["server"], default_response_class=V2Response)
 
@@ -115,16 +118,20 @@ async def _with_heartbeat(
             if not done:
                 yield ": heartbeat\n\n"
                 continue
+            finished, pending = pending, None
             try:
-                frame = pending.result()
+                frame = finished.result()
             except StopAsyncIteration:
                 return
-            pending = None
+            except SubscriberOverflowError:
+                # A client too slow to keep up: end its stream cleanly, it reconnects
+                logger.warning("SSE subscriber overflowed, closing its stream")
+                return
             yield frame
     finally:
         if pending is not None:
             pending.cancel()
-            with contextlib.suppress(asyncio.CancelledError, StopAsyncIteration):
+            with contextlib.suppress(asyncio.CancelledError, Exception):
                 await pending
         await iterator.aclose()
 

@@ -169,6 +169,8 @@ class OpenCodeV2Client:
             path,
             params=clean_params or None,
             json=json_body,
+            # Per request too: a caller-supplied client lacks the auth / directory headers
+            headers=self._headers,
         )
         if response.status_code >= 400:  # noqa: PLR2004
             msg = f"OpenCode V2 {method} {path} failed with HTTP {response.status_code}"
@@ -463,7 +465,7 @@ class OpenCodeV2Client:
         """
         client = self._require_client()
         params: dict[str, list[str]] | None = {"types": list(types)} if types else None
-        headers = {"Accept": "text/event-stream"}
+        headers = {**self._headers, "Accept": "text/event-stream"}
         stream_timeout = httpx2.Timeout(connect=10.0, read=None, write=10.0, pool=10.0)
         async with client.stream(
             "GET",

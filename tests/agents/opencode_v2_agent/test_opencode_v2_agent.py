@@ -624,3 +624,86 @@ async def test_persistent_sse_steer_and_background_turn() -> None:
         for b in bg_events
     )
     assert any(isinstance(b.event, NoticeEvent) and b.event.title == "Saved" for b in bg_events)
+
+
+async def test_permission_of_an_explicit_session_turn_is_answered() -> None:
+    """#50.2: the SSE task can't see the turn's session; its requests must still be handled."""
+    from agentpool.sessions import Session
+
+    server = _FakeV2Server()
+    http = httpx2.AsyncClient(
+        base_url="http://v2.test", transport=httpx2.MockTransport(server.handle)
+    )
+    client = OpenCodeV2Client("http://v2.test", http_client=http)
+    provider = MockInputProvider(tool_confirmation=Approve())
+    agent = OpenCodeV2Agent(
+        name="oc-explicit", client=client, input_provider=provider, enable_logging=False
+    )
+    async with http, agent:
+        session = Session.create(agent.name)
+        events: list[Any] = []
+
+        async def run_turn() -> None:
+            async for event in agent.run_stream("Run it", session=session):
+                events.append(event)  # noqa: PERF401
+
+        turn = asyncio.create_task(run_turn())
+        while not any(p.endswith("/prompt") for _, p, _ in server.calls):
+            await asyncio.sleep(0.01)
+        assert session.sdk_session_id == "ses_1"
+        assert agent._sdk_session_id is None  # The default session has no V2 session
+        server.push_event({
+            "id": "evt_1",
+            "created": 1000,
+            "durable": {"aggregateID": "ses_1", "seq": 1},
+            "type": "session.execution.started",
+            "data": {"sessionID": "ses_1"},
+        })
+        server.push_event({
+            "id": "evt_2",
+            "created": 1001,
+            "location": {"directory": "/work"},
+            "type": "permission.asked",
+            "data": {"id": "perm_1", "sessionID": "ses_1", "action": "bash", "resources": ["ls"]},
+        })
+        async with asyncio.timeout(5.0):
+            while not server.permission_replies:
+                await asyncio.sleep(0.01)
+        assert server.permission_replies == [("perm_1", {"decision": "once"})]
+        server.push_event({
+            "id": "evt_3",
+            "created": 1002,
+            "durable": {"aggregateID": "ses_1", "seq": 2},
+            "type": "session.execution.succeeded",
+            "data": {"sessionID": "ses_1"},
+        })
+        async with asyncio.timeout(5.0):
+            await turn
+    assert isinstance(events[-1], StreamCompleteEvent)
+
+
+async def test_supplied_http_client_gets_auth_and_directory_headers() -> None:
+    """#55.3: headers reach the server also when the caller supplies the HTTP client."""
+    seen: list[httpx2.Headers] = []
+
+    def handle(request: httpx2.Request) -> httpx2.Response:
+        seen.append(request.headers)
+        return httpx2.Response(
+            200,
+            json={"version": "2.4.1", "pid": 1, "urls": [], "paths": {"tmp": "/tmp"}},
+        )
+
+    http = httpx2.AsyncClient(base_url="http://v2.test", transport=httpx2.MockTransport(handle))
+    client = OpenCodeV2Client(
+        "http://v2.test",
+        password="pw",
+        directory="/work",
+        headers={"x-extra": "1"},
+        http_client=http,
+    )
+    async with http:
+        await client.info()
+    (headers,) = seen
+    assert headers["authorization"].startswith("Basic ")
+    assert headers["x-opencode-directory"] == "/work"
+    assert headers["x-extra"] == "1"

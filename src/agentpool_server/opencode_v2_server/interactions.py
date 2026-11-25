@@ -239,6 +239,9 @@ class PermissionRegistry:
         Raises:
             InteractionError: If the request is unknown or already answered
         """
+        await self.load()
+        # No await from here until the request is answered and removed: a concurrent
+        # reply finds it gone instead of answering it twice.
         pending = self.pending.get(request_id)
         if pending is None or pending.request.session_id != session_id:
             msg = f"Permission request {request_id} not found"
@@ -246,14 +249,16 @@ class PermissionRegistry:
         if pending.future.done():
             msg = f"Permission request {request_id} was already answered"
             raise InteractionError(msg)
+        del self.pending[request_id]
         if decision == "always":
-            await self._save_rules(pending)
+            self._add_rules(pending)
         pending.future.set_result(PermissionAnswer(decision, message))
         data = PermissionRepliedData(session_id=session_id, request_id=request_id, reply=decision)
         self.publish(_event(PermissionReplied, data, directory), "permission.replied")
+        if decision == "always":
+            await self._store()
 
-    async def _save_rules(self, pending: PendingPermission) -> None:
-        await self.load()
+    def _add_rules(self, pending: PendingPermission) -> None:
         now = now_ms()
         for resource in pending.request.save or pending.request.resources:
             exists = any(
@@ -272,7 +277,6 @@ class PermissionRegistry:
                         time=PermissionSavedInfoTime(created=now, updated=now),
                     )
                 )
-        await self._store()
 
     async def update_saved(
         self, rule_id: str, *, action: str | None, resource: str | None
