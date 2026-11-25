@@ -11,9 +11,7 @@ Unlike the V1 server, this server is pool-wide: every session is bound to one po
 
 from __future__ import annotations
 
-import base64
 from contextlib import asynccontextmanager
-import hmac
 import os
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
@@ -26,6 +24,11 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from agentpool.log import get_logger
 from agentpool_server.base import BaseServer
+from agentpool_server.opencode_v2_server.auth import (
+    AUTH_TOKEN_QUERY,
+    CORS_ORIGIN_REGEX,
+    is_authorized,
+)
 from agentpool_server.opencode_v2_server.errors import ApiError, invalid_request, unauthorized
 from agentpool_server.opencode_v2_server.events import dump_model
 from agentpool_server.opencode_v2_server.routes import (
@@ -53,13 +56,6 @@ if TYPE_CHECKING:
 
 logger = get_logger(__name__)
 
-AUTH_USERNAME = "opencode"
-CORS_ORIGIN_REGEX = (
-    r"^(https?://(localhost|127\.0\.0\.1)(:\d+)?"
-    r"|https://([a-z0-9-]+\.)*opencode\.ai"
-    r"|tauri://localhost|https?://tauri\.localhost|oc://renderer)$"
-)
-
 
 def resolve_password(password: str | None = None) -> str | None:
     """Server password: explicit value, ``OPENCODE_PASSWORD`` or ``OPENCODE_SERVER_PASSWORD``."""
@@ -69,17 +65,6 @@ def resolve_password(password: str | None = None) -> str | None:
         or os.environ.get("OPENCODE_SERVER_PASSWORD")
         or None
     )
-
-
-def _authorized(header: str | None, password: str) -> bool:
-    if not header or not header.lower().startswith("basic "):
-        return False
-    try:
-        decoded = base64.b64decode(header[6:].strip()).decode()
-    except ValueError, UnicodeDecodeError:
-        return False
-    username, _, given = decoded.partition(":")
-    return username == AUTH_USERNAME and hmac.compare_digest(given, password)
 
 
 def create_app(
@@ -131,13 +116,16 @@ def create_app(
         lifespan=lifespan,
     )
     app.state.v2_state = state
+    app.state.v2_password = secret  # the websocket routes check it themselves
 
     @app.middleware("http")
     async def basic_auth(
         request: Request, call_next: Callable[[Request], Awaitable[Response]]
     ) -> Response:
         needs_auth = secret is not None and request.method != "OPTIONS"
-        if needs_auth and not _authorized(request.headers.get("authorization"), secret or ""):
+        given = request.headers.get("authorization")
+        token = request.query_params.get(AUTH_TOKEN_QUERY)
+        if needs_auth and not is_authorized(given, token, secret):
             error = unauthorized()
             return JSONResponse(
                 dump_model(error.body),

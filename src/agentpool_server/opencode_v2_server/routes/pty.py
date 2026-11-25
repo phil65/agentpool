@@ -6,11 +6,16 @@ import asyncio
 import contextlib
 from typing import TYPE_CHECKING
 
-from fastapi import APIRouter, WebSocket, WebSocketDisconnect
+from fastapi import APIRouter, Request, WebSocket, WebSocketDisconnect
 from fastapi.responses import Response
 
+from agentpool_server.opencode_v2_server.auth import (
+    AUTH_TOKEN_QUERY,
+    is_allowed_origin,
+    is_authorized,
+)
 from agentpool_server.opencode_v2_server.deps import DirectoryDep, StateDep, V2Response, ok
-from agentpool_server.opencode_v2_server.errors import conflict, pty_not_found
+from agentpool_server.opencode_v2_server.errors import conflict, forbidden, pty_not_found
 from agentpool_server.opencode_v2_server.location import public_ref
 from agentpool_server.opencode_v2_server.ptys import TICKET_TTL, PtyLimitError, meta_frame
 from opencode_v2_sdk.models import (
@@ -32,6 +37,9 @@ if TYPE_CHECKING:
 router = APIRouter(tags=["pty"], default_response_class=V2Response)
 
 REPLAY_CHUNK = 64 * 1024
+CONNECT_TOKEN_HEADER = "x-opencode-ticket"
+"""OpenCode clients send ``x-opencode-ticket: 1`` when asking for a ticket. The custom header forces
+a CORS preflight, so cross-origin pages cannot mint tickets."""
 
 
 @router.get("/api/pty")
@@ -92,8 +100,15 @@ async def pty_remove(pty_id: str, state: StateDep) -> Response:
 
 
 @router.post("/api/pty/{pty_id}/connect-token")
-async def pty_connect_token(pty_id: str, state: StateDep, directory: DirectoryDep) -> Response:
+async def pty_connect_token(
+    pty_id: str, request: Request, state: StateDep, directory: DirectoryDep
+) -> Response:
     """Issue a short-lived ticket for the websocket connection."""
+    headers = request.headers
+    if headers.get(CONNECT_TOKEN_HEADER) != "1" or not is_allowed_origin(
+        headers.get("origin"), headers.get("host")
+    ):
+        raise forbidden("Invalid PTY connect token request")
     if pty_id not in state.ptys.sessions:
         raise pty_not_found(pty_id)
     token = PtyTicketConnectToken(ticket=state.ptys.issue_ticket(pty_id), expires_in=TICKET_TTL)
@@ -102,11 +117,27 @@ async def pty_connect_token(pty_id: str, state: StateDep, directory: DirectoryDe
 
 @router.websocket("/api/pty/{pty_id}/connect")
 async def pty_connect(websocket: WebSocket, pty_id: str) -> None:
-    """Interactive terminal stream (replay from ``cursor``, then live output)."""
+    """Interactive terminal stream (replay from ``cursor``, then live output).
+
+    Like OpenCode, the connection needs either a ticket from ``connect-token`` (browsers cannot
+    set headers on a websocket) or the server password, and an allowed ``Origin``. The HTTP
+    auth middleware does not see websockets, so the checks are here.
+    """
     state: ServerState = websocket.app.state.v2_state
-    ticket = websocket.query_params.get("ticket")
-    if ticket is not None and not state.ptys.consume_ticket(ticket, pty_id):
-        await websocket.close(code=4403, reason="invalid ticket")
+    headers = websocket.headers
+    if not is_allowed_origin(headers.get("origin"), headers.get("host")):
+        await websocket.close(code=4403, reason="origin not allowed")
+        return
+    if ticket := websocket.query_params.get("ticket"):
+        if not state.ptys.consume_ticket(ticket, pty_id):
+            await websocket.close(code=4403, reason="invalid ticket")
+            return
+    elif not is_authorized(
+        headers.get("authorization"),
+        websocket.query_params.get(AUTH_TOKEN_QUERY),
+        websocket.app.state.v2_password,
+    ):
+        await websocket.close(code=4401, reason="unauthorized")
         return
     session = state.ptys.sessions.get(pty_id)
     await websocket.accept()

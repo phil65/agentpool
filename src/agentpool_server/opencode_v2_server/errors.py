@@ -9,6 +9,7 @@ from opencode_v2_sdk.models import (
     CommandNotFoundErrorEncoded,
     ConflictErrorEncoded,
     FileNotFoundErrorEncoded,
+    ForbiddenErrorEncoded,
     FormAlreadySettledErrorEncoded,
     FormInvalidAnswerErrorEncoded,
     FormNotFoundErrorEncoded,
@@ -66,6 +67,11 @@ def invalid_cursor(message: str = "Invalid cursor") -> ApiError:
 def unauthorized() -> ApiError:
     """401: missing or wrong credentials."""
     return ApiError(401, UnauthorizedErrorEncoded(message="Unauthorized"))
+
+
+def forbidden(message: str) -> ApiError:
+    """403: request refused (bad origin, missing ticket header, ...)."""
+    return ApiError(403, ForbiddenErrorEncoded(message=message))
 
 
 def session_not_found(session_id: str) -> ApiError:

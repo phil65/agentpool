@@ -9,8 +9,11 @@ opencode --server http://127.0.0.1:4096          # OpenCode >= 2.x client
 ```
 
 Auth is HTTP Basic with username `opencode` and the password from `--password` or
-`OPENCODE_PASSWORD` (`OPENCODE_SERVER_PASSWORD` is accepted as well). Without a password, auth is
-off.
+`OPENCODE_PASSWORD` (`OPENCODE_SERVER_PASSWORD` is accepted as well), sent in the `Authorization`
+header or base64-encoded in the `auth_token` query parameter. Without a password, auth is off. The
+PTY websocket (`auth.py`, checked in the route, since the HTTP middleware does not see websockets)
+takes either the password or a single-use ticket from `connect-token` (which needs the
+`x-opencode-ticket: 1` header), and refuses foreign `Origin`s, like OpenCode.
 
 ## Protocol version
 
