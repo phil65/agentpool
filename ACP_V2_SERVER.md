@@ -1,7 +1,9 @@
 # ACP v2 for the agentpool ACP server
 
 Status: done, `serve-acp` serves v1 and v2 (steps 1-4); open points below. Written
-2026-11-22 against aclientp 0.1.7/0.1.8, which pin the v2 schema at `schema-v2.0.0-alpha.17`.
+2026-11-22 against aclientp 0.1.7/0.1.8 (v2 schema `schema-v2.0.0-alpha.17` then). agentpool now
+locks aclientp 0.6.0, which pins `schema-v1.35.0` and `schema-v2.0.0-beta.4` (see the Specs
+table in `AGENTS.md`).
 
 ## Goal
 
@@ -163,7 +165,7 @@ queue, steer and background design than v1's request-scoped turn.
 ## Notes
 
 - aclientp is published from `~/dev/oss/aclientp`; agentpool pins it from PyPI
-  (`aclientp[...]>=0.1.8`). Develop against an editable install
+  (`aclientp[...]>=0.6.0`). Develop against an editable install
   (`uv pip install -e ../aclientp`, then `uv run --no-sync ...`), and release aclientp
   before agentpool depends on the new API. As of 2026-11-24: aclientp 0.5.1, its models
   conform to the newest upstream schemas (v1 `schema-v1.35.0`, v2 `schema-v2.0.0-beta.4`,

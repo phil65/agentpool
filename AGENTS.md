@@ -120,7 +120,7 @@ The codebase is organized into focused packages under `src/`:
   - YAML schema definitions for agents, teams, tools, MCP servers
 
 - **`agentpool_server/`** - Protocol servers
-  - `acp_server/` - Agent Communication Protocol server
+  - `acp_server/` - Agent Client Protocol server
   - `opencode_v2_server/` - OpenCode V2 HTTP/SSE server (`serve-opencode`)
   - `a2a_server/` - A2A protocol server
   - `agui_server/` - AG-UI protocol server
@@ -203,7 +203,7 @@ AgentPool acts as a protocol adapter:
 - Most flexible and feature-rich
 
 **ACP Agents** (`type: acp`)
-- External agents implementing Agent Communication Protocol
+- External agents implementing Agent Client Protocol
 - Examples: Goose, Codex, custom ACP servers
 - Communicate via stdio or websocket
 
@@ -380,6 +380,23 @@ The project uses entry points for extensibility:
 - `agentpool_toolsets` - Register custom toolsets
 - `fsspec.specs` - Filesystem implementations (ACP)
 - `universal_pathlib.implementations` - Path implementations
+
+## Specs
+
+| Spec | URL | Targets | Code | Update check |
+|---|---|---|---|---|
+| Agent Client Protocol (ACP) v1 + v2 | https://agentclientprotocol.com/protocol/overview | via aclientp 0.6.0 (locked), which pins `schema-v1.35.0` and `schema-v2.0.0-beta.4` (aclientp `schema/v1/VERSION`, `schema/v2/VERSION`) | `src/agentpool_server/acp_server/`, `src/agentpool/agents/acp_agent/`; design: `ACP_V2_SERVER.md`, `acp_meta_field_reference.md` | `python -m aclientp.schema_reference latest` (in aclientp), https://github.com/agentclientprotocol/agent-client-protocol/releases |
+| Model Context Protocol (MCP) | https://modelcontextprotocol.io/specification/2026-07-28 | follows the SDK: `mcp` 2.3.0 / `fastmcp` 4.2.5 locked (`mcp.types.LATEST_PROTOCOL_VERSION` = 2026-07-28) | `src/agentpool_server/mcp_server/`, `src/agentpool/mcp_server/`; design: `docs/mcp_architecture.md` | https://modelcontextprotocol.io/specification/latest, `uv lock --upgrade-package fastmcp` |
+| MCP Events extension (SEP-3415, `io.modelcontextprotocol/events`) | https://modelcontextprotocol.io/extensions/events/overview | fastmcp 4.2.5 `fastmcp.experimental.events` (pinned `fastmcp<4.2.6`, see `MCP_EVENTS.md`) | `src/agentpool/talk/mcp_events.py`, `serve_events` in `src/agentpool_server/mcp_server/`; design: `MCP_EVENTS.md` | https://github.com/modelcontextprotocol/modelcontextprotocol/pull/3415, fastmcp releases |
+| MCP Tasks extension (SEP-2663, `io.modelcontextprotocol/tasks`) | https://modelcontextprotocol.io/extensions/tasks/overview | fastmcp-tasks 4.2.5 (`mcp-tasks` extra) | `src/agentpool_server/mcp_server/`; design: `MCP_BACKGROUND_TASKS.md` | https://gofastmcp.com/docs/servers/tasks |
+| Agent2Agent (A2A) | https://a2a-protocol.org/v1.0.0/specification/ | A2A 1.0 via fasta2a 2.1.1 (locked; agent card `protocolVersion: "1.0"`) | `src/agentpool_server/a2a_server/` | https://github.com/a2aproject/A2A/releases, https://pypi.org/project/fasta2a/ |
+| AG-UI | https://docs.ag-ui.com/introduction | ag-ui-protocol 1.0.0 (locked Python SDK) | `src/agentpool_server/agui_server/`, `src/agentpool/agents/agui_agent/` | https://github.com/ag-ui-protocol/ag-ui/releases |
+| OpenCode V2 HTTP API | https://opencode.ai/docs/server/ | opencode 2.3.2 (`OPENCODE_VERSION` in `src/opencode_v2_sdk/_version.py`) | `src/opencode_v2_sdk/`, `src/agentpool_server/opencode_v2_server/`, `src/agentpool/agents/opencode_v2_agent/`; design: `COMPLETE_OPENCODE_METADATA.md` | https://github.com/anomalyco/opencode/releases |
+| Pi coding agent RPC mode | https://github.com/badlogic/pi-mono/blob/main/packages/coding-agent/docs/rpc.md | unpinned (tracks latest; models follow `packages/coding-agent/src/modes/rpc/rpc-client.ts`) | `src/pi_sdk/` | https://github.com/badlogic/pi-mono/releases |
+| OpenAI Chat Completions / Responses API | https://platform.openai.com/docs/api-reference/responses | unpinned (tracks latest) | `src/agentpool_server/openai_api_server/` | https://platform.openai.com/docs/changelog |
+| Claude Code CLI | https://github.com/anthropics/claude-code/blob/main/CHANGELOG.md | via clawd-code-sdk 1.5.2 (locked; CLI version in its `__cli_version__`) | `src/agentpool/agents/claude_code_agent/`; backlog: `CLAUDE_CODE_BACKLOG.md` | clawd-code-sdk AGENTS.md (Specs) |
+| Codex app-server | https://github.com/openai/codex/blob/main/codex-rs/app-server/README.md | via codexed 1.4.0 (locked) | `src/agentpool/agents/codex_agent/` | codexed AGENTS.md (Specs) |
+| T3 Code | https://github.com/pingdotgg/t3code | via pyt3client 0.3.0 (locked) | `src/agentpool/agents/t3_agent/`; design: `T3_CODE_INTEGRATION.md` | pyt3client AGENTS.md (Specs) |
 
 ## Key Files to Understand
 

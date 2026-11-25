@@ -12,7 +12,7 @@ AgentPool can expose agents through multiple server protocols, enabling integrat
 
 | Server | Protocol | Use Case | CLI Command |
 |--------|----------|----------|-------------|
-| [ACP Server](acp-server.md) | Agent Communication Protocol | IDE integration (Zed, etc.) | `agentpool serve-acp` |
+| [ACP Server](acp-server.md) | Agent Client Protocol | IDE integration (Zed, etc.) | `agentpool serve-acp` |
 | [OpenCode Server](opencode-server.md) | OpenCode REST + SSE | OpenCode TUI/Desktop | `agentpool serve-opencode` |
 | [MCP Server](mcp-server.md) | Model Context Protocol | Expose tools to other agents | `agentpool serve-mcp` |
 | [AG-UI Server](agui-server.md) | AG-UI Protocol | AG-UI compatible clients | `agentpool serve-agui` |

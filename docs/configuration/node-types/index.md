@@ -17,7 +17,7 @@ Nodes are the core building blocks of AgentPool. This section covers the differe
 
 ### ACP Agents
 
-[ACP (Agent Communication Protocol) agents](acp-agents.md) integrate external coding agents like Claude Code, Gemini CLI, Codex, and many others. These run as separate processes and communicate via the ACP protocol. This means that AgentHub can act as a ACP bridge: ACP-Agents are connected to the AgentPool via ACP, can use some of its extended featureset and then also be controlled by the User via a UI ACP client such as `Zed` or `Toad`.
+[ACP (Agent Client Protocol) agents](acp-agents.md) integrate external coding agents like Claude Code, Gemini CLI, Codex, and many others. These run as separate processes and communicate via the ACP protocol. This means that AgentHub can act as a ACP bridge: ACP-Agents are connected to the AgentPool via ACP, can use some of its extended featureset and then also be controlled by the User via a UI ACP client such as `Zed` or `Toad`.
 
 ### AG-UI Agents
 

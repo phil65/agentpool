@@ -8,7 +8,7 @@ description: External ACP agent integration
 icon: material/connection
 ---
 
-ACP (Agent Communication Protocol) agents allow integration of external coding agents and AI assistants into the AgentPool pool. These agents run as separate processes and communicate via the ACP protocol.
+ACP (Agent Client Protocol) agents allow integration of external coding agents and AI assistants into the AgentPool pool. These agents run as separate processes and communicate via the ACP protocol.
 
 ## Overview
 

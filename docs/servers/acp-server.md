@@ -1,12 +1,12 @@
 ---
 title: ACP Server
-description: Agent Communication Protocol server for IDE integration
+description: Agent Client Protocol server for IDE integration
 icon: material/desktop-tower
 ---
 
 # ACP Server
 
-The ACP (Agent Communication Protocol) server enables AgentPool to integrate with desktop applications and IDEs like Zed that support the protocol.
+The ACP (Agent Client Protocol) server enables AgentPool to integrate with desktop applications and IDEs like Zed that support the protocol.
 
 ## What is ACP?
 

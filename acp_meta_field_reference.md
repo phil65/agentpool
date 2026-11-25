@@ -5,7 +5,7 @@
 The Agent Client Protocol (ACP) includes a `_meta` field (called `field_meta` in agentpool's Python implementation) on all message types for extensibility. This field allows clients and agents to pass custom metadata that isn't part of the core protocol.
 
 Typed definitions of the conventions agentpool knows about live in
-[`src/acp/schema/field_meta.py`](src/acp/schema/field_meta.py).
+aclientp's [`src/aclientp/schema/field_meta.py`](https://github.com/phil65/aclientp/blob/main/src/aclientp/schema/field_meta.py).
 
 ## Protocol Specification
 
@@ -53,7 +53,7 @@ preferred form wins when both are sent:
 #### `session/new` (also `session/load`, `session/resume`, `session/fork`)
 
 ```python
-from acp.schema import NewSessionRequest, SystemPrompt, TextContentBlock
+from aclientp.schema import NewSessionRequest, SystemPrompt, TextContentBlock
 
 request = NewSessionRequest(
     cwd="/path/to/project",
