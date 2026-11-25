@@ -276,7 +276,7 @@ def resolve_config(  # noqa: PLR0915
                 layer = ConfigLayer("custom", None, data)
                 layers.append(layer)
                 merged_data = _deep_merge(merged_data, data)
-        except (yaml.YAMLError, TypeError, ValueError):
+        except yaml.YAMLError, TypeError, ValueError:
             pass  # Inline config errors are non-fatal
 
     # 3. Project config

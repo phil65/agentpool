@@ -135,7 +135,7 @@ def user_content_to_antigravity(prompts: Sequence[UserContent]) -> Content:
                 if (local_path := _file_url_to_path(url)) is not None and local_path.is_file():
                     try:
                         parts.append(from_file(local_path))
-                    except (OSError, ValueError):
+                    except OSError, ValueError:
                         logger.warning("Failed to load file URL attachment", url=url)
                         parts.append(url)
                 else:

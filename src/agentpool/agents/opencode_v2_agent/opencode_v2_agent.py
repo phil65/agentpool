@@ -337,7 +337,7 @@ class OpenCodeV2Agent[TDeps = None](BaseAgent[TDeps, str]):
                     raise RuntimeError(msg)
                 try:
                     await probe.info()
-                except (httpx2.HTTPError, OpenCodeV2Error):
+                except httpx2.HTTPError, OpenCodeV2Error:
                     await anyio.sleep(0.1)
                 else:
                     return

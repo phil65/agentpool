@@ -114,7 +114,7 @@ class DeletePathTool(Tool[dict[str, Any]]):
                             )
 
                             return {"error": error_msg}
-                    except (OSError, ValueError):
+                    except OSError, ValueError:
                         pass  # Continue with deletion attempt
 
                 await fs._rm(path, recursive=recursive)

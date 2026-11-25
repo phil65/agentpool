@@ -1849,7 +1849,7 @@ class BaseAgent[TDeps = None, TResult = str](MessageNode[TDeps, TResult]):
                             rules_parts.append(f"## Project Rules\n\n{content}")
                             logger.debug("Loaded project rules", path=rules_path)
                             break
-                except (OSError, UnicodeDecodeError):
+                except OSError, UnicodeDecodeError:
                     logger.debug("No project rules found", path=rules_path)
 
         if not rules_parts:

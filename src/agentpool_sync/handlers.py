@@ -73,7 +73,7 @@ class AgentReconciler:
 
                 content = Path(change.path).read_text()
                 parts.append(f"\n## Current content\n```\n{content}\n```")
-            except (OSError, UnicodeDecodeError):
+            except OSError, UnicodeDecodeError:
                 pass
 
         # Changed dependencies

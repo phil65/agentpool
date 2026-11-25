@@ -141,7 +141,7 @@ class PermissionRegistry:
             return
         try:
             self.saved = _SAVED_ADAPTER.validate_json(await path.read_text(encoding="utf-8"))
-        except (ValidationError, OSError):
+        except ValidationError, OSError:
             logger.warning("Could not read saved permissions", path=str(self.saved_file))
 
     async def _store(self) -> None:

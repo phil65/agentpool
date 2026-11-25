@@ -137,7 +137,7 @@ async def vfs_read(  # noqa: D417
                     content_bytes = await fs._cat_file(file_path)
                     content = content_bytes.decode(encoding)
                     sections.extend([f"--- {rel_path} ---", content, ""])
-                except (UnicodeDecodeError, OSError):
+                except UnicodeDecodeError, OSError:
                     sections.extend([f"--- {rel_path} ---", "[Binary or unreadable file]", ""])
 
             return "\n".join(sections) if sections else f"No readable files in {path}"

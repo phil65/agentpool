@@ -62,7 +62,7 @@ class CursorStore:
             return {}
         try:
             data = json.loads(self.path.read_text())
-        except (OSError, ValueError):
+        except OSError, ValueError:
             logger.warning("Unreadable MCP event cursor file, starting fresh", path=str(self.path))
             return {}
         return data if isinstance(data, dict) else {}

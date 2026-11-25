@@ -70,7 +70,7 @@ def _git_files(root: Path) -> list[str] | None:
             capture_output=True,
             check=True,
         )
-    except (OSError, subprocess.CalledProcessError):
+    except OSError, subprocess.CalledProcessError:
         return None
     return [name for name in result.stdout.decode("utf-8", "replace").split("\0") if name]
 

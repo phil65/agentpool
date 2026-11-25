@@ -103,7 +103,7 @@ class CronTools(ResourceProvider):
 
             try:
                 ZoneInfo(tz)
-            except (KeyError, ValueError):
+            except KeyError, ValueError:
                 return f"Error: unknown timezone {tz!r}"
 
         schedule: CronSchedule

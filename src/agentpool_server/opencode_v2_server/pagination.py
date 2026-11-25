@@ -46,7 +46,7 @@ class Cursor:
         try:
             padded = value + "=" * (-len(value) % 4)
             data = json.loads(base64.urlsafe_b64decode(padded))
-        except (ValueError, json.JSONDecodeError):
+        except ValueError, json.JSONDecodeError:
             raise invalid_cursor() from None
         match data:
             case {

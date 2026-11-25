@@ -151,7 +151,7 @@ async def _copy_config_options(source: ACPSession, target: ACPSession) -> None:
             ) if mine.current_value != value:
                 try:
                     await target.set_mode(value, category_id=option.id)
-                except (UnknownModeError, UnknownCategoryError):
+                except UnknownModeError, UnknownCategoryError:
                     logger.warning("Fork could not take an option", option=option.id)
             case _:
                 pass
@@ -471,7 +471,7 @@ class AgentPoolACPAgent(ACPAgent):
         try:
             with agent.use_session(source):
                 forked = await agent.fork_session(session=source)
-        except (UnsupportedOperationError, ValueError):
+        except UnsupportedOperationError, ValueError:
             logger.exception("Agent could not fork the session", session_id=params.session_id)
             return None
         return forked.session_id

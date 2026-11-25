@@ -83,7 +83,7 @@ def parse_iso_timestamp(value: str, *, fallback: datetime | None = None) -> date
     """
     try:
         return datetime.fromisoformat(value.replace("Z", "+00:00"))
-    except (ValueError, AttributeError):
+    except ValueError, AttributeError:
         return fallback if fallback is not None else get_now()
 
 

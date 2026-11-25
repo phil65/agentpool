@@ -354,7 +354,7 @@ def _handle_enum_elicitation_response(
                         return types.ElicitResult(
                             action="accept", content={name or "value": selected_value}
                         )
-            except (ValueError, IndexError):
+            except ValueError, IndexError:
                 pass
             logger.warning("Failed to parse enum option_id", option_id=option_id)
             return types.ElicitResult(action="cancel")

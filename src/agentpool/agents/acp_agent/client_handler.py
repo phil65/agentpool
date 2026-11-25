@@ -260,7 +260,7 @@ class ACPClientHandler(Client):
             logger.debug("Read file", path=params.path, num_chars=len(content))
             return ReadTextFileResponse(content=content)
 
-        except (FileNotFoundError, KeyError):
+        except FileNotFoundError, KeyError:
             # Match Zed behavior: return empty string for non-existent files
             logger.debug("File not found, returning empty string", path=params.path)
             return ReadTextFileResponse(content="")

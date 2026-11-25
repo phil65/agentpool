@@ -312,7 +312,7 @@ def create_bound_callable(  # noqa: PLR0915
         if sig.return_annotation != inspect.Signature.empty:
             wrapper.__annotations__["return"] = sig.return_annotation
 
-    except (ValueError, TypeError):
+    except ValueError, TypeError:
         logger.debug("Failed to update wrapper signature", original=original_callable)
 
     return wrapper

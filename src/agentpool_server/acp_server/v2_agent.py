@@ -484,7 +484,7 @@ class AgentPoolV2Agent(V2Agent):
             return
         try:
             await session.agent.stop_task(child.task_id)
-        except (KeyError, UnsupportedOperationError):  # Already ended, or no longer stoppable
+        except KeyError, UnsupportedOperationError:  # Already ended, or no longer stoppable
             logger.debug("Child session's task not stopped", child=child.session_id)
 
     def _refuse_child(self, session_id: str | None, method: str) -> None:

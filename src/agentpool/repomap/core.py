@@ -106,7 +106,7 @@ class RepoMap:
             content = await self.fs._cat_file(path)
             if isinstance(content, bytes):
                 return content.decode("utf-8")
-        except (OSError, UnicodeDecodeError):
+        except OSError, UnicodeDecodeError:
             return None
         else:
             return content
@@ -123,7 +123,7 @@ class RepoMap:
                 mtime=info.get("mtime"),
                 type=info.get("type", "file"),
             )
-        except (OSError, FileNotFoundError):
+        except OSError, FileNotFoundError:
             return None
 
     async def find_files(self, path: str, pattern: str = "**/*.py") -> list[str]:

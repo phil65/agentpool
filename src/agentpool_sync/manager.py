@@ -119,7 +119,7 @@ class SyncManager:
 
         try:
             content = path.read_text()
-        except (OSError, UnicodeDecodeError):
+        except OSError, UnicodeDecodeError:
             return None
 
         metadata = parser.parse(content)

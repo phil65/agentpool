@@ -76,7 +76,7 @@ def _authorized(header: str | None, password: str) -> bool:
         return False
     try:
         decoded = base64.b64decode(header[6:].strip()).decode()
-    except (ValueError, UnicodeDecodeError):
+    except ValueError, UnicodeDecodeError:
         return False
     username, _, given = decoded.partition(":")
     return username == AUTH_USERNAME and hmac.compare_digest(given, password)

@@ -101,7 +101,7 @@ def opencode_ui_command(
                 sock.close()
                 logger.info("Server is ready", url=url)
                 break
-            except (TimeoutError, ConnectionRefusedError, OSError):
+            except TimeoutError, ConnectionRefusedError, OSError:
                 if i == max_retries - 1:
                     msg = f"Server failed to start after {max_retries} attempts"
                     raise RuntimeError(msg)  # noqa: B904
@@ -417,7 +417,7 @@ def opencode_desktop_command(  # noqa: PLR0915
                 sock.close()
                 logger.info("Server is ready", url=url)
                 break
-            except (TimeoutError, ConnectionRefusedError, OSError):
+            except TimeoutError, ConnectionRefusedError, OSError:
                 if i == max_retries - 1:
                     raise RuntimeError(f"Server failed to start after {max_retries} attempts")  # noqa: B904
                 time.sleep(0.5)
