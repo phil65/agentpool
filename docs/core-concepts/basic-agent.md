@@ -74,7 +74,41 @@ async def main():
         result: AnalysisResult = message.content
 ```
 
-In YAML, `output_type` references a [response definition](../configuration/responses.md).
+In YAML, `output_type` either names a shared [response definition](../configuration/responses.md)
+or defines the response inline:
+
+```yaml
+agents:
+  analyzer:
+    model: openai:gpt-5-mini
+    output_type: AnalysisResult  # shared definition from `responses`
+  validator:
+    model: openai:gpt-5-mini
+    output_type:  # inline definition
+      response_schema:
+        type: inline
+        fields:
+          is_valid:
+            type: bool
+            description: Whether the input is valid
+          issues:
+            type: list[str]
+            description: List of validation issues
+      output_retries: 2
+
+responses:
+  AnalysisResult:
+    response_schema:
+      type: inline
+      description: Text analysis result
+      fields:
+        sentiment:
+          type: float
+          description: Sentiment score between -1 and 1
+        topics:
+          type: list[str]
+          description: Main topics discussed
+```
 
 ## Runtime Control
 

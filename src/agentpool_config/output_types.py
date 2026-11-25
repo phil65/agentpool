@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
-from pydantic import Field
+from typing import Any
+
+from pydantic import Field, model_validator
 from schemez import Schema, SchemaDef
 
 
@@ -53,3 +55,15 @@ class StructuredResponseConfig(Schema):
 
     output_retries: int | None = Field(default=None, examples=[1, 3, 5], title="Output retries")
     """Retry override. How often the Agent should try to validate the response."""
+
+    @model_validator(mode="before")
+    @classmethod
+    def default_to_inline_schema(cls, data: Any) -> Any:
+        """A `response_schema` without a `type` is an inline schema."""
+        if (
+            isinstance(data, dict)
+            and isinstance(schema := data.get("response_schema"), dict)
+            and "type" not in schema
+        ):
+            return {**data, "response_schema": {**schema, "type": "inline"}}
+        return data

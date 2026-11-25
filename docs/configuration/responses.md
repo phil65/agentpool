@@ -73,6 +73,26 @@ agents:
     output_type: "CodeAnalysis"  # Reference response by name
 ```
 
+### Inline Definition
+
+An agent can also define its response inline, with the same fields as an entry of
+`responses` (a `response_schema` without `type` is an inline schema):
+
+```yaml
+agents:
+  classifier:
+    model: "openai:gpt-5-mini"
+    output_type:
+      response_schema:
+        fields:
+          label:
+            type: str
+            description: "Assigned category"
+          confidence:
+            type: float
+      result_tool_name: "submit_label"
+```
+
 ## Available Field Types
 
 - `str`: Text strings

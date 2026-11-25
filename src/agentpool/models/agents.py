@@ -11,7 +11,6 @@ from uuid import UUID
 from llmling_models_config import AnyModelConfig  # noqa: TC002
 from pydantic import ConfigDict, Field, model_validator
 from pydantic_ai import EndStrategy, UsageLimits  # noqa: TC002
-from schemez import InlineSchemaDef
 from tokonomics.model_discovery import ProviderType  # noqa: TC002
 from tokonomics.model_names import ModelId  # noqa: TC002
 from toprompt import render_prompt
@@ -239,28 +238,20 @@ class NativeAgentConfig(BaseAgentConfig):
 
     @model_validator(mode="before")
     @classmethod
-    def validate_output_type(cls, data: dict[str, Any]) -> dict[str, Any]:
-        """Convert result type and apply its settings."""
+    def validate_output_type(cls, data: Any) -> Any:
+        """Apply the `output_retries` of an inline output type to the agent.
+
+        The inline definition itself is validated as a `StructuredResponseConfig`.
+        """
+        if not isinstance(data, dict):
+            return data
         output_type = data.get("output_type")
-        if isinstance(output_type, dict):
-            # Extract response-specific settings
-            tool_name = output_type.pop("result_tool_name", None)
-            tool_description = output_type.pop("result_tool_description", None)
-            retries = output_type.pop("output_retries", None)
-
-            # Convert remaining dict to ResponseDefinition
-            if "type" not in output_type["response_schema"]:
-                output_type["response_schema"]["type"] = "inline"
-            data["output_type"]["response_schema"] = InlineSchemaDef(**output_type)
-
-            # Apply extracted settings to agent config
-            if tool_name:
-                data["result_tool_name"] = tool_name
-            if tool_description:
-                data["result_tool_description"] = tool_description
-            if retries is not None:
-                data["output_retries"] = retries
-
+        if (
+            isinstance(output_type, dict)
+            and output_type.get("output_retries") is not None
+            and data.get("output_retries") is None
+        ):
+            return {**data, "output_retries": output_type["output_retries"]}
         return data
 
     @model_validator(mode="before")

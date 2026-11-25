@@ -2,14 +2,12 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any
+from typing import Any
 
 from pydantic import BaseModel
 from schemez import InlineSchemaDef
 
-
-if TYPE_CHECKING:
-    from agentpool_config.output_types import StructuredResponseConfig
+from agentpool_config.output_types import StructuredResponseConfig
 
 
 def to_type(
@@ -25,6 +23,8 @@ def to_type(
             raise ValueError(f"Missing responses dict for response type: {output_type!r}")
         case InlineSchemaDef():
             return output_type.get_schema()
+        case StructuredResponseConfig():  # inline definition
+            return output_type.response_schema.get_schema()
         case None:
             return str
         case type() as model if issubclass(model, BaseModel | str):
