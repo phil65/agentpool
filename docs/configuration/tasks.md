@@ -13,6 +13,8 @@ Tasks (called "jobs" in YAML) define reusable operations that agents can execute
 - Knowledge sources
 - Result type validation
 
+Jobs are run with `agentpool task <agent> <job>` or `pool.get_job(name)` in code.
+
 ## Basic Task
 
 Simple task with prompt and result type:
@@ -33,24 +35,20 @@ Tasks can load context from various sources:
 jobs:
   summarize_docs:
     prompt: "Summarize the documentation changes"
-    output_type: "myapp.types.DocSummary"
+    required_output_type: "myapp.types:DocSummary"
     knowledge:
-      # Simple file paths
+      # Files and URLs
       paths:
         - "docs/**/*.md"
         - "README.md"
 
-      # Rich resource definitions
-      resources:
-        - type: "cli"
-          command: "git diff --name-only"
-        - type: "repository"
-          url: "https://github.com/user/repo"
-          paths: ["docs/"]
-
       # Context prompts
       prompts:
-        - "Consider the project's documentation standards..."
+        - type: text
+          description: Documentation standards
+          messages:
+            - role: system
+              content: "Consider the project's documentation standards..."
 ```
 
 ## Required Tools
@@ -61,10 +59,9 @@ Specify tools needed for the task:
 jobs:
   security_audit:
     prompt: "Perform security audit on the codebase"
-    output_type: "myapp.types.AuditReport"
+    required_output_type: "myapp.types:AuditReport"
     tools:
-      - "analyze_dependencies"
-      - "check_vulnerabilities"
+      - "myapp.tools.security.analyze_dependencies"  # import path
       - name: "custom_scanner"
         import_path: "myapp.tools.security.scan_code"
         description: "Custom security scanner"
@@ -100,21 +97,12 @@ jobs:
 
     # Required knowledge
     knowledge:
-      paths: ["src/**/*.py"]
-      resources:
-        - type: "cli"
-          command: "git diff main"
-        - type: "repository"
-          url: "https://github.com/user/repo"
-      prompts:
-        - "Consider these coding standards..."
-        - "Focus on performance aspects..."
+      paths: ["src/**/*.py", "CONTRIBUTING.md"]
 
     # Required tools
     tools:
-      - "analyze_complexity"
-      - "check_style"
-      - import_path: "myapp.tools:metrics"
+      - "myapp.tools.analyze_complexity"
+      - import_path: "myapp.tools.metrics"
 
     # Context requirements
     min_context_tokens: 2000
@@ -128,16 +116,18 @@ All tasks are available through the agent pool:
 # Get job definition
 job = pool.get_job("analyze_code")
 
-# Register new task 
+# Register new task
 from agentpool_config.task import Job
 job = Job(
     name="new_task",
     description="A new task",
     prompt="Do something interesting",
-    required_output_type="myapp.types:Result"
 )
-pool.register_job("new_task", job)
-
-# List available tasks
-jobs = pool.list_jobs()
+pool.register_task("new_task", job)
 ```
+
+## Configuration Reference
+
+/// mknodes
+{{ "agentpool_config.task.Job" | schema_to_markdown(display_mode="yaml", header_style="pymdownx", as_listitem=False, wrapped_in="job_name", header_level=3) }}
+///

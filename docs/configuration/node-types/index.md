@@ -13,11 +13,11 @@ Nodes are the core building blocks of AgentPool. This section covers the differe
 
 ### Native Agents
 
-[Native agents](agent.md) are the using regular client APIs of AI model providers and are backed by `Pydantic-AI`.
+[Native agents](agent.md) call the APIs of AI model providers directly and are backed by `Pydantic-AI`.
 
 ### ACP Agents
 
-[ACP (Agent Client Protocol) agents](acp-agents.md) integrate external coding agents like Claude Code, Gemini CLI, Codex, and many others. These run as separate processes and communicate via the ACP protocol. This means that AgentHub can act as a ACP bridge: ACP-Agents are connected to the AgentPool via ACP, can use some of its extended featureset and then also be controlled by the User via a UI ACP client such as `Zed` or `Toad`.
+[ACP (Agent Client Protocol) agents](acp-agents.md) integrate external coding agents like Claude Code, Gemini CLI, Codex, and many others. These run as separate processes and communicate via the ACP protocol. This means that AgentPool can act as an ACP bridge: ACP-Agents are connected to the AgentPool via ACP, can use some of its extended featureset and then also be controlled by the User via a UI ACP client such as `Zed` or `Toad`.
 
 ### AG-UI Agents
 
@@ -43,6 +43,11 @@ Nodes are the core building blocks of AgentPool. This section covers the differe
 
 [OpenCode V2 agents](opencode-v2-agents.md) drive an OpenCode v2.3+ HTTP/SSE server (`opencode serve` or a remote V2 endpoint), streaming live steps, reasoning, text, tool calls, permissions, and forms while bridging AgentPool toolsets via MCP.
 
+### File Agents
+
+[File agents](file-agents.md) are defined in markdown files with YAML frontmatter (Claude Code
+subagents, OpenCode agents or AgentPool's own format), listed under `file_agents`.
+
 ## Teams
 
 [Teams](./team.md) coordinate multiple agents to work together on complex tasks:
@@ -59,6 +64,6 @@ Nodes are the core building blocks of AgentPool. This section covers the differe
 | Full configuration | Yes | Yes | Yes | Yes | Yes | Limited | Limited | Yes | Limited |
 | External tools | Via toolsets | Built-in + MCP bridge | Native + MCP bridge | Built-in + MCP bridge | Built-in + MCP bridge | Built-in | Via server | Via members | The provider's |
 | Structured output | Result tools | Result tools | JSON Schema | JSON Schema (`finish`) | No | Limited | Limited | Via members | No |
-| Reasoning control | Model-dependent | Extended thinking | Effort levels | Thinking levels | Model variants | Model-dependent | Model-dependent | Via members | Model options |
+| Reasoning control | Model-dependent | Reasoning effort | Effort levels | Thinking levels | Model variants | Model-dependent | Model-dependent | Via members | Model options |
 | Streaming | Yes | Yes | Yes | Yes | Yes (SSE) | Yes | Yes | Yes | Polled |
 | Use case | Primary agents | Claude coding | Codex coding | Antigravity / Gemini coding | OpenCode v2.3+ coding | External agents | Remote services | Coordination | Agents in T3 Code |

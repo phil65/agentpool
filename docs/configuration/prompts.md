@@ -29,10 +29,12 @@ System prompts define agent behavior, personality, and methodology. You can conf
 
 System prompts can be categorized by their purpose:
 
-- **Role**: Define WHO the agent is (e.g., "expert developer", "data scientist")
-- **Methodology**: Define HOW the agent works (e.g., "step-by-step", "analytical")
-- **Tone**: Define communication STYLE (e.g., "professional", "friendly")
-- **Format**: Define output STRUCTURE (e.g., "markdown", "structured")
+- **role**: WHO the agent is (e.g., "expert developer", "data scientist")
+- **methodology**: HOW the agent works (e.g., "step-by-step", "analytical")
+- **quality**: checks the result has to pass (e.g., "cite sources")
+- **task**: WHAT the agent has to do
+
+The library's `template` combines the prompts of an agent grouped by these categories.
 
 ## Configuration Reference
 
@@ -44,7 +46,7 @@ System prompts can be categorized by their purpose:
 
 ```yaml
 prompts:
-  system_prompt:
+  system_prompts:
     # Role definitions
     technical_expert:
       category: role
@@ -64,9 +66,9 @@ prompts:
         3. Apply best practices consistently
         4. Validate results thoroughly
 
-    # Tone definitions
+    # Quality definitions
     professional:
-      category: tone
+      category: quality
       content: |
         Maintain professional communication:
         - Use formal, precise language
@@ -75,7 +77,7 @@ prompts:
 
 agents:
   senior_dev:
-    model: gpt-4
+    model: openai:gpt-5
     system_prompt:
       - "Specialize in Python and TypeScript development."
       - type: library
@@ -84,8 +86,6 @@ agents:
         reference: systematic
       - type: library
         reference: professional
-      - type: file
-        path: "prompts/coding_style.j2"
 ```
 
 ## Organization Best Practices
@@ -97,16 +97,16 @@ Keep prompts organized in separate files:
 ```yaml
 # prompts/roles.yml
 prompts:
-  system_prompt:
+  system_prompts:
     technical_expert:
       category: role
       content: ...
 
 # prompts/styles.yml
 prompts:
-  system_prompt:
+  system_prompts:
     professional:
-      category: tone
+      category: quality
       content: ...
 
 # agents.yml
@@ -116,9 +116,21 @@ INHERIT:
 
 agents:
   my_agent:
+    model: openai:gpt-5-mini
     system_prompt:
       - type: library
         reference: technical_expert
       - type: library
         reference: professional
 ```
+
+!!! bug "Known issue"
+    `type: file` and `type: function` system prompts currently also require a `content`
+    field (inherited from the base model), so they cannot be configured as documented
+    above. Use static or library prompts until this is fixed.
+
+## Prompt Library Reference
+
+/// mknodes
+{{ "agentpool_config.system_prompts.PromptLibraryConfig" | schema_to_markdown(display_mode="yaml", header_style="pymdownx", as_listitem=False, wrapped_in="prompts", header_level=3) }}
+///

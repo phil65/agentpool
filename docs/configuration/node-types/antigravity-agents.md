@@ -38,7 +38,7 @@ Antigravity supports three backend modes:
 ## Configuration Reference
 
 /// mknodes
-{{ "agentpool.models.antigravity_agents.AntigravityAgentConfig" | schema_to_markdown(display_mode="yaml", header_style="pymdownx") }}
+{{ "agentpool.models.antigravity_agents.AntigravityAgentConfig" | schema_to_markdown(display_mode="yaml", header_style="pymdownx", as_listitem=False) }}
 ///
 
 ## Basic Usage
@@ -54,7 +54,7 @@ agents:
     enable_sandbox: true
     system_prompt: "You are a careful Python engineer."
     tools:
-      - type: agent_management
+      - type: subagent
 
   vertex_reviewer:
     type: antigravity

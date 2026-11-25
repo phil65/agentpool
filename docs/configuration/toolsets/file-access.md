@@ -13,6 +13,7 @@ The File Access toolset provides tools for reading, writing, and editing files o
 ```yaml
 agents:
   my_agent:
+    model: openai:gpt-5-mini
     tools:
       - type: file_access
         fs: "file:///workspace"
@@ -72,7 +73,7 @@ print(generate_tool_docs(toolset))
 ## Configuration Reference
 
 /// mknodes
-{{ "agentpool_config.toolsets.FSSpecToolsetConfig" | schema_to_markdown(display_mode="yaml", header_style="pymdownx", wrapped_in="toolsets", header_level=3) }}
+{{ "agentpool_config.toolsets.FSSpecToolsetConfig" | schema_to_markdown(display_mode="yaml", header_style="pymdownx", wrapped_in="tools", header_level=3) }}
 ///
 
 ## Examples

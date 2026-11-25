@@ -21,6 +21,7 @@ Workers allow building hierarchies where a manager agent can delegate specialize
 ```yaml
 agents:
   manager:
+    model: openai:gpt-5-mini
     tools:
       - type: workers
         workers:
@@ -36,7 +37,7 @@ This creates tools `ask_code_reviewer` and `ask_researcher` for the manager agen
 ## Toolset Configuration
 
 /// mknodes
-{{ "agentpool_config.toolsets.WorkersToolsetConfig" | schema_to_markdown(display_mode="yaml", header_style="pymdownx", wrapped_in="toolsets") }}
+{{ "agentpool_config.toolsets.WorkersToolsetConfig" | schema_to_markdown(display_mode="yaml", header_style="pymdownx", wrapped_in="tools") }}
 ///
 
 ## Worker Types

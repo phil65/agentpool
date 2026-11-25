@@ -13,18 +13,20 @@ Load tools registered through Python entry points, enabling plugin-style tool di
 ```yaml
 agents:
   my_agent:
+    model: openai:gpt-5-mini
     tools:
       - type: entry_points
-        group: my_package.tools
+        module: my_package
 ```
 
 ## How It Works
 
-Python packages can register tools via entry points in their `pyproject.toml`:
+A package registers a `tools` entry point in the `agentpool` group of its `pyproject.toml`,
+pointing to a function that returns the tool callables:
 
 ```toml
-[project.entry-points."my_package.tools"]
-my_tool = "my_package.tools:my_tool_function"
+[project.entry-points.agentpool]
+tools = "my_package.tools:get_tools"
 ```
 
 The toolset then discovers and loads these tools automatically.
@@ -32,5 +34,5 @@ The toolset then discovers and loads these tools automatically.
 ## Configuration Reference
 
 /// mknodes
-{{ "agentpool_config.toolsets.EntryPointToolsetConfig" | schema_to_markdown(display_mode="yaml", header_style="pymdownx", wrapped_in="toolsets") }}
+{{ "agentpool_config.toolsets.EntryPointToolsetConfig" | schema_to_markdown(display_mode="yaml", header_style="pymdownx", wrapped_in="tools") }}
 ///

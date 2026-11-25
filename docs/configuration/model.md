@@ -20,10 +20,38 @@ agents:
     model: openai:gpt-5-nano  # simple model identifier
   my_agent2:
     model:  # extended model config
-      provider: openai
-      model: gpt-5-nano
+      type: string
+      identifier: openai:gpt-5-nano
       temperature: 0.5
+  my_agent3:
+    model:  # a meta model: try models in order
+      type: fallback
+      models:
+        - openai:gpt-5-nano
+        - anthropic:claude-haiku-4-5
 ```
+
+## Model Variants
+
+Named model configurations in the manifest's `model_variants` can be referenced by name:
+
+```yaml
+model_variants:
+  fast:
+    type: string
+    identifier: openai:gpt-5-nano
+    temperature: 0.3
+
+agents:
+  helper:
+    model: fast
+```
+
+## Available Model Types
+
+/// mknodes
+{{ "llmling_models_config.AnyModelConfig" | config_union_table }}
+///
 
 ## Configuration Reference
 

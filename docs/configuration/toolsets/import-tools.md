@@ -13,6 +13,7 @@ Import arbitrary Python functions as agent tools via import paths.
 ```yaml
 agents:
   my_agent:
+    model: openai:gpt-5-mini
     tools:
       - type: import_tools
         tools:
@@ -39,7 +40,7 @@ Each tool supports these options:
 ## Configuration Reference
 
 /// mknodes
-{{ "agentpool_config.toolsets.ImportToolsToolsetConfig" | schema_to_markdown(display_mode="yaml", header_style="pymdownx", wrapped_in="toolsets", header_level=3) }}
+{{ "agentpool_config.toolsets.ImportToolsToolsetConfig" | schema_to_markdown(display_mode="yaml", header_style="pymdownx", wrapped_in="tools", header_level=3) }}
 ///
 
 ## Use Cases

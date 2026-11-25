@@ -12,62 +12,24 @@ Toolsets are collections of tools that can be dynamically loaded and assigned to
 
 ## Overview
 
-Toolsets are configured in your manifest under the agent's `toolsets` field:
+Toolsets are configured in the agent's `tools` list, next to [single tools](../tools.md):
 
 ```yaml
 agents:
   my_agent:
+    model: openai:gpt-5-mini
     tools:
       - type: file_access
         fs: "file:///workspace"
       - type: search
-        provider: tavily
+        web_search: tavily
 ```
 
 ## Available Toolsets
 
-### Filesystem & Resources
-
-| Toolset | Description |
-|---------|-------------|
-| [File Access](./file-access.md) | Read, write, edit files on any fsspec-compatible filesystem |
-| [VFS](./vfs.md) | Access resources defined in manifest's `resources` section |
-
-### External Integrations
-
-| Toolset | Description |
-|---------|-------------|
-| [OpenAPI](./openapi.md) | Generate tools from OpenAPI/Swagger specifications |
-| [Entry Points](./entry-points.md) | Load tools from Python entry points |
-| [Composio](./composio.md) | Integration with Composio tool platform |
-| [Search](./search.md) | Web and news search capabilities |
-| [Notifications](./notifications.md) | Send notifications via various channels |
-
-### Agent & Workflow
-
-| Toolset | Description |
-|---------|-------------|
-| [Subagent](./subagent.md) | Delegate tasks to other agents |
-| [Workers](./workers.md) | Manage worker agents |
-
-### Code & Execution
-
-| Toolset | Description |
-|---------|-------------|
-| [Execution](./execution.md) | Execute code and commands |
-| [Code](./code.md) | Code analysis and manipulation tools |
-| [Code Mode](./code-mode.md) | Wrap toolsets for code-based interaction |
-| [Remote Code Mode](./remote-code-mode.md) | Remote code-based interaction |
-
-### Utility
-
-| Toolset | Description |
-|---------|-------------|
-| [User Interaction](./user-interaction.md) | Interact with users |
-| [Skills](./skills.md) | Load and execute skills |
-| [Config Creation](./config-creation.md) | Create agent configurations |
-| [Import Tools](./import-tools.md) | Import individual functions as tools |
-| [Custom](./custom.md) | Load custom toolset implementations |
+/// mknodes
+{{ "agentpool_config.toolsets.ToolsetConfig" | config_union_table }}
+///
 
 ## Common Configuration
 

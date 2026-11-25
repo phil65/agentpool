@@ -43,7 +43,7 @@ With `url` instead of `login`, put the native bearer in `native_token`. `native:
 ## Configuration Reference
 
 /// mknodes
-{{ "agentpool.models.t3_agents.T3AgentConfig" | schema_to_markdown(display_mode="yaml", header_style="pymdownx") }}
+{{ "agentpool.models.t3_agents.T3AgentConfig" | schema_to_markdown(display_mode="yaml", header_style="pymdownx", as_listitem=False) }}
 ///
 
 ## Basic Usage

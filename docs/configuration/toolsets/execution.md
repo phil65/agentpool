@@ -13,6 +13,7 @@ The Execution Environment toolset provides tools for executing code and shell co
 ```yaml
 agents:
   coder:
+    model: openai:gpt-5-mini
     tools:
       - type: process_management
         environment:
@@ -80,7 +81,7 @@ tools:
 ## Configuration Reference
 
 /// mknodes
-{{ "agentpool_config.toolsets.ProcessManagementToolsetConfig" | schema_to_markdown(display_mode="yaml", header_style="pymdownx", wrapped_in="toolsets", header_level=3) }}
+{{ "agentpool_config.toolsets.ProcessManagementToolsetConfig" | schema_to_markdown(display_mode="yaml", header_style="pymdownx", wrapped_in="tools", header_level=3) }}
 ///
 
 ## Security Considerations

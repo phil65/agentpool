@@ -28,7 +28,7 @@ AG-UI agents are useful for:
 ## Configuration Reference
 
 /// mknodes
-{{ "agentpool.models.agui_agents.AGUIAgentConfig" | schema_to_markdown(display_mode="yaml", header_style="pymdownx") }}
+{{ "agentpool.models.agui_agents.AGUIAgentConfig" | schema_to_markdown(display_mode="yaml", header_style="pymdownx", as_listitem=False) }}
 ///
 
 ## Basic Usage
@@ -43,9 +43,10 @@ agents:
       X-API-Key: ${API_KEY}
 
   managed_agent:
+    type: agui
     endpoint: http://localhost:8765/agent/run
-    startup_command: "uv run ag-ui-server config.yml"
-    startup_delay: 3.0
+    startup_command: "uv run agentpool serve-agui config.yml --port 8765"
+    startup_timeout: 30.0
 ```
 
 ## Configuration Notes
@@ -55,5 +56,6 @@ agents:
 - Environment variables can be used in header values: `${VAR_NAME}`
 - When `startup_command` is provided, AgentPool will spawn the server process
 - The server process is automatically terminated when the agent pool closes
-- Use `startup_delay` to give the server time to initialize before connecting
+- AgentPool waits up to `startup_timeout` seconds until the server accepts connections;
+  `startup_delay` adds extra seconds after that
 - The `timeout` setting controls the maximum time for agent responses

@@ -13,6 +13,6 @@ storage:
       pool_size: 5
       auto_migration: true
 
-    - type: "text_file"
-      path: "logs/chat.log"
-      format: "chronological"
+    - type: "file"
+      path: "logs/chat.json"
+      format: "json"

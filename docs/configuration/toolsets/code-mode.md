@@ -13,9 +13,10 @@ Wraps other toolsets to enable code-based tool invocation, allowing agents to ca
 ```yaml
 agents:
   coder:
+    model: openai:gpt-5-mini
     tools:
       - type: code_mode
-        tools:
+        toolsets:
           - type: file_access
             fs: "file:///workspace"
 ```
@@ -27,5 +28,5 @@ Instead of calling tools directly, the agent generates Python code that invokes 
 ## Configuration Reference
 
 /// mknodes
-{{ "agentpool_config.toolsets.CodeModeToolsetConfig" | schema_to_markdown(display_mode="yaml", header_style="pymdownx", wrapped_in="toolsets", header_level=3) }}
+{{ "agentpool_config.toolsets.CodeModeToolsetConfig" | schema_to_markdown(display_mode="yaml", header_style="pymdownx", wrapped_in="tools", header_level=3) }}
 ///

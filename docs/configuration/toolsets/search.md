@@ -13,82 +13,62 @@ The Search toolset provides web and news search capabilities using various searc
 ```yaml
 agents:
   researcher:
+    model: openai:gpt-5-mini
     tools:
       - type: search
-        provider: tavily
+        web_search: tavily  # provider name; the API key is read from TAVILY_API_KEY
+```
+
+`web_search` and `news_search` take either a provider name or a provider configuration
+(`type` selects the provider):
+
+```yaml
+agents:
+  researcher:
+    model: openai:gpt-5-mini
+    tools:
+      - type: search
+        web_search:
+          type: brave
+          api_key: ${BRAVE_API_KEY}
+        news_search: serper
 ```
 
 ## Supported Providers
 
 ### Web Search
 
-- `tavily` - Tavily AI search
-- `brave` - Brave Search
-- `searxng` - SearXNG meta search
-- `serper` - Serper.dev Google search
-- `you` - You.com search
+/// mknodes
+{{ "agentpool_config.toolsets.WebSearchProviderConfig" | config_union_table }}
+///
 
 ### News Search
 
-- `tavily` - Tavily news search
-- `brave` - Brave News
-- `serper` - Serper news
-- `newsapi` - NewsAPI.org
-
-## Configuration
-
-### Web Search Only
-
-```yaml
-tools:
-  - type: search
-    provider: tavily
-    api_key: ${TAVILY_API_KEY}
-```
-
-### News Search Only
-
-```yaml
-tools:
-  - type: search
-    news_provider: newsapi
-    news_api_key: ${NEWSAPI_KEY}
-```
-
-### Both Web and News
-
-```yaml
-tools:
-  - type: search
-    provider: brave
-    api_key: ${BRAVE_API_KEY}
-    news_provider: newsapi
-    news_api_key: ${NEWSAPI_KEY}
-```
+/// mknodes
+{{ "agentpool_config.toolsets.NewsSearchProviderConfig" | config_union_table }}
+///
 
 ## Available Tools
 
 ```python exec="true"
-from agentpool_toolsets.search_toolset import SearchTools
+from agentpool_config.toolsets import SearchToolsetConfig
 from agentpool.docs.utils import generate_tool_docs
 
-toolset = SearchTools()
-print(generate_tool_docs(toolset))
+config = SearchToolsetConfig(web_search="tavily", news_search="tavily")
+print(generate_tool_docs(config.get_provider()))
 ```
 
 ## Configuration Reference
 
 /// mknodes
-{{ "agentpool_config.toolsets.SearchToolsetConfig" | schema_to_markdown(display_mode="yaml", header_style="pymdownx", wrapped_in="toolsets", header_level=3) }}
+{{ "agentpool_config.toolsets.SearchToolsetConfig" | schema_to_markdown(display_mode="yaml", header_style="pymdownx", wrapped_in="tools", header_level=3) }}
 ///
 
-## Environment Variables
+## Provider Reference
 
-Most providers require API keys. You can provide them directly or via environment variables:
+/// mknodes
+{{ "agentpool_config.toolsets.WebSearchProviderConfig" | union_to_markdown(display_mode="yaml", header_style="pymdownx", as_listitem=False, wrapped_in="web_search", header_level=3) }}
+///
 
-| Provider | Environment Variable |
-|----------|---------------------|
-| Tavily | `TAVILY_API_KEY` |
-| Brave | `BRAVE_API_KEY` |
-| Serper | `SERPER_API_KEY` |
-| NewsAPI | `NEWSAPI_KEY` |
+API keys default to the provider's environment variable (for example `TAVILY_API_KEY`,
+`BRAVE_API_KEY`, `SERPER_API_KEY`) when not set in the config.

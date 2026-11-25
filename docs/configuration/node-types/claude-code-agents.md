@@ -113,12 +113,8 @@ agents:
   coordinator:
     type: claude_code
     tools:
-      - type: subagent
-        agents:
-          - researcher
-          - writer
-      - type: agent_management
-      - type: resource_access
+      - type: subagent  # delegate to the pool's other agents
+      - type: vfs  # the manifest's resources
 ```
 
 This allows Claude Code to delegate tasks to other AgentPool agents.
@@ -130,19 +126,16 @@ Define typed responses:
 ```yaml
 responses:
   code_review:
-    type: object
-    properties:
-      issues:
-        type: array
-        items:
-          type: object
-          properties:
-            file: { type: string }
-            line: { type: integer }
-            severity: { type: string, enum: [error, warning, info] }
-            message: { type: string }
-      summary: { type: string }
-      approved: { type: boolean }
+    response_schema:
+      type: inline
+      fields:
+        issues:
+          type: list[str]
+          description: "Issues found, one per entry (file:line: message)"
+        summary:
+          type: str
+        approved:
+          type: bool
 
 agents:
   reviewer:
@@ -201,17 +194,15 @@ agents:
   smart_coder:
     type: claude_code
     tools:
-      # Delegate to specialized agents
+      # Delegate to the pool's other agents (task, list_available_nodes)
       - type: subagent
-        agents:
-          - test_writer
-          - documentation_writer
-      
-      # Access shared resources
-      - type: resource_access
-      
-      # Manage other agents
-      - type: agent_management
+
+      # Access the manifest's resources
+      - type: vfs
+
+      # A function as a tool
+      - type: import
+        import_path: webbrowser.open
 ```
 
 The toolsets communicate directly with Claude Code without HTTP overhead.
@@ -244,4 +235,4 @@ Choose ACP agents when:
 - [ACP Agents](acp-agents.md) - ACP protocol integration (alternative approach)
 - [Toolsets](../toolsets/index.md) - Tool collections for agents
 - [System Prompts](../prompts.md) - Prompt configuration
-- [Responses](responses.md) - Structured output types
+- [Responses](../responses.md) - Structured output types

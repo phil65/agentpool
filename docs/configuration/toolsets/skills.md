@@ -13,6 +13,7 @@ Load and execute skills - reusable prompt-based capabilities.
 ```yaml
 agents:
   my_agent:
+    model: openai:gpt-5-mini
     tools:
       - type: skills
 ```
@@ -30,5 +31,5 @@ print(generate_tool_docs(toolset))
 ## Configuration Reference
 
 /// mknodes
-{{ "agentpool_config.toolsets.SkillsToolsetConfig" | schema_to_markdown(display_mode="yaml", header_style="pymdownx", wrapped_in="toolsets", header_level=3) }}
+{{ "agentpool_config.toolsets.SkillsToolsetConfig" | schema_to_markdown(display_mode="yaml", header_style="pymdownx", wrapped_in="tools", header_level=3) }}
 ///

@@ -41,6 +41,7 @@ Forward messages to other agents or teams:
 ```yaml
 agents:
   analyzer:
+    model: openai:gpt-5-mini
     connections:
       - type: node
         name: "summarizer"
@@ -61,6 +62,7 @@ Save messages to files with Jinja2 templating:
 ```yaml
 agents:
   logger:
+    model: openai:gpt-5-mini
     connections:
       - type: file
         path: "logs/{date}/{agent}.txt"
@@ -75,6 +77,7 @@ Process messages through Python functions:
 ```yaml
 agents:
   processor:
+    model: openai:gpt-5-mini
     connections:
       - type: callable
         callable: "myapp.handlers:process_message"

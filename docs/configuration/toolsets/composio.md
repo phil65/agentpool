@@ -13,9 +13,11 @@ Integration with the [Composio](https://composio.dev) platform for accessing pre
 ```yaml
 agents:
   my_agent:
+    model: openai:gpt-5-mini
     tools:
       - type: composio
-        apps:
+        api_key: ${COMPOSIO_API_KEY}
+        toolsets:
           - github
           - slack
 ```
@@ -23,7 +25,7 @@ agents:
 ## Configuration Reference
 
 /// mknodes
-{{ "agentpool_config.toolsets.ComposioToolSetConfig" | schema_to_markdown(display_mode="yaml", header_style="pymdownx", wrapped_in="toolsets") }}
+{{ "agentpool_config.toolsets.ComposioToolSetConfig" | schema_to_markdown(display_mode="yaml", header_style="pymdownx", wrapped_in="tools") }}
 ///
 
 ## Available Apps

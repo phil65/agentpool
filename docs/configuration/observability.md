@@ -22,7 +22,18 @@ AgentPool integrates with leading observability platforms:
 
 These integrations provide automatic instrumentation of agent operations, capturing traces, spans, and metrics without code changes.
 
+```yaml
+observability:
+  enabled: true
+  provider:
+    type: logfire
+```
+
 ## Configuration Reference
+
+/// mknodes
+{{ "agentpool_config.observability.ObservabilityConfig" | schema_to_markdown(display_mode="yaml", header_style="pymdownx", as_listitem=False, wrapped_in="observability", header_level=3) }}
+///
 
 /// mknodes
 {{ "agentpool_config.observability.ObservabilityProviderConfig" | union_to_markdown(display_mode="yaml", header_style="pymdownx") }}

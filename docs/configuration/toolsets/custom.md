@@ -13,6 +13,7 @@ Load custom toolset implementations from Python code.
 ```yaml
 agents:
   my_agent:
+    model: openai:gpt-5-mini
     tools:
       - type: custom
         import_path: mypackage.toolsets:MyCustomToolset
@@ -37,5 +38,5 @@ class MyCustomToolset(ResourceProvider):
 ## Configuration Reference
 
 /// mknodes
-{{ "agentpool_config.toolsets.CustomToolsetConfig" | schema_to_markdown(display_mode="yaml", header_style="pymdownx", wrapped_in="toolsets", header_level=3) }}
+{{ "agentpool_config.toolsets.CustomToolsetConfig" | schema_to_markdown(display_mode="yaml", header_style="pymdownx", wrapped_in="tools", header_level=3) }}
 ///

@@ -13,6 +13,7 @@ The Subagent toolset enables agents to delegate tasks to other agents in the poo
 ```yaml
 agents:
   coordinator:
+    model: openai:gpt-5-mini
     tools:
       - type: subagent
 ```
@@ -30,7 +31,7 @@ print(generate_tool_docs(toolset))
 ## Configuration Reference
 
 /// mknodes
-{{ "agentpool_config.toolsets.SubagentToolsetConfig" | schema_to_markdown(display_mode="yaml", header_style="pymdownx", wrapped_in="toolsets", header_level=3) }}
+{{ "agentpool_config.toolsets.SubagentToolsetConfig" | schema_to_markdown(display_mode="yaml", header_style="pymdownx", wrapped_in="tools", header_level=3) }}
 ///
 
 ## Example Workflow
@@ -38,6 +39,7 @@ print(generate_tool_docs(toolset))
 ```yaml
 agents:
   coordinator:
+    model: openai:gpt-5-mini
     tools:
       - type: subagent
     system_prompt: You coordinate work between specialized agents.

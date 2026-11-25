@@ -27,7 +27,9 @@ responses:
   MyResponse:
     response_schema:  # Schema definition (required)
       type: "inline"  # or "import"
-      # schema details...
+      fields:
+        answer:
+          type: str
     description: "Optional description of the response"
     result_tool_name: "final_result"  # Tool name for result creation
     result_tool_description: "Create the final result"  # Tool description
@@ -71,24 +73,6 @@ agents:
     output_type: "CodeAnalysis"  # Reference response by name
 ```
 
-### Inline with Custom Tool Name
-
-```yaml
-agents:
-  processor:
-    output_type:
-      response_schema:
-        type: "inline"  # Direct inline definition
-        fields:
-          success:
-            type: "bool"
-          details:
-            type: "str"
-      result_tool_name: "create_result"  # Custom tool name
-      result_tool_description: "Create the final analysis result"
-      output_retries: 2  # Number of validation attempts
-```
-
 ## Available Field Types
 
 - `str`: Text strings
@@ -99,3 +83,13 @@ agents:
 - `dict[key_type, value_type]`: Dictionaries
 - `datetime`: Date and time values
 - Custom types through imports
+
+## Configuration Reference
+
+/// mknodes
+{{ "agentpool_config.output_types.StructuredResponseConfig" | schema_to_markdown(display_mode="yaml", header_style="pymdownx", as_listitem=False, wrapped_in="MyResponse", header_level=3) }}
+///
+
+/// mknodes
+{{ "agentpool_config.output_types.SchemaDef" | union_to_markdown(display_mode="yaml", header_style="pymdownx", as_listitem=False, wrapped_in="response_schema", header_level=3) }}
+///

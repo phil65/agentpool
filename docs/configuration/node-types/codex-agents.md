@@ -43,14 +43,15 @@ A minimal Codex agent for coding tasks:
 agents:
   codex_coder:
     type: codex
-    cwd: /path/to/project
+    environment: /path/to/project  # working directory (or an execution environment config)
     model: gpt-5.1-codex-max
     reasoning_effort: medium
 ```
 
-### Reasoning Effort Levels
+### Reasoning Effort
 
-Control how deeply Codex reasons about tasks:
+Control how deeply Codex reasons about tasks (the levels the model offers, for example
+`low`, `medium`, `high`):
 
 ```yaml
 agents:
@@ -65,71 +66,59 @@ agents:
     reasoning_effort: high  # Complex problem solving
 ```
 
-### Tool Approval Policies
+### Approval Policy and Sandbox
 
-Configure how Codex handles tool execution approval:
+`approval_policy` decides when Codex asks before running a tool: `never` (default for
+programmatic use), `on-request` (the model asks when it wants to) or `untrusted` (ask for
+everything not known to be safe). Approvals reach the user through AgentPool's input
+provider / the connected protocol client. `sandbox` limits file access (`read-only`,
+`workspace-write`, `danger-full-access`).
 
 ```yaml
 agents:
   auto_executor:
     type: codex
-    approval_policy: never  # Execute tools without approval (default)
+    approval_policy: never
 
-  safe_agent:
+  careful:
     type: codex
-    approval_policy: auto  # Auto-approve safe tools, ask for risky ones
-
-  interactive:
-    type: codex
-    approval_policy: always  # Always request approval
+    approval_policy: untrusted
+    sandbox: read-only
 ```
 
 ### Toolset Integration
 
-Expose AgentPool's internal toolsets to Codex via MCP:
+Expose AgentPool's tools and toolsets to Codex via an MCP bridge:
 
 ```yaml
 agents:
   codex_coordinator:
     type: codex
-    cwd: /path/to/project
+    environment: /path/to/project
     tools:
-      # Delegate to specialized agents
-      - type: subagent
-        agents:
-          - researcher
-          - writer
-
-      # File operations
-      - type: file_access
-
-      # Bash commands
-      - type: bash
-
-      # Custom tools
-      - my_module:my_tool
+      - type: subagent  # delegate to the pool's other agents
+      - type: search
+        web_search: tavily
+      - my_module.my_tool  # a function as a tool
 ```
-
-This allows Codex to use AgentPool's toolsets alongside its native capabilities.
 
 ### Structured Output
 
-Define typed responses using JSON Schema:
+Reference a [response definition](../responses.md):
 
 ```yaml
 responses:
   bug_report:
-    type: object
-    properties:
-      title: { type: string }
-      severity: { type: string, enum: [critical, high, medium, low] }
-      steps_to_reproduce:
-        type: array
-        items: { type: string }
-      affected_files:
-        type: array
-        items: { type: string }
-      suggested_fix: { type: string }
+    response_schema:
+      type: inline
+      fields:
+        title:
+          type: str
+        severity:
+          type: str
+          description: "critical, high, medium or low"
+        affected_files:
+          type: list[str]
 
 agents:
   bug_finder:
@@ -137,127 +126,37 @@ agents:
     output_type: bug_report
 ```
 
-Then use structured output programmatically:
-
-```python
-from agentpool import AgentPool
-from pydantic import BaseModel
-
-class BugReport(BaseModel):
-    title: str
-    severity: str
-    steps_to_reproduce: list[str]
-    affected_files: list[str]
-    suggested_fix: str
-
-async with AgentPool("config.yml") as pool:
-    agent = pool.get_agents()["bug_finder"]
-
-    # Configure for structured output
-    agent.to_structured(BugReport)
-
-    result = await agent.run("Analyze the authentication code for bugs")
-    # result is now a BugReport instance
-    print(f"Found {result.title} with severity {result.severity}")
-```
-
-### External MCP Servers
-
-Connect Codex to external MCP servers:
+### MCP Servers
 
 ```yaml
-mcp_servers:
-  filesystem:
-    transport: stdio
-    command: mcp-server-filesystem
-    args: ["/path/to/workspace"]
-
 agents:
   codex_with_fs:
     type: codex
     mcp_servers:
-      - filesystem
+      - "uvx mcp-server-filesystem /path/to/workspace"  # stdio server shorthand
+      - type: streamable-http
+        url: http://localhost:8000/mcp
 ```
 
-## Reasoning Effort Modes
+### Passing Codex Options Through
 
-Codex supports three reasoning effort levels that can be changed at runtime:
+`thread_options` passes parameters of Codex's `thread/start` request through unchanged (also
+on resume and fork), for options AgentPool does not model itself.
 
-| Mode | Description | Use Case |
-|------|-------------|----------|
-| `low` | Fast, minimal reasoning | Quick edits, simple tasks |
-| `medium` | Balanced reasoning | General purpose (default) |
-| `high` | Deep reasoning | Complex problem solving, architecture |
+## Runtime Switching
 
-Example runtime mode switching:
+Model, reasoning effort and approval policy are config options of the agent: protocol clients
+(ACP, OpenCode) show them as switchable settings, and code can change them:
 
 ```python
 from agentpool import AgentPool
 
 async with AgentPool("config.yml") as pool:
-    agent = pool.get_agents()["my_codex"]
-
-    # Switch to high reasoning for complex task
-    await agent.set_mode("high", category_id="reasoning_effort")
-    result = await agent.run("Design a scalable authentication system")
-
-    # Switch back to medium for normal tasks
-    await agent.set_mode("medium", category_id="reasoning_effort")
-```
-
-## Approval Policy Modes
-
-Control when Codex requests permission to execute tools:
-
-| Policy | Description |
-|--------|-------------|
-| `never` | Execute tools without approval (default for programmatic use) |
-| `auto` | Auto-approve low-risk tools, request approval for high-risk |
-| `always` | Always request approval before executing any tool |
-
-Change approval policy at runtime:
-
-```python
-await agent.set_mode("always", category_id="approval_policy")
-```
-
-## Model Selection
-
-Codex provides access to various models. The agent can dynamically fetch available models:
-
-```python
-from agentpool import AgentPool
-
-async with AgentPool("config.yml") as pool:
-    agent = pool.get_agents()["my_codex"]
-
-    # Get available models
-    models = await agent.get_available_models()
-    for model in models:
-        print(f"{model.name}: {model.description}")
-
-    # Switch model
+    agent = pool.get_agent("codex_coder")
+    for model in await agent.get_available_models() or []:
+        print(model.id)
     await agent.set_model("gpt-5.1-codex-mini")
-```
-
-Common Codex models:
-
-- `gpt-5.1-codex-max` - Most capable, best for complex tasks
-- `gpt-5.1-codex-mini` - Faster, cost-effective
-- `gpt-5-codex` - Previous generation
-- `claude-opus-4` - Anthropic Claude integration
-
-## Thread Management
-
-Codex uses threads to maintain conversation context. Some settings (model, reasoning_effort) require creating a new thread:
-
-```python
-# These require thread restart (archive old, create new):
-await agent.set_model("new-model")
-await agent.set_mode("high", category_id="reasoning_effort")
-
-# This doesn't require restart:
-await agent.set_mode("always", category_id="approval_policy")
+    await agent.set_mode("high", category_id="reasoning_effort")
 ```
 
 ## Comparison with Claude Code Agents
@@ -265,11 +164,9 @@ await agent.set_mode("always", category_id="approval_policy")
 | Feature | Codex Agent | Claude Code Agent |
 |---------|-------------|-------------------|
 | Protocol | Codex JSON-RPC | Claude Agent SDK |
-| Reasoning control | 3 effort levels | Extended thinking tokens |
-| Tool approval | 3 policies (never/auto/always) | 4 permission modes |
-| Models | Codex models + Claude | Claude models only |
-| Thread management | Archive + restart | Session reconnect |
-| Structured output | Via JSON Schema | Via result tools |
+| Reasoning control | Reasoning effort levels | Reasoning effort (adaptive thinking) |
+| Tool approval | Approval policies (never / on-request / untrusted) | Permission modes |
+| Models | OpenAI (Codex) models | Claude models |
 
 Choose Codex agents for:
 
@@ -288,4 +185,4 @@ Choose Claude Code agents for:
 - [Claude Code Agents](claude-code-agents.md) - Claude Agent SDK integration
 - [ACP Agents](acp-agents.md) - ACP protocol integration
 - [Toolsets](../toolsets/index.md) - Tool collections for agents
-- [Responses](responses.md) - Structured output types
+- [Responses](../responses.md) - Structured output types

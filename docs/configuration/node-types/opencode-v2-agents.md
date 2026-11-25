@@ -21,7 +21,7 @@ OpenCode V2 agents connect to an [OpenCode](https://github.com/anomalyco/opencod
 ## Configuration Reference
 
 /// mknodes
-{{ "agentpool.models.opencode_v2_agents.OpenCodeV2AgentConfig" | schema_to_markdown(display_mode="yaml", header_style="pymdownx") }}
+{{ "agentpool.models.opencode_v2_agents.OpenCodeV2AgentConfig" | schema_to_markdown(display_mode="yaml", header_style="pymdownx", as_listitem=False) }}
 ///
 
 ## Basic Usage
@@ -35,7 +35,7 @@ agents:
     variant: high
     permission_mode: ask
     tools:
-      - type: agent_management
+      - type: subagent
 
   # Connect to an existing OpenCode V2 server
   opencode_remote:

@@ -13,6 +13,7 @@ The OpenAPI toolset automatically generates tools from OpenAPI/Swagger specifica
 ```yaml
 agents:
   api_agent:
+    model: openai:gpt-5-mini
     tools:
       - type: openapi
         spec: https://api.example.com/openapi.json
@@ -59,7 +60,7 @@ Each OpenAPI operation becomes a tool with:
 ## Configuration Reference
 
 /// mknodes
-{{ "agentpool_config.toolsets.OpenAPIToolsetConfig" | schema_to_markdown(display_mode="yaml", header_style="pymdownx", wrapped_in="toolsets") }}
+{{ "agentpool_config.toolsets.OpenAPIToolsetConfig" | schema_to_markdown(display_mode="yaml", header_style="pymdownx", wrapped_in="tools") }}
 ///
 
 ## Tips

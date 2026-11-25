@@ -18,7 +18,7 @@ Using Yamling's inheritance system, entire YAML files can inherit from other fil
       assistant:
         model: openai:gpt-5
         tools:
-          - type: resource_access
+          - type: vfs
     
     storage:
       providers:
@@ -38,7 +38,7 @@ Using Yamling's inheritance system, entire YAML files can inherit from other fil
         description: "Specializes in code review"
         system_prompt: "Focus on code quality and best practices."
         tools:
-          - type: code_execution
+          - type: execute_code
     ```
 
 

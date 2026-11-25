@@ -19,67 +19,29 @@ Here's the complete manifest structure with all available top-level sections:
 
 ## Top-Level Sections
 
-### `agents`
+/// mknodes
+{{ "agentpool.AgentsManifest" | config_fields_table }}
+///
 
-Dictionary of individual agent configurations. Each key is an agent identifier, and the value is the complete agent configuration.
-
-See [Agent Configuration](./node-types/index.md) for detailed agent setup options.
-
-### `teams`  
-
-Dictionary of team configurations for multi-agent workflows. Teams can run agents in parallel or sequence.
-
-See [Team Configuration](./node-types/team.md) for team setup and coordination.
-
-### `responses`
-
-Dictionary of shared response type definitions that can be referenced by agents. Supports both inline schema definitions and imported Python types.
-
-See [Response Configuration](./responses.md) for structured output setup.
-
-### `storage`
-
-Configuration for how agent interactions are stored and logged. Supports multiple storage providers.
-
-See [Storage Configuration](./storage.md) for persistence and logging options.
-
-### `observability`
-
-Configuration for monitoring and telemetry collection.
-
-### `conversion`
-
-Settings for document and media conversion capabilities.
-
-### `mcp_servers`
-
-Global Model Context Protocol server configurations that provide tools and resources to agents.
-
-See [MCP Configuration](./mcp.md) for server setup and integration.
-
-### `pool_server`
-
-Configuration for the pool server that exposes agent functionality to external clients.
-
-### `prompts`
-
-Global prompt library configuration and management.
-
-See [Prompt Configuration](./prompts.md) for prompt organization.
-
-### `commands`
-
-Global command shortcuts that can be used across agents for prompt injection.
-
-### `jobs`
-
-Pre-defined reusable tasks with templates, knowledge requirements, and expected outputs.
-
-See [Task Configuration](./tasks.md) for job definitions.
-
-### `resources`
-
-Global resource definitions for filesystems, APIs, and data sources that agents can access.
+| Section | Documentation |
+|---|---|
+| `agents` | [Node Types](node-types/index.md): native, Claude Code, Codex, ACP, AG-UI, OpenCode V2, Antigravity and T3 agents |
+| `file_agents` | [File Agents](node-types/file-agents.md) |
+| `teams` | [Teams](node-types/team.md) |
+| `default_agent` | The agent clients talk to first (else the first agent) |
+| `model_variants` | [Model Variants](model.md#model-variants) |
+| `responses` | [Response Types](responses.md) |
+| `mcp_servers` | [MCP Servers](mcp.md) |
+| `pool_server` | [MCP Server](../servers/mcp-server.md) (`serve-mcp`) |
+| `resources` | [Resources](resources.md) |
+| `storage` | [Storage](storage.md) |
+| `observability` | [Observability](observability.md) |
+| `conversion` | [Document Conversion](../advanced/document-conversion.md) |
+| `prompts` | [System Prompts](prompts.md), [Prompt Hubs](prompt-hubs.md) |
+| `commands` | [Commands](commands.md) |
+| `jobs` | [Tasks](tasks.md) |
+| `compaction` | [Message History](../core-concepts/message-history.md#compaction) |
+| `INHERIT` | [Inheritance](inheritance.md) |
 
 ## Configuration Resolution
 
@@ -132,8 +94,9 @@ The built-in fallback config (e.g., `acp_assistant.yml`) is **only loaded if no 
         identifier: claude-sonnet-4-5
     
     storage:
-      provider: sql
-      database_url: sqlite:///~/.local/share/agentpool/history.db
+      providers:
+        - type: sql
+          url: sqlite:///~/.local/share/agentpool/history.db
     ```
 
 === "Project config"
