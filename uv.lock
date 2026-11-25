@@ -224,6 +224,7 @@ docs = [
     { name = "beautifulsoup4" },
     { name = "json-schema-for-humans" },
     { name = "mkdocs-material" },
+    { name = "mkdocstrings", extra = ["python"] },
     { name = "mknodes" },
 ]
 lint = [
@@ -350,7 +351,8 @@ docs = [
     { name = "beautifulsoup4", specifier = ">=4.14.3" },
     { name = "json-schema-for-humans", specifier = ">=1.0.0" },
     { name = "mkdocs-material" },
-    { name = "mknodes" },
+    { name = "mkdocstrings", extras = ["python"] },
+    { name = "mknodes", specifier = ">=4.1.0" },
 ]
 lint = [
     { name = "ruff" },
@@ -1341,15 +1343,11 @@ wheels = [
 
 [[package]]
 name = "clinspector"
-version = "1.0.3"
+version = "2.1.0"
 source = { registry = "https://pypi.org/simple" }
-dependencies = [
-    { name = "anyenv", extra = ["httpx"] },
-    { name = "schemez" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/17/7c/e970b5f3c824b88d3d7365b9f39f4fa2edc68179ac97bbe1d06a50124ad3/clinspector-1.0.3.tar.gz", hash = "sha256:75829e1f7522df2a2686dbd25a10f4d44d9ab99dd9ab986831f952cc15d46211", size = 25596, upload-time = "2026-11-16T22:14:05.145Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/34/2f/03551f15c50ea6f1e9344d6455eed51d3463c26d0dfdb3fd53c6955903ca/clinspector-2.1.0.tar.gz", hash = "sha256:0f906e1b71b705bf1e25543dbaab800fcf49f194718aff0d2ed29f3a737462d5", size = 29807, upload-time = "2026-11-23T08:00:26.476Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/88/73/993bfd65f7d9b386367987b10860f7a98c1ad4e74d698289d71df09f0525/clinspector-1.0.3-py3-none-any.whl", hash = "sha256:3e6c053ce53229f8be2baa78b5122e48f337c01d68711f9f0ba6129b62cfa25c", size = 33570, upload-time = "2026-11-16T22:14:03.743Z" },
+    { url = "https://files.pythonhosted.org/packages/95/f3/7e37dbe802c74ba9e693afda02d7feb105bc0ff153ffcb786fe6cbefd60a/clinspector-2.1.0-py3-none-any.whl", hash = "sha256:e2f3458b250e31ecf980b874171cae92b8ed36a4f258a385430abce38ae6dfa8", size = 38525, upload-time = "2026-11-23T08:00:25.298Z" },
 ]
 
 [[package]]
@@ -2762,19 +2760,20 @@ wheels = [
 
 [[package]]
 name = "jinjarope"
-version = "1.0.9"
+version = "1.2.1"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "anyenv" },
     { name = "epregistry" },
     { name = "fsspec" },
     { name = "jinja2" },
+    { name = "markupsafe" },
     { name = "universal-pathlib" },
     { name = "upathtools" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/fd/27/e6b245141990ec5a88e5a1fd15aa11d7291ed862a33e33efe5bd7478af03/jinjarope-1.0.9.tar.gz", hash = "sha256:fa73fcdb75d68604ef5dcfecea23a93680eb8591e458dd17adb0f31c28733e23", size = 2690885, upload-time = "2026-11-16T23:14:54.883Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/49/32/2b7b7187ac46e6ce908cee419a90c925bbda064e04fa1d49952b3afbcebc/jinjarope-1.2.1.tar.gz", hash = "sha256:8b3720314cd2047d1581a1a77611e5bd99bd722cd17d46a8b1b4520c99aa664d", size = 2692306, upload-time = "2026-11-25T04:02:45.893Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/e2/cf/63d339ad5bf35dc7b7012b1e621febf917c851b3e606244afa16d86bc3c4/jinjarope-1.0.9-py3-none-any.whl", hash = "sha256:298582d4693f16ee95016d9efe53b9fbfcecd40a65f22aec72fdf34bc5ce89d4", size = 2699785, upload-time = "2026-11-16T23:14:46.277Z" },
+    { url = "https://files.pythonhosted.org/packages/fd/a3/2c5ff41749b5cd96ff5dbf039de05c7a646244bbe84ae1b2fbd43033ab1e/jinjarope-1.2.1-py3-none-any.whl", hash = "sha256:6b4f86e065758a5b8c707e4cb712d8c57b92defaec949843b6e504eabc92d140", size = 2701020, upload-time = "2026-11-25T04:02:43.929Z" },
 ]
 
 [package.optional-dependencies]
@@ -3722,12 +3721,12 @@ wheels = [
 
 [[package]]
 name = "mknodes"
-version = "2.2.15"
+version = "4.1.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "agentpool" },
     { name = "anybadge" },
-    { name = "anyenv", extra = ["httpx"] },
+    { name = "anyenv", extra = ["httpx2"] },
+    { name = "anyio" },
     { name = "clinspector" },
     { name = "coloraide" },
     { name = "epregistry" },
@@ -3739,12 +3738,20 @@ dependencies = [
     { name = "griffelib" },
     { name = "jinja2" },
     { name = "jinjarope", extra = ["icons"] },
-    { name = "mkdocstrings", extra = ["python"] },
+    { name = "logfire" },
+    { name = "markdown" },
+    { name = "markupsafe" },
     { name = "natsort" },
+    { name = "packaging" },
     { name = "pipdeptree" },
+    { name = "platformdirs" },
     { name = "pydantic" },
+    { name = "pymdown-extensions" },
     { name = "pytest-asyncio" },
     { name = "python-dotenv" },
+    { name = "pyyaml" },
+    { name = "requests" },
+    { name = "rich" },
     { name = "tomli-w" },
     { name = "typer" },
     { name = "universal-pathlib" },
@@ -3752,9 +3759,9 @@ dependencies = [
     { name = "yamling" },
     { name = "zensical" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/83/01/ebd491c10b36748dfcb5ab217cb5f324d9e195949f663dabf7736568b461/mknodes-2.2.15.tar.gz", hash = "sha256:a9a33de11b0df698c54791ea88021700c3e2c30b67d54cdf1abfe70531efa27c", size = 361670, upload-time = "2026-11-16T23:19:35.32Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/52/2b/b7aaf30f9be35955eabfc636a5235add382c0cc36b5930ef4478a4a336dd/mknodes-4.1.0.tar.gz", hash = "sha256:72ef23d4bd4b7911b7fdb3180053d0072fbec1ed8cc56d8423414008247df3c0", size = 407632, upload-time = "2026-11-25T04:56:55.469Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/52/ad/301c38c3df93e28bbb4da36e5003f7a05ec6d2e46a9721cb166a3a047fb6/mknodes-2.2.15-py3-none-any.whl", hash = "sha256:692a808652e62ec67207dce3bdc9e3efa97b1dff7a39f2e03debbd37f5af19d9", size = 471152, upload-time = "2026-11-16T23:19:33.462Z" },
+    { url = "https://files.pythonhosted.org/packages/b1/69/c06a77cd782f96500ca77da7df3bea9b3bba7c8755920d2a54fb08964844/mknodes-4.1.0-py3-none-any.whl", hash = "sha256:56b14ce20b52ced79ca93a0e8314eb05b974ef12a742e461d8d70ef06fb0dad4", size = 527010, upload-time = "2026-11-25T04:56:54.232Z" },
 ]
 
 [[package]]
