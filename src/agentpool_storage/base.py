@@ -55,6 +55,13 @@ class StorageProvider:
     can_load_history: bool = False
     """Whether this provider supports loading history."""
 
+    owns_data: bool = True
+    """Whether agentpool owns the stored data.
+
+    False for providers that read another tool's history (Claude Code, Codex, Zed,
+    T3, ACP servers). ``StorageManager.reset`` never resets those.
+    """
+
     def __init__(self, config: BaseStorageProviderConfig) -> None:
         super().__init__()
         self.config = config

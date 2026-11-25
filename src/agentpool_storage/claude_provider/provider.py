@@ -334,6 +334,7 @@ class ClaudeStorageProvider(StorageProvider):
     """
 
     can_load_history = True
+    owns_data = False
 
     def __init__(self, config: ClaudeStorageConfig | None = None) -> None:
         """Initialize Claude storage provider.

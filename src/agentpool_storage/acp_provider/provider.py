@@ -35,6 +35,7 @@ class ACPStorageProvider(StorageProvider):
     """
 
     can_load_history: bool = True
+    owns_data = False
 
     def __init__(
         self,

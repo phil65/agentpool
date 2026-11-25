@@ -53,6 +53,7 @@ class ZedStorageProvider(StorageProvider):
     """
 
     can_load_history = True
+    owns_data = False
 
     def __init__(self, config: ZedStorageConfig | None = None) -> None:
         """Initialize Zed storage provider.

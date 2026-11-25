@@ -240,6 +240,9 @@ AgentPool acts as a protocol adapter:
 - SQL-based with SQLModel/SQLAlchemy
 - Per-agent or shared database
 - Analytics via CLI: `agentpool history stats`
+- Providers that read another tool's history (Claude Code, Codex, Zed, T3, ACP) set
+  `owns_data = False`: `StorageManager.reset` skips them, and the Claude provider's `reset`
+  never deletes Claude Code transcripts. Session ids that become file names are validated.
 
 **Observability**: Logfire integration
 - Structured logging with context

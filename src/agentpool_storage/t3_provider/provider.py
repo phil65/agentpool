@@ -34,6 +34,7 @@ class T3StorageProvider(StorageProvider):
     """
 
     can_load_history: bool = True
+    owns_data = False
 
     def __init__(
         self, config: T3StorageConfig | None = None, *, client: T3Client | None = None

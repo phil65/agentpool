@@ -30,6 +30,9 @@ if TYPE_CHECKING:
 
 logger = get_logger(__name__)
 
+RESET_CONCURRENCY = 4
+"""Maximum number of provider resets running at the same time."""
+
 
 class SessionMetadata(BaseModel):
     """Generated metadata for a conversation."""
@@ -323,17 +326,24 @@ class StorageManager:
         agent_name: str | None = None,
         hard: bool = False,
     ) -> tuple[int, int]:
-        """Reset storage in all providers concurrently."""
+        """Reset storage in the providers whose data agentpool owns.
+
+        Providers that read another tool's history (``owns_data = False``, e.g. Claude
+        Code transcripts) are skipped. At most ``RESET_CONCURRENCY`` resets run at once.
+        """
+        semaphore = asyncio.Semaphore(RESET_CONCURRENCY)
 
         async def reset_provider(provider: StorageProvider) -> tuple[int, int]:
-            try:
-                return await provider.reset(agent_name=agent_name, hard=hard)
-            except Exception:
-                cls_name = provider.__class__.__name__
-                logger.exception("Error resetting provider", provider=cls_name)
-                return (0, 0)
+            async with semaphore:
+                try:
+                    return await provider.reset(agent_name=agent_name, hard=hard)
+                except Exception:
+                    cls_name = provider.__class__.__name__
+                    logger.exception("Error resetting provider", provider=cls_name)
+                    return (0, 0)
 
-        results = await asyncio.gather(*(reset_provider(provider) for provider in self.providers))
+        owned = [provider for provider in self.providers if provider.owns_data]
+        results = await asyncio.gather(*(reset_provider(provider) for provider in owned))
         # Return the counts from the last provider (maintaining existing behavior)
         return results[-1] if results else (0, 0)
 
