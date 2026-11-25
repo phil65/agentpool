@@ -176,6 +176,10 @@ class ClaudeStorageConfig(BaseStorageProviderConfig):
 
     Reads/writes to Claude Code's native JSONL format in ~/.claude/projects/.
     Useful for sharing conversation history between agentpool and Claude Code CLI.
+
+    The transcripts belong to Claude Code: `reset` never deletes them (it reports 0
+    deleted), and the storage manager doesn't send resets to this provider. Session ids
+    must be plain file stems (no path separators or `..`).
     """
 
     model_config = ConfigDict(json_schema_extra={"x-doc-title": "Claude Storage"})

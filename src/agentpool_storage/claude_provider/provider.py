@@ -20,6 +20,7 @@ from datetime import datetime
 import mmap
 import os
 from pathlib import Path
+import re
 from typing import TYPE_CHECKING, Any
 
 import anyenv
@@ -67,6 +68,24 @@ if TYPE_CHECKING:
 
 
 logger = get_logger(__name__)
+
+_SAFE_SESSION_ID = re.compile(r"[A-Za-z0-9_][A-Za-z0-9._-]*")
+"""Session ids that are safe as a file stem (Claude Code uses UUIDs)."""
+
+
+def validate_session_id(session_id: str) -> str:
+    """Return ``session_id`` if it is safe to use as a transcript file name.
+
+    Rejects empty ids, path separators and ``..`` so a session id can never
+    address a file outside the Claude projects directory.
+
+    Raises:
+        ValueError: If the session id is not a plain file stem.
+    """
+    if not _SAFE_SESSION_ID.fullmatch(session_id):
+        msg = f"Invalid Claude session id: {session_id!r}"
+        raise ValueError(msg)
+    return session_id
 
 
 def _file_contains(path: Path, needle: bytes) -> bool:
@@ -336,6 +355,18 @@ class ClaudeStorageProvider(StorageProvider):
         """Get the directory for a project's conversations."""
         return self.projects_path / encode_project_path(project_path)
 
+    def _session_file(self, project_dir: Path, session_id: str) -> Path:
+        """Return the transcript path for ``session_id`` inside ``project_dir``.
+
+        Raises:
+            ValueError: If the session id is unsafe or the path leaves the projects dir.
+        """
+        path = project_dir / f"{validate_session_id(session_id)}.jsonl"
+        if not path.resolve().is_relative_to(self.projects_path.resolve()):
+            msg = f"Session path escapes the Claude projects directory: {path}"
+            raise ValueError(msg)
+        return path
+
     def _find_session_path(self, session_id: str) -> Path | None:
         """Find the file path for a session by ID.
 
@@ -345,8 +376,12 @@ class ClaudeStorageProvider(StorageProvider):
             session_id: Session ID (file stem)
 
         Returns:
-            Path to the session file, or None if not found
+            Path to the session file, or None if not found (or the id is invalid)
         """
+        try:
+            validate_session_id(session_id)
+        except ValueError:
+            return None
         for project_dir in self.projects_path.iterdir():
             if project_dir.is_dir():
                 candidate = project_dir / f"{session_id}.jsonl"
@@ -513,7 +548,7 @@ class ClaudeStorageProvider(StorageProvider):
 
         # Convert to entry and write
         entry = chat_message_to_entry(message, session_id=session_id, cwd=project_path)
-        session_path = self._get_project_dir(project_path) / f"{session_id}.jsonl"
+        session_path = self._session_file(self._get_project_dir(project_path), session_id)
         write_entry(session_path, entry)
 
     async def log_session(
@@ -639,21 +674,14 @@ class ClaudeStorageProvider(StorageProvider):
         return dict(stats)
 
     async def reset(self, *, agent_name: str | None = None, hard: bool = False) -> tuple[int, int]:
-        """Reset storage.
+        """Reset storage - NOT SUPPORTED, nothing is deleted.
 
-        Warning: This will delete Claude conversation files!
+        The transcripts belong to Claude Code, not to agentpool: they carry no agent
+        name, so a reset can't be scoped to an agent, and deleting them would wipe the
+        user's Claude Code sessions. Returns ``(0, 0)`` because nothing was deleted.
         """
-        conv_count = 0
-        msg_count = 0
-        for _session_id, session_path in self._list_sessions():
-            count = count_session_messages(session_path)
-            msg_count += count
-            conv_count += 1
-
-            if hard or not agent_name:
-                session_path.unlink(missing_ok=True)
-
-        return conv_count, msg_count
+        logger.warning("ClaudeStorageProvider does not delete Claude Code transcripts on reset")
+        return 0, 0
 
     async def get_session_counts(self, *, agent_name: str | None = None) -> tuple[int, int]:
         """Get counts of conversations and messages."""
@@ -844,7 +872,7 @@ class ClaudeStorageProvider(StorageProvider):
         # Create new session file (empty for now - will be populated when messages added)
         # Determine project from source path structure
         project_name = source_path.parent.name
-        new_path = self.projects_path / project_name / f"{new_session_id}.jsonl"
+        new_path = self._session_file(self.projects_path / project_name, new_session_id)
         new_path.parent.mkdir(parents=True, exist_ok=True)
         new_path.touch()
         return fork_point_id
