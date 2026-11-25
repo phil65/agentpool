@@ -3,18 +3,13 @@
 from __future__ import annotations
 
 import contextlib
-from fnmatch import fnmatch
-import os
 from pathlib import Path
 import re
-import time
-from typing import TYPE_CHECKING, Any, Literal
-from urllib.parse import urlparse
+from typing import TYPE_CHECKING, Literal
 
 import anyio
 from exxec.base import ExecutionEnvironment
 from pydantic_ai import (
-    BinaryContent,
     ModelResponse,
     ModelRetry,
     PartDeltaEvent,
@@ -25,11 +20,9 @@ from pydantic_ai import (
     ToolCallPart,
 )
 from sublime_search import replace_content
-from upathtools import is_directory
 
 from agentpool.agents.context import AgentContext  # noqa: TC001
 from agentpool.log import get_logger
-from agentpool.mime_utils import guess_type, is_binary_content, is_binary_mime
 from agentpool.resource_providers import ResourceProvider
 from agentpool.tool_impls.delete_path import create_delete_path_tool
 from agentpool.tool_impls.download_file import create_download_file_tool
@@ -42,10 +35,6 @@ from agentpool_toolsets.fsspec_toolset.diagnostics import (
     DiagnosticsConfig,
     DiagnosticsManager,
     format_diagnostics_table,
-)
-from agentpool_toolsets.fsspec_toolset.helpers import (
-    format_directory_listing,
-    truncate_lines,
 )
 from agentpool_toolsets.fsspec_toolset.streaming_diff_parser import (
     NewTextChunk,
@@ -66,7 +55,6 @@ if TYPE_CHECKING:
     from agentpool.messaging import MessageHistory
     from agentpool.prompts.conversion_manager import ConversionManager
     from agentpool.tools.base import Tool
-    from agentpool_toolsets.fsspec_toolset.grep import GrepBackend
 
 
 logger = get_logger(__name__)
@@ -137,7 +125,6 @@ class FSSpecTools(ResourceProvider):
         self.max_grep_output = max_grep_output_kb * 1024  # Convert KB to bytes
         self.use_subprocess_grep = use_subprocess_grep
         self._tools: list[Tool] | None = None
-        self._grep_backend: GrepBackend | None = None
         self._enable_diagnostics = enable_diagnostics
         self._diagnostics: DiagnosticsManager | None = None
         self._large_file_tokens = large_file_tokens
@@ -182,27 +169,6 @@ class FSSpecTools(ResourceProvider):
         if result.diagnostics:
             return format_diagnostics_table(result.diagnostics)
         return None
-
-    async def _get_file_map(
-        self, path: str, agent_ctx: AgentContext, content: str | None = None
-    ) -> str | None:
-        """Get structure map for a large file if language is supported.
-
-        Args:
-            path: Absolute file path (for language detection)
-            agent_ctx: Agent context for filesystem access
-            content: Optional pre-loaded file content (avoids duplicate read)
-
-        Returns:
-            Structure map string or None if language not supported
-        """
-        from agentpool.repomap import generate_file_outline
-
-        # Use centralized outline generation
-        fs = self._get_fs(agent_ctx)
-        return await generate_file_outline(
-            path, fs=fs, content=content, max_tokens=self._map_max_tokens
-        )
 
     def _resolve_path(self, path: str, agent_ctx: AgentContext) -> str:
         """Resolve a potentially relative path to an absolute path.
@@ -278,237 +244,6 @@ class FSSpecTools(ResourceProvider):
         self._tools.append(self.create_tool(self.regex_replace_lines, category="edit"))
 
         return self._tools
-
-    async def list_directory(  # noqa: D417
-        self,
-        agent_ctx: AgentContext,
-        path: str,
-        *,
-        pattern: str = "*",
-        exclude: list[str] | None = None,
-        max_depth: int = 1,
-    ) -> str:
-        """List files in a directory with filtering support.
-
-        Args:
-            path: Base directory to list
-            pattern: Glob pattern to match files against. Use "*.py" to match Python
-                files in current directory only, or "**/*.py" to match recursively.
-                The max_depth parameter limits how deep "**" patterns search.
-            exclude: List of patterns to exclude (uses fnmatch against relative paths)
-            max_depth: Maximum directory depth to search (default: 1 = current dir only).
-                Only affects recursive "**" patterns.
-
-        Returns:
-            Markdown-formatted directory listing
-        """
-        from agentpool.agents.events import TextContentItem
-
-        path = self._resolve_path(path, agent_ctx)
-        msg = f"Listing directory: {path}"
-        await agent_ctx.events.tool_call_start(title=msg, kind="read", locations=[path])
-
-        try:
-            fs = self._get_fs(agent_ctx)
-            # Check if path exists
-            if not await fs._exists(path):
-                error_msg = f"Path does not exist: {path}"
-                await agent_ctx.events.file_operation(
-                    "list", path=path, success=False, error=error_msg
-                )
-                return f"Error: {error_msg}"
-
-            # Build glob path
-            glob_pattern = f"{path.rstrip('/')}/{pattern}"
-            paths = await fs._glob(glob_pattern, maxdepth=max_depth, detail=True)
-            files: list[dict[str, Any]] = []
-            dirs: list[dict[str, Any]] = []
-            # Safety check - prevent returning too many items
-            total_found = len(paths)
-            if total_found > 500:  # noqa: PLR2004
-                suggestions = []
-                if pattern == "*":
-                    suggestions.append("Use a more specific pattern like '*.py', '*.txt', etc.")
-                if max_depth > 1:
-                    suggestions.append(f"Reduce max_depth from {max_depth} to 1 or 2.")
-                if not exclude:
-                    suggestions.append("Use exclude parameter to filter out unwanted directories.")
-
-                suggestion_text = " ".join(suggestions) if suggestions else ""
-                return f"Error: Too many items ({total_found:,}). {suggestion_text}"
-
-            for file_path, file_info in paths.items():
-                rel_path = os.path.relpath(str(file_path), path)
-                # Skip excluded patterns
-                if exclude and any(fnmatch(rel_path, pat) for pat in exclude):
-                    continue
-                # Use type from glob detail info, falling back to isdir only if needed
-                is_dir = await is_directory(fs, file_path, entry_type=file_info.get("type"))
-                item_info = {
-                    "name": Path(file_path).name,
-                    "path": file_path,
-                    "relative_path": rel_path,
-                    "size": file_info.get("size", 0),
-                    "type": "directory" if is_dir else "file",
-                }
-                if "mtime" in file_info:
-                    item_info["modified"] = file_info["mtime"]
-
-                if is_dir:
-                    dirs.append(item_info)
-                else:
-                    files.append(item_info)
-
-            await agent_ctx.events.file_operation("list", path=path, success=True)
-            result = format_directory_listing(path, dirs, files, pattern)
-            await agent_ctx.events.tool_call_progress(
-                title=f"Listed: {path}",
-                items=[TextContentItem(text=result)],
-                replace_content=True,
-            )
-        except (OSError, ValueError, FileNotFoundError) as e:
-            await agent_ctx.events.file_operation("list", path=path, success=False, error=str(e))
-            return f"Error: Could not list directory: {path}. Ensure path is absolute and exists."
-        else:
-            return result
-
-    async def read(  # noqa: D417
-        self,
-        agent_ctx: AgentContext,
-        path: str,
-        encoding: str = "utf-8",
-        line: int | None = None,
-        limit: int | None = None,
-    ) -> str | BinaryContent | list[str | BinaryContent]:
-        """Read the context of a text file, or use vision capabilites to read images or documents.
-
-        Args:
-            path: File path to read
-            encoding: Text encoding to use for text files (default: utf-8)
-            line: Optional line number to start reading from (1-based, text files only)
-            limit: Optional maximum number of lines to read (text files only)
-
-        Returns:
-            Text content for text files, BinaryContent for binary files (with optional
-            dimension note as list when image was resized), or dict with error
-        """
-        from agentpool.agents.events import FileContentItem, LocationContentItem
-        from agentpool.repomap import truncate_with_notice
-        from agentpool_toolsets.fsspec_toolset.image_utils import resize_image_if_needed
-
-        path = self._resolve_path(path, agent_ctx)
-        msg = f"Reading file: {path}"
-        # Emit progress - use 0 for line if negative (can't resolve until we read file)
-        # LocationContentItem/ToolCallLocation require line >= 0 per ACP spec
-        display_line = line if (line is not None and line > 0) else 0
-        await agent_ctx.events.tool_call_progress(
-            title=msg,
-            items=[LocationContentItem(path=path, line=display_line)],
-        )
-        try:
-            mime_type = guess_type(path)
-            # Fast path: known binary MIME types (images, audio, video, etc.)
-            if is_binary_mime(mime_type):
-                data = await self._get_fs(agent_ctx)._cat_file(path)
-                await agent_ctx.events.file_operation("read", path=path, success=True)
-                mime = mime_type or "application/octet-stream"
-                # Resize images if needed
-                if self._max_image_size and mime.startswith("image/"):
-                    data, mime, note = resize_image_if_needed(
-                        data, mime, self._max_image_size, self._max_image_bytes
-                    )
-                    if note:
-                        # Return resized image with dimension note for coordinate mapping
-                        return [note, BinaryContent(data=data, media_type=mime, identifier=path)]
-                return BinaryContent(data=data, media_type=mime, identifier=path)
-            # Read content and probe for binary (git-style null byte detection)
-            data = await self._get_fs(agent_ctx)._cat_file(path)
-            if is_binary_content(data):
-                # Binary file - return as BinaryContent for native model handling
-                await agent_ctx.events.file_operation("read", path=path, success=True)
-                mime = mime_type or "application/octet-stream"
-                # Resize images if needed
-                if self._max_image_size and mime.startswith("image/"):
-                    data, mime, note = resize_image_if_needed(
-                        data, mime, self._max_image_size, self._max_image_bytes
-                    )
-                    if note:
-                        return [note, BinaryContent(data=data, media_type=mime, identifier=path)]
-                return BinaryContent(data=data, media_type=mime, identifier=path)
-            content = data.decode(encoding)
-
-            # Check if file is too large and no targeted read requested
-            tokens_approx = len(content) // 4
-            if line is None and limit is None and tokens_approx > self._large_file_tokens:
-                # Try structure map for supported languages
-                map_result = await self._get_file_map(path, agent_ctx, content=content)
-                if map_result:
-                    await agent_ctx.events.file_operation("read", path=path, success=True)
-                    content = map_result
-                else:
-                    # Fallback: head + tail for unsupported languages
-                    content = truncate_with_notice(path, content)
-                    await agent_ctx.events.file_operation("read", path=path, success=True)
-            else:
-                # Normal read with optional offset/limit
-                lines = content.splitlines()
-                offset = (line - 1) if line else 0
-                result_lines, was_truncated = truncate_lines(
-                    lines, offset, limit, self.max_file_size
-                )
-                content = "\n".join(result_lines)
-                # Don't pass negative line numbers to events (ACP requires >= 0)
-                display_line = line if (line and line > 0) else 0
-                await agent_ctx.events.file_operation(
-                    "read", path=path, success=True, line=display_line
-                )
-                if was_truncated:
-                    content += f"\n\n[Content truncated at {self.max_file_size} bytes]"
-
-        except Exception as e:  # noqa: BLE001
-            await agent_ctx.events.file_operation("read", path=path, success=False, error=str(e))
-            return f"error: Failed to read file {path}: {e}"
-        else:
-            # Emit file content for UI display (formatted at ACP layer)
-            # Use non-negative line for display (negative lines are internal Python convention)
-            display_start_line = max(1, line) if line and line > 0 else None
-            await agent_ctx.events.tool_call_progress(
-                title=f"Read: {path}",
-                items=[FileContentItem(content=content, path=path, start_line=display_start_line)],
-                replace_content=True,
-            )
-            # Return raw content for agent
-            return content
-
-    async def read_as_markdown(self, agent_ctx: AgentContext, path: str) -> str | dict[str, Any]:  # noqa: D417
-        """Read file and convert to markdown text representation.
-
-        Args:
-            path: Path to read
-
-        Returns:
-            File content converted to markdown
-        """
-        from agentpool.agents.events import TextContentItem
-
-        assert self.converter is not None, "Converter required for read_as_markdown"
-        path = self._resolve_path(path, agent_ctx)
-        msg = f"Reading file as markdown: {path}"
-        await agent_ctx.events.tool_call_start(title=msg, kind="read", locations=[path])
-        try:
-            content = await self.converter.convert_file(path)
-            await agent_ctx.events.file_operation("read", path=path, success=True)
-            # Emit formatted content for UI display
-            await agent_ctx.events.tool_call_progress(
-                title=f"Read as markdown: {path}",
-                items=[TextContentItem(text=content)],
-                replace_content=True,
-            )
-        except Exception as e:  # noqa: BLE001
-            await agent_ctx.events.file_operation("read", path=path, success=False, error=str(e))
-            return f"Error: Failed to convert file {path}: {e}"
-        else:
-            return content
 
     async def write(  # noqa: D417
         self,
@@ -590,67 +325,6 @@ class FSSpecTools(ResourceProvider):
         except Exception as e:  # noqa: BLE001
             await agent_ctx.events.file_operation("write", path=path, success=False, error=str(e))
             return f"Error: Failed to write file {path}: {e}"
-
-    async def delete_path(  # noqa: D417
-        self, agent_ctx: AgentContext, path: str, recursive: bool = False
-    ) -> dict[str, Any]:
-        """Delete a file or directory.
-
-        Args:
-            path: Path to delete
-            recursive: Whether to delete directories recursively
-
-        Returns:
-            Dictionary with operation result
-        """
-        path = self._resolve_path(path, agent_ctx)
-        msg = f"Deleting path: {path}"
-        await agent_ctx.events.tool_call_start(title=msg, kind="delete", locations=[path])
-        try:
-            # Check if path exists and get its type
-            fs = self._get_fs(agent_ctx)
-            try:
-                info = await fs._info(path)
-                path_type = info.get("type", "unknown")
-            except FileNotFoundError:
-                msg = f"Path does not exist: {path}"
-                await agent_ctx.events.file_operation("delete", path=path, success=False, error=msg)
-                return {"error": msg}
-            except (OSError, ValueError) as e:
-                msg = f"Could not check path {path}: {e}"
-                await agent_ctx.events.file_operation("delete", path=path, success=False, error=msg)
-                return {"error": msg}
-
-            if path_type == "directory":
-                if not recursive:
-                    try:
-                        contents = await fs._ls(path)
-                        if contents:  # Check if directory is empty
-                            error_msg = (
-                                f"Directory {path} is not empty. "
-                                f"Use recursive=True to delete non-empty directories"
-                            )
-
-                            # Emit failure event
-                            await agent_ctx.events.file_operation(
-                                "delete", path=path, success=False, error=error_msg
-                            )
-
-                            return {"error": error_msg}
-                    except OSError, ValueError:
-                        pass  # Continue with deletion attempt
-
-                await fs._rm(path, recursive=recursive)
-            else:  # It's a file
-                await fs._rm(path)  # or _rm_file?
-
-        except Exception as e:  # noqa: BLE001
-            await agent_ctx.events.file_operation("delete", path=path, success=False, error=str(e))
-            return {"error": f"Failed to delete {path}: {e}"}
-        else:
-            result = {"path": path, "deleted": True, "type": path_type, "recursive": recursive}
-            await agent_ctx.events.file_operation("delete", path=path, success=True)
-            return result
 
     async def edit(  # noqa: D417
         self,
@@ -978,107 +652,6 @@ class FSSpecTools(ResourceProvider):
         msg = f"{param_name} text not found after line {after_line}: {search_text!r}"
         raise ValueError(msg)
 
-    async def grep(  # noqa: D417
-        self,
-        agent_ctx: AgentContext,
-        pattern: str,
-        path: str,
-        *,
-        file_pattern: str = "**/*",
-        case_sensitive: bool = False,
-        max_matches: int = 100,
-        context_lines: int = 0,
-    ) -> str:
-        """Search file contents for a pattern.
-
-        Args:
-            pattern: Regex pattern to search for
-            path: Base directory to search in
-            file_pattern: Glob pattern to filter files (e.g. "**/*.py")
-            case_sensitive: Whether search is case-sensitive
-            max_matches: Maximum number of matches to return
-            context_lines: Number of context lines before/after match
-
-        Returns:
-            Grep results as formatted text
-        """
-        from agentpool.agents.events import TextContentItem
-        from agentpool_toolsets.fsspec_toolset.grep import (
-            DEFAULT_EXCLUDE_PATTERNS,
-            detect_grep_backend,
-            grep_with_fsspec,
-            grep_with_subprocess,
-        )
-
-        resolved_path = self._resolve_path(path, agent_ctx)
-        msg = f"Searching for {pattern!r} in {resolved_path}"
-        await agent_ctx.events.tool_call_start(title=msg, kind="search", locations=[resolved_path])
-
-        result: dict[str, Any] | None = None
-        try:
-            # Try subprocess grep if configured and available
-            if self.use_subprocess_grep:
-                # Get execution environment for running grep command (never the
-                # agent's env for a custom filesystem: it would search the host)
-                env = self.execution_env or (None if self._custom_fs else agent_ctx.agent.env)
-                if env is not None:
-                    # Detect and cache grep backend
-                    if self._grep_backend is None:
-                        self._grep_backend = await detect_grep_backend(env)
-                    # Only use subprocess if we have a real grep backend
-                    if self._grep_backend != "fsspec":
-                        result = await grep_with_subprocess(
-                            env=env,
-                            pattern=pattern,
-                            path=resolved_path,
-                            backend=self._grep_backend,
-                            case_sensitive=case_sensitive,
-                            max_matches=max_matches,
-                            max_output_bytes=self.max_grep_output,
-                            exclude_patterns=DEFAULT_EXCLUDE_PATTERNS,
-                            use_gitignore=True,
-                            context_lines=context_lines,
-                        )
-
-            # Fallback to fsspec grep if subprocess didn't work
-            if result is None or "error" in result:
-                fs = self._get_fs(agent_ctx)
-                result = await grep_with_fsspec(
-                    fs=fs,
-                    pattern=pattern,
-                    path=resolved_path,
-                    file_pattern=file_pattern,
-                    case_sensitive=case_sensitive,
-                    max_matches=max_matches,
-                    max_output_bytes=self.max_grep_output,
-                    context_lines=context_lines,
-                )
-
-            if "error" in result:
-                return f"Error: {result['error']}"
-
-            # Format output
-            matches = result.get("matches", "")
-            match_count = result.get("match_count", 0)
-            was_truncated = result.get("was_truncated", False)
-
-            if not matches:
-                output = f"No matches found for pattern '{pattern}'"
-            else:
-                output = f"Found {match_count} matches:\n\n{matches}"
-                if was_truncated:
-                    output += "\n\n[Results truncated]"
-            # Emit formatted content for UI display
-            await agent_ctx.events.tool_call_progress(
-                title=f"Found {match_count} matches",
-                items=[TextContentItem(text=output)],
-                replace_content=True,
-            )
-        except Exception as e:  # noqa: BLE001
-            return f"Error: Grep failed: {e}"
-        else:
-            return output
-
     async def _read(self, agent_ctx: AgentContext, path: str, encoding: str = "utf-8") -> str:
         # with self.fs.open(path, "r", encoding="utf-8") as f:
         #     return f.read()
@@ -1089,91 +662,6 @@ class FSSpecTools(ResourceProvider):
         if isinstance(content, str):
             content = content.encode()
         await self._get_fs(agent_ctx)._pipe_file(path, content)
-
-    async def download_file(  # noqa: D417
-        self,
-        agent_ctx: AgentContext,
-        url: str,
-        target_dir: str = "downloads",
-        chunk_size: int = 8192,
-    ) -> dict[str, Any]:
-        """Download a file from URL to the toolset's filesystem.
-
-        Args:
-            url: URL to download from
-            target_dir: Directory to save the file (relative to cwd if set)
-            chunk_size: Size of chunks to download
-
-        Returns:
-            Status information about the download
-        """
-        import httpx2
-
-        start_time = time.time()
-        # Resolve target directory
-        target_dir = self._resolve_path(target_dir, agent_ctx)
-        msg = f"Downloading: {url}"
-        await agent_ctx.events.tool_call_start(title=msg, kind="read", locations=[url])
-        # Extract filename from URL
-        filename = Path(urlparse(url).path).name or "downloaded_file"
-        full_path = f"{target_dir.rstrip('/')}/{filename}"
-
-        try:
-            fs = self._get_fs(agent_ctx)
-            # Ensure target directory exists
-            await fs._makedirs(target_dir, exist_ok=True)
-            async with (
-                httpx2.AsyncClient() as client,
-                client.stream("GET", url, timeout=30.0) as response,
-            ):
-                response.raise_for_status()
-                total = int(i) if (i := response.headers["Content-Length"]) else None
-                # Collect all data
-                data = bytearray()
-                async for chunk in response.aiter_bytes(chunk_size):
-                    data.extend(chunk)
-                    size = len(data)
-
-                    if total and (size % (chunk_size * 100) == 0 or size == total):
-                        progress = size / total * 100
-                        speed_mbps = (size / 1_048_576) / (time.time() - start_time)
-                        progress_msg = f"\r{filename}: {progress:.1f}% ({speed_mbps:.1f} MB/s)"
-                        await agent_ctx.events.progress(progress, 100, progress_msg)
-                        await anyio.sleep(0)
-
-                # Write to filesystem
-                await self._write(agent_ctx, full_path, bytes(data))
-
-            duration = time.time() - start_time
-            size_mb = len(data) / 1_048_576
-
-            await agent_ctx.events.file_operation("read", path=full_path, success=True)
-
-            return {
-                "path": full_path,
-                "filename": filename,
-                "size_bytes": len(data),
-                "size_mb": round(size_mb, 2),
-                "duration_seconds": round(duration, 2),
-                "speed_mbps": round(size_mb / duration, 2) if duration > 0 else 0,
-            }
-
-        except httpx2.ConnectError as e:
-            error_msg = f"Connection error downloading {url}: {e}"
-            await agent_ctx.events.file_operation("read", path=url, success=False, error=error_msg)
-            return {"error": error_msg}
-        except httpx2.TimeoutException:
-            error_msg = f"Timeout downloading {url}"
-            await agent_ctx.events.file_operation("read", path=url, success=False, error=error_msg)
-            return {"error": error_msg}
-        except httpx2.HTTPStatusError as e:
-            error_msg = f"HTTP error {e.response.status_code} downloading {url}"
-            await agent_ctx.events.file_operation("read", path=url, success=False, error=error_msg)
-            return {"error": error_msg}
-        except Exception as e:  # noqa: BLE001
-            error_msg = f"Error downloading {url}: {e!s}"
-            await agent_ctx.events.file_operation("read", path=url, success=False, error=error_msg)
-            return {"error": error_msg}
 
     async def agentic_edit(  # noqa: D417
         self,
