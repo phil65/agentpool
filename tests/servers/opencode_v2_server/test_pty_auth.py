@@ -13,7 +13,7 @@ from agentpool_server.opencode_v2_server.server import create_app
 
 
 if TYPE_CHECKING:
-    from collections.abc import AsyncIterator
+    from collections.abc import AsyncIterator, MutableMapping
     from pathlib import Path
 
     from fastapi import FastAPI
@@ -40,7 +40,7 @@ async def secured_app(
 
 async def ws_handshake(
     app: FastAPI, *, query: str = "", headers: dict[str, str] | None = None
-) -> dict[str, Any]:
+) -> MutableMapping[str, Any]:
     """Open the PTY websocket and return the app's first answer (accept or close)."""
     raw_headers = [(b"host", b"127.0.0.1:4096")]
     raw_headers += [(k.lower().encode(), v.encode()) for k, v in (headers or {}).items()]
@@ -58,12 +58,12 @@ async def ws_handshake(
         "state": {},
     }
     incoming = [{"type": "websocket.connect"}]
-    sent: list[dict[str, Any]] = []
+    sent: list[MutableMapping[str, Any]] = []
 
     async def receive() -> dict[str, Any]:
         return incoming.pop(0) if incoming else {"type": "websocket.disconnect", "code": 1000}
 
-    async def send(message: dict[str, Any]) -> None:
+    async def send(message: MutableMapping[str, Any]) -> None:
         sent.append(message)
 
     await app(scope, receive, send)
@@ -116,18 +116,20 @@ async def test_websocket_with_ticket_is_accepted_once(secured_app: FastAPI) -> N
 async def test_connect_token_needs_the_ticket_header_and_an_allowed_origin(
     secured_app: FastAPI,
 ) -> None:
+    # Only the PTY's ID matters to connect-token: a stand-in, so no real PTY is needed
+    sessions = secured_app.state.v2_state.ptys.sessions
+    sessions[PTY_ID] = object()
     transport = ASGITransport(app=secured_app)
     auth = {"Authorization": f"Basic {CREDENTIAL}"}
-    async with AsyncClient(transport=transport, base_url="http://127.0.0.1:4096") as http:
-        created = await http.post("/api/pty", json={"command": "/bin/sh"}, headers=auth)
-        pty_id = created.json()["data"]["id"]
-        try:
-            url = f"/api/pty/{pty_id}/connect-token"
+    url = f"/api/pty/{PTY_ID}/connect-token"
+    try:
+        async with AsyncClient(transport=transport, base_url="http://127.0.0.1:4096") as http:
             assert (await http.post(url, headers=auth)).status_code == 403
             foreign = {**auth, "x-opencode-ticket": "1", "Origin": "https://evil.example"}
             assert (await http.post(url, headers=foreign)).status_code == 403
             response = await http.post(url, headers={**auth, "x-opencode-ticket": "1"})
             assert response.status_code == 200
-            assert response.json()["data"]["ticket"]
-        finally:
-            await http.delete(f"/api/pty/{pty_id}", headers=auth)
+            ticket = response.json()["data"]["ticket"]
+    finally:
+        del sessions[PTY_ID]
+    assert secured_app.state.v2_state.ptys.consume_ticket(ticket, PTY_ID)
