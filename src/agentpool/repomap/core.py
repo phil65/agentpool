@@ -7,12 +7,12 @@ to generate intelligent code structure maps.
 from __future__ import annotations
 
 from collections import Counter, defaultdict
+from dataclasses import dataclass, field
 import math
 from pathlib import PurePosixPath
-import re
-from typing import TYPE_CHECKING, Any, ClassVar, cast
+from typing import TYPE_CHECKING, Any, ClassVar
 
-from agentpool.repomap.tags import Tag, get_tags_from_content
+from agentpool.repomap.tags import FileTags, Tag, extract_file_tags
 from agentpool.repomap.utils import MIN_TOKEN_SAMPLE_SIZE, get_rel_path
 
 
@@ -27,8 +27,23 @@ if TYPE_CHECKING:
 CACHE_VERSION = 3
 MIN_IDENT_LENGTH = 5
 MAX_DEFINERS_THRESHOLD = 6
+INDENT = "  "
+MAX_SUMMARY_GROUPS = 12
+"""The omitted-files summary groups files by directory into at most this many lines."""
+MAX_SUMMARY_NAMES = 3
+"""File names listed per directory in the omitted-files summary."""
 
 RankedTag = Tag | tuple[str] | tuple[None]
+
+
+@dataclass
+class _MapRender:
+    """A rendered map plus what it contains."""
+
+    text: str = ""
+    shown_files: set[str] = field(default_factory=set)
+    shown_tags: int = 0
+    omitted_files: int = 0
 
 
 class RepoMap:
@@ -66,8 +81,6 @@ class RepoMap:
         self.max_line_length = max_line_length
         self._token_counter = token_counter
 
-        self.tree_cache: dict[tuple[str, tuple[int, ...], float | None], str] = {}
-        self.tree_context_cache: dict[str, dict[str, Any]] = {}
         self.TAGS_CACHE: dict[str, Any] = {}
 
     def token_count(self, text: str) -> float:
@@ -150,40 +163,23 @@ class RepoMap:
             Formatted structure map or None if no tags found
         """
         rel_fname = get_rel_path(fname, self.root_path)
-        # Get all definition tags for this file
-        tags = await self._get_tags(fname, rel_fname)
-        def_tags = [t for t in tags if t.kind == "def"]
+        file_tags = await self._get_file_tags(fname, rel_fname)
+        def_tags = [t for t in file_tags.tags if t.kind == "def"]
         if not def_tags:
             return None
-        # Build line ranges for rendering
-        lois: list[int] = []
-        line_ranges: dict[int, int] = {}
-        for tag in def_tags:
-            if tag.signature_end_line >= tag.line:
-                lois.extend(range(tag.line, tag.signature_end_line + 1))
-            else:
-                lois.append(tag.line)
-            if tag.end_line >= 0:
-                line_ranges[tag.line] = tag.end_line
-
-        # Render the tree
-        tree_output = await self._render_tree(fname, rel_fname, lois, line_ranges)
-
-        # Add header with file info
+        tree_output = "\n".join(self._render_file(rel_fname, def_tags, line_numbers=True)) + "\n"
         info = await self._info(fname)
         size_info = f", {info.size} bytes" if info else ""
         lines = (await self._cat_file(fname) or "").count("\n") + 1
         tokens = self.token_count(tree_output)
         header = (
             f"# File: {rel_fname} ({lines} lines{size_info})\n"
-            f"# Structure map ({tokens} tokens). Use offset/limit to read sections.\n\n"
+            f"# Structure map ({tokens:.0f} tokens). Use offset/limit to read sections.\n\n"
         )
-        result = header + f"{rel_fname}:\n" + tree_output
-        # Truncate if needed
+        result = header + tree_output
         max_chars = max_tokens * 4
         if len(result) > max_chars:
             result = result[:max_chars] + "\n... [truncated]\n"
-
         return result
 
     async def get_map(
@@ -261,19 +257,10 @@ class RepoMap:
         all_files_with_tags = {tag.fname if isinstance(tag, Tag) else tag[0] for tag in ranked_tags}
         total_files_with_tags = len(all_files_with_tags)
 
-        content = await self._get_ranked_tags_map(
-            files=files,
-            exclude=exclude,
-            boost_files=boost_files,
-            boost_idents=boost_idents,
-        )
-
-        if content:
-            included_files = len(set(re.findall(r"^([^:\s]+):", content, re.MULTILINE)))
-            included_tags = content.count(" def ") + content.count("class ")
-        else:
-            included_files = included_tags = 0
-
+        rendered = await self._render_ranked_map(files, ranked_tags, exclude)
+        content = rendered.text
+        included_files = len(rendered.shown_files)
+        included_tags = rendered.shown_tags
         coverage_ratio = (
             included_files / total_files_with_tags if total_files_with_tags > 0 else 0.0
         )
@@ -292,27 +279,23 @@ class RepoMap:
 
     async def _get_tags(self, fname: str, rel_fname: str) -> list[Tag]:
         """Get tags for a file, using cache when possible."""
+        return (await self._get_file_tags(fname, rel_fname)).tags
+
+    async def _get_file_tags(self, fname: str, rel_fname: str) -> FileTags:
+        """Get tags and module docstring of a file, using cache when possible."""
         info = await self._info(fname)
         if info is None:
-            return []
+            return FileTags([])
 
         file_mtime = info.mtime
         cached = self.TAGS_CACHE.get(fname)
         if cached is not None and cached.get("mtime") == file_mtime:
-            return cast(list[Tag], cached["data"])
+            return cached["data"]  # type: ignore[no-any-return]
 
-        data = await self._get_tags_raw(fname, rel_fname)
-
+        content = await self._cat_file(fname)
+        data = extract_file_tags(content, fname, rel_fname) if content else FileTags([])
         self.TAGS_CACHE[fname] = {"mtime": file_mtime, "data": data}
         return data
-
-    async def _get_tags_raw(self, fname: str, rel_fname: str) -> list[Tag]:
-        """Extract tags from a file using tree-sitter."""
-        content = await self._cat_file(fname)
-        if not content:
-            return []
-
-        return get_tags_from_content(content, fname)
 
     async def _get_ranked_tags(  # noqa: PLR0915
         self,
@@ -329,6 +312,13 @@ class RepoMap:
         definitions: defaultdict[tuple[str, str], set[Tag]] = defaultdict(set)
         personalization: dict[str, float] = {}
         exclude_rel_fnames: set[str] = set()
+
+        focus = [ident.lower() for ident in boost_idents]
+
+        def is_focused(name: str) -> bool:
+            """Whether a name matches a boosted identifier (case-insensitive substring)."""
+            lowered = name.lower()
+            return any(f in lowered for f in focus)
 
         sorted_fnames = sorted(files)
         personalize = 100 / len(sorted_fnames) if sorted_fnames else 0
@@ -351,26 +341,25 @@ class RepoMap:
                 current_pers = max(current_pers, personalize)
 
             path_obj = PurePosixPath(rel_fname)
-            path_components = set(path_obj.parts)
-            basename_with_ext = path_obj.name
-            basename_without_ext = path_obj.stem
-            components_to_check = path_components.union({basename_with_ext, basename_without_ext})
-
-            if components_to_check.intersection(boost_idents):
+            if any(is_focused(part) for part in (*path_obj.parts[:-1], path_obj.stem)):
                 current_pers += personalize
 
-            if current_pers > 0:
-                personalization[rel_fname] = current_pers
-
             tags = await self._get_tags(fname, rel_fname)
+            defines_focused = False
             for tag in tags:
                 match tag.kind:
                     case "def":
                         defines[tag.name].add(rel_fname)
                         key = (rel_fname, tag.name)
                         definitions[key].add(tag)
+                        defines_focused = defines_focused or is_focused(tag.name)
                     case "ref":
                         references[tag.name].append(rel_fname)
+            if defines_focused:
+                current_pers += personalize
+
+            if current_pers > 0:
+                personalization[rel_fname] = current_pers
 
         if not references:
             references = defaultdict(list, {k: list(v) for k, v in defines.items()})
@@ -403,7 +392,7 @@ class RepoMap:
             is_kebab = ("-" in ident) and any(c.isalpha() for c in ident)
             is_camel = any(c.isupper() for c in ident) and any(c.islower() for c in ident)
 
-            if ident in boost_idents:
+            if is_focused(ident):
                 mul *= 10
             if (is_snake or is_kebab or is_camel) and len(ident) >= MIN_IDENT_LENGTH:
                 mul *= 10
@@ -465,8 +454,14 @@ class RepoMap:
                 ranked_definitions[(dst_name, ident)] += edge_rank
 
         ranked_tags: list[RankedTag] = []
+        # Definitions matching a boosted identifier come first, the rest by rank.
+        for key in definitions:
+            if is_focused(key[1]):
+                ranked_definitions.setdefault(key, 0.0)
         sorted_definitions = sorted(
-            ranked_definitions.items(), reverse=True, key=lambda x: (x[1], x[0])
+            ranked_definitions.items(),
+            reverse=True,
+            key=lambda x: (is_focused(x[0][1]), x[1], x[0]),
         )
 
         for (fname, ident), _rank in sorted_definitions:
@@ -504,37 +499,70 @@ class RepoMap:
         max_tokens: int | None = None,
     ) -> str | None:
         """Generate ranked tags map within token budget."""
-        max_tokens = max_tokens or self.max_tokens
-
         ranked_tags = await self._get_ranked_tags(
             files=files,
             exclude=exclude,
             boost_files=boost_files,
             boost_idents=boost_idents,
         )
+        rendered = await self._render_ranked_map(files, ranked_tags, exclude, max_tokens)
+        return rendered.text or None
 
+    async def _render_ranked_map(
+        self,
+        files: Sequence[str],
+        ranked_tags: list[RankedTag],
+        exclude: set[str],
+        max_tokens: int | None = None,
+    ) -> _MapRender:
+        """Render as many top-ranked tags as fit the token budget.
+
+        The map ends with a summary of the files it does not show; the summary
+        counts against the budget too.
+        """
+        max_tokens = max_tokens or self.max_tokens
         if not ranked_tags:
-            return None
+            return _MapRender()
+
+        exclude_rel_fnames = {get_rel_path(fname, self.root_path) for fname in exclude}
+        all_rel_fnames = [get_rel_path(f, self.root_path) for f in files]
+        candidates = {f for f in all_rel_fnames if f not in exclude_rel_fnames}
+        # Files in rank order (the order of their first ranked tag), then the rest.
+        rank_order: dict[str, int] = {}
+        for tag in ranked_tags:
+            name = tag.rel_fname if isinstance(tag, Tag) else tag[0]
+            if name is not None and name not in rank_order:
+                rank_order[name] = len(rank_order)
+        for name in sorted(candidates):
+            rank_order.setdefault(name, len(rank_order))
+        # Module docstrings of all ranked files (tags are cached by now)
+        rel_to_abs = dict(zip(all_rel_fnames, files, strict=True))
+        module_docs = {
+            rel: (await self._get_file_tags(rel_to_abs[rel], rel)).doc
+            for rel in candidates
+            if rel in rel_to_abs
+        }
 
         num_tags = len(ranked_tags)
         lower_bound = 0
         upper_bound = num_tags
-        best_tree: str | None = None
-        best_tree_tokens: float = 0
-        exclude_rel_fnames = {get_rel_path(fname, self.root_path) for fname in exclude}
-        self.tree_cache = {}
-
+        best: _MapRender | None = None
+        best_tokens: float = 0
         middle = min(int(max_tokens // 25), num_tags)
 
         while lower_bound <= upper_bound:
-            tree = await self._to_tree(ranked_tags[:middle], exclude_rel_fnames)
-            num_tokens = self.token_count(tree)
+            rendered = self._to_tree(
+                ranked_tags[:middle], exclude_rel_fnames, module_docs, candidates, rank_order
+            )
+            num_tokens = self.token_count(rendered.text)
             pct_err = abs(num_tokens - max_tokens) / max_tokens if max_tokens else 0
-            ok_err = 0.15
+            ok_err = 0.05
 
-            if (num_tokens <= max_tokens and num_tokens > best_tree_tokens) or pct_err < ok_err:
-                best_tree = tree
-                best_tree_tokens = num_tokens
+            if (num_tokens <= max_tokens and num_tokens > best_tokens) or (
+                best is None and pct_err < ok_err
+            ):
+                best = rendered
+                best_tokens = num_tokens
                 if pct_err < ok_err:
                     break
 
@@ -545,137 +573,163 @@ class RepoMap:
 
             middle = (lower_bound + upper_bound) // 2
 
-        return best_tree
+        return best or _MapRender()
 
-    async def _render_tree(
+    def _to_tree(
         self,
-        abs_fname: str,
-        rel_fname: str,
-        lois: list[int],
-        line_ranges: dict[int, int] | None = None,
-    ) -> str:
-        """Render a tree representation of a file with lines of interest."""
-        from grep_ast import TreeContext  # type: ignore[import-untyped]
-
-        if line_ranges is None:
-            line_ranges = {}
-
-        info = await self._info(abs_fname)
-        mtime = info.mtime if info else None
-
-        key = (rel_fname, tuple(sorted(lois)), mtime)
-        if key in self.tree_cache:
-            return self.tree_cache[key]
-
-        cached = self.tree_context_cache.get(rel_fname)
-        if cached is None or cached["mtime"] != mtime:
-            code = await self._cat_file(abs_fname) or ""
-            if not code.endswith("\n"):
-                code += "\n"
-
-            context = TreeContext(
-                rel_fname,
-                code,
-                child_context=False,
-                last_line=False,
-                margin=0,
-                mark_lois=False,
-                loi_pad=0,
-                show_top_of_file_parent_scope=False,
-            )
-            self.tree_context_cache[rel_fname] = {"context": context, "mtime": mtime}
-
-        context = self.tree_context_cache[rel_fname]["context"]
-        context.lines_of_interest = set()
-        context.add_lines_of_interest(lois)
-        context.add_context()
-        res: str = context.format()
-
-        code = await self._cat_file(abs_fname) or ""
-        code_lines = code.splitlines()
-        lois_set = set(lois)
-        def_pattern = re.compile(r"^(.*?)(class\s+\w+|def\s+\w+|async\s+def\s+\w+)")
-        result_lines = []
-        for output_line in res.splitlines():
-            modified_line = output_line
-            match = def_pattern.search(output_line)
-            if not match:
+        tags: list[RankedTag],
+        exclude_rel_fnames: set[str],
+        module_docs: dict[str, str],
+        candidates: set[str],
+        rank_order: dict[str, int],
+    ) -> _MapRender:
+        """Render ranked tags grouped by file, plus a summary of the files not shown."""
+        by_file: dict[str, list[Tag]] = defaultdict(list)
+        for tag in tags:
+            name = tag.rel_fname if isinstance(tag, Tag) else tag[0]
+            if name is None or name in exclude_rel_fnames:
                 continue
-            stripped = output_line.lstrip("│ \t")
-            for line_num in lois_set:
-                if line_num <= len(code_lines):
-                    continue
-                orig_line = code_lines[line_num].strip()
-                if orig_line and stripped.startswith(orig_line.split("(")[0].split(":")[0]):
-                    name_match = re.search(
-                        r"(class\s+\w+|def\s+\w+|async\s+def\s+\w+)", output_line
-                    )
-                    if name_match:
-                        start_line_display = line_num + 1
-                        end_line = line_ranges.get(line_num, -1)
-                        if end_line >= 0 and end_line != line_num:
-                            end_line_display = end_line + 1
-                            line_info = f"  # [{start_line_display}-{end_line_display}]"
-                        else:
-                            line_info = f"  # [{start_line_display}]"
-                        modified_line = f"{output_line}{line_info}"
-                    break
-            result_lines.append(modified_line)
-
-        res = "\n".join(result_lines)
-        if result_lines:
-            res += "\n"
-
-        self.tree_cache[key] = res
-        return res
-
-    async def _to_tree(self, tags: list[RankedTag], exclude_rel_fnames: set[str]) -> str:
-        """Convert ranked tags to a tree representation."""
-        if not tags:
-            return ""
-
-        cur_fname: str | None = None
-        cur_abs_fname: str | None = None
-        lois: list[int] | None = None
-        line_ranges: dict[int, int] | None = None
-        output = ""
-
-        dummy_tag: tuple[None] = (None,)
-        for tag in [*sorted(tags, key=lambda t: str(t[0]) if t[0] else ""), dummy_tag]:
-            this_rel_fname = tag[0] if isinstance(tag, Tag) else (tag[0] if tag[0] else None)
-
+            file_tags = by_file[name]
             if isinstance(tag, Tag):
-                this_rel_fname = tag.rel_fname
-            elif tag[0] is not None:
-                this_rel_fname = tag[0]
-            else:
-                this_rel_fname = None
+                file_tags.append(tag)
 
-            if this_rel_fname and this_rel_fname in exclude_rel_fnames:
+        lines: list[str] = []
+        shown_tags = 0
+        for rel_fname in sorted(by_file):
+            file_tags = by_file[rel_fname]
+            doc = module_docs.get(rel_fname, "")
+            header = f"{rel_fname}:" if file_tags else rel_fname
+            lines.append(self._with_comment(header, doc))
+            if file_tags:
+                lines.extend(self._render_file(rel_fname, file_tags))
+                shown_tags += len(file_tags)
+
+        omitted = sorted(candidates - by_file.keys(), key=lambda f: rank_order.get(f, 0))
+        if omitted:
+            if lines:
+                lines.append("")
+            lines.extend(_summarize_omitted(omitted))
+        text = "\n".join(line[: self.max_line_length] for line in lines) + "\n"
+        return _MapRender(
+            text=text,
+            shown_files=set(by_file),
+            shown_tags=shown_tags,
+            omitted_files=len(omitted),
+        )
+
+    def _with_comment(self, line: str, comment: str) -> str:
+        """Append ``  # comment`` to a line if the result fits the line length."""
+        if not comment:
+            return line
+        combined = f"{line}  # {comment}"
+        return combined if len(combined) <= self.max_line_length else line
+
+    def _render_file(
+        self, rel_fname: str, tags: list[Tag], *, line_numbers: bool = False
+    ) -> list[str]:
+        """Render a file's definitions, one compact signature per line.
+
+        Enclosing definitions (e.g. the class of a shown method) are shown too,
+        nesting is shown by indentation.
+
+        Args:
+            rel_fname: The file, relative to the root path
+            tags: The definition tags to show
+            line_numbers: Append the 1-based line range of each definition
+        """
+        all_defs = {
+            t.line: t
+            for t in self._cached_tags(tags[0].fname) or tags
+            if t.kind == "def" and t.signature
+        }
+        wanted = {t.line: t for t in tags if t.kind == "def"}
+        for tag in list(wanted.values()):
+            for parent_line in tag.parent_lines:
+                if parent_line not in wanted and parent_line in all_defs:
+                    wanted[parent_line] = all_defs[parent_line]
+        out: list[str] = []
+        for line in sorted(wanted):
+            tag = wanted[line]
+            text = f"{INDENT * (len(tag.parent_lines) + 1)}{tag.signature or tag.name}"
+            if line_numbers:
+                end = tag.end_line if tag.end_line > line else line
+                span = f"{line + 1}-{end + 1}" if end > line else f"{line + 1}"
+                text += f"  # [{span}]"
+                if tag.doc:
+                    text += f" {tag.doc}"
+            elif not tag.parent_lines or tag.signature.startswith("class "):
+                # Docstrings of methods / nested functions cost more than they help
+                text = self._with_comment(text, tag.doc)
+            out.append(text)
+        return out
+
+    def _cached_tags(self, fname: str) -> list[Tag]:
+        """Return the cached tags of a file (empty if not cached)."""
+        cached = self.TAGS_CACHE.get(fname)
+        return cached["data"].tags if cached else []
+
+
+def _summarize_omitted(omitted: list[str]) -> list[str]:
+    """Summarize files left out of the map, grouped by directory.
+
+    Starts with one group per top-level directory and splits the largest groups
+    into subdirectories while the summary stays within ``MAX_SUMMARY_GROUPS``
+    lines (a group with most of the files is always split; small groups beyond
+    the limit end up in one "other" line). Each line names the top-ranked files
+    of its group (``omitted`` is in rank order).
+    """
+
+    def dir_key(rel: str, depth: int) -> str:
+        return "/".join(PurePosixPath(rel).parts[:-1][:depth])
+
+    groups: dict[str, list[str]] = defaultdict(list)
+    depths: dict[str, int] = {}
+    for rel in omitted:
+        key = dir_key(rel, 1)
+        groups[key].append(rel)
+        depths[key] = 1
+    split_done = True
+    while split_done:
+        split_done = False
+        for key in sorted(groups, key=lambda k: -len(groups[k])):
+            subgroups: dict[str, list[str]] = defaultdict(list)
+            for rel in groups[key]:
+                subgroups[dir_key(rel, depths[key] + 1)].append(rel)
+            if list(subgroups) == [key]:  # all files directly in this directory
                 continue
+            dominant = 2 * len(groups[key]) > len(omitted)
+            if len(groups) - 1 + len(subgroups) > MAX_SUMMARY_GROUPS and not dominant:
+                continue
+            del groups[key]
+            for sub_key, members in subgroups.items():
+                groups[sub_key] = members
+                depths[sub_key] = depths[key] + 1
+            split_done = True
+            break
 
-            if this_rel_fname != cur_fname:
-                if lois is not None and cur_fname and cur_abs_fname:
-                    output += "\n"
-                    output += cur_fname + ":\n"
-                    output += await self._render_tree(cur_abs_fname, cur_fname, lois, line_ranges)
-                    lois = None
-                    line_ranges = None
-                elif cur_fname:
-                    output += "\n" + cur_fname + "\n"
+    lines = [f"Not shown ({len(omitted)} files):"]
+    ordered = sorted(groups, key=lambda k: -len(groups[k]))
+    shown, rest = ordered[: MAX_SUMMARY_GROUPS - 1], ordered[MAX_SUMMARY_GROUPS - 1 :]
+    if len(rest) == 1:
+        shown, rest = ordered, []
+    for key in sorted(shown):
+        members = groups[key]
+        names = [_short_name(rel, key) for rel in members[:MAX_SUMMARY_NAMES]]
+        more = ", ..." if len(members) > MAX_SUMMARY_NAMES else ""
+        noun = "file" if len(members) == 1 else "files"
+        label = f"{key}/" if key else "./"
+        lines.append(f"{label}: {len(members)} {noun} ({', '.join(names)}{more})")
+    if rest:
+        count = sum(len(groups[key]) for key in rest)
+        names = ", ".join(f"{key}/" if key else "./" for key in sorted(rest))
+        lines.append(f"other: {count} files in {names}")
+    return lines
 
-                if isinstance(tag, Tag):
-                    lois = []
-                    line_ranges = {}
-                    cur_abs_fname = tag.fname
-                cur_fname = this_rel_fname
 
-            if lois is not None and line_ranges is not None and isinstance(tag, Tag):
-                if tag.signature_end_line >= tag.line:
-                    lois.extend(range(tag.line, tag.signature_end_line + 1))
-                else:
-                    lois.append(tag.line)
-                if tag.end_line >= 0:
-                    line_ranges[tag.line] = tag.end_line
-
-        return "\n".join([line[: self.max_line_length] for line in output.splitlines()]) + "\n"
+def _short_name(rel: str, group: str) -> str:
+    """Name of a file relative to its summary group, packages shown as ``pkg/``."""
+    name = rel[len(group) + 1 :] if group else rel
+    for index_name in ("__init__.py", "index.ts", "index.js", "mod.rs"):
+        if name.endswith("/" + index_name):
+            return name[: -len(index_name)]
+    return name
