@@ -1,5 +1,11 @@
 # MCP Events (SEP-3415) for agentpool
 
+> **2026-11-25: blocked on fastmcp 4.2.6.** 4.2.6 moved the events extension into its own package
+> `fastmcp-events` (module `fastmcp_events`, extra `fastmcp[events]`) with a new API: event types
+> are Pydantic models (`@events.event(name)` on a model, `emit()` / `reader()`) instead of
+> `EventPoll` -> `EventBatch` functions with an `input_schema`. agentpool pins `fastmcp<4.2.6`
+> until the server (`serve_events`), the triggers (`talk/mcp_events.py`) and the tests are migrated.
+
 Status: client side done 2026-11-23 (fastmcp 4.2.5 ships `fastmcp.experimental.events`): `mcp_event`
 triggers (`agentpool/talk/mcp_events.py`, run by the router's `Triggers`), with `events: true` on the
 MCP server config, resume from a stored cursor, start-time checks of event and arguments, and the

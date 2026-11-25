@@ -44,7 +44,8 @@ dependencies = [
   "evented>=1.0.5",
   "exxec>=0.10.1",  # 0.10.1: killing a process ends its tree on Windows too
   "fastapi",
-  "fastmcp>=4.2.5",  # 4.2.5: fastmcp.experimental.events
+  # <4.2.6: 4.2.6 moved events to fastmcp-events with a new API (see MCP_EVENTS.md)
+  "fastmcp>=4.2.5,<4.2.6",
   "fsspec",
   "httpx2>=2.16",
   "jinja2",
@@ -139,7 +140,7 @@ mcp-discovery = [
   "pyarrow>=19.0.0",
 ]  # MCP Discovery Toolset with semantic search
 mcp_run = ["mcpx-py>=0.7.0"]  # MCP.run Toolset
-mcp-tasks = ["fastmcp-tasks>=4.2.5"]  # MCP background tasks for serve-mcp (SEP-2663)
+mcp-tasks = ["fastmcp-tasks>=4.2.5,<4.2.6"]  # MCP background tasks for serve-mcp (SEP-2663)
 notifications = ["apprise>=1.9.5"]  # Notification Toolset
 promptlayer = ["promptlayer"]  # PromptLayer Prompt Hub
 tiktoken = ["tiktoken"]  # Exact token counting
