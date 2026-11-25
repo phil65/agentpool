@@ -147,6 +147,7 @@ class GrepTool(Tool[ToolResult]):
                             exclude_patterns=DEFAULT_EXCLUDE_PATTERNS,
                             use_gitignore=True,
                             context_lines=context_lines,
+                            file_pattern=file_pattern,
                         )
 
             # Fallback to fsspec grep if subprocess didn't work

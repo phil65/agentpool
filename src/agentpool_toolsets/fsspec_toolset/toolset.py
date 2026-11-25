@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import contextlib
+from dataclasses import replace
 from pathlib import Path
 import re
 from typing import TYPE_CHECKING, Literal
@@ -10,6 +11,7 @@ from typing import TYPE_CHECKING, Literal
 import anyio
 from exxec.base import ExecutionEnvironment
 from pydantic_ai import (
+    ModelRequest,
     ModelResponse,
     ModelRetry,
     PartDeltaEvent,
@@ -18,6 +20,7 @@ from pydantic_ai import (
     TextPart,
     TextPartDelta,
     ToolCallPart,
+    ToolReturnPart,
 )
 from sublime_search import replace_content
 
@@ -48,7 +51,6 @@ if TYPE_CHECKING:
 
     import fsspec
     from fsspec.asyn import AsyncFileSystem
-    from pydantic_ai import ModelRequest
 
     from agentpool.agents.base_agent import BaseAgent
     from agentpool.common_types import ModelType
@@ -461,7 +463,7 @@ class FSSpecTools(ResourceProvider):
             # Ensure content ends with newline for proper diff formatting
             return ToolResult(content=success_msg)
 
-    async def regex_replace_lines(
+    async def regex_replace_lines(  # noqa: PLR0915
         self,
         agent_ctx: AgentContext,
         path: str,
@@ -542,10 +544,11 @@ class FSSpecTools(ResourceProvider):
             end_idx = end_line  # end_line is inclusive, but list slice is exclusive
             # Compile regex pattern
             regex = re.compile(pattern)
-            # Guard against patterns that match empty strings (e.g. .*, [\s\S]*,
-            # \d*). These cause subn to replace both the actual content AND the
-            # empty string after it on every line, duplicating the replacement.
-            if regex.match("") is not None and replacement:
+            # Guard against patterns that match empty strings more than once per
+            # line (e.g. .*, [\s\S]*, \d*, $): subn replaces both the actual content
+            # AND the empty string after it, duplicating the replacement. Zero-width
+            # anchors that match once per line (e.g. ^) are fine.
+            if replacement and regex.match("") is not None and regex.subn("", "x\n")[1] > 1:
                 raise ModelRetry(  # noqa: TRY301
                     f"Pattern {pattern!r} matches the empty string, which causes "
                     "duplicate replacements per line. Use a non-optional quantifier "
@@ -586,6 +589,8 @@ class FSSpecTools(ResourceProvider):
             # Run diagnostics if enabled
             if diagnostics_output := await self._run_diagnostics(agent_ctx, path):
                 success_msg += f"\n\nDiagnostics:\n{diagnostics_output}"
+        except ModelRetry:
+            raise
         except Exception as e:  # noqa: BLE001
             error_msg = f"Error applying regex to file: {e}"
             await agent_ctx.events.file_operation("edit", path=path, success=False, error=error_msg)
@@ -727,29 +732,33 @@ class FSSpecTools(ResourceProvider):
         # But exclude the last message if it contains the current agentic_edit tool call
         # to avoid the sub-agent seeing "I'm calling agentic_edit" in its context
 
+        # Tool calls of the current run without a result yet (this agentic_edit call
+        # and any calls made in parallel to it) are left out: providers reject a
+        # history with unanswered tool calls, and the edit agent must not see itself.
+        answered = {
+            part.tool_call_id
+            for msg in run_ctx.messages
+            if isinstance(msg, ModelRequest)
+            for part in msg.parts
+            if isinstance(part, ToolReturnPart)
+        }
         for msg in run_ctx.messages:
             if isinstance(msg, ModelResponse):
-                # Filter out the agentic_edit tool call from the last response
                 filtered_parts = [
                     p
                     for p in msg.parts
-                    if not (isinstance(p, ToolCallPart) and p.tool_name == "agentic_edit")
+                    if not (isinstance(p, ToolCallPart) and p.tool_call_id not in answered)
                 ]
                 if filtered_parts:
-                    all_messages.append(ModelResponse(parts=filtered_parts))
+                    all_messages.append(replace(msg, parts=filtered_parts))
             else:
                 all_messages.append(msg)
-
-            # Inject CachePoint to cache everything up to this point
-            # if all_messages:
-            #     cache_request: ModelRequest = ModelRequest(parts=[CachePoint()])
-            #     all_messages.append(cache_request)
-
-            # Wrap in a single ChatMessage for the forked history
-            fork_history = MessageHistory(
-                messages=[ChatMessage(messages=all_messages, role="user", content="")]
-            )
-        fork_history = MessageHistory()
+        # Wrap in a single ChatMessage for the forked history
+        fork_history = (
+            MessageHistory(messages=[ChatMessage(messages=all_messages, role="user", content="")])
+            if all_messages
+            else MessageHistory()
+        )
         try:
             # Stream the edit using the same agent but with forked history
             if mode == "edit" and matcher == "zed":
@@ -974,10 +983,11 @@ class FSSpecTools(ResourceProvider):
                                         new_text,
                                         replace_all=False,
                                     )
+                                    edited_content = result.content
                                     await agent_ctx.events.file_edit_progress(
                                         path=path,
                                         old_text=original_content,
-                                        new_text=result.content,
+                                        new_text=edited_content,
                                         status="in_progress",
                                     )
                                 except ValueError as e:
