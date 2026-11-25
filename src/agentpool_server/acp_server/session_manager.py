@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING, Any, Self
 from aclientp.schema import ClientCapabilities
 
 from agentpool.log import get_logger
+from agentpool.mcp_server.shared import SharedMCPConnections
 from agentpool.sessions import SessionData
 from agentpool_server.acp_server.session import ACPSession
 from agentpool_server.acp_server.v1_output import V1SessionOutput
@@ -48,6 +49,8 @@ class ACPSessionManager:
         self._active: dict[str, ACPSession] = {}
         self._lock = asyncio.Lock()
         self._command_update_task: asyncio.Task[None] | None = None
+        self.client_mcp = SharedMCPConnections(name="client_mcp")
+        """The MCP servers clients send with their sessions, shared by the sessions."""
         logger.info("Initialized ACP session manager")
 
     @property
@@ -276,6 +279,7 @@ class ACPSessionManager:
                 await session.close()
             except Exception:
                 logger.exception("Error closing session", session=session.session_id)
+        await self.client_mcp.close()
         logger.info("Closed all %d ACP sessions", len(sessions))
 
     def _on_commands_updated(self) -> None:

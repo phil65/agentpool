@@ -27,7 +27,6 @@ from agentpool.utils.inspection import get_fn_name
 
 if TYPE_CHECKING:
     from collections.abc import AsyncGenerator, Sequence
-    from contextlib import AbstractAsyncContextManager
     from types import TracebackType
 
     from upathtools import JoinablePathLike
@@ -160,6 +159,9 @@ class AgentPool[TPoolDeps = None](BaseRegistry[NodeName, MessageNode[Any, Any]])
         self.pool_talk = TeamTalk[Any].from_nodes(list(self.nodes.values()))
         self._enter_lock = Lock()  # Initialize async safety fields
         self._running_count = 0
+        self.failed_nodes: dict[str, str] = {}
+        """Nodes that failed to start (name -> error). The others run without them;
+        using one raises that error (``check_node``)."""
 
     async def __aenter__(self) -> Self:
         """Enter async context and initialize all agents."""
@@ -178,14 +180,7 @@ class AgentPool[TPoolDeps = None](BaseRegistry[NodeName, MessageNode[Any, Any]])
                     agent.tools.add_provider(aggregating_provider)
                 # Initialize storage
                 await self.exit_stack.enter_async_context(self.storage)
-                # Initialize agents and teams (can be parallel)
-                comps: list[AbstractAsyncContextManager[Any]] = [*agents, *teams]
-                node_inits = [self.exit_stack.enter_async_context(c) for c in comps]
-                if self.parallel_load:
-                    await asyncio.gather(*node_inits)
-                else:
-                    for init in node_inits:
-                        await init
+                await self._enter_nodes([*agents, *teams])  # Can be parallel
                 # Triggers last (they run nodes), so they stop first
                 await self.exit_stack.enter_async_context(self.router.triggers)
 
@@ -217,6 +212,38 @@ class AgentPool[TPoolDeps = None](BaseRegistry[NodeName, MessageNode[Any, Any]])
                     agent.tools.remove_provider(aggregating_provider.name)
                 await self.cleanup()
 
+    async def _enter_nodes(self, nodes: Sequence[MessageNode[Any, Any]]) -> None:
+        """Enter ``nodes``; one that fails is logged and recorded, the others run.
+
+        Concurrent entering is structured: when it is cancelled, no node is left
+        entering into an exit stack that is being closed.
+        """
+
+        async def enter(node: MessageNode[Any, Any]) -> None:
+            try:
+                await self.exit_stack.enter_async_context(node)
+            except Exception as e:
+                error = f"{e}: {e.__cause__}" if e.__cause__ is not None else str(e)
+                self.failed_nodes[node.name] = error or type(e).__name__
+                logger.exception("Node failed to start, continuing without it", node=node.name)
+
+        if self.parallel_load:
+            async with asyncio.TaskGroup() as group:
+                for node in nodes:
+                    group.create_task(enter(node))
+        else:
+            for node in nodes:
+                await enter(node)
+
+    def check_node(self, name: str) -> None:
+        """Raise if node ``name`` failed to start.
+
+        Raises:
+            RuntimeError: With the error it failed with
+        """
+        if (error := self.failed_nodes.get(name)) is not None:
+            raise RuntimeError(f"Agent {name!r} failed to start: {error}")
+
     @property
     def is_running(self) -> bool:
         """Check if the agent pool is running."""
@@ -227,6 +254,7 @@ class AgentPool[TPoolDeps = None](BaseRegistry[NodeName, MessageNode[Any, Any]])
         # Clean up background processes
         await self.process_manager.cleanup()
         await self.exit_stack.aclose()
+        self.failed_nodes.clear()
         self.clear()
 
     @overload
@@ -501,6 +529,7 @@ class AgentPool[TPoolDeps = None](BaseRegistry[NodeName, MessageNode[Any, Any]])
         Raises:
             KeyError: If agent name not found
             ValueError: If configuration is invalid
+            RuntimeError: If the agent failed to start
         """
         from agentpool.agents.base_agent import BaseAgent
 
@@ -511,6 +540,7 @@ class AgentPool[TPoolDeps = None](BaseRegistry[NodeName, MessageNode[Any, Any]])
                 base = self.get_agents()[agent]
             case _ as unreachable:
                 assert_never(unreachable)
+        self.check_node(base.name)
         # Use custom deps if provided, otherwise use shared deps
         # base.context.data = deps if deps is not None else self.shared_deps
         base.deps_type = deps_type

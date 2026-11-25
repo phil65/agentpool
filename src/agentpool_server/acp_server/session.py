@@ -16,6 +16,7 @@ import subprocess
 import sys
 from typing import TYPE_CHECKING, Any, Literal, assert_never
 
+from aclientp import RequestError
 from aclientp.agent.acp_requests import ACPRequests
 from aclientp.agent.notifications import ACPNotifications
 from aclientp.filesystem import ACPFileSystem
@@ -23,6 +24,7 @@ from aclientp.schema import ClientCapabilities
 from exxec.acp_provider import ACPExecutionEnvironment
 from exxec.local_provider import LocalExecutionEnvironment
 import logfire
+from pydantic_ai.exceptions import UserError
 from slashed import CommandStore
 
 from agentpool.agents.acp_agent import ACPAgent
@@ -30,7 +32,9 @@ from agentpool.agents.events import StreamCompleteEvent
 from agentpool.agents.modes import ConfigOptionChanged
 from agentpool.agents.staged_content import StagedContent
 from agentpool.log import get_logger
+from agentpool.mcp_server.shared import SharedMCPConnections
 from agentpool.sessions.environment import SessionEnvironment, use_session_environment
+from agentpool.skills.provider import WorkspaceSkillsProvider
 from agentpool.turns import (
     TurnCancelled,
     TurnCompleted,
@@ -69,8 +73,10 @@ if TYPE_CHECKING:
     from agentpool import AgentPool
     from agentpool.agents.base_agent import BaseAgent
     from agentpool.common_types import PathReference
+    from agentpool.resource_providers.mcp_provider import MCPResourceProvider
     from agentpool.sessions import Session as PoolSession
     from agentpool.turns import TurnOutcome
+    from agentpool_config.mcp_server import MCPServerConfig
     from agentpool_server.acp_server.acp_agent import AgentPoolACPAgent
     from agentpool_server.acp_server.output import AgentStateChange, SessionOutput
     from agentpool_server.acp_server.session_manager import ACPSessionManager
@@ -257,6 +263,17 @@ class ACPSession:
     - 'tool_box': Subagent output contained in the tool call's progress box (default)
     """
 
+    skills_loading: asyncio.Task[None] | None = field(default=None, init=False, repr=False)
+    """Discovery of the client's workspace skills; the first turn waits for it."""
+
+    mcp_providers: list[MCPResourceProvider] = field(default_factory=list, init=False)
+    """The client's MCP servers (``mcp_servers``) connected for this session only."""
+
+    mcp_errors: dict[str, str] = field(default_factory=dict, init=False)
+    """Client MCP servers that failed to connect (name -> error)."""
+
+    _own_mcp_connections: SharedMCPConnections | None = field(default=None, init=False, repr=False)
+
     def __post_init__(self) -> None:
         """Initialize session state and set up providers."""
         self.mcp_servers = self.mcp_servers or []
@@ -273,6 +290,8 @@ class ACPSession:
         self._commands_update: asyncio.Task[None] | None = None
         self.rules_loading: asyncio.Task[str | None] | None = None
         """Reading of the AGENTS.md / CLAUDE.md rules; the first turn waits for it."""
+        self.workspace_skills = WorkspaceSkillsProvider(owner=self.session_id)
+        """Skills of the client's workspace roots, for this session only."""
         self.staged = StagedContent()
         """Context for this session's next prompt. Kept here, not on the agent: sessions
         may share an agent instance, and its staged content goes to whichever turn is next."""
@@ -428,25 +447,53 @@ class ACPSession:
         """Initialize async resources. Must be called after construction."""
         await self.env.__aenter__()
 
+    @property
+    def mcp_connections(self) -> SharedMCPConnections:
+        """Where the client's MCP servers are connected: shared by the manager's sessions."""
+        if self.manager is not None:
+            return self.manager.client_mcp
+        if self._own_mcp_connections is None:
+            self._own_mcp_connections = SharedMCPConnections()
+        return self._own_mcp_connections
+
     async def initialize_mcp_servers(self) -> None:
-        """Initialize MCP servers if any are configured."""
+        """Connect the client's MCP servers for this session (concurrently).
+
+        They belong to the session, not to the agent other sessions share: their
+        tools, prompts and resources only show up in this session's turns (see
+        ``environment``). Sessions asking for the same server share its connection.
+        A server that fails is logged and left out.
+        """
         if not self.mcp_servers:
             return
         self.log.info("Initializing MCP servers", server_count=len(self.mcp_servers))
-        # Add each MCP server to the current agent's MCP manager dynamically
-        for server in self.mcp_servers:
-            cfg = convert_acp_mcp_server_to_config(server)
+        configs = [convert_acp_mcp_server_to_config(server) for server in self.mcp_servers]
+
+        async def connect(cfg: MCPServerConfig) -> None:
+            name = cfg.name or cfg.client_id
             try:
-                await self.agent.mcp.setup_server(cfg)
-                self.log.info("Added MCP server", server_name=cfg.name, agent=self.agent.name)
+                provider = await self.mcp_connections.acquire(cfg)
+            except Exception as e:
+                self.mcp_errors[name] = str(e.__cause__ or e)
+                self.log.exception("Failed to set up MCP server", server_name=name)
+                return
+            self.mcp_providers.append(provider)
+            self.log.info("Added MCP server", server_name=name)
+
+        async with asyncio.TaskGroup() as group:
+            unique = {SharedMCPConnections.key(cfg): cfg for cfg in configs}  # Each once
+            for cfg in unique.values():
+                group.create_task(connect(cfg))
+
+    async def _release_mcp_servers(self) -> None:
+        providers, self.mcp_providers = self.mcp_providers, []
+        for provider in providers:
+            try:
+                await self.mcp_connections.release(provider)
             except Exception:
-                self.log.exception("Failed to setup MCP server", server_name=cfg.name)
-                # Don't fail session creation, just log the error
-        # Register MCP prompts as commands after all servers are added
-        try:
-            await self._register_mcp_prompts_as_commands()
-        except Exception:
-            self.log.exception("Failed to register MCP prompts as commands")
+                self.log.exception("Failed to release MCP server", server=provider.name)
+        if self._own_mcp_connections is not None:
+            await self._own_mcp_connections.close()
 
     @property
     def client_skill_dirs(self) -> list[str]:
@@ -469,18 +516,20 @@ class ACPSession:
         """Discover and load skills from the client's workspace roots.
 
         Read over ACP when the client provides the filesystem; otherwise the
-        roots are local paths on this host.
+        roots are local paths on this host. They are this session's
+        (``workspace_skills``), not the pool's: sessions of other workspaces
+        don't see them.
         """
-        manager = self.agent_pool.skills
+        skills = self.workspace_skills
         for skills_dir in self.client_skill_dirs:
             try:
                 if isinstance(self.fs, ACPFileSystem):
-                    await manager.add_skills_directory(skills_dir, fs=self.fs)
+                    await skills.add_skills_directory(skills_dir, fs=self.fs)
                 else:
-                    await manager.add_skills_directory(skills_dir)
+                    await skills.add_skills_directory(skills_dir)
             except Exception:
                 self.log.exception("Failed to discover client-side skills", path=skills_dir)
-        skill_count = len(manager.list_skills())
+        skill_count = len(await skills.get_skills())
         self.log.info("Collected client-side skills", skill_count=skill_count)
 
     @property
@@ -499,7 +548,10 @@ class ACPSession:
         Agents are shared by sessions: the session makes it current while it acts
         (``use_session_environment``), instead of setting it on them.
         """
-        return SessionEnvironment(env=self.env, instructions=self.get_cwd_context())
+        providers = (*self.mcp_providers, self.workspace_skills)  # This session's own
+        return SessionEnvironment(
+            env=self.env, instructions=self.get_cwd_context(), providers=providers
+        )
 
     def get_cwd_context(self) -> str:
         """Get workspace and client instructions context for prompts."""
@@ -570,11 +622,13 @@ class ACPSession:
 
         Raises:
             ValueError: If agent not found in pool
+            RuntimeError: If the agent failed to start
         """
         agents = self.agent_pool.all_agents
         if agent_name not in agents:
             available = list(agents.keys())
             raise ValueError(f"Agent {agent_name!r} not found. Available: {available}")
+        self.agent_pool.check_node(agent_name)  # One that failed to start can't be used
         old_agent_name = self.agent.name
         self._watch_agent_commands(self.agent, watch=False)
         self.agent = agents[agent_name]
@@ -625,6 +679,10 @@ class ACPSession:
                 return "cancelled"
             case TurnLimitReached(message=message):
                 return infer_stop_reason(message)
+            case TurnFailed(error=UserError() as error):
+                # Not the agent's failure but its setup's (e.g. tools whose names clash):
+                # the request fails instead of the turn ending as if all was well
+                raise RequestError.internal_error({"details": str(error)})
             case TurnFailed():
                 return "end_turn"
             case TurnRefused():
@@ -686,6 +744,7 @@ class ACPSession:
         if not non_command_content:
             return TurnCompleted()
         self.log.debug("Processing prompt", content_items=len(non_command_content))
+        await self._wait_for_skills()
         await self._wait_for_rules()
         if staged := await self.staged.consume_as_context():
             non_command_content = [*non_command_content, staged]
@@ -693,6 +752,16 @@ class ACPSession:
         outcome = await self._stream_agent(non_command_content, output)
         await output.finish(outcome)
         return outcome
+
+    async def _wait_for_skills(self) -> None:
+        """Let the client's workspace skills be discovered before the first turn uses them."""
+        if (task := self.skills_loading) is None:
+            return
+        self.skills_loading = None
+        try:
+            await task
+        except Exception:  # The turn runs without them
+            self.log.exception("Failed to load the client's skills")
 
     async def _wait_for_rules(self) -> None:
         """Stage the rules first, so they go into this turn's prompt and no later one."""
@@ -791,6 +860,9 @@ class ACPSession:
                 self.agent.agent_pool.sessions.remove(self.session_id)
             if self._commands_update is not None:
                 self._commands_update.cancel()
+            if self.skills_loading is not None:
+                self.skills_loading.cancel()
+            await self._release_mcp_servers()
 
             # Note: Individual agents are managed by the pool's lifecycle
             # The pool will handle agent cleanup when it's closed
@@ -805,9 +877,11 @@ class ACPSession:
         except Exception:
             self.log.exception("Failed to send available commands update")
 
-    async def _register_mcp_prompts_as_commands(self) -> None:
-        """Register MCP prompts as slash commands."""
-        if all_prompts := await self.agent.tools.list_prompts():
+    async def register_mcp_prompts_as_commands(self) -> None:
+        """Register MCP prompts as slash commands: the pool's, the agent's and this session's."""
+        with use_session_environment(self.environment):
+            all_prompts = await self.agent.tools.list_prompts()
+        if all_prompts:
             for prompt in all_prompts:
                 command = prompt.create_mcp_command(self.staged)
                 self.command_store.register_command(command)

@@ -67,18 +67,30 @@ class ToolManager:
             self.builtin_provider.add_tool(tool)
 
     @property
+    def scoped_external_providers(self) -> list[ResourceProvider]:
+        """External providers plus those of the session acting in this context.
+
+        Agents are shared by sessions: a session's own resources (its client's MCP
+        servers, its workspace skills) only show up in its own turns.
+        """
+        from agentpool.sessions.environment import current_session_providers
+
+        return [*self.external_providers, *current_session_providers()]
+
+    @property
     def providers(self) -> list[ResourceProvider]:
-        """Get all providers: external + worker + builtin providers."""
+        """Get all providers: external (+ the acting session's) + worker + builtin providers."""
+        external = self.scoped_external_providers
         if self.tool_mode == "codemode":
             # Update the providers list with current providers
             self._codemode_provider.providers[:] = [
-                *self.external_providers,
+                *external,
                 self.worker_provider,
                 self.builtin_provider,
             ]
             return [self._codemode_provider]
 
-        return [*self.external_providers, self.worker_provider, self.builtin_provider]
+        return [*external, self.worker_provider, self.builtin_provider]
 
     async def __prompt__(self) -> str:
         enabled_tools = [t.name for t in await self.get_tools() if t.enabled]
@@ -167,11 +179,17 @@ class ToolManager:
         from agentpool.mcp_server.manager import MCPManager
         from agentpool.prompts.prompts import MCPClientPrompt as MCPPrompt
         from agentpool.resource_providers import AggregatingResourceProvider
+        from agentpool.resource_providers.mcp_provider import MCPResourceProvider
 
         all_prompts: list[MCPClientPrompt] = []
         # Get prompts from all external providers (check if they're MCP providers)
-        for provider in self.external_providers:
-            if isinstance(provider, MCPManager):
+        for provider in self.scoped_external_providers:
+            if isinstance(provider, MCPResourceProvider):  # A session's client server
+                try:
+                    all_prompts.extend(await provider.get_prompts())
+                except Exception:
+                    logger.exception("Failed to get prompts from provider", provider=provider)
+            elif isinstance(provider, MCPManager):
                 agg_provider = provider.get_aggregating_provider()
                 try:
                     prompts = await agg_provider.get_prompts()

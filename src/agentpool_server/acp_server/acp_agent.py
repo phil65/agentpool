@@ -288,7 +288,16 @@ class AgentPoolACPAgent(ACPAgent):
         params: NewSessionRequest | LoadSessionRequest | ResumeSessionRequest | ForkSessionRequest,
         session_id: str | None = None,
     ) -> ACPSession:
-        """Create an ACP session from a session setup request."""
+        """Create an ACP session from a session setup request.
+
+        Raises:
+            RequestError: The session's agent failed to start
+        """
+        if (pool := self.default_agent.agent_pool) is not None:
+            try:
+                pool.check_node(self.default_agent.name)
+            except RuntimeError as e:
+                raise RequestError.internal_error({"details": str(e)}) from e
         session = await self.session_manager.create_session(
             agent=self.default_agent,
             cwd=params.cwd or "",
@@ -353,11 +362,14 @@ class AgentPoolACPAgent(ACPAgent):
     def _start_session_tasks(self, session: ACPSession, *, new: bool) -> None:
         """Start the setup tasks of ``session`` (see ``_schedule_session_setup``)."""
         self.tasks.create_task(session.send_available_commands_update())
+        # The prompts of the pool's, the agent's and the session's MCP servers
+        self.tasks.create_task(session.register_mcp_prompts_as_commands())
         if new:
             session.rules_loading = self.tasks.create_task(session.agent.read_rules(session.cwd))
         if self.load_skills:
             coro = session.init_client_skills()
-            self.tasks.create_task(coro, name=f"init_client_skills_{session.session_id}")
+            name = f"init_client_skills_{session.session_id}"
+            session.skills_loading = self.tasks.create_task(coro, name=name)
 
     async def new_session(self, params: NewSessionRequest) -> NewSessionResponse:
         """Create a new session."""

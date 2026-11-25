@@ -33,7 +33,13 @@ def _write_skill(root: Path, name: str) -> None:
     (skill_dir / "SKILL.md").write_text(dedent(content), encoding="utf-8")
 
 
-def _skill_names(agent: Agent) -> set[str]:
+async def _skill_names(acp_agent: AgentPoolACPAgent, session_id: str) -> set[str]:
+    session = acp_agent.session_manager.get_session(session_id)
+    assert session is not None
+    return {skill.name for skill in await session.workspace_skills.get_skills()}
+
+
+def _pool_skill_names(agent: Agent) -> set[str]:
     pool = agent.agent_pool
     assert pool is not None
     return {skill.name for skill in pool.skills.list_skills()}
@@ -67,10 +73,10 @@ async def test_session_loads_skills_from_cwd_and_additional_directories(
     acp_agent = AgentPoolACPAgent(client=client, default_agent=default_test_agent)
     await acp_agent.initialize(InitializeRequest(protocol_version=1))
     request = NewSessionRequest(cwd=str(project), additional_directories=[str(shared)])
-    await acp_agent.new_session(request)
+    response = await acp_agent.new_session(request)
     await acp_agent.tasks.complete_tasks()
 
-    names = _skill_names(default_test_agent)
+    names = await _skill_names(acp_agent, response.session_id)
     assert {"project-skill", "shared-skill"} <= names
 
 
@@ -84,8 +90,28 @@ async def test_forked_session_loads_client_skills(
 
     source = await acp_agent.new_session(NewSessionRequest(cwd=str(tmp_path)))
     request = ForkSessionRequest(session_id=source.session_id, cwd=str(tmp_path))
-    await acp_agent.fork_session(request)
+    fork = await acp_agent.fork_session(request)
     await acp_agent.tasks.complete_tasks()
 
-    names = _skill_names(default_test_agent)
-    assert "fork-skill" in names
+    assert "fork-skill" in await _skill_names(acp_agent, fork.session_id)
+
+
+async def test_client_skills_stay_in_their_session(
+    tmp_path: Path, default_test_agent: Agent
+) -> None:
+    """Skills of one workspace don't leak into the pool or other workspaces' sessions."""
+    first, second = tmp_path / "first", tmp_path / "second"
+    first.mkdir()
+    second.mkdir()
+    _write_skill(first, "first-skill")
+    client = HeadlessACPClient(working_dir=tmp_path)
+    acp_agent = AgentPoolACPAgent(client=client, default_agent=default_test_agent)
+    await acp_agent.initialize(InitializeRequest(protocol_version=1))
+
+    a = await acp_agent.new_session(NewSessionRequest(cwd=str(first)))
+    b = await acp_agent.new_session(NewSessionRequest(cwd=str(second)))
+    await acp_agent.tasks.complete_tasks()
+
+    assert "first-skill" in await _skill_names(acp_agent, a.session_id)
+    assert "first-skill" not in await _skill_names(acp_agent, b.session_id)
+    assert "first-skill" not in _pool_skill_names(default_test_agent)

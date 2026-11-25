@@ -28,9 +28,10 @@ MAX_FILE_BYTES = 10 * 1024 * 1024
 async def collect_skills(ctx: AgentContext) -> dict[str, Skill]:
     """Collect the skills visible to the calling agent, keyed by qualified name.
 
-    These are the pool's skills (addressed by bare name) and the skills of the
-    agent's resource providers, such as its MCP servers (addressed as
-    ``<server>/<name>``). A qualified name is never reassigned: when two
+    These are the pool's skills (addressed by bare name), the skills of the acting
+    session's workspace (bare names too, replacing pool skills of the same name)
+    and the skills of the agent's resource providers, such as its MCP servers
+    (addressed as ``<server>/<name>``). A qualified name is never reassigned: when two
     providers publish the same one, the later skill is skipped with a warning,
     so no source can shadow another's skill.
 
@@ -40,11 +41,19 @@ async def collect_skills(ctx: AgentContext) -> dict[str, Skill]:
     Returns:
         Mapping of qualified name to skill, in discovery order.
     """
+    from agentpool.skills.provider import WorkspaceSkillsProvider
+
     catalog: dict[str, Skill] = {}
     if ctx.pool is not None:
         for skill in ctx.pool.skills.list_skills():
             catalog[skill.qualified_name] = skill
-    for provider in ctx.agent.tools.external_providers:
+    providers = ctx.agent.tools.scoped_external_providers  # With the session's own
+    for provider in providers:
+        if isinstance(provider, WorkspaceSkillsProvider):  # The session's workspace wins
+            catalog.update({s.qualified_name: s for s in await provider.get_skills()})
+    for provider in providers:
+        if isinstance(provider, WorkspaceSkillsProvider):
+            continue
         for skill in await provider.get_skills():
             key = skill.qualified_name
             if (existing := catalog.get(key)) is not None and existing is not skill:

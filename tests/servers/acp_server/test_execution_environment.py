@@ -120,11 +120,9 @@ async def test_client_without_capabilities_loads_local_skills(
     content = "---\nname: local-skill\ndescription: A local skill\n---\n\nDo local things.\n"
     (skill_dir / "SKILL.md").write_text(content, encoding="utf-8")
 
-    await _new_session(tmp_path, default_test_agent, NO_CAPS)
+    _, session = await _new_session(tmp_path, default_test_agent, NO_CAPS)
 
-    pool = default_test_agent.agent_pool
-    assert pool is not None
-    assert "local-skill" in {skill.name for skill in pool.skills.list_skills()}
+    assert "local-skill" in {skill.name for skill in await session.workspace_skills.get_skills()}
 
 
 @posix_only

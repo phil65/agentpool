@@ -28,6 +28,8 @@ if TYPE_CHECKING:
 
     from exxec import ExecutionEnvironment
 
+    from agentpool.resource_providers import ResourceProvider
+
 
 @dataclass(frozen=True)
 class SessionEnvironment:
@@ -39,6 +41,13 @@ class SessionEnvironment:
     instructions: str = ""
     """What agents should know about it: working directory, the client's instructions."""
 
+    providers: tuple[ResourceProvider, ...] = ()
+    """Resources of this session only (its client's MCP servers, its workspace's skills).
+
+    Agents are shared by sessions: their tool managers add these to their own
+    providers while the session acts (``ToolManager.providers``).
+    """
+
 
 _CURRENT: ContextVar[SessionEnvironment | None] = ContextVar(
     "agentpool_session_environment", default=None
@@ -48,6 +57,12 @@ _CURRENT: ContextVar[SessionEnvironment | None] = ContextVar(
 def current_session_environment() -> SessionEnvironment | None:
     """The environment of the session acting in this context, if one is set."""
     return _CURRENT.get()
+
+
+def current_session_providers() -> tuple[ResourceProvider, ...]:
+    """Resource providers of the session acting in this context (none without one)."""
+    environment = _CURRENT.get()
+    return environment.providers if environment is not None else ()
 
 
 def current_instructions() -> str:
