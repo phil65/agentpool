@@ -19,7 +19,7 @@ on:
       python_version:
         description: "Python version"
         required: false
-        default: "3.13"
+        default: "3.14"
         type: string
       run_lint:
         description: "Run ruff check"
