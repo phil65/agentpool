@@ -28,6 +28,16 @@ toolset = CodeTools()
 print(generate_tool_docs(toolset))
 ```
 
+## Security notes
+
+- `run_diagnostics` runs external checkers (ty, pyright, mypy, biome, oxlint, ...) in the
+  agent's execution environment. These programs read project configuration and may load
+  plugins, so the tool is an `execute` tool that requires confirmation when the agent uses
+  `requires_tool_confirmation: per_tool` (the default). Use `requires_tool_confirmation: never`
+  only for trusted workspaces.
+- File names are passed to the checkers as separately quoted arguments, so names containing
+  spaces or shell metacharacters (`;`, `$(...)`, backticks) are never interpreted by a shell.
+
 ## Configuration Reference
 
 /// mknodes

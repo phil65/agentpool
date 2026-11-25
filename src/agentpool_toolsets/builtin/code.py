@@ -141,9 +141,12 @@ class CodeTools(ResourceProvider):
         self._tools = [self.create_tool(self.format_code, category="execute")]
         if importlib.util.find_spec("ast_grep_py"):
             self._tools.append(self.create_tool(self.ast_grep, category="search", idempotent=True))
-        # Always register - checks for env at runtime (self.execution_env or agent.env)
+        # Always register - checks for env at runtime (self.execution_env or agent.env).
+        # It runs external checkers (ty, pyright, mypy, biome, ...) in the environment,
+        # which may load project config and plugins: an execute tool that needs
+        # confirmation in "per_tool" mode, not a read-only search tool.
         self._tools.append(
-            self.create_tool(self.run_diagnostics, category="search", idempotent=True)
+            self.create_tool(self.run_diagnostics, category="execute", requires_confirmation=True)
         )
         return self._tools
 

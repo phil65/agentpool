@@ -13,6 +13,8 @@ from __future__ import annotations
 import asyncio
 from dataclasses import dataclass
 import re
+import shlex
+import subprocess
 import time
 from typing import TYPE_CHECKING, Literal, Protocol
 
@@ -141,11 +143,32 @@ class DiagnosticServer:
         ext = extension if extension.startswith(".") else f".{extension}"
         return ext.lower() in [e.lower() for e in self.extensions]
 
-    def build_command(self, files: list[str]) -> str:
-        """Build the CLI command for running diagnostics."""
-        file_str = " ".join(files)
-        args = [arg.replace("{files}", file_str) for arg in self.cli.args]
-        return " ".join([self.cli.command, *args])
+    def build_argv(self, files: list[str]) -> list[str]:
+        """Build the argument vector for running diagnostics.
+
+        Each file name becomes its own argument (an argument that is exactly
+        ``{files}`` expands to all files), so names are never re-split or
+        interpreted by a shell.
+        """
+        argv = [self.cli.command]
+        for arg in self.cli.args:
+            if arg == "{files}":
+                argv.extend(files)
+            elif "{files}" in arg:
+                argv.extend(arg.replace("{files}", f) for f in files)
+            else:
+                argv.append(arg)
+        return argv
+
+    def build_command(self, files: list[str], *, windows: bool = False) -> str:
+        """Build the shell command line for running diagnostics.
+
+        Every argument is quoted (``shlex.join`` on POSIX, ``list2cmdline`` on
+        Windows), so file names containing spaces or shell metacharacters
+        (``;``, ``$(...)``, backticks, ...) are passed through literally.
+        """
+        argv = self.build_argv(files)
+        return subprocess.list2cmdline(argv) if windows else shlex.join(argv)
 
     def parse_output(self, stdout: str, stderr: str) -> list[Diagnostic]:
         """Parse CLI output into diagnostics. Override in subclasses."""
@@ -624,16 +647,23 @@ class DiagnosticsManager:
         ext = posixpath.splitext(path)[1]
         return self.get_servers_for_extension(ext)
 
+    def _is_windows(self) -> bool:
+        """Whether commands run in a Windows shell (cmd.exe quoting rules)."""
+        try:
+            return self._env.os_type == "Windows"
+        except RuntimeError:  # environment not entered yet
+            return False
+
     async def check_availability(self, server: DiagnosticServer) -> bool:
         """Check if a server's command is available (cached)."""
         if server.id in self._availability_cache:
             return self._availability_cache[server.id]
 
         # Use 'which' or 'where' depending on OS
-        if self._env.os_type == "Windows":
-            cmd = f"where {server.cli.command}"
+        if self._is_windows():
+            cmd = subprocess.list2cmdline(["where", server.cli.command])
         else:
-            cmd = f"which {server.cli.command}"
+            cmd = shlex.join(["which", server.cli.command])
 
         result = await self._env.execute_command(cmd)
         available = result.exit_code == 0 and bool(result.stdout and result.stdout.strip())
@@ -649,7 +679,7 @@ class DiagnosticsManager:
         progress: ProgressCallback | None = None,
     ) -> DiagnosticRunResult:
         """Run a single diagnostic server."""
-        command = server.build_command(files)
+        command = server.build_command(files, windows=self._is_windows())
 
         if progress:
             await progress(
