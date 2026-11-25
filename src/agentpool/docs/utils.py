@@ -1,17 +1,16 @@
 """Helper functions for running examples in different environments."""
 
 from __future__ import annotations
-from collections.abc import Coroutine
 
 import asyncio
-import types
 from dataclasses import dataclass
 from pathlib import Path
+import types
 from typing import TYPE_CHECKING, Annotated, Any, Self, Union, get_args, get_origin
 
 
 if TYPE_CHECKING:
-    from collections.abc import Awaitable, Iterator
+    from collections.abc import Coroutine, Iterator
 
     from agentpool.resource_providers import ResourceProvider
     from agentpool.tools.base import Tool
@@ -48,15 +47,20 @@ def get_config_path(module_path: str | None = None, filename: str = "config.yml"
 
 
 def run[T](coro: Coroutine[Any, Any, T]) -> T:
-    """Run a coroutine in both normal Python and Pyodide environments."""
+    """Run a coroutine in both normal Python and Pyodide environments.
+
+    Without a running loop this is `asyncio.run`. In Pyodide the browser's loop is
+    always running; its `run_until_complete` schedules the coroutine instead of blocking.
+    """
     try:
-        # Check if we're in an event loop
-        asyncio.get_running_loop()
-        # If we are, run until complete
-        return asyncio.get_event_loop().run_until_complete(coro)
+        loop = asyncio.get_running_loop()
     except RuntimeError:
-        # No running event loop, create one
         return asyncio.run(coro)
+    if is_pyodide():
+        return loop.run_until_complete(coro)
+    coro.close()
+    msg = "run() cannot be called from a running event loop; await the coroutine instead"
+    raise RuntimeError(msg)
 
 
 @dataclass
@@ -164,8 +168,7 @@ def get_discriminator_values(union_type: Any) -> dict[str, type]:
 
 
 def discriminator_to_filename(discriminator: str) -> str:
-    """Convert discriminator value to expected doc filename.
-    """
+    """Convert discriminator value to expected doc filename."""
     return discriminator.replace("_", "-")
 
 
@@ -230,7 +233,7 @@ def _strip_docstring_sections(description: str) -> str:
         # Check if we're in a section (indented content after section header)
         if in_section:
             # If line is empty or still indented, skip it
-            if not stripped or line.startswith("    ") or line.startswith("\t"):
+            if not stripped or line.startswith(("    ", "\t")):
                 continue
             # Non-indented non-empty line means new content
             in_section = False
@@ -254,11 +257,10 @@ def tool_to_markdown(tool: Tool) -> str:
     """
     lines = [f"### `{tool.name}`", ""]
 
-    if tool.description:
-        # Strip Args/Returns sections since we have a parameters table
-        if desc := _strip_docstring_sections(tool.description):
-            lines.append(desc)
-            lines.append("")
+    # Strip Args/Returns sections since we have a parameters table
+    if tool.description and (desc := _strip_docstring_sections(tool.description)):
+        lines.append(desc)
+        lines.append("")
 
     # Get parameters from schema
     schema = tool.schema["function"]
@@ -326,8 +328,7 @@ def generate_tool_docs(toolset: ResourceProvider) -> str:
 
     lines = [f"## {toolset.name.replace('_', ' ').title()} Tools", ""]
 
-    for tool in tools:
-        lines.append(tool_to_markdown(tool))
+    lines.extend(tool_to_markdown(tool) for tool in tools)
 
     return "\n".join(lines)
 
