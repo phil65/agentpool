@@ -91,10 +91,8 @@ class CallableHook(Hook):
                 result = await asyncio.wait_for(fn(**kwargs), timeout=self.timeout)
             else:
                 # Run sync function in executor
-                loop = asyncio.get_event_loop()
                 result = await asyncio.wait_for(
-                    loop.run_in_executor(None, lambda: fn(**kwargs)),
-                    timeout=self.timeout,
+                    asyncio.to_thread(fn, **kwargs), timeout=self.timeout
                 )
 
             # Normalize result

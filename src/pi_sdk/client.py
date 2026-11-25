@@ -339,7 +339,7 @@ class RpcClient:
 
     async def wait_for_idle(self, timeout: float = 60.0) -> None:
         """Wait for the agent to become idle (agent_end event)."""
-        fut: asyncio.Future[None] = asyncio.get_event_loop().create_future()
+        fut: asyncio.Future[None] = asyncio.get_running_loop().create_future()
 
         def _listener(event: AgentSessionEvent) -> None:
             if event.type == "agent_end" and not fut.done():
@@ -358,7 +358,7 @@ class RpcClient:
     async def collect_events(self, timeout: float = 60.0) -> list[AgentSessionEvent]:
         """Collect validated events until agent becomes idle."""
         events: list[AgentSessionEvent] = []
-        fut: asyncio.Future[None] = asyncio.get_event_loop().create_future()
+        fut: asyncio.Future[None] = asyncio.get_running_loop().create_future()
 
         def _listener(event: AgentSessionEvent) -> None:
             events.append(event)
@@ -450,7 +450,7 @@ class RpcClient:
         req_id = f"req_{self._request_id}"
         command["id"] = req_id
 
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()
         fut: asyncio.Future[dict[str, Any]] = loop.create_future()
         self._pending[req_id] = fut
 
