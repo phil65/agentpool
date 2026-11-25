@@ -25,7 +25,7 @@ class TeamConfig(NodeConfig):
     Teams can be either parallel execution groups or sequential chains.
     They can contain both agents and other teams as members.
 
-    Docs: https://phil65.github.io/agentpool/YAML%20Configuration/team_configuration/
+    Docs: https://phil65.github.io/agentpool/configuration/node-types/team/
     """
 
     model_config = ConfigDict(

@@ -115,7 +115,7 @@ class AgentsManifest(Schema):
     agents: dict[str, AnyAgentConfig] = Field(
         default_factory=dict,
         json_schema_extra={
-            "documentation_url": "https://phil65.github.io/agentpool/YAML%20Configuration/agent_configuration/"
+            "documentation_url": "https://phil65.github.io/agentpool/configuration/node-types/agent/"
         },
     )
     """Mapping of agent IDs to their configurations.
@@ -153,7 +153,7 @@ class AgentsManifest(Schema):
             endpoint: http://localhost:8000/agent/run
         ```
 
-    Docs: https://phil65.github.io/agentpool/YAML%20Configuration/agent_configuration/
+    Docs: https://phil65.github.io/agentpool/configuration/node-types/agent/
     """
 
     default_agent: str | None = None
@@ -211,23 +211,23 @@ class AgentsManifest(Schema):
     teams: dict[str, TeamConfig] = Field(
         default_factory=dict,
         json_schema_extra={
-            "documentation_url": "https://phil65.github.io/agentpool/YAML%20Configuration/team_configuration/"
+            "documentation_url": "https://phil65.github.io/agentpool/configuration/node-types/team/"
         },
     )
     """Mapping of team IDs to their configurations.
 
-    Docs: https://phil65.github.io/agentpool/YAML%20Configuration/team_configuration/
+    Docs: https://phil65.github.io/agentpool/configuration/node-types/team/
     """
 
     storage: StorageConfig = Field(
         default_factory=StorageConfig,
         json_schema_extra={
-            "documentation_url": "https://phil65.github.io/agentpool/YAML%20Configuration/storage_configuration/"
+            "documentation_url": "https://phil65.github.io/agentpool/configuration/storage/"
         },
     )
     """Storage provider configuration.
 
-    Docs: https://phil65.github.io/agentpool/YAML%20Configuration/storage_configuration/
+    Docs: https://phil65.github.io/agentpool/configuration/storage/
     """
 
     observability: ObservabilityConfig = Field(default_factory=ObservabilityConfig)
@@ -239,12 +239,12 @@ class AgentsManifest(Schema):
     responses: dict[str, StructuredResponseConfig] = Field(
         default_factory=dict,
         json_schema_extra={
-            "documentation_url": "https://phil65.github.io/agentpool/YAML%20Configuration/response_configuration/"
+            "documentation_url": "https://phil65.github.io/agentpool/configuration/responses/"
         },
     )
     """Mapping of response names to their definitions.
 
-    Docs: https://phil65.github.io/agentpool/YAML%20Configuration/response_configuration/
+    Docs: https://phil65.github.io/agentpool/configuration/responses/
     """
 
     model_variants: dict[str, AnyModelConfig] = Field(
@@ -303,14 +303,14 @@ class AgentsManifest(Schema):
             [{"type": "streamable-http", "url": "http://mcp.example.com"}],
         ],
         json_schema_extra={
-            "documentation_url": "https://phil65.github.io/agentpool/YAML%20Configuration/mcp_configuration/"
+            "documentation_url": "https://phil65.github.io/agentpool/configuration/mcp/"
         },
     )
     """List of MCP server configurations:
 
     These MCP servers are used to provide tools and other resources to the nodes.
 
-    Docs: https://phil65.github.io/agentpool/YAML%20Configuration/mcp_configuration/
+    Docs: https://phil65.github.io/agentpool/configuration/mcp/
     """
     pool_server: MCPPoolServerConfig = Field(default_factory=MCPPoolServerConfig)
     """Pool server configuration.
@@ -321,14 +321,14 @@ class AgentsManifest(Schema):
     prompts: PromptLibraryConfig = Field(
         default_factory=PromptLibraryConfig,
         json_schema_extra={
-            "documentation_url": "https://phil65.github.io/agentpool/YAML%20Configuration/prompt_configuration/"
+            "documentation_url": "https://phil65.github.io/agentpool/configuration/prompts/"
         },
     )
     """Prompt library configuration.
 
     This configuration defines the prompt library, which is used to provide prompts to the nodes.
 
-    Docs: https://phil65.github.io/agentpool/YAML%20Configuration/prompt_configuration/
+    Docs: https://phil65.github.io/agentpool/configuration/prompts/
     """
 
     commands: dict[str, CommandConfig | str] = Field(
@@ -381,7 +381,7 @@ class AgentsManifest(Schema):
         json_schema_extra={
             "x-icon": "octicon:file-code-16",
             "x-doc-title": "Manifest Overview",
-            "documentation_url": "https://phil65.github.io/agentpool/YAML%20Configuration/manifest_configuration/",
+            "documentation_url": "https://phil65.github.io/agentpool/configuration/",
         },
     )
 

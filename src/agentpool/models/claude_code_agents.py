@@ -210,7 +210,7 @@ class ClaudeCodeAgentConfig(BaseAgentConfig):
     By default, this is appended to Claude Code's builtin system prompt.
     Set `include_builtin_system_prompt: false` to use only your custom prompt.
 
-    Docs: https://phil65.github.io/agentpool/YAML%20Configuration/system_prompts_configuration/
+    Docs: https://phil65.github.io/agentpool/configuration/prompts/
     """
 
     include_builtin_system_prompt: bool = Field(default=True, title="Include Builtin System Prompt")
@@ -409,7 +409,7 @@ class ClaudeCodeAgentConfig(BaseAgentConfig):
     Supports both single tools and toolsets. These will be started as an
     in-process MCP server and made available to Claude Code.
 
-    Docs: https://phil65.github.io/agentpool/YAML%20Configuration/tool_configuration/
+    Docs: https://phil65.github.io/agentpool/configuration/tools/
     """
 
     def get_agent[TDeps](

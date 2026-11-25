@@ -319,7 +319,7 @@ StorageProviderConfig = Annotated[
 class StorageConfig(Schema):
     """Global storage configuration.
 
-    Docs: https://phil65.github.io/agentpool/YAML%20Configuration/storage_configuration/
+    Docs: https://phil65.github.io/agentpool/configuration/storage/
     """
 
     providers: list[StorageProviderConfig] | None = Field(

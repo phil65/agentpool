@@ -125,7 +125,7 @@ PromptConfig = Annotated[
 class PromptLibraryConfig(Schema):
     """Complete prompt configuration.
 
-    Docs: https://phil65.github.io/agentpool/YAML%20Configuration/prompt_configuration/
+    Docs: https://phil65.github.io/agentpool/configuration/prompts/
     """
 
     system_prompts: dict[str, StaticPromptConfig] = Field(

@@ -14,7 +14,7 @@ class Knowledge(Schema):
     Supports both simple paths and rich resource types for content loading,
     plus AgentPool's prompt system for dynamic content generation.
 
-    Docs: https://phil65.github.io/agentpool/YAML%20Configuration/knowledge_configuration/
+    Docs: https://phil65.github.io/agentpool/configuration/knowledge/
     """
 
     model_config = ConfigDict(json_schema_extra={"title": "Knowledge Configuration"})

@@ -56,7 +56,7 @@ SystemPromptField = Annotated[
             ["You are an AI assistant.", "Always be concise."],
         ],
         json_schema_extra={
-            "documentation_url": "https://phil65.github.io/agentpool/YAML%20Configuration/system_prompts_configuration/"
+            "documentation_url": "https://phil65.github.io/agentpool/configuration/prompts/"
         },
         description="""System prompt for the agent.
         Can be a string or list of strings/prompt configs""",

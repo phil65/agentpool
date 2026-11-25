@@ -9,7 +9,7 @@ from schemez import Schema, SchemaDef
 class StructuredResponseConfig(Schema):
     """Base class for response definitions.
 
-    Docs: https://phil65.github.io/agentpool/YAML%20Configuration/response_configuration/
+    Docs: https://phil65.github.io/agentpool/configuration/responses/
     """
 
     response_schema: SchemaDef = Field(

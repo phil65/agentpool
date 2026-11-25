@@ -88,7 +88,7 @@ class NativeAgentConfig(BaseAgentConfig):
     Defines an agent's complete configuration including its model, environment,
     and behavior settings.
 
-    Docs: https://phil65.github.io/agentpool/YAML%20Configuration/agent_configuration/
+    Docs: https://phil65.github.io/agentpool/configuration/node-types/agent/
     """
 
     model_config = ConfigDict(
@@ -106,13 +106,13 @@ class NativeAgentConfig(BaseAgentConfig):
         examples=["openai:gpt-5-nano"],
         title="Model configuration or name",
         json_schema_extra={
-            "documentation_url": "https://phil65.github.io/agentpool/YAML%20Configuration/model_configuration/"
+            "documentation_url": "https://phil65.github.io/agentpool/configuration/model/"
         },
     )
     """The model to use for this agent. Can be either a simple model name
     string (e.g. 'openai:gpt-5') or a structured model definition.
 
-    Docs: https://phil65.github.io/agentpool/YAML%20Configuration/model_configuration/
+    Docs: https://phil65.github.io/agentpool/configuration/model/
     """
 
     tools: Sequence[AnyToolConfig | str] = Field(
@@ -126,7 +126,7 @@ class NativeAgentConfig(BaseAgentConfig):
         ],
         title="Tool configurations",
         json_schema_extra={
-            "documentation_url": "https://phil65.github.io/agentpool/YAML%20Configuration/tool_configuration/"
+            "documentation_url": "https://phil65.github.io/agentpool/configuration/tools/"
         },
     )
     """A list of tools and toolsets to register with this agent.
@@ -134,7 +134,7 @@ class NativeAgentConfig(BaseAgentConfig):
     Supports both single tools (bash, import, web_search, etc.) and
     toolsets (file_access, process_management, code, etc.).
 
-    Docs: https://phil65.github.io/agentpool/YAML%20Configuration/tool_configuration/
+    Docs: https://phil65.github.io/agentpool/configuration/tools/
     """
 
     session: str | SessionQuery | MemoryConfig | None = Field(
@@ -142,12 +142,12 @@ class NativeAgentConfig(BaseAgentConfig):
         examples=["main_session", "user_123"],
         title="Session configuration",
         json_schema_extra={
-            "documentation_url": "https://phil65.github.io/agentpool/YAML%20Configuration/session_configuration/"
+            "documentation_url": "https://phil65.github.io/agentpool/configuration/session/"
         },
     )
     """Session configuration for conversation recovery.
 
-    Docs: https://phil65.github.io/agentpool/YAML%20Configuration/session_configuration/
+    Docs: https://phil65.github.io/agentpool/configuration/session/
     """
 
     output_type: OutputTypeField = None
@@ -175,7 +175,7 @@ class NativeAgentConfig(BaseAgentConfig):
     system_prompt: SystemPromptField = None
     """System prompt for the agent. Can be a string or list of strings/prompt configs.
 
-    Docs: https://phil65.github.io/agentpool/YAML%20Configuration/system_prompts_configuration/
+    Docs: https://phil65.github.io/agentpool/configuration/prompts/
     """
 
     # context_sources: list[ContextSource] = Field(default_factory=list)
@@ -185,12 +185,12 @@ class NativeAgentConfig(BaseAgentConfig):
         default=None,
         title="Knowledge sources",
         json_schema_extra={
-            "documentation_url": "https://phil65.github.io/agentpool/YAML%20Configuration/knowledge_configuration/"
+            "documentation_url": "https://phil65.github.io/agentpool/configuration/knowledge/"
         },
     )
     """Knowledge sources for this agent.
 
-    Docs: https://phil65.github.io/agentpool/YAML%20Configuration/knowledge_configuration/
+    Docs: https://phil65.github.io/agentpool/configuration/knowledge/
     """
 
     workers: list[WorkerConfig | str] = Field(
@@ -202,14 +202,14 @@ class NativeAgentConfig(BaseAgentConfig):
         ],
         title="Worker agents",
         json_schema_extra={
-            "documentation_url": "https://phil65.github.io/agentpool/YAML%20Configuration/worker_configuration/"
+            "documentation_url": "https://phil65.github.io/agentpool/configuration/toolsets/workers/"
         },
     )
     """Worker agents which will be available as tools.
 
     Can be worker config objects or plain strings (agent names, resolved as AgentWorkerConfig).
 
-    Docs: https://phil65.github.io/agentpool/YAML%20Configuration/worker_configuration/
+    Docs: https://phil65.github.io/agentpool/configuration/toolsets/workers/
     """
 
     usage_limits: UsageLimits | None = Field(default=None, title="Usage limits")

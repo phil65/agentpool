@@ -3251,7 +3251,7 @@
           ],
           "default": null,
           "description": "System prompt for the agent.\n        Can be a string or list of strings/prompt configs",
-          "documentation_url": "https://phil65.github.io/agentpool/YAML%20Configuration/system_prompts_configuration/",
+          "documentation_url": "https://phil65.github.io/agentpool/configuration/prompts/",
           "examples": [
             "You are a helpful assistant.",
             [
@@ -8075,7 +8075,7 @@
           ],
           "default": null,
           "description": "System prompt for the agent.\n        Can be a string or list of strings/prompt configs",
-          "documentation_url": "https://phil65.github.io/agentpool/YAML%20Configuration/system_prompts_configuration/",
+          "documentation_url": "https://phil65.github.io/agentpool/configuration/prompts/",
           "examples": [
             "You are a helpful assistant.",
             [
@@ -8430,7 +8430,7 @@
           "type": "object"
         },
         "tools": {
-          "description": "Tools and toolsets to expose to this Claude Code agent via MCP bridge.\n\nSupports both single tools and toolsets. These will be started as an\nin-process MCP server and made available to Claude Code.\n\nDocs: https://phil65.github.io/agentpool/YAML%20Configuration/tool_configuration/",
+          "description": "Tools and toolsets to expose to this Claude Code agent via MCP bridge.\n\nSupports both single tools and toolsets. These will be started as an\nin-process MCP server and made available to Claude Code.\n\nDocs: https://phil65.github.io/agentpool/configuration/tools/",
           "examples": [
             [
               {
@@ -25151,7 +25151,7 @@
     },
     "Knowledge": {
       "additionalProperties": false,
-      "description": "Collection of context sources for an agent.\n\nSupports both simple paths and rich resource types for content loading,\nplus AgentPool's prompt system for dynamic content generation.\n\nDocs: https://phil65.github.io/agentpool/YAML%20Configuration/knowledge_configuration/",
+      "description": "Collection of context sources for an agent.\n\nSupports both simple paths and rich resource types for content loading,\nplus AgentPool's prompt system for dynamic content generation.\n\nDocs: https://phil65.github.io/agentpool/configuration/knowledge/",
       "properties": {
         "paths": {
           "description": "Quick access to files and URLs.",
@@ -28596,7 +28596,7 @@
     },
     "NativeAgentConfig": {
       "additionalProperties": false,
-      "description": "Configuration for a single agent in the system.\n\nDefines an agent's complete configuration including its model, environment,\nand behavior settings.\n\nDocs: https://phil65.github.io/agentpool/YAML%20Configuration/agent_configuration/",
+      "description": "Configuration for a single agent in the system.\n\nDefines an agent's complete configuration including its model, environment,\nand behavior settings.\n\nDocs: https://phil65.github.io/agentpool/configuration/node-types/agent/",
       "properties": {
         "name": {
           "default": null,
@@ -30761,16 +30761,16 @@
               "type": "string"
             }
           ],
-          "description": "The model to use for this agent. Can be either a simple model name\nstring (e.g. 'openai:gpt-5') or a structured model definition.\n\nDocs: https://phil65.github.io/agentpool/YAML%20Configuration/model_configuration/",
-          "documentation_url": "https://phil65.github.io/agentpool/YAML%20Configuration/model_configuration/",
+          "description": "The model to use for this agent. Can be either a simple model name\nstring (e.g. 'openai:gpt-5') or a structured model definition.\n\nDocs: https://phil65.github.io/agentpool/configuration/model/",
+          "documentation_url": "https://phil65.github.io/agentpool/configuration/model/",
           "examples": [
             "openai:gpt-5-nano"
           ],
           "title": "Model configuration or name"
         },
         "tools": {
-          "description": "A list of tools and toolsets to register with this agent.\n\nSupports both single tools (bash, import, web_search, etc.) and\ntoolsets (file_access, process_management, code, etc.).\n\nDocs: https://phil65.github.io/agentpool/YAML%20Configuration/tool_configuration/",
-          "documentation_url": "https://phil65.github.io/agentpool/YAML%20Configuration/tool_configuration/",
+          "description": "A list of tools and toolsets to register with this agent.\n\nSupports both single tools (bash, import, web_search, etc.) and\ntoolsets (file_access, process_management, code, etc.).\n\nDocs: https://phil65.github.io/agentpool/configuration/tools/",
+          "documentation_url": "https://phil65.github.io/agentpool/configuration/tools/",
           "examples": [
             [
               "webbrowser:open",
@@ -31037,8 +31037,8 @@
             }
           ],
           "default": null,
-          "description": "Session configuration for conversation recovery.\n\nDocs: https://phil65.github.io/agentpool/YAML%20Configuration/session_configuration/",
-          "documentation_url": "https://phil65.github.io/agentpool/YAML%20Configuration/session_configuration/",
+          "description": "Session configuration for conversation recovery.\n\nDocs: https://phil65.github.io/agentpool/configuration/session/",
+          "documentation_url": "https://phil65.github.io/agentpool/configuration/session/",
           "examples": [
             "main_session",
             "user_123"
@@ -31163,7 +31163,7 @@
           ],
           "default": null,
           "description": "System prompt for the agent.\n        Can be a string or list of strings/prompt configs",
-          "documentation_url": "https://phil65.github.io/agentpool/YAML%20Configuration/system_prompts_configuration/",
+          "documentation_url": "https://phil65.github.io/agentpool/configuration/prompts/",
           "examples": [
             "You are a helpful assistant.",
             [
@@ -31183,13 +31183,13 @@
             }
           ],
           "default": null,
-          "description": "Knowledge sources for this agent.\n\nDocs: https://phil65.github.io/agentpool/YAML%20Configuration/knowledge_configuration/",
-          "documentation_url": "https://phil65.github.io/agentpool/YAML%20Configuration/knowledge_configuration/",
+          "description": "Knowledge sources for this agent.\n\nDocs: https://phil65.github.io/agentpool/configuration/knowledge/",
+          "documentation_url": "https://phil65.github.io/agentpool/configuration/knowledge/",
           "title": "Knowledge sources"
         },
         "workers": {
-          "description": "Worker agents which will be available as tools.\n\nCan be worker config objects or plain strings (agent names, resolved as AgentWorkerConfig).\n\nDocs: https://phil65.github.io/agentpool/YAML%20Configuration/worker_configuration/",
-          "documentation_url": "https://phil65.github.io/agentpool/YAML%20Configuration/worker_configuration/",
+          "description": "Worker agents which will be available as tools.\n\nCan be worker config objects or plain strings (agent names, resolved as AgentWorkerConfig).\n\nDocs: https://phil65.github.io/agentpool/configuration/toolsets/workers/",
+          "documentation_url": "https://phil65.github.io/agentpool/configuration/toolsets/workers/",
           "examples": [
             [
               {
@@ -36201,7 +36201,7 @@
     },
     "PromptLibraryConfig": {
       "additionalProperties": false,
-      "description": "Complete prompt configuration.\n\nDocs: https://phil65.github.io/agentpool/YAML%20Configuration/prompt_configuration/",
+      "description": "Complete prompt configuration.\n\nDocs: https://phil65.github.io/agentpool/configuration/prompts/",
       "properties": {
         "system_prompts": {
           "additionalProperties": {
@@ -41678,7 +41678,7 @@
     },
     "StorageConfig": {
       "additionalProperties": false,
-      "description": "Global storage configuration.\n\nDocs: https://phil65.github.io/agentpool/YAML%20Configuration/storage_configuration/",
+      "description": "Global storage configuration.\n\nDocs: https://phil65.github.io/agentpool/configuration/storage/",
       "properties": {
         "providers": {
           "anyOf": [
@@ -45586,7 +45586,7 @@
     },
     "StructuredResponseConfig": {
       "additionalProperties": false,
-      "description": "Base class for response definitions.\n\nDocs: https://phil65.github.io/agentpool/YAML%20Configuration/response_configuration/",
+      "description": "Base class for response definitions.\n\nDocs: https://phil65.github.io/agentpool/configuration/responses/",
       "properties": {
         "response_schema": {
           "description": "A model describing the response schema.",
@@ -46788,7 +46788,7 @@
     },
     "TeamConfig": {
       "additionalProperties": false,
-      "description": "Configuration for a team or chain of message nodes.\n\nTeams can be either parallel execution groups or sequential chains.\nThey can contain both agents and other teams as members.\n\nDocs: https://phil65.github.io/agentpool/YAML%20Configuration/team_configuration/",
+      "description": "Configuration for a team or chain of message nodes.\n\nTeams can be either parallel execution groups or sequential chains.\nThey can contain both agents and other teams as members.\n\nDocs: https://phil65.github.io/agentpool/configuration/node-types/team/",
       "properties": {
         "name": {
           "default": null,
@@ -51383,7 +51383,7 @@
   },
   "additionalProperties": false,
   "description": "Complete agent configuration manifest defining all available agents.\n\nThis is the root configuration that:\n- Defines available response types (both inline and imported)\n- Configures all agent instances and their settings\n- Sets up custom role definitions and capabilities\n- Manages environment configurations\n\nA single manifest can define multiple agents that can work independently\nor collaborate through the orchestrator.",
-  "documentation_url": "https://phil65.github.io/agentpool/YAML%20Configuration/manifest_configuration/",
+  "documentation_url": "https://phil65.github.io/agentpool/configuration/",
   "properties": {
     "INHERIT": {
       "anyOf": [
@@ -51747,8 +51747,8 @@
           }
         ]
       },
-      "description": "Mapping of agent IDs to their configurations.\n\nAll agent types are unified under this single dict, discriminated by the 'type' field:\n- type: \"native\" (default) - pydantic-ai based agents\n- type: \"agui\" - AG-UI protocol agents\n- type: \"antigravity\" - Google Antigravity SDK agents\n- type: \"claude_code\" - Claude Agent SDK agents\n- type: \"codex\" - Codex app-server agents\n- type: \"opencode_v2\" - OpenCode V2 (v2.3+) HTTP/SSE agents\n- type: \"t3\" - T3 Code agents\n- type: \"acp\" - ACP protocol agents (further discriminated by 'provider')\n\nExample:\n    ```yaml\n    agents:\n      assistant:\n        type: native\n        model: openai:gpt-4\n        system_prompt: \"You are a helpful assistant.\"\n\n      coder:\n        type: claude_code\n        cwd: /path/to/project\n        model: claude-sonnet-4-5\n\n      orchestrator:\n        type: acp\n        provider: claude\n        model: sonnet\n\n      remote:\n        type: agui\n        endpoint: http://localhost:8000/agent/run\n    ```\n\nDocs: https://phil65.github.io/agentpool/YAML%20Configuration/agent_configuration/",
-      "documentation_url": "https://phil65.github.io/agentpool/YAML%20Configuration/agent_configuration/",
+      "description": "Mapping of agent IDs to their configurations.\n\nAll agent types are unified under this single dict, discriminated by the 'type' field:\n- type: \"native\" (default) - pydantic-ai based agents\n- type: \"agui\" - AG-UI protocol agents\n- type: \"antigravity\" - Google Antigravity SDK agents\n- type: \"claude_code\" - Claude Agent SDK agents\n- type: \"codex\" - Codex app-server agents\n- type: \"opencode_v2\" - OpenCode V2 (v2.3+) HTTP/SSE agents\n- type: \"t3\" - T3 Code agents\n- type: \"acp\" - ACP protocol agents (further discriminated by 'provider')\n\nExample:\n    ```yaml\n    agents:\n      assistant:\n        type: native\n        model: openai:gpt-4\n        system_prompt: \"You are a helpful assistant.\"\n\n      coder:\n        type: claude_code\n        cwd: /path/to/project\n        model: claude-sonnet-4-5\n\n      orchestrator:\n        type: acp\n        provider: claude\n        model: sonnet\n\n      remote:\n        type: agui\n        endpoint: http://localhost:8000/agent/run\n    ```\n\nDocs: https://phil65.github.io/agentpool/configuration/node-types/agent/",
+      "documentation_url": "https://phil65.github.io/agentpool/configuration/node-types/agent/",
       "title": "Agents",
       "type": "object"
     },
@@ -51796,15 +51796,15 @@
       "additionalProperties": {
         "$ref": "#/$defs/TeamConfig"
       },
-      "description": "Mapping of team IDs to their configurations.\n\nDocs: https://phil65.github.io/agentpool/YAML%20Configuration/team_configuration/",
-      "documentation_url": "https://phil65.github.io/agentpool/YAML%20Configuration/team_configuration/",
+      "description": "Mapping of team IDs to their configurations.\n\nDocs: https://phil65.github.io/agentpool/configuration/node-types/team/",
+      "documentation_url": "https://phil65.github.io/agentpool/configuration/node-types/team/",
       "title": "Teams",
       "type": "object"
     },
     "storage": {
       "$ref": "#/$defs/StorageConfig",
-      "description": "Storage provider configuration.\n\nDocs: https://phil65.github.io/agentpool/YAML%20Configuration/storage_configuration/",
-      "documentation_url": "https://phil65.github.io/agentpool/YAML%20Configuration/storage_configuration/"
+      "description": "Storage provider configuration.\n\nDocs: https://phil65.github.io/agentpool/configuration/storage/",
+      "documentation_url": "https://phil65.github.io/agentpool/configuration/storage/"
     },
     "observability": {
       "$ref": "#/$defs/ObservabilityConfig",
@@ -51818,8 +51818,8 @@
       "additionalProperties": {
         "$ref": "#/$defs/StructuredResponseConfig"
       },
-      "description": "Mapping of response names to their definitions.\n\nDocs: https://phil65.github.io/agentpool/YAML%20Configuration/response_configuration/",
-      "documentation_url": "https://phil65.github.io/agentpool/YAML%20Configuration/response_configuration/",
+      "description": "Mapping of response names to their definitions.\n\nDocs: https://phil65.github.io/agentpool/configuration/responses/",
+      "documentation_url": "https://phil65.github.io/agentpool/configuration/responses/",
       "title": "Responses",
       "type": "object"
     },
@@ -51924,8 +51924,8 @@
       "type": "object"
     },
     "mcp_servers": {
-      "description": "List of MCP server configurations:\n\nThese MCP servers are used to provide tools and other resources to the nodes.\n\nDocs: https://phil65.github.io/agentpool/YAML%20Configuration/mcp_configuration/",
-      "documentation_url": "https://phil65.github.io/agentpool/YAML%20Configuration/mcp_configuration/",
+      "description": "List of MCP server configurations:\n\nThese MCP servers are used to provide tools and other resources to the nodes.\n\nDocs: https://phil65.github.io/agentpool/configuration/mcp/",
+      "documentation_url": "https://phil65.github.io/agentpool/configuration/mcp/",
       "examples": [
         [
           "uvx some-server"
@@ -51974,8 +51974,8 @@
     },
     "prompts": {
       "$ref": "#/$defs/PromptLibraryConfig",
-      "description": "Prompt library configuration.\n\nThis configuration defines the prompt library, which is used to provide prompts to the nodes.\n\nDocs: https://phil65.github.io/agentpool/YAML%20Configuration/prompt_configuration/",
-      "documentation_url": "https://phil65.github.io/agentpool/YAML%20Configuration/prompt_configuration/"
+      "description": "Prompt library configuration.\n\nThis configuration defines the prompt library, which is used to provide prompts to the nodes.\n\nDocs: https://phil65.github.io/agentpool/configuration/prompts/",
+      "documentation_url": "https://phil65.github.io/agentpool/configuration/prompts/"
     },
     "commands": {
       "additionalProperties": {
