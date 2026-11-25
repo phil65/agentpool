@@ -20,7 +20,7 @@ These commands help you inspect which configs are being loaded and create new on
 ## Commands
 
 /// mknodes
-{{ "agentpool.__main__:cli"| MkCliDoc(prog_name="config") }}
+{{ "agentpool.__main__:cli"| MkCliDoc(prog_name="config", show_subcommands=True) }}
 ///
 
 ## Examples
@@ -84,8 +84,9 @@ model_variants:
     identifier: claude-sonnet-4-5
 
 storage:
-  provider: sql
-  database_url: sqlite:///~/.local/share/agentpool/history.db
+  providers:
+    - type: sql
+      url: sqlite:///~/.local/share/agentpool/history.db
 ```
 
 ### Project-Specific Agents

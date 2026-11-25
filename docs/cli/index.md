@@ -16,53 +16,18 @@ You can:
 
 - Add agent files with `agentpool add <name> <path>`
 - Set the active file with `agentpool set <name>`
-- List agents from the active config with `agentpool list`
+- List agents from the active config with `agentpool list-agents`
 
 Most commands will use the currently active agent file by default, but can be overridden with the `--config` option.
 
 ## Available Commands
 
-### Configuration
+/// mknodes
+{{ "agentpool.__main__:cli" | cli_command_table(link_prefix="./") }}
+///
 
-| Command | Description |
-|---------|-------------|
-| `config show` | Show configuration resolution status and merged result |
-| `config paths` | Show standard configuration file locations |
-| `config init` | Create a starter configuration file |
-
-### Agent Management
-
-| Command | Description |
-|---------|-------------|
-| `add` | Register a new agent configuration file |
-| `set` | Set the active configuration file |
-| `list` | Show agents from the active (or specified) configuration |
-
-### Execution
-
-| Command | Description |
-|---------|-------------|
-| `run` | Run a node (agent/team) with prompts |
-| `task` | Execute a defined task with an agent |
-| `watch` | Run agents in event-watching mode |
-
-### Server Commands
-
-| Command | Description |
-|---------|-------------|
-| `serve-acp` | Run agents as an ACP server for IDE integration (Zed, Toad) |
-| `serve-opencode` | Run agents as an OpenCode server for OpenCode TUI/Desktop |
-| `serve-mcp` | Run agents as an MCP server to expose tools |
-| `serve-agui` | Run agents as an AG-UI server |
-| `serve-api` | Run agents as an OpenAI-compatible API server |
-
-### History Management
-
-| Command | Description |
-|---------|-------------|
-| `history show` | Show conversation history with filtering options |
-| `history stats` | Show usage statistics |
-| `history reset` | Reset (clear) conversation history |
+Global options (before the command): `--log-level` / `-l` (`debug`, `info`, `warning`,
+`error`) and `--version` / `-v`.
 
 ## Quick Start
 
@@ -92,7 +57,7 @@ For managing multiple config files:
 2. List available agents:
 
    ```bash
-   agentpool list
+   agentpool list-agents
    ```
 
 3. Run a prompt with an agent:
@@ -113,7 +78,7 @@ agentpool run myagent "Analyze this"
 agentpool run myteam "Process this"
 
 # Show detailed output with costs
-agentpool run myagent "Hello" --detail full --costs
+agentpool run myagent "Hello" --detail detailed --costs
 ```
 
 ### Executing Tasks
@@ -138,14 +103,20 @@ agentpool serve-opencode config.yml --port 4096
 # MCP server (stdio transport)
 agentpool serve-mcp config.yml
 
-# MCP server with SSE transport
-agentpool serve-mcp config.yml --transport sse --port 3001
+# MCP server over Streamable HTTP
+agentpool serve-mcp config.yml --transport streamable-http --port 3001
 
 # AG-UI server
 agentpool serve-agui config.yml --port 8002
 
 # OpenAI-compatible API server
 agentpool serve-api config.yml --port 8000
+
+# Vercel AI Data Stream Protocol
+agentpool serve-vercel config.yml
+
+# OpenCode TUI with an integrated server
+agentpool ui opencode config.yml
 ```
 
 ### History Commands
@@ -164,13 +135,6 @@ agentpool history stats --period 1w --group-by model
 agentpool history reset --agent myagent
 ```
 
-## Global Options
-
-| Option | Description |
-|--------|-------------|
-| `--log-level`, `-l` | Set log level (default: info) |
-| `--help` | Show help message |
-
 ## Configuration Files
 
 Agent configurations are YAML files that define:
@@ -187,7 +151,7 @@ Example:
 agents:
   analyzer:
     display_name: "Text Analyzer"
-    model: openai:gpt-4o
+    model: openai:gpt-5-mini
     description: "Analyzes text and provides structured output"
     tools:
       - type: file_access

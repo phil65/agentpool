@@ -5,5 +5,5 @@ icon: lucide/history
 ---
 
 /// mknodes
-{{ "agentpool.__main__:cli"| MkCliDoc(prog_name="history") }}
+{{ "agentpool.__main__:cli"| MkCliDoc(prog_name="history", show_subcommands=True) }}
 ///
