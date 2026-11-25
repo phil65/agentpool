@@ -1035,11 +1035,12 @@ class BaseAgent[TDeps = None, TResult = str](MessageNode[TDeps, TResult]):
             self._background_task.cancel()
             with suppress(asyncio.CancelledError):  # Expected when we cancel the task
                 await self._background_task
-            self._background_task = None
+        self._background_task = None
 
     def is_busy(self) -> bool:
         """Check if agent is currently processing tasks."""
-        return bool(self.task_manager._pending_tasks or self._background_task)
+        running_background = self._background_task is not None and not self._background_task.done()
+        return bool(self.task_manager._pending_tasks) or running_background
 
     async def emit_event(self, event: RichAgentStreamEvent[Any]) -> None:
         """Deliver an event produced by tools, subagents or the backend.

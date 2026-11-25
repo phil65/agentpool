@@ -180,7 +180,9 @@ class AggregatingServer(BaseServer):
             done, pending = await asyncio.wait(tasks, return_when=asyncio.FIRST_COMPLETED)
 
             for task in done:
-                if task.exception():
+                if task.cancelled():
+                    self.log.info("Server task cancelled")
+                elif task.exception():
                     self.log.error("Server task failed", error=task.exception())
                 else:
                     self.log.info("Server task completed")

@@ -128,9 +128,8 @@ class BaseServer:
             raise RuntimeError("Server is already running in background")
 
         self._shutdown_event.clear()
-        self._server_task = self.task_manager.create_task(
-            self._run_with_shutdown(), name=f"{self.name}-task"
-        )
+        # Not in task_manager: shutdown() awaits its tasks and runs in this one
+        self._server_task = asyncio.create_task(self._run_with_shutdown(), name=f"{self.name}-task")
 
     async def _run_with_shutdown(self) -> None:
         """Internal wrapper that handles shutdown signaling."""

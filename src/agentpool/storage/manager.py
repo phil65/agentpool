@@ -112,7 +112,8 @@ class StorageManager:
         exc_val: BaseException | None,
         exc_tb: TracebackType | None,
     ) -> None:
-        """Clean up all providers."""
+        """Clean up all providers (after the tasks that still write to them)."""
+        await self.task_manager.cleanup_tasks()
         errors = []
         for provider in self.providers:
             try:
@@ -120,8 +121,6 @@ class StorageManager:
             except Exception as e:
                 errors.append(e)
                 logger.exception("Error cleaning up provider", provider=provider)
-
-        await self.task_manager.cleanup_tasks()
 
         if errors:
             raise ExceptionGroup("Provider cleanup errors", errors)

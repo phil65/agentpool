@@ -129,8 +129,10 @@ class TaskManager:
 
     async def cleanup_tasks(self) -> None:
         """Wait for all pending tasks to complete."""
-        if self._pending_tasks:
-            await asyncio.gather(*self._pending_tasks, return_exceptions=True)
+        # A task cleaning up its own manager must not wait for itself (it never ends)
+        others = [t for t in self._pending_tasks if t is not asyncio.current_task()]
+        if others:
+            await asyncio.gather(*others, return_exceptions=True)
         self._pending_tasks.clear()
 
     async def complete_tasks(self, cancel: bool = False) -> None:

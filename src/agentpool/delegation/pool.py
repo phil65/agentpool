@@ -163,10 +163,10 @@ class AgentPool[TPoolDeps = None](BaseRegistry[NodeName, MessageNode[Any, Any]])
 
     async def __aenter__(self) -> Self:
         """Enter async context and initialize all agents."""
-        if self._running_count > 0:
-            self._running_count += 1
-            return self
-        async with self._enter_lock:
+        async with self._enter_lock:  # Concurrent entries: the first initializes
+            if self._running_count > 0:
+                self._running_count += 1
+                return self
             try:
                 # Initialize MCP manager first, then add aggregating provider
                 await self.exit_stack.enter_async_context(self.mcp)
@@ -189,12 +189,14 @@ class AgentPool[TPoolDeps = None](BaseRegistry[NodeName, MessageNode[Any, Any]])
                 # Triggers last (they run nodes), so they stop first
                 await self.exit_stack.enter_async_context(self.router.triggers)
 
-            except Exception as e:
+            except BaseException as e:
                 await self.cleanup()
+                if not isinstance(e, Exception):
+                    raise  # Cancelled (or exiting) while initializing
                 msg = "Failed to initialize agent pool"
                 logger.exception(msg, exc_info=e)
                 raise RuntimeError(msg) from e
-        self._running_count += 1
+            self._running_count += 1
         return self
 
     async def __aexit__(
