@@ -445,21 +445,39 @@ class Agent[TDeps = None, OutputDataT = str](BaseAgent[TDeps, OutputDataT]):
         )
 
     async def __aenter__(self) -> Self:
-        """Enter async context and set up MCP servers."""
-        # Collect all coroutines that need to be run
+        """Enter async context and set up MCP servers.
+
+        A failed step undoes the base setup (MCP servers, triggers) if that one succeeded:
+        the base setup cleans up after itself when it fails.
+        """
+        base_entered = False
+
+        async def enter_base() -> None:
+            nonlocal base_entered
+            await super(Agent, self).__aenter__()
+            base_entered = True
+
         coros: list[Coroutine[Any, Any, Any]] = [
-            super().__aenter__(),
+            enter_base(),
             *self.conversation.get_initialization_tasks(),
         ]
         try:
-            if self.parallel_init and coros:
-                await asyncio.gather(*coros)
+            if self.parallel_init:
+                results = await asyncio.gather(*coros, return_exceptions=True)
+                if errors := [r for r in results if isinstance(r, BaseException)]:
+                    raise errors[0]  # noqa: TRY301
             else:
                 for coro in coros:
                     await coro
             # Format system prompt once at startup (enables caching)
             self._formatted_system_prompt = await self.sys_prompts.format_system_prompt(self)
-        except Exception as e:
+        except BaseException as e:
+            for coro in coros:  # Not started (sequential init stopped early)
+                coro.close()
+            if base_entered:
+                await super().__aexit__(type(e), e, e.__traceback__)
+            if not isinstance(e, Exception):
+                raise
             raise RuntimeError("Failed to initialize agent") from e
         else:
             return self
@@ -618,7 +636,7 @@ class Agent[TDeps = None, OutputDataT = str](BaseAgent[TDeps, OutputDataT]):
                 raise ToolError("Parent agent required for message history sharing")
 
             if pass_message_history and parent:
-                child = parent.session.child(
+                child = parent.active_session.child(  # The calling turn's session
                     self.name, fork_history=True, agent_type=self.AGENT_TYPE
                 )
                 result = await self.run(prompt, session=child)
@@ -628,7 +646,7 @@ class Agent[TDeps = None, OutputDataT = str](BaseAgent[TDeps, OutputDataT]):
 
                 child = Session.create(
                     self.name,
-                    parent_id=parent.session.session_id if parent else None,
+                    parent_id=parent.active_session.session_id if parent else None,
                     cwd=self.env.cwd,
                     agent_type=self.AGENT_TYPE,
                     storage=self.storage,
@@ -927,38 +945,38 @@ class Agent[TDeps = None, OutputDataT = str](BaseAgent[TDeps, OutputDataT]):
 
         old_model = self._model
         old_settings = self.model_settings
-        if output_type:
-            old_type = self._output_type
-            self.to_structured(output_type)
-        async with AsyncExitStack() as stack:
-            if tools is not None:  # Tools
-                await stack.enter_async_context(
-                    self.tools.temporary_tools(tools, exclusive=replace_tools)
-                )
+        old_type = self._output_type
+        try:  # Restored however the setup or the block ends
+            if output_type:
+                self.to_structured(output_type)
+            async with AsyncExitStack() as stack:
+                if tools is not None:  # Tools
+                    await stack.enter_async_context(
+                        self.tools.temporary_tools(tools, exclusive=replace_tools)
+                    )
 
-            if history is not None:  # History
-                await stack.enter_async_context(
-                    self.conversation.temporary_state(history, replace_history=replace_history)
-                )
+                if history is not None:  # History
+                    await stack.enter_async_context(
+                        self.conversation.temporary_state(history, replace_history=replace_history)
+                    )
 
-            if pause_routing:  # Routing
-                await stack.enter_async_context(self.connections.paused_routing())
-            match model:
-                case str():
-                    self._model, settings = self._resolve_model_string(model)
-                    if settings:
-                        self.model_settings = settings
-                case Model():
-                    self._model = model
-            try:
+                if pause_routing:  # Routing
+                    await stack.enter_async_context(self.connections.paused_routing())
+                match model:
+                    case str():
+                        self._model, settings = self._resolve_model_string(model)
+                        if settings:
+                            self.model_settings = settings
+                    case Model():
+                        self._model = model
                 yield self
-            finally:  # Restore model and settings
-                if model is not None:
-                    if old_model:
-                        self._model = old_model
-                    self.model_settings = old_settings
-                if output_type:
-                    self.to_structured(old_type)  # pyright: ignore[reportPossiblyUnboundVariable]
+        finally:  # Restore model, settings and output type
+            if model is not None:
+                if old_model:
+                    self._model = old_model
+                self.model_settings = old_settings
+            if output_type:
+                self.to_structured(old_type)
 
     async def get_available_models(self) -> list[ModelInfo] | None:
         """Get available models for this agent.
@@ -1050,19 +1068,15 @@ class Agent[TDeps = None, OutputDataT = str](BaseAgent[TDeps, OutputDataT]):
             session_data = await storage.load_session(session_id)
             if not session_data:
                 return None
-            # Load conversation history if available from storage providers
-            if storage.providers:
-                provider = storage.providers[0]
-                if provider.can_load_history:
-                    messages = await provider.get_session_messages(session_id=session_id)
-                    self._history.chat_messages.clear()  # The session acting's
-                    self._history.chat_messages.extend(messages)
-                    msg = "Session loaded with conversation history"
-                    self.log.info(msg, session_id=session_id, message_count=len(messages))
-                else:
-                    self.log.info("Session loaded (no history support)", session_id=session_id)
-            else:
-                self.log.info("Session loaded (no storage providers)", session_id=session_id)
+            if not any(p.can_load_history for p in storage.providers):
+                self.log.info("Session loaded (no history support)", session_id=session_id)
+                return session_data
+            # From the history provider the manager picks (not just the first provider)
+            messages = await storage.get_session_messages(session_id)
+            self._history.chat_messages.clear()  # The session acting's
+            self._history.chat_messages.extend(messages)
+            msg = "Session loaded with conversation history"
+            self.log.info(msg, session_id=session_id, message_count=len(messages))
 
         except Exception:
             self.log.exception("Failed to load session", session_id=session_id)

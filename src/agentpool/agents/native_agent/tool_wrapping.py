@@ -118,7 +118,7 @@ def wrap_tool[TReturn](
                 tool_input=tool_input,
                 tool_output=result,
                 duration_ms=duration_ms,
-                session_id=None,
+                session_id=agent_ctx.turn_session_id,
                 env=agent_ctx.agent.env,
             )
             # Inject additional context if provided by hooks
@@ -202,7 +202,7 @@ async def _gate_call(
             agent_name=agent_ctx.node_name,
             tool_name=tool.name,
             tool_input=dict(kwargs),
-            session_id=None,  # Could be passed through if needed
+            session_id=agent_ctx.turn_session_id,
             env=agent_ctx.agent.env,
         )
     modified = pre_result.get("modified_input") or {}

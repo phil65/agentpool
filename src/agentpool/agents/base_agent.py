@@ -6,6 +6,7 @@ from abc import abstractmethod
 import asyncio
 from collections.abc import Callable
 from contextlib import contextmanager, nullcontext, suppress
+from contextvars import ContextVar
 from dataclasses import dataclass, field, replace
 import os
 from pathlib import Path
@@ -98,6 +99,16 @@ type AgentTypeLiteral = Literal[
 
 
 _SLASH_PATTERN: re.Pattern[str] = re.compile(r"^/([\w-]+)(?:\s+(.*))?$")
+_COMMAND_EVENTS: ContextVar[Callable[[Any], Awaitable[None]] | None] = ContextVar(
+    "agentpool_command_events", default=None
+)
+"""Where the events of the slash command running in this context go (its stream's queue)."""
+
+
+async def _dispatch_command_event(event: Any) -> None:
+    """Command store event handler: hand the event to the stream of its command."""
+    if (put := _COMMAND_EVENTS.get()) is not None:
+        await put(event)
 
 
 def _parse_slash_command(command_text: str) -> tuple[str, str] | None:
@@ -312,7 +323,10 @@ class BaseAgent[TDeps = None, TResult = str](MessageNode[TDeps, TResult]):
         self.hooks = hooks or AgentHooks()
         # Deferred initialization support - subclasses set True in __aenter__,
         # override ensure_initialized() to do actual connection
-        self._command_store = CommandStore(commands=[*get_commands(), *(commands or [])])
+        self._command_store = CommandStore(
+            commands=[*get_commands(), *(commands or [])],
+            event_handler=_dispatch_command_event,
+        )
         # Initialize store (registers builtin help/exit commands)
         self._command_store._initialize_sync()
         # Internal filesystem for tool/session state (can get written to via AgentContext)
@@ -1225,9 +1239,10 @@ class BaseAgent[TDeps = None, TResult = str](MessageNode[TDeps, TResult]):
         cmd_name, args = parsed
         # Set up event queue for this command execution
         event_queue: asyncio.Queue[Any] = asyncio.Queue()
-        # Temporarily set event handler on command store
-        old_handler = self._command_store.event_handler
-        self._command_store.event_handler = event_queue.put
+        # The command's events reach this stream only (the store is shared by concurrent
+        # commands): its task inherits the context set here
+        previous = _COMMAND_EVENTS.get()  # Restored by value: see runtime.activate
+        _COMMAND_EVENTS.set(event_queue.put)
         cmd_ctx = self._command_store.create_context(data=self.get_context())
         command_str = f"{cmd_name} {args}".strip()
         try:
@@ -1269,7 +1284,7 @@ class BaseAgent[TDeps = None, TResult = str](MessageNode[TDeps, TResult]):
             yield CommandCompleteEvent(command=cmd_name, success=success)
 
         finally:
-            self._command_store.event_handler = old_handler
+            _COMMAND_EVENTS.set(previous)
 
     async def run_stream_with_commands(
         self,
@@ -1300,11 +1315,13 @@ class BaseAgent[TDeps = None, TResult = str](MessageNode[TDeps, TResult]):
             else:
                 regular_prompts.append(prompt)
 
-        # Execute all commands first with streaming
+        # Execute all commands first with streaming, as part of the run's session (they
+        # stage content for its next prompt, change its settings)
         for command in commands:
             self.log.info("Processing slash command", command=command)
-            async for cmd_event in self._execute_slash_command_streaming(command):
-                yield cmd_event
+            with self.use_session(kwargs.get("session")):
+                async for cmd_event in self._execute_slash_command_streaming(command):
+                    yield cmd_event
 
         # If we have regular content, process it through the agent
         if regular_prompts:

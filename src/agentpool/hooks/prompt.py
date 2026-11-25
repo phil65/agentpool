@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 from string import Template
 from typing import TYPE_CHECKING, Literal
 
@@ -81,7 +82,8 @@ class PromptHook(Hook):
         """
         try:
             prompt = self._build_prompt(input_data)
-            decision = await self._query_llm(prompt)
+            async with asyncio.timeout(self.timeout):
+                decision = await self._query_llm(prompt)
             return HookResult(decision=decision.decision, reason=decision.reason)
         except Exception as e:
             logger.exception("Prompt hook failed")

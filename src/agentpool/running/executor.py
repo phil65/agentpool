@@ -7,7 +7,8 @@ import importlib.util
 import inspect
 from pathlib import Path
 import sys
-from typing import TYPE_CHECKING, Any, get_type_hints
+from types import UnionType
+from typing import TYPE_CHECKING, Any, Literal, Union, get_args, get_origin, get_type_hints
 
 import anyio
 
@@ -65,7 +66,7 @@ def discover_functions(path: str | os.PathLike[str]) -> list[NodeFunction]:
     spec.loader.exec_module(module)
 
     # Find decorated functions
-    return [i for name, i in inspect.getmembers(module) if hasattr(i, "_node_function")]
+    return [i._node_function for _, i in inspect.getmembers(module) if hasattr(i, "_node_function")]
 
 
 def _sort_functions(functions: list[NodeFunction]) -> list[NodeFunction]:
@@ -221,12 +222,27 @@ def _validate_dependency_types(functions: list[NodeFunction]) -> None:
                     raise TypeError(msg)
 
 
-def _validate_value_type(value: Any, expected_type: type, func_name: str, param_name: str) -> None:
+def _matches_type(value: Any, expected: Any) -> bool:
+    """Whether ``value`` is of type ``expected``, checking generics by their origin only."""
+    if expected is Any:
+        return True
+    origin = get_origin(expected)
+    if origin in (Union, UnionType):
+        return any(_matches_type(value, arg) for arg in get_args(expected))
+    if origin is Literal:
+        return value in get_args(expected)
+    check = origin or expected
+    if expected is None or check is type(None):
+        return value is None
+    return not isinstance(check, type) or isinstance(value, check)  # Unknown: not checked
+
+
+def _validate_value_type(value: Any, expected_type: Any, func_name: str, param_name: str) -> None:
     """Validate that a value matches its expected type."""
-    if not isinstance(value, expected_type):
+    if not _matches_type(value, expected_type):
         msg = (
             f"Type error in {func_name}: parameter {param_name!r} "
-            f"expected {expected_type.__name__}, got {type(value).__name__}"
+            f"expected {expected_type!r}, got {type(value).__name__}"
         )
         raise TypeError(msg)
 

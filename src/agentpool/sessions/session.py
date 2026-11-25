@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections import OrderedDict
 from dataclasses import replace
+from decimal import Decimal
 from typing import TYPE_CHECKING, Any
 from uuid import uuid4
 
@@ -73,6 +74,8 @@ class Session:
         self.storage = storage
         self.history = history if history is not None else MessageHistory(storage=storage)
         self.overrides = overrides if overrides is not None else SessionOverrides()
+        self.cost = Decimal(0)
+        """Cost of the session's turns in this process so far (USD), across agent runtimes."""
 
     @classmethod
     def create(

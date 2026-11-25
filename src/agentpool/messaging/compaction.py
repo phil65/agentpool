@@ -170,6 +170,11 @@ def _with_content(part: ToolReturnPart[Any], content: str) -> ToolReturnPart[Any
     return replace(part, content=content)
 
 
+def _last[T](items: Sequence[T], count: int) -> list[T]:
+    """The last ``count`` items (none for 0: ``items[-0:]`` would be all of them)."""
+    return list(items[max(0, len(items) - count) :]) if count > 0 else []
+
+
 def _is_retry_part(part: ModelRequestPart) -> bool:
     """Whether a request part is a retry (retry feedback or a retried tool return)."""
     match part:
@@ -357,7 +362,7 @@ class TruncateToolOutputs(CompactionStep):
                         ):
                             content = part.content
                             if isinstance(content, str) and len(content) > self.max_length:
-                                truncated = content[: self.max_length - len(self.suffix)]
+                                truncated = content[: max(0, self.max_length - len(self.suffix))]
                                 new_parts.append(_with_content(part, truncated + self.suffix))
                             else:
                                 new_parts.append(part)
@@ -390,7 +395,8 @@ class TruncateTextParts(CompactionStep):
                     new_parts: list[ModelRequestPart | ModelResponsePart] = []
                     for part in parts:
                         if isinstance(part, TextPart) and len(part.content) > self.max_length:
-                            truncated = part.content[: self.max_length - len(self.suffix)]
+                            keep = max(0, self.max_length - len(self.suffix))
+                            truncated = part.content[:keep]
                             new_parts.append(replace(part, content=truncated + self.suffix))
                         else:
                             new_parts.append(part)
@@ -424,7 +430,7 @@ class KeepLastMessages(CompactionStep):
             return []
 
         if not self.count_pairs:
-            return list(messages[-self.count :])
+            return _last(messages, self.count)
 
         # Count pairs (each request+response = 1 pair)
         pairs: list[list[ModelMessage]] = []
@@ -441,7 +447,7 @@ class KeepLastMessages(CompactionStep):
             pairs.append(current_pair)
 
         # Keep last N pairs
-        kept_pairs = pairs[-self.count :]
+        kept_pairs = _last(pairs, self.count)
         return [msg for pair in kept_pairs for msg in pair]
 
 
@@ -479,7 +485,7 @@ class KeepFirstAndLast(CompactionStep):
             return msg_list
 
         first = msg_list[: self.first_count]
-        last = msg_list[-self.last_count :]
+        last = _last(msg_list, self.last_count)
         return first + last
 
 
@@ -552,8 +558,8 @@ class Summarize(CompactionStep):
             return list(messages)
 
         # Split into messages to summarize and messages to keep
-        to_summarize = list(messages[: -self.keep_recent])
-        to_keep = list(messages[-self.keep_recent :])
+        to_keep = _last(messages, self.keep_recent)
+        to_summarize = list(messages[: len(messages) - len(to_keep)])
         # Format conversation for summarization
         conversation_text = _format_session(to_summarize)
         # Get or create summarization agent
@@ -679,6 +685,7 @@ async def compact_conversation(
     chat_messages = conversation.get_history()
     if not chat_messages:
         return 0, 0
+    session_id = chat_messages[-1].session_id
 
     # Extract ModelRequest/ModelResponse from ChatMessage.messages
     model_messages: list[ModelMessage] = []
@@ -698,13 +705,20 @@ async def compact_conversation(
     for msg in compacted:
         current_msgs.append(msg)
         if isinstance(msg, ModelResponse):
-            m = ChatMessage(content="[compacted]", role="assistant", messages=list(current_msgs))
+            m = ChatMessage(
+                content="[compacted]",
+                role="assistant",
+                messages=list(current_msgs),
+                session_id=session_id,
+            )
             new_chat_messages.append(m)
             current_msgs = []
 
     # Handle any remaining messages (incomplete pair)
     if current_msgs:
-        m = ChatMessage(content="[compacted]", role="user", messages=list(current_msgs))
+        m = ChatMessage(
+            content="[compacted]", role="user", messages=list(current_msgs), session_id=session_id
+        )
         new_chat_messages.append(m)
 
     # Update the conversation history

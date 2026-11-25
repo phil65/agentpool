@@ -287,14 +287,18 @@ class T3Agent[TDeps = None](BaseAgent[TDeps, str]):
 
     async def __aenter__(self) -> Self:
         await super().__aenter__()
-        if self._owns_client:
-            self._client = self._connect()
-            await self._client.__aenter__()
-        if self._client is None:
-            raise AgentNotInitializedError
-        self._project_id = await self._resolve_project(self._client)
-        if self._owns_native and self._native_mode is not False:
-            self._native = await self._connect_native()
+        try:
+            if self._owns_client:
+                self._client = self._connect()
+                await self._client.__aenter__()
+            if self._client is None:
+                raise AgentNotInitializedError  # noqa: TRY301
+            self._project_id = await self._resolve_project(self._client)
+            if self._owns_native and self._native_mode is not False:
+                self._native = await self._connect_native()
+        except BaseException as e:  # Undo what was set up (the client, the base setup)
+            await self.__aexit__(type(e), e, e.__traceback__)
+            raise
         self.log.info(
             "Connected to T3 Code", project_id=self._project_id, live=self._native is not None
         )

@@ -21,7 +21,7 @@ Usage::
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from typing import TYPE_CHECKING, Any
 
 from pydantic_ai import (
@@ -261,35 +261,33 @@ class MessageReconstructor:
     def _merge_tool_call_delta(
         self, args: str | dict[str, Any] | None, tool_call_id: str | None
     ) -> None:
-        """Merge a tool call args delta into the matching ToolCallPart."""
+        """Merge a tool call args delta into the matching ToolCallPart (else the last one)."""
         if args is None:
             return
-        # Find matching tool call by ID (search backwards for efficiency)
-        if tool_call_id is not None:
-            for i in range(len(self.current_response_parts) - 1, -1, -1):
-                part = self.current_response_parts[i]
-                if isinstance(part, ToolCallPart) and part.tool_call_id == tool_call_id:
-                    if isinstance(args, str) and isinstance(part.args, str):
-                        self.current_response_parts[i] = ToolCallPart(
-                            tool_name=part.tool_name,
-                            args=part.args + args,
-                            tool_call_id=part.tool_call_id,
-                            id=part.id,
-                            provider_name=part.provider_name,
-                            provider_details=part.provider_details,
-                        )
-                    return
-        # Fallback: update last ToolCallPart
-        for i in range(len(self.current_response_parts) - 1, -1, -1):
-            part = self.current_response_parts[i]
-            if isinstance(part, ToolCallPart):
-                if isinstance(args, str) and isinstance(part.args, str):
-                    self.current_response_parts[i] = ToolCallPart(
-                        tool_name=part.tool_name,
-                        args=part.args + args,
-                        tool_call_id=part.tool_call_id,
-                        id=part.id,
-                        provider_name=part.provider_name,
-                        provider_details=part.provider_details,
-                    )
-                return
+        parts = self.current_response_parts
+        calls = [i for i, part in enumerate(parts) if isinstance(part, ToolCallPart)]
+        matching = [i for i in calls if getattr(parts[i], "tool_call_id", None) == tool_call_id]
+        if not (targets := matching or calls):
+            return
+        part = parts[targets[-1]]
+        assert isinstance(part, ToolCallPart)
+        parts[targets[-1]] = replace(part, args=_merge_args(part.args, args))
+
+
+def _merge_args(
+    current: str | dict[str, Any] | None, delta: str | dict[str, Any]
+) -> str | dict[str, Any] | None:
+    """Tool call args with ``delta`` applied: JSON text appends, dicts merge.
+
+    A start without args (``None``, ``""``, ``{}``) takes the delta as it is; text and a
+    dict can't be merged, so the args stay as they are.
+    """
+    if not current:  # None, "" or {}
+        return delta
+    match current, delta:
+        case str(), str():
+            return current + delta
+        case dict(), dict():
+            return {**current, **delta}
+        case _:
+            return current

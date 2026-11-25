@@ -25,7 +25,6 @@ import asyncio
 from contextlib import contextmanager
 from contextvars import ContextVar
 from dataclasses import replace
-from decimal import Decimal
 import time
 from types import MappingProxyType
 from typing import TYPE_CHECKING, Any
@@ -100,8 +99,6 @@ class SessionRuntime[TDeps = Any, TResult = Any]:
         self.events: asyncio.Queue[RichAgentStreamEvent[Any]] = asyncio.Queue()
         self.staged = StagedContent()
         self.turn_message_id: str | None = None
-        self.cost = Decimal(0)
-        """Cost of this session's turns on this runtime so far (USD)."""
         self.tasks: dict[str, RunningTask] = {}
         """Tasks this session's turns started that still run, by task id."""
         self.last_turn: Turn[TResult] | None = None
@@ -235,13 +232,13 @@ class SessionRuntime[TDeps = Any, TResult = Any]:
         if isinstance(event, StreamCompleteEvent):
             message = event.message
             if message.cost_info is not None:
-                self.cost += message.cost_info.total_cost
+                self.session.cost += message.cost_info.total_cost
             pool.activity.usage(
                 session_id,
                 name,
                 used=context_tokens(message),
                 size=self.agent.known_context_window,
-                cost=float(self.cost) if self.cost else None,
+                cost=float(self.session.cost) if self.session.cost else None,
             )
             return
         pool.activity.observe(session_id, name, event)

@@ -1211,6 +1211,7 @@ class ClaudeCodeAgent[TDeps = None, TResult = str](BaseAgent[TDeps, TResult]):
             unanswered={prompt_uuid},
             taken_in={prompt_uuid},
         )
+        adapter: ClaudeCodeStreamedResponse | None = None  # Once the CLI answered
         try:
             await client.query(*claude_prompts, uuid=prompt_uuid)
             self._steering = steering
@@ -1254,7 +1255,7 @@ class ClaudeCodeAgent[TDeps = None, TResult = str](BaseAgent[TDeps, TResult]):
             if self._sdk_session_id:
                 msg_metadata["sdk_session_id"] = self._sdk_session_id
             reconstructor.flush()
-            resolved = adapter.model_name or self.model_name  # pyright: ignore[reportPossiblyUnboundVariable]
+            resolved = (adapter.model_name if adapter is not None else None) or self.model_name
             response_msg = ChatMessage[TResult](
                 content=reconstructor.text_content,  # type: ignore[arg-type]  # ty:ignore[invalid-argument-type]
                 role="assistant",
@@ -1287,6 +1288,7 @@ class ClaudeCodeAgent[TDeps = None, TResult = str](BaseAgent[TDeps, TResult]):
                     self._on_cli_idle()
 
         reconstructor.flush()
+        assert adapter is not None  # Only a cancellation ends the stream before it exists
 
         # Determine final content - use structured output if available
         result_message = adapter._result_message

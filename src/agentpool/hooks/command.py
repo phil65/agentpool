@@ -81,21 +81,26 @@ class CommandHook(Hook):
         from exxec.local_provider import LocalExecutionEnvironment
 
         # Resolve execution environment: per-hook override > agent env > local fallback
-        effective_env = (
-            self._execution_env
-            or env
-            or LocalExecutionEnvironment(env_vars=self.env or None, inherit_env=True)
+        given_env = self._execution_env or env
+        effective_env = given_env or LocalExecutionEnvironment(
+            env_vars=self.env or None, inherit_env=True
         )
 
         # Expand $PROJECT_DIR if present
         command = self.command
         if "$PROJECT_DIR" in command:
             project_dir = self.env.get("PROJECT_DIR", str(Path.cwd()))
-            command = command.replace("$PROJECT_DIR", project_dir)
+            command = command.replace("$PROJECT_DIR", shlex.quote(project_dir))
 
         # Serialize input and pipe via shell
         input_json = anyenv.dump_json(dict(input_data))
         full_command = f"echo {shlex.quote(input_json)} | {command}"
+        if self.env and given_env is not None:
+            # A given environment doesn't know the hook's variables: set them here
+            exports = "; ".join(
+                f"export {name}={shlex.quote(value)}" for name, value in self.env.items()
+            )
+            full_command = f"{exports}; {full_command}"
 
         try:
             result = await asyncio.wait_for(
@@ -153,8 +158,8 @@ def _normalize_result(data: dict[str, Any]) -> HookResult:
     """
     # Handle decision field (support various naming conventions)
     match data.get("decision") or data.get("permissionDecision"):
-        # Normalize decision values
-        case "approve" | "allow":
+        # Normalize decision values (none given: the other fields still apply)
+        case "approve" | "allow" | None:
             result = HookResult(decision="allow")
         case "block" | "deny":
             result = HookResult(decision="deny")
