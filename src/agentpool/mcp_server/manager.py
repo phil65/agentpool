@@ -54,13 +54,20 @@ class MCPManager:
         return f"MCPManager(name={self.name!r}, servers={len(self.servers)})"
 
     async def __aenter__(self) -> Self:
-        try:
-            if tasks := [self.setup_server(server) for server in self.servers]:
-                await asyncio.gather(*tasks)
-        except Exception as e:
-            await self.__aexit__(type(e), e, e.__traceback__)
-            raise RuntimeError("Failed to initialize MCP manager") from e
+        """Connect all enabled servers concurrently.
 
+        A server that fails to connect (or to start within its ``init_timeout``)
+        doesn't fail the manager: it is logged and kept with status ``failed``, so
+        it can be reconnected later. Cancellation stops every pending connect and
+        closes what was connected.
+        """
+        try:
+            async with asyncio.TaskGroup() as group:
+                for server in self.servers:
+                    group.create_task(self._setup_isolated(server))
+        except BaseException:
+            await self.cleanup()
+            raise
         return self
 
     async def __aexit__(
@@ -70,6 +77,32 @@ class MCPManager:
         exc_tb: TracebackType | None,
     ) -> None:
         await self.cleanup()
+
+    async def _setup_isolated(self, config: MCPServerConfig) -> None:
+        """Set up a server; a failure leaves it registered as ``failed`` instead of raising."""
+        if not config.enabled:
+            return
+        provider = self._create_provider(config)
+        try:
+            await self.exit_stack.enter_async_context(provider)
+        except Exception as e:  # noqa: BLE001
+            logger.error(  # noqa: TRY400
+                "MCP server failed to start, continuing without it",
+                server=config.client_id,
+                manager=self.name,
+                error=str(e.__cause__ or e),
+            )
+            # Kept for its status and a later reconnect, which it may also close
+            self.exit_stack.push_async_exit(provider.__aexit__)
+        self.aggregating_provider.add_provider(provider)
+
+    def _create_provider(self, config: MCPServerConfig) -> MCPResourceProvider:
+        return MCPResourceProvider(
+            server=config,
+            name=f"{self.name}_{config.name or config.client_id}",
+            owner=self.owner,
+            source="pool" if self.owner == "pool" else "node",
+        )
 
     async def setup_server(
         self, config: MCPServerConfig, *, add_to_config: bool = False
@@ -86,6 +119,7 @@ class MCPManager:
 
         Raises:
             ValueError: If add_to_config=True and config is disabled
+            RuntimeError: If the server can't be connected
         """
         if not config.enabled:
             if add_to_config:
@@ -95,14 +129,9 @@ class MCPManager:
         if add_to_config:
             self.add_server_config(config)
 
-        provider = MCPResourceProvider(
-            server=config,
-            name=f"{self.name}_{config.name or config.client_id}",
-            owner=self.owner,
-            source="pool" if self.owner == "pool" else "node",
-        )
+        provider = self._create_provider(config)
         provider = await self.exit_stack.enter_async_context(provider)
-        self.providers.append(provider)
+        self.aggregating_provider.add_provider(provider)
         return provider
 
     def get_mcp_providers(self) -> list[MCPResourceProvider]:
@@ -114,26 +143,16 @@ class MCPManager:
         return self.aggregating_provider
 
     async def cleanup(self) -> None:
-        """Clean up all MCP connections and providers."""
+        """Clean up all MCP connections and providers (stops stdio server processes)."""
         try:
-            try:
-                # Clean up exit stack (which includes MCP providers)
-                await self.exit_stack.aclose()
-            except RuntimeError as e:
-                if "different task" in str(e):
-                    # Handle task context mismatch
-                    if asyncio.current_task():
-                        loop = asyncio.get_running_loop()
-                        await loop.create_task(self.exit_stack.aclose())
-                else:
-                    raise
-
-            self.providers.clear()
-
+            await self.exit_stack.aclose()
         except Exception as e:
             msg = "Error during MCP manager cleanup"
             logger.exception(msg, exc_info=e)
             raise RuntimeError(msg) from e
+        finally:
+            self.exit_stack = AsyncExitStack()
+            self.aggregating_provider.clear_providers()
 
 
 if __name__ == "__main__":

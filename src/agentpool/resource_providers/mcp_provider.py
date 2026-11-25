@@ -62,7 +62,7 @@ class MCPResourceProvider(ResourceProvider):
         self._lifecycle = asyncio.Lock()
         self.client = self._create_client()
 
-    def _create_client(self) -> MCPClient:
+    def _create_client(self, *, oauth_fallback: bool = False) -> MCPClient:
         from agentpool.mcp_server import MCPClient
 
         return MCPClient(
@@ -70,12 +70,15 @@ class MCPResourceProvider(ResourceProvider):
             tool_change_callback=self._on_tools_changed,
             prompt_change_callback=self._on_prompts_changed,
             resource_change_callback=self._on_resources_changed,
+            oauth_fallback=oauth_fallback,
         )
 
     async def reconnect(self) -> None:
         """Drop the connection and connect again with a fresh client (enables the server).
 
         Users then see the server's tools, prompts and resources as they are now.
+        Someone asked for this connection, so a HTTP/SSE server refusing the
+        configured auth may be retried with (interactive) OAuth.
 
         Raises:
             Exception: If the server can't be reached (its status then says why)
@@ -83,7 +86,7 @@ class MCPResourceProvider(ResourceProvider):
         async with self._lifecycle:
             await self._close()
             self.enabled = True
-            self.client = self._create_client()
+            self.client = self._create_client(oauth_fallback=True)
             try:
                 await self.exit_stack.enter_async_context(self.client)
             except Exception as e:
@@ -141,13 +144,19 @@ class MCPResourceProvider(ResourceProvider):
                 assert_never(unreachable)
 
     async def __aenter__(self) -> Self:
+        """Connect the server.
+
+        Raises:
+            RuntimeError: If it can't be reached (its status then says why)
+        """
         try:
             await self.exit_stack.enter_async_context(self.client)
         except Exception as e:
-            # Clean up in case of error
-            await self.__aexit__(type(e), e, e.__traceback__)
-            raise RuntimeError("Failed to initialize MCP manager") from e
-
+            self._error = str(e) or type(e).__name__
+            await self._close()  # Clean up in case of error
+            msg = f"Failed to connect MCP server {self.server.client_id!r}: {self._error}"
+            raise RuntimeError(msg) from e
+        self._error = None
         return self
 
     async def __aexit__(
@@ -157,20 +166,9 @@ class MCPResourceProvider(ResourceProvider):
         exc_tb: TracebackType | None,
     ) -> None:
         try:
-            try:
-                # Clean up exit stack (which includes MCP clients)
-                await self.exit_stack.aclose()
-            except RuntimeError as e:
-                if "different task" in str(e):
-                    # Handle task context mismatch
-                    if asyncio.current_task():
-                        loop = asyncio.get_running_loop()
-                        await loop.create_task(self.exit_stack.aclose())
-                else:
-                    raise
-
+            await self._close()  # The client, and with it the server process
         except Exception as e:
-            msg = "Error during MCP manager cleanup"
+            msg = "Error during MCP provider cleanup"
             logger.exception(msg, exc_info=e)
             raise RuntimeError(msg) from e
 

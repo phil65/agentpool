@@ -31,6 +31,7 @@ from agentpool.resource_providers import ResourceProvider
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
+    from types import TracebackType
 
     from agentpool.mcp_server.registries.official_registry_client import RegistryServer
     from agentpool.tools.base import Tool
@@ -190,8 +191,12 @@ class MCPDiscoveryToolset(ResourceProvider):
             client = self._connections[server_name]
             if client.connected:
                 return client
-            # Connection dropped, remove and reconnect
+            # Connection dropped: close what is left of it, then reconnect
             del self._connections[server_name]
+            try:
+                await client.__aexit__(None, None, None)
+            except Exception as e:  # noqa: BLE001
+                logger.warning("Error closing dropped connection", server=server_name, error=e)
 
         config = await self._get_server_config(server_name)
         client = MCPClient(config=config)
@@ -438,6 +443,15 @@ class MCPDiscoveryToolset(ResourceProvider):
         except Exception as e:
             logger.exception("Error calling MCP tool", server=server_name, tool=tool_name)
             return f"Error calling '{tool_name}' on '{server_name}': {e}"
+
+    async def __aexit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc_val: BaseException | None,
+        exc_tb: TracebackType | None,
+    ) -> None:
+        """Close connections, the registry client and the search index (its agent exits)."""
+        await self.cleanup()
 
     async def cleanup(self) -> None:
         """Clean up resources."""

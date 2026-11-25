@@ -59,21 +59,42 @@ class AggregatingResourceProvider(ResourceProvider):
     @providers.setter
     def providers(self, value: list[ResourceProvider]) -> None:
         """Set the list of child providers and set up signal forwarding."""
-        # Disconnect from old providers
-        for provider in self._providers:
-            provider.tools_changed.disconnect(self._forward_tools_changed)
-            provider.prompts_changed.disconnect(self._forward_prompts_changed)
-            provider.resources_changed.disconnect(self._forward_resources_changed)
-            provider.skills_changed.disconnect(self._forward_skills_changed)
-
+        for provider in self._providers:  # Disconnect from old providers
+            self._disconnect(provider)
         self._providers = value
+        for provider in self._providers:  # Connect to new providers
+            self._connect(provider)
 
-        # Connect to new providers
+    def _connect(self, provider: ResourceProvider) -> None:
+        provider.tools_changed.connect(self._forward_tools_changed)
+        provider.prompts_changed.connect(self._forward_prompts_changed)
+        provider.resources_changed.connect(self._forward_resources_changed)
+        provider.skills_changed.connect(self._forward_skills_changed)
+
+    def _disconnect(self, provider: ResourceProvider) -> None:
+        provider.tools_changed.disconnect(self._forward_tools_changed)
+        provider.prompts_changed.disconnect(self._forward_prompts_changed)
+        provider.resources_changed.disconnect(self._forward_resources_changed)
+        provider.skills_changed.disconnect(self._forward_skills_changed)
+
+    def add_provider(self, provider: ResourceProvider) -> None:
+        """Aggregate ``provider`` too, forwarding its change signals.
+
+        Use this instead of appending to ``providers``, which would not forward them.
+        """
+        self._providers.append(provider)
+        self._connect(provider)
+
+    def remove_provider(self, provider: ResourceProvider) -> None:
+        """Stop aggregating ``provider`` (and forwarding its change signals)."""
+        self._providers.remove(provider)
+        self._disconnect(provider)
+
+    def clear_providers(self) -> None:
+        """Stop aggregating every provider (keeps the list object)."""
         for provider in self._providers:
-            provider.tools_changed.connect(self._forward_tools_changed)
-            provider.prompts_changed.connect(self._forward_prompts_changed)
-            provider.resources_changed.connect(self._forward_resources_changed)
-            provider.skills_changed.connect(self._forward_skills_changed)
+            self._disconnect(provider)
+        self._providers.clear()
 
     async def _forward_tools_changed(self, event: ResourceChangeEvent) -> None:
         """Forward tools_changed signal from child provider."""

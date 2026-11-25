@@ -281,7 +281,10 @@ class Agent[TDeps = None, OutputDataT = str](BaseAgent[TDeps, OutputDataT]):
         self._builtin_tools = list(builtin_tools) if builtin_tools else []
         # Override tools with Agent-specific ToolManager (with tools and tool_mode)
         self.tools = ToolManager(tools, tool_mode=tool_mode)
-        for toolset_provider in toolsets or []:
+        self._toolsets = list(toolsets or [])
+        """Toolset providers: entered with the agent, so they can open and close resources."""
+        self._toolsets_stack = AsyncExitStack()
+        for toolset_provider in self._toolsets:
             self.tools.add_provider(toolset_provider)
         aggregating_provider = self.mcp.get_aggregating_provider()
         self.tools.add_provider(aggregating_provider)
@@ -469,11 +472,14 @@ class Agent[TDeps = None, OutputDataT = str](BaseAgent[TDeps, OutputDataT]):
             else:
                 for coro in coros:
                     await coro
+            for toolset in self._toolsets:
+                await self._toolsets_stack.enter_async_context(toolset)
             # Format system prompt once at startup (enables caching)
             self._formatted_system_prompt = await self.sys_prompts.format_system_prompt(self)
         except BaseException as e:
             for coro in coros:  # Not started (sequential init stopped early)
                 coro.close()
+            await self._toolsets_stack.aclose()
             if base_entered:
                 await super().__aexit__(type(e), e, e.__traceback__)
             if not isinstance(e, Exception):
@@ -488,8 +494,11 @@ class Agent[TDeps = None, OutputDataT = str](BaseAgent[TDeps, OutputDataT]):
         exc_val: BaseException | None,
         exc_tb: TracebackType | None,
     ) -> None:
-        """Exit async context."""
-        await super().__aexit__(exc_type, exc_val, exc_tb)
+        """Exit async context (closes the toolsets' resources, such as connections)."""
+        try:
+            await self._toolsets_stack.aclose()
+        finally:
+            await super().__aexit__(exc_type, exc_val, exc_tb)
 
     @overload
     @classmethod

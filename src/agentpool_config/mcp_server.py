@@ -73,6 +73,17 @@ class BaseMCPServerConfig(Schema):
     )
     """Timeout for the server process in seconds."""
 
+    init_timeout: float = Field(
+        default=30.0,
+        gt=0,
+        examples=[10.0, 30.0, 120.0],
+        title="Startup timeout",
+    )
+    """Seconds to wait for the server to start and finish the MCP handshake.
+
+    A server that takes longer is marked failed instead of blocking its agent or pool.
+    """
+
     enabled_tools: list[str] | None = Field(
         default=None,
         examples=[["read_file", "list_directory"], ["search", "fetch"]],
@@ -251,7 +262,7 @@ class StdioMCPServerConfig(BaseMCPServerConfig):
             args=self.args,
             env=self.get_env_vars() if self.env else None,
         )
-        return MCPToolset(transport, id=self.name, init_timeout=self.timeout)
+        return MCPToolset(transport, id=self.name, init_timeout=self.init_timeout)
 
 
 class SSEMCPServerConfig(BaseMCPServerConfig):
@@ -314,7 +325,7 @@ class SSEMCPServerConfig(BaseMCPServerConfig):
         from pydantic_ai.mcp import MCPToolset
 
         transport = SSETransport(url=str(self.url), headers=self.headers)
-        return MCPToolset(transport, id=self.name, init_timeout=self.timeout)
+        return MCPToolset(transport, id=self.name, init_timeout=self.init_timeout)
 
 
 class StreamableHTTPMCPServerConfig(BaseMCPServerConfig):
@@ -377,7 +388,7 @@ class StreamableHTTPMCPServerConfig(BaseMCPServerConfig):
         from pydantic_ai.mcp import MCPToolset
 
         transport = StreamableHttpTransport(url=str(self.url), headers=self.headers)
-        return MCPToolset(transport, id=self.name, init_timeout=self.timeout)
+        return MCPToolset(transport, id=self.name, init_timeout=self.init_timeout)
 
 
 MCPServerConfig = Annotated[

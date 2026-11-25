@@ -21,7 +21,7 @@ from contextlib import asynccontextmanager, suppress
 from dataclasses import dataclass, field, replace
 import inspect
 import time
-from typing import TYPE_CHECKING, Any, Self, cast, get_args, get_origin
+from typing import TYPE_CHECKING, Any, Self, cast, get_args, get_origin, get_type_hints
 from urllib.parse import quote
 from uuid import uuid4
 
@@ -199,6 +199,15 @@ def _extract_tool_call_id(context: Context | None) -> str:
             logger.debug("Extracted Claude tool_call_id", tool_call_id=claude_tool_id)
             return claude_tool_id
     return str(uuid4())  # Generate fallback UUID if no tool_call_id found in meta
+
+
+def _annotations_resolve(fn: Any) -> bool:
+    """Whether the type hints of ``fn`` resolve (so a schema built from them is accurate)."""
+    try:
+        get_type_hints(fn)
+    except Exception:  # noqa: BLE001
+        return False
+    return True
 
 
 @dataclass
@@ -390,6 +399,7 @@ class ToolManagerBridge:
         """Register a single tool with the FastMCP server."""
         if not self._mcp:
             return
+        from fastmcp.exceptions import ToolError as FastMCPToolError
         from fastmcp.tools import Tool as FastMCPTool
 
         class _BridgeTool(FastMCPTool):
@@ -418,6 +428,29 @@ class ToolManagerBridge:
                 # Set these AFTER super().__init__() to avoid being overwritten
                 self._tool = tool
                 self._bridge = bridge
+                # A schema from annotations that don't resolve is a guess: don't enforce it
+                self._check_args = _annotations_resolve(fn)
+
+            def _validate(self, args: dict[str, Any]) -> None:
+                """Check ``args`` against the advertised parameters (context ones excluded).
+
+                Raises:
+                    ToolError: They don't match (an error result the model sees)
+                """
+                import jsonschema
+
+                if not self._check_args:
+                    return
+                try:
+                    jsonschema.validate(args, self.parameters)
+                except jsonschema.ValidationError as e:
+                    msg = (
+                        f"Tool {self._tool.name!r} called with invalid args. "
+                        f"Ensure args match the schema.\n\nValidation error: {e.message}"
+                    )
+                    raise FastMCPToolError(msg) from e
+                except jsonschema.SchemaError:  # A schema we can't check against
+                    pass
 
             async def run(self, arguments: dict[str, Any]) -> FastMCPToolResult:
                 """Execute the wrapped tool with context bridging."""
@@ -427,16 +460,7 @@ class ToolManagerBridge:
                 from agentpool.tools.base import ToolResult as AgentPoolToolResult
 
                 args = arguments.copy()
-                # Validate args against tool's schema
-                # try:
-                #     param_model = self._tool.schema_obj.create_parameter_model()
-                #     param_model.model_validate(args)
-                # except pydantic.ValidationError as e:
-                #     error_msg = (
-                #         f"Tool '{self._tool.name}' called with invalid args. "
-                #         f"Ensure args match the schema.\n\nValidation errors:\n{e}"
-                #     )
-                #     return ToolResult(content=[TextContent(type="text", text=error_msg)])
+                self._validate(args)
 
                 # Get FastMCP context from context variable (not passed as parameter)
                 try:
@@ -533,14 +557,15 @@ class ToolManagerBridge:
                 kwargs.update(modified)
 
         fn = tool.get_callable()
-        # Inject AgentContext parameters
+        tool_input = dict(kwargs)  # What hooks see: the caller's arguments, no contexts
+        # Inject AgentContext parameters, over any value a caller passed for them
         context_param_names = _get_context_param_names(fn, "AgentContext")
-        kwargs |= {name: ctx for name in context_param_names if name not in kwargs}
+        kwargs |= dict.fromkeys(context_param_names, ctx)
         # Inject RunContext parameters (as stub since we're outside pydantic-ai)
         run_context_param_names = _get_context_param_names(fn, "RunContext")
         if run_context_param_names:
             stub_run_ctx = _create_stub_run_context(ctx, prompt=prompt)
-            kwargs |= {name: stub_run_ctx for name in run_context_param_names if name not in kwargs}
+            kwargs |= dict.fromkeys(run_context_param_names, stub_run_ctx)
 
         start_time = time.perf_counter()
         result = fn(**kwargs)
@@ -551,7 +576,7 @@ class ToolManagerBridge:
             await hooks.run_post_tool_hooks(
                 agent_name=ctx.node_name,
                 tool_name=tool.name,
-                tool_input=kwargs,
+                tool_input=tool_input,
                 tool_output=result,
                 duration_ms=duration_ms,
                 session_id=None,

@@ -4,8 +4,8 @@ This module provides a client for communicating with MCP servers using FastMCP.
 It includes support for contextual progress handlers that extend FastMCP's
 standard progress callbacks with tool execution context (tool name, call ID, and input).
 Elicitation is handled via a forwarding callback pattern: a stable callback is
-registered at connection time, but it delegates to a mutable handler that can
-be swapped per tool call (allowing AgentContext.handle_elicitation to be used).
+registered at connection time, and it delegates to the handler of the tool call
+the request belongs to (allowing AgentContext.handle_elicitation to be used).
 """
 
 from __future__ import annotations
@@ -13,6 +13,7 @@ from __future__ import annotations
 import asyncio
 import base64
 import contextlib
+from contextvars import ContextVar
 import functools
 import importlib
 from importlib.metadata import version
@@ -20,6 +21,7 @@ import importlib.util
 import logging
 from typing import TYPE_CHECKING, Any, Self, assert_never
 
+import anyio
 from pydantic_ai import RunContext, ToolReturn
 from schemez import FunctionSchema
 
@@ -72,6 +74,15 @@ logger = get_logger(__name__)
 MAX_LISTEN_RECONNECTS = 5
 """Times a lost change stream is reopened in a row before giving up."""
 
+_CALL_ELICITATION: ContextVar[tuple[MCPClient, ElicitationHandler] | None] = ContextVar(
+    "agentpool_mcp_call_elicitation", default=None
+)
+"""The client and elicitation handler of the tool call running in this context.
+
+Elicitations a server asks for within a tool call (multi round-trip results) are
+dispatched in the task of that call, so they find its handler here.
+"""
+
 
 @functools.cache
 def _enable_task_support() -> None:
@@ -102,9 +113,11 @@ class MCPClient:
         client_title: str | None = None,
         client_website_url: str | None = None,
         client_icon_path: str | None = None,
+        oauth_fallback: bool = False,
     ) -> None:
-        # Mutable handler swapped per call_tool for dynamic elicitation
-        self._current_elicitation_handler: ElicitationHandler | None = None
+        # Elicitation handlers of the tool calls in flight (one per call)
+        self._call_elicitation_handlers: dict[int, ElicitationHandler] = {}
+        self._call_counter = 0
         # Input providers that handled URL elicitations, to route completion notifications
         self._url_elicitations: dict[str, InputProvider] = {}
         self.config = config
@@ -117,6 +130,8 @@ class MCPClient:
         self._client_title = client_title
         self._client_website_url = client_website_url
         self._client_icon_path = client_icon_path
+        self.oauth_fallback = oauth_fallback
+        """Retry a HTTP/SSE server that refuses the configured auth with OAuth (interactive)."""
         self._client = self._get_client(self.config)
         self._listen_task: asyncio.Task[None] | None = None
 
@@ -137,28 +152,55 @@ class MCPClient:
             raise RuntimeError("Not connected to MCP server")
 
     async def __aenter__(self) -> Self:
-        """Enter context manager."""
+        """Connect, giving up after the config's ``init_timeout``.
+
+        A HTTP/SSE server that refuses the configured auth is retried with OAuth
+        only when ``oauth_fallback`` is set: OAuth may open a browser, which should
+        only happen when someone asked for the connection (``/mcp`` connect), not
+        when a pool starts.
+        """
         try:
-            # First attempt with configured auth
-            await self._client.__aenter__()  # type: ignore[no-untyped-call]
+            await self._connect(self._client)
         except Exception as first_error:
-            # OAuth fallback for HTTP/SSE if not already using OAuth
-            if not isinstance(self.config, StdioMCPServerConfig) and not self.config.auth.oauth:
-                try:
-                    with contextlib.suppress(Exception):
-                        await self._client.__aexit__(None, None, None)  # type: ignore[no-untyped-call]
-                    self._client = self._get_client(self.config, force_oauth=True)
-                    await self._client.__aenter__()  # type: ignore[no-untyped-call]
-                    logger.info("Connected with OAuth fallback")
-                except Exception:  # noqa: BLE001
-                    raise first_error from None
-            else:
+            if not self.oauth_fallback or not self._can_fall_back_to_oauth():
                 raise
+            try:
+                self._client = self._get_client(self.config, force_oauth=True)
+                await self._connect(self._client)
+                logger.info("Connected with OAuth fallback")
+            except Exception:  # noqa: BLE001
+                raise first_error from None
         self._start_listening()
         return self
 
+    def _can_fall_back_to_oauth(self) -> bool:
+        return not isinstance(self.config, StdioMCPServerConfig) and not self.config.auth.oauth
+
+    async def _connect(self, client: fastmcp.Client[Any]) -> None:
+        """Enter ``client`` within the init timeout; on failure nothing is left running."""
+        try:
+            with anyio.fail_after(self.config.init_timeout):
+                await client.__aenter__()  # type: ignore[no-untyped-call]
+        except TimeoutError as e:
+            await self._close_client(client)
+            timeout = self.config.init_timeout
+            msg = f"MCP server {self.config.client_id!r} did not start within {timeout}s"
+            raise TimeoutError(msg) from e
+        except BaseException:
+            await self._close_client(client)
+            raise
+
+    @staticmethod
+    async def _close_client(client: fastmcp.Client[Any]) -> None:
+        """Disconnect ``client`` and stop its transport (a stdio server process)."""
+        with anyio.CancelScope(shield=True):
+            try:
+                await client.close()
+            except Exception as e:  # noqa: BLE001
+                logger.warning("Error during FastMCP client cleanup", error=e)
+
     async def __aexit__(self, *args: object) -> None:
-        """Exit context manager and cleanup."""
+        """Exit context manager and cleanup (the server process too)."""
         if (task := self._listen_task) is not None:
             self._listen_task = None
             task.cancel()
@@ -168,6 +210,7 @@ class MCPClient:
             await self._client.__aexit__(None, None, None)  # type: ignore[no-untyped-call]
         except Exception as e:  # noqa: BLE001
             logger.warning("Error during FastMCP client cleanup", error=e)
+        await self._close_client(self._client)
 
     def _start_listening(self) -> None:
         """Follow the server's list changes on a ``subscriptions/listen`` stream.
@@ -277,17 +320,29 @@ class MCPClient:
         params: ElicitRequestParams,
         context: RequestContext[Any, Any],
     ) -> T | dict[str, Any] | Any:
-        """Forwarding callback that delegates to current handler.
+        """Forwarding callback that delegates to the handler of the asking tool call.
 
-        This callback is registered once at connection time, but delegates to
-        _current_elicitation_handler which can be swapped per tool call.
+        This callback is registered once at connection time. Elicitations within a
+        tool call (multi round-trip) run in the call's task and find its handler.
+        A request the server sends on its own can't be attributed to a call: it goes
+        to the only call in flight, and is declined when there are several (another
+        session's user must not answer it).
         """
         from fastmcp.client.elicitation import ElicitResult
 
-        # Try current handler first (set per call_tool)
-        if self._current_elicitation_handler:
-            return await self._current_elicitation_handler(message, response_type, params, context)
-        # No handler available - decline by default
+        handler: ElicitationHandler | None = None
+        if (current := _CALL_ELICITATION.get()) is not None and current[0] is self:
+            handler = current[1]
+        elif len(self._call_elicitation_handlers) == 1:
+            [handler] = self._call_elicitation_handlers.values()
+        elif self._call_elicitation_handlers:
+            logger.warning(
+                "Declining an elicitation that can't be attributed to one of the tool calls",
+                server=self.config.client_id,
+                calls=len(self._call_elicitation_handlers),
+            )
+        if handler is not None:
+            return await handler(message, response_type, params, context)
         return ElicitResult(action="decline")
 
     def _get_client(
@@ -304,7 +359,8 @@ class MCPClient:
         match config:
             case StdioMCPServerConfig(command=command, args=args):
                 env = config.get_env_vars()
-                transport = StdioTransport(command=command, args=args, env=env)
+                # Not kept alive: closing the client stops the server process
+                transport = StdioTransport(command=command, args=args, env=env, keep_alive=False)
                 oauth = False
                 if force_oauth:
                     raise ValueError("OAuth is not supported for StdioMCPServerConfig")
@@ -357,6 +413,7 @@ class MCPClient:
             extensions=extensions,
             log_handler=self._log_handler,
             timeout=config.timeout,
+            init_timeout=config.init_timeout,
             elicitation_handler=self._forwarding_elicitation_callback,
             message_handler=msg_handler,
             auth="oauth" if (force_oauth or oauth) else None,
@@ -565,6 +622,8 @@ class MCPClient:
             progress_handler = fastmcp_progress_handler
 
         # Set up per-call elicitation handler from AgentContext
+        call_id: int | None = None
+        token = None
         if agent_ctx:
 
             async def elicitation_handler[T](
@@ -597,7 +656,10 @@ class MCPClient:
                     case _:
                         return ElicitResult(action="decline")
 
-            self._current_elicitation_handler = elicitation_handler
+            self._call_counter += 1
+            call_id = self._call_counter
+            self._call_elicitation_handlers[call_id] = elicitation_handler
+            token = _CALL_ELICITATION.set((self, elicitation_handler))
 
         # Prepare metadata to pass tool_call_id to the MCP server
         meta = None
@@ -626,13 +688,14 @@ class MCPClient:
         except Exception as e:
             raise RuntimeError(f"MCP tool call failed: {e}") from e
         finally:
-            # Clear per-call handler
-            self._current_elicitation_handler = None
+            if call_id is not None:
+                self._call_elicitation_handlers.pop(call_id, None)
+            if token is not None:
+                with contextlib.suppress(ValueError):  # Left from another context
+                    _CALL_ELICITATION.reset(token)
 
 
 if __name__ == "__main__":
-    import anyio
-
     path = "/home/phil65/dev/oss/agentpool/tests/mcp_server/server.py"
     # path = Path(__file__).parent / "test_mcp_server.py"
     config = StdioMCPServerConfig(command="uv", args=["run", str(path)])
