@@ -51,14 +51,19 @@ def _echo_server() -> StdioMcpServer:
 
 
 def _echo_processes() -> int:
-    count = 0
+    """Echo server processes.
+
+    A launcher and the interpreter it starts (a Windows venv's python.exe) count once.
+    """
+    found = []
     for proc in psutil.Process().children(recursive=True):
         try:
             if proc.status() != psutil.STATUS_ZOMBIE and str(ECHO) in proc.cmdline():
-                count += 1
+                found.append(proc)
         except psutil.Error:
             continue
-    return count
+    pids = {proc.pid for proc in found}
+    return sum(1 for proc in found if proc.ppid() not in pids)
 
 
 async def _settled(expected: int) -> int:

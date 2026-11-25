@@ -44,13 +44,23 @@ def _running(script: Path) -> list[Any]:
     return found
 
 
+def _servers(script: Path) -> int:
+    """Server processes running ``script``.
+
+    A launcher and the interpreter it starts (a Windows venv's python.exe) count once.
+    """
+    found = _running(script)
+    pids = {proc.pid for proc in found}
+    return sum(1 for proc in found if proc.ppid() not in pids)
+
+
 async def _settled(script: Path, expected: int) -> int:
     """Number of processes running ``script``, once it reached ``expected`` (or 10 s)."""
     for _ in range(100):
-        if len(_running(script)) == expected:
+        if _servers(script) == expected:
             break
         await asyncio.sleep(0.1)
-    return len(_running(script))
+    return _servers(script)
 
 
 @pytest.fixture(autouse=True)
@@ -154,7 +164,7 @@ async def test_shared_connections_are_refcounted() -> None:
         assert first is second
         assert await _settled(ECHO, 1) == 1
         await connections.release(first)
-        assert len(_running(ECHO)) == 1
+        assert _servers(ECHO) == 1
         await connections.release(second)
         assert await _settled(ECHO, 0) == 0
         assert not len(connections)
