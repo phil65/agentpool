@@ -16,6 +16,7 @@ from aclientp.client.connection import ClientSideConnection
 from aclientp.client.implementations import NoOpClient
 from aclientp.schema import InitializeRequest
 from aclientp.ws_transport import WebSocketTransportError, connect_remote_transport
+import click
 import pytest
 import typer
 from typer.testing import CliRunner
@@ -44,7 +45,8 @@ def test_cli_refuses_non_loopback_without_token(
     args = ["serve-acp", "--transport", transport, "--host", "0.0.0.0"]
     result = CliRunner().invoke(cli, args)
     assert result.exit_code == 2
-    assert "requires --token" in result.output
+    # Rich colours the message on CI (GITHUB_ACTIONS forces colour): compare the plain text.
+    assert "requires --token" in click.unstyle(result.output)
 
 
 @pytest.mark.parametrize("kind", ["websocket", "http"])
