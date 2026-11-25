@@ -24,10 +24,14 @@ def setup_env(env: jinja2.Environment) -> None:
         pick_one,
     )
     from agentpool.jinja_filters import (
+        cli_command_table,
+        config_fields_table,
+        config_union_table,
         pydantic_playground,
         pydantic_playground_iframe,
         pydantic_playground_link,
         pydantic_playground_url,
+        toolset_tools_table,
     )
 
     env.globals |= dict(agent=Agent)  # ty: ignore[unsupported-operator]
@@ -41,4 +45,8 @@ def setup_env(env: jinja2.Environment) -> None:
         "pydantic_playground_url": pydantic_playground_url,
         "pydantic_playground_iframe": pydantic_playground_iframe,
         "pydantic_playground_link": pydantic_playground_link,
+        "config_fields_table": config_fields_table,
+        "config_union_table": config_union_table,
+        "cli_command_table": cli_command_table,
+        "toolset_tools_table": toolset_tools_table,
     }

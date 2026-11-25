@@ -42,6 +42,8 @@ jobs:
         run: uv run zensical build
         env:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+      - name: Check for rendering errors
+        run: uv run python scripts/check_site.py
       - name: Reorder navigation
         run: uv run python scripts/reorder_nav.py
       - name: Generate JSON Schema HTML documentation
