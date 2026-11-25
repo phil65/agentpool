@@ -11,6 +11,20 @@ if TYPE_CHECKING:
     from agentpool import MessageNode
     from agentpool_sync.models import FileChange
 
+NO_CHANGES_SENTINEL = "NO_CHANGES_NEEDED"
+"""The answer the reconciliation prompt asks for when a file needs no update."""
+
+
+def _means_no_changes(data: Any) -> bool:
+    """Whether an agent answer is empty or the no-changes sentinel.
+
+    Tolerates whitespace, a trailing period, quotes and a surrounding code fence.
+    """
+    if not data:
+        return True
+    lines = [line for line in str(data).splitlines() if not line.strip().startswith("```")]
+    return "\n".join(lines).strip().strip("`'\". ") == NO_CHANGES_SENTINEL
+
 
 class AgentReconciler:
     """Handler that uses agents from a manifest to reconcile file changes.
@@ -57,7 +71,7 @@ class AgentReconciler:
 
         prompt = self._build_prompt(change)
         result = await agent.run(prompt)
-        return result.data if result.data else None
+        return None if _means_no_changes(result.data) else result.data
 
     def _build_prompt(self, change: FileChange) -> str:
         """Build the reconciliation prompt from change data."""
@@ -116,7 +130,7 @@ class AgentReconciler:
             "\n## Instructions\n"
             "If the file needs updates based on the dependency changes, "
             "respond with the complete updated file content.\n"
-            "If no changes are needed, respond with exactly: NO_CHANGES_NEEDED"
+            f"If no changes are needed, respond with exactly: {NO_CHANGES_SENTINEL}"
         )
 
         return "\n".join(parts)
