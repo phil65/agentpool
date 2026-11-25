@@ -12,6 +12,7 @@ from agentpool.models.file_parsing import (
     CLAUDE_MODEL_ALIASES,
     PERMISSION_MODE_MAP,
     parse_agent_file,
+    parse_opencode_format,
 )
 
 
@@ -369,3 +370,28 @@ def test_format_auto_detection():
         config = parse_agent_file(f.name)
         # Should parse as OpenCode (with full model identifier)
         assert get_model_identifier(config.model) == "anthropic/claude-sonnet-4-20250514"
+
+
+def test_opencode_edit_deny_is_not_auto_approve():
+    """`permission.edit: deny` must block edit tools, never auto-approve everything (#45.3)."""
+    kwargs = parse_opencode_format({"permission": {"edit": "deny"}}, "", "agent.md")
+    assert kwargs.get("requires_tool_confirmation") != "never"
+
+
+async def test_opencode_permission_rules_become_hooks():
+    """Deny blocks edit tools, '*': ask (with patterns) asks for bash, other tools run."""
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".md", delete=False) as f:
+        f.write(OPENCODE_AGENT)
+        f.flush()
+        config = parse_agent_file(f.name)
+    assert config.requires_tool_confirmation == "per_tool"
+    hooks = config.hooks.get_agent_hooks()
+
+    async def decide(tool_name: str) -> str | None:
+        result = await hooks.run_pre_tool_hooks(agent_name="a", tool_name=tool_name, tool_input={})
+        return result.get("decision")
+
+    assert await decide("edit") == "deny"
+    assert await decide("write") == "deny"
+    assert await decide("bash") == "ask"
+    assert await decide("read") in (None, "allow")

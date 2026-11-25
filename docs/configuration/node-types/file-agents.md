@@ -34,6 +34,21 @@ You are a file processing worker.
 The same file can be used for several agents (`worker_1: agents/worker.md`,
 `worker_2: agents/worker.md`).
 
+## OpenCode permissions
+
+The `permission` block of an OpenCode agent file becomes `pre_tool_use` hooks
+(`agentpool.hooks.permission.fixed_decision`) for the tools each key covers:
+
+| Key | AgentPool tools |
+|---|---|
+| `edit` | `write`, `edit`, `agentic_edit`, `edit_batch`, `multi_edit`, `regex_replace_lines`, `apply_patch`, `patch`, `delete_path` |
+| `bash` | `bash`, `sandbox_bash`, `execute_command`, `execute_code` |
+| `webfetch` | `webfetch`, `web_fetch`, `fetch`, `download_file` |
+
+`deny` blocks the calls (the model is told), `ask` asks the user before every call, `allow`
+keeps the agent's confirmation mode. Command patterns (`bash: {"git diff": allow, "*": ask}`)
+are not supported: the strictest decision of the map applies to the whole tool.
+
 ## Configuration Reference
 
 /// mknodes

@@ -188,6 +188,59 @@ def parse_claude_format(
     return config_kwargs
 
 
+# OpenCode permission keys -> regex of the AgentPool tool names they cover
+OPENCODE_PERMISSION_TOOLS: dict[str, str] = {
+    "edit": (
+        "^(write|edit|agentic_edit|edit_batch|multi_edit|regex_replace_lines"
+        "|apply_patch|patch|delete_path)$"
+    ),
+    "bash": "^(bash|sandbox_bash|execute_command|execute_code)$",
+    "webfetch": "^(webfetch|web_fetch|fetch|download_file)$",
+}
+
+
+def _opencode_permission_hooks(permission: Any, file_path: str) -> list[dict[str, Any]]:
+    """Map an OpenCode ``permission`` block onto pre_tool_use hook configs.
+
+    ``deny`` blocks the covered tools, ``ask`` asks the user before every call
+    (whatever the agent's confirmation mode), ``allow`` keeps the default. Command
+    patterns (``bash: {"git diff": allow, "*": ask}``) are not supported: the
+    strictest of their decisions applies to the whole tool (fail closed).
+    """
+    if not isinstance(permission, dict):
+        logger.warning(
+            "Unsupported OpenCode permission", permission=permission, file_path=file_path
+        )
+        return []
+    strictness = {"allow": 0, "ask": 1, "deny": 2}
+    hooks: list[dict[str, Any]] = []
+    for key, value in permission.items():
+        matcher = OPENCODE_PERMISSION_TOOLS.get(key)
+        decisions = list(value.values()) if isinstance(value, dict) else [value]
+        if matcher is None or not decisions or any(d not in strictness for d in decisions):
+            logger.warning(
+                "Unsupported OpenCode permission rule", key=key, value=value, file_path=file_path
+            )
+            continue
+        decision = max(decisions, key=strictness.__getitem__)
+        if isinstance(value, dict) and len(value) > 1:
+            logger.warning(
+                "OpenCode permission patterns not supported, applying the strictest rule",
+                key=key,
+                decision=decision,
+                file_path=file_path,
+            )
+        if decision == "allow":
+            continue
+        hooks.append({
+            "type": "callable",
+            "import_path": "agentpool.hooks.permission.fixed_decision",
+            "matcher": matcher,
+            "arguments": {"decision": decision, "reason": f"OpenCode permission {key}: {decision}"},
+        })
+    return hooks
+
+
 def parse_opencode_format(
     metadata: dict[str, Any],
     system_prompt: str,
@@ -242,16 +295,11 @@ def parse_opencode_format(
     if mode := metadata.get("mode"):
         logger.debug("OpenCode mode informational only", mode=mode, file_path=file_path)
 
-    # Permission handling (granular per-tool)
-    if permission := metadata.get("permission"):
-        edit_perm = permission.get("edit") if isinstance(permission, dict) else None
-        if edit_perm in ("deny", "ask"):
-            config_kwargs["requires_tool_confirmation"] = (
-                "always" if edit_perm == "ask" else "never"
-            )
-        logger.debug(
-            "OpenCode permission partial mapping", permission=permission, file_path=file_path
-        )
+    # Permission handling (granular per-tool): "deny" / "ask" become pre_tool_use hooks
+    # for the matching tools, so a denied tool is blocked and an "ask" one always asks.
+    permission = metadata.get("permission")
+    if permission and (hooks := _opencode_permission_hooks(permission, file_path)):
+        config_kwargs["hooks"] = {"pre_tool_use": hooks}
 
     # Tools dict format (not yet supported)
     if (tools := metadata.get("tools")) and isinstance(tools, dict):
