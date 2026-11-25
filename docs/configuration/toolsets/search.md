@@ -54,7 +54,8 @@ agents:
 from agentpool_config.toolsets import SearchToolsetConfig
 from agentpool.docs.utils import generate_tool_docs
 
-config = SearchToolsetConfig(web_search="tavily", news_search="tavily")
+provider = {"type": "tavily", "api_key": "placeholder"}  # no request is made
+config = SearchToolsetConfig(web_search=provider, news_search=provider)
 print(generate_tool_docs(config.get_provider()))
 ```
 
