@@ -328,7 +328,7 @@ def toolset_tools_table(union: Any, discriminator: str = "type", skip: Sequence[
             if tag in skip:
                 raise ValueError(tag)  # noqa: TRY301
             config = member()
-        except (ValidationError, ValueError):
+        except ValidationError, ValueError:
             rows.append(f"| `{tag}` | *depends on the configuration* |")
             continue
         with ThreadPoolExecutor(max_workers=1) as pool:  # works inside a running loop
