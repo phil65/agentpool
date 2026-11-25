@@ -74,35 +74,40 @@ def test_yaml_example_is_valid_manifest(data: dict[str, Any]):
         AgentsManifest.model_validate(data)
     except pydantic.ValidationError as e:
         errors = _without_import_errors(e.errors())
-    if errors and all(_is_prompt_content_bug(err) for err in errors):
-        pytest.xfail("file / function system prompts require `content` (known bug)")
     assert errors == []
 
 
 def _without_import_errors(errors: list[Any]) -> list[Any]:
     """Drop import errors and the errors of the other union members of the same value."""
-    failed = [_value_loc(err["loc"]) for err in errors if err["type"] == "import_error"]
-    return [err for err in errors if not any(err["loc"][: len(f)] == f for f in failed)]
+    import_errors = [err["loc"] for err in errors if err["type"] == "import_error"]
+    failed = [_value_loc(loc) for loc in import_errors]
+    return [
+        err
+        for err in errors
+        if not any(err["loc"][: len(f)] == f for f in failed)
+        and not any(_is_other_union_member(err, loc) for loc in import_errors)
+    ]
+
+
+def _is_other_union_member(error: Any, import_loc: tuple[Any, ...]) -> bool:
+    """A type error of another member of a union that the failed import is part of.
+
+    E.g. `system_prompt: str | list[...]` reports `system_prompt.str` when a list item
+    fails to import.
+    """
+    loc = error["loc"]
+    return (
+        error["type"] in ("string_type", "union_tag_invalid")
+        and len(loc) < len(import_loc)
+        and import_loc[: len(loc) - 1] == loc[:-1]
+        and import_loc[len(loc) - 1] != loc[-1]
+    )
 
 
 def _value_loc(loc: tuple[Any, ...]) -> tuple[Any, ...]:
     """The location of the value an error is about: up to the last list index, if any."""
     indices = [i for i, part in enumerate(loc) if isinstance(part, int)]
     return loc[: indices[-1] + 1] if indices else loc
-
-
-def _is_prompt_content_bug(error: Any) -> bool:
-    """Errors caused by FilePromptConfig / FunctionPromptConfig requiring `content`.
-
-    Validating a list of system prompts reports the missing `content` and the failed
-    alternatives of the union (plain string, single string).
-    """
-    loc = ".".join(map(str, error["loc"]))
-    return "system_prompt" in loc and (
-        (error["type"] == "missing" and loc.endswith("content"))
-        or error["type"] in ("string_type", "union_tag_invalid")
-        or ("Config" in loc and error["type"] == "missing")
-    )
 
 
 def test_every_cli_command_has_a_page():

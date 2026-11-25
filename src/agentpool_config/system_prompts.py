@@ -33,13 +33,10 @@ Task: {{ prompt.content }}
 
 
 class BaseSystemPrompt(Schema):
-    """Individual system prompt definition."""
+    """Individual system prompt definition.
 
-    content: str = Field(
-        examples=["You are a helpful assistant", "Always be concise"],
-        title="Prompt content",
-    )
-    """The actual prompt text."""
+    Each prompt type adds the fields it is built from (text, file, function).
+    """
 
     category: SystemPromptCategory = Field(
         default="role",

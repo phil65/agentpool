@@ -476,9 +476,11 @@ class NativeAgentConfig(BaseAgentConfig):
                         base_path = Path(self.config_file_path).parent
                         template_path = base_path / path
 
+                    from jinja2 import Environment
+
                     template_content = template_path.read_text("utf-8")
-                    template_ctx = {"agent": context, **variables}
-                    rendered_prompts.append(render_prompt(template_content, template_ctx))
+                    template = Environment(keep_trailing_newline=True).from_string(template_content)
+                    rendered_prompts.append(template.render(agent=context, **variables))
                 case LibraryPromptConfig(reference=reference):
                     # This will be handled by the manifest's get_agent method
                     # For now, just add a placeholder

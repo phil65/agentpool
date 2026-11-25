@@ -124,10 +124,26 @@ agents:
         reference: professional
 ```
 
-!!! bug "Known issue"
-    `type: file` and `type: function` system prompts currently also require a `content`
-    field (inherited from the base model), so they cannot be configured as documented
-    above. Use static or library prompts until this is fixed.
+### File and Function Prompts
+
+A `file` prompt loads a Jinja template (relative paths resolve against the config file)
+and renders it with `variables`; a `function` prompt calls a function with `arguments`
+and uses the returned string:
+
+```yaml
+agents:
+  reviewer:
+    model: openai:gpt-5-mini
+    system_prompt:
+      - type: file
+        path: prompts/reviewer.j2
+        variables:
+          language: Python
+      - type: function
+        function: myapp.prompts:build_context_prompt
+        arguments:
+          team: backend
+```
 
 ## Prompt Library Reference
 

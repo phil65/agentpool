@@ -21494,15 +21494,6 @@
       "additionalProperties": false,
       "description": "Configuration for a file-based Jinja template prompt.",
       "properties": {
-        "content": {
-          "description": "The actual prompt text.",
-          "examples": [
-            "You are a helpful assistant",
-            "Always be concise"
-          ],
-          "title": "Prompt content",
-          "type": "string"
-        },
         "category": {
           "default": "role",
           "description": "Categorization for template organization.",
@@ -21545,7 +21536,6 @@
         }
       },
       "required": [
-        "content",
         "path"
       ],
       "title": "FilePromptConfig",
@@ -22150,15 +22140,6 @@
       "additionalProperties": false,
       "description": "Configuration for a function-generated prompt.",
       "properties": {
-        "content": {
-          "description": "The actual prompt text.",
-          "examples": [
-            "You are a helpful assistant",
-            "Always be concise"
-          ],
-          "title": "Prompt content",
-          "type": "string"
-        },
         "category": {
           "default": "role",
           "description": "Categorization for template organization.",
@@ -22201,7 +22182,6 @@
         }
       },
       "required": [
-        "content",
         "function"
       ],
       "title": "FunctionPromptConfig",
@@ -41431,15 +41411,6 @@
       "additionalProperties": false,
       "description": "Configuration for a static text prompt.",
       "properties": {
-        "content": {
-          "description": "The prompt text content.",
-          "examples": [
-            "You are a helpful assistant",
-            "Always be concise"
-          ],
-          "title": "Prompt content",
-          "type": "string"
-        },
         "category": {
           "default": "role",
           "description": "Categorization for template organization.",
@@ -41463,6 +41434,15 @@
           "default": "static",
           "description": "Static prompt reference.",
           "title": "Type",
+          "type": "string"
+        },
+        "content": {
+          "description": "The prompt text content.",
+          "examples": [
+            "You are a helpful assistant",
+            "Always be concise"
+          ],
+          "title": "Prompt content",
           "type": "string"
         }
       },
