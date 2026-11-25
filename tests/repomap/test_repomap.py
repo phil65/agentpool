@@ -180,3 +180,11 @@ def test_cli_startup_does_not_import_the_framework():
     assert "agentpool.repomap" in imported
     assert "agentpool.agents" not in imported
     assert "pydantic_ai" not in imported
+
+
+def test_rel_paths_use_forward_slashes_for_windows_paths():
+    from agentpool.repomap.utils import get_rel_path
+
+    assert get_rel_path(r"C:\repo\pkg\base.py", "C:\\repo") == "pkg/base.py"
+    assert get_rel_path("/repo/pkg/base.py", "/repo") == "pkg/base.py"
+    assert get_rel_path("/elsewhere/x.py", "/repo") == "/elsewhere/x.py"

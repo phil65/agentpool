@@ -56,10 +56,11 @@ def get_rel_path(path: str, root: str) -> str:
         root: Root path
 
     Returns:
-        Relative path from root, or original path if not under root
+        Relative path from root (with forward slashes, also for Windows paths),
+        or the original path if not under root
     """
     try:
-        rel = PurePosixPath(path).relative_to(root)
+        rel = PurePosixPath(path.replace("\\", "/")).relative_to(root.replace("\\", "/"))
         return str(rel)
     except ValueError:
         return path
@@ -120,7 +121,7 @@ async def find_src_files(fs: AsyncFileSystem, directory: str) -> list[str]:
     async def _recurse(path: str) -> None:
         try:
             entries = await fs._ls(path, detail=True)
-        except (OSError, FileNotFoundError):
+        except OSError, FileNotFoundError:
             return
 
         for entry in entries:
