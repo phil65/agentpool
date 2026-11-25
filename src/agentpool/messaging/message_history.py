@@ -73,8 +73,11 @@ class MessageHistory:
 
     def get_initialization_tasks(self) -> list[Coroutine[Any, Any, Any]]:
         """Get all initialization coroutines."""
+        tasks: list[Coroutine[Any, Any, Any]] = [
+            self.load_context_source(source) for source in self._resources
+        ]
         self._resources = []  # Clear so we dont load again on async init
-        return [self.load_context_source(source) for source in self._resources]
+        return tasks
 
     async def __aenter__(self) -> Self:
         """Initialize when used standalone."""
