@@ -62,6 +62,7 @@ class ConnectionManager:
         exit_condition: AsyncFilterFn | None = None,
         name: str | None = None,
         session: ConnectionSessionPolicy = "target",
+        parallel: bool = False,
     ) -> Talk[Any] | TeamTalk:
         """Connect ``source`` to one target, or to each of a sequence of targets.
 
@@ -78,6 +79,7 @@ class ConnectionManager:
             exit_condition: When to exit application
             name: Name for the connection (single target only; else auto-generated)
             session: Which session of the target the messages run in
+            parallel: Send a message to the targets at once instead of in order
         """
         if isinstance(target, Sequence):
             talks = [
@@ -93,6 +95,7 @@ class ConnectionManager:
                     stop_condition=stop_condition,
                     exit_condition=exit_condition,
                     session=session,
+                    parallel=parallel,
                 )
                 for t in target
             ]
@@ -110,6 +113,7 @@ class ConnectionManager:
             stop_condition=stop_condition,
             exit_condition=exit_condition,
             session=session,
+            parallel=parallel,
         )
         return source.router.add(talk, name=name)
 

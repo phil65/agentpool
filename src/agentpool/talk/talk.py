@@ -14,6 +14,7 @@ from agentpool.log import get_logger
 from agentpool.messaging import ChatMessage
 from agentpool.talk.stats import AggregatedTalkStats, TalkStats
 from agentpool.utils.inspection import execute
+from agentpool.utils.tasks import run_all
 from agentpool.utils.time_utils import get_now
 
 
@@ -76,6 +77,7 @@ class Talk[TTransmittedData = Any]:
         stop_condition: AnyFilterFn | None = None,
         exit_condition: AnyFilterFn | None = None,
         session: ConnectionSessionPolicy = "target",
+        parallel: bool = False,
     ) -> None:
         """Initialize talk connection.
 
@@ -101,6 +103,9 @@ class Talk[TTransmittedData = Any]:
             exit_condition: Optional condition for stopping the event loop
             session: Which session of the target the messages run in (``run`` and
                 ``context``; see ``ConnectionSessionPolicy``)
+            parallel: Process a message for the targets at once (and, in the router,
+                together with the neighbouring parallel connections of the source)
+                instead of one after another
         """
         from agentpool.talk.sessions import check_policy_target
 
@@ -125,6 +130,7 @@ class Talk[TTransmittedData = Any]:
         self.stop_condition = stop_condition
         self.exit_condition = exit_condition
         self.session_policy: ConnectionSessionPolicy = session
+        self.parallel = parallel
         self._router: Router | None = None
         """The router holding this connection (set as it is added to one)."""
         self._event_callbacks: list[
@@ -298,13 +304,20 @@ class Talk[TTransmittedData = Any]:
 
         # 9. Second pass: Actually process for each target
         responses: list[ChatMessage[Any]] = []
-        for target in target_list:
-            if self.queued:
+        if self.queued:
+            for target in target_list:
                 self._pending_messages[target.name].append(processed_message)
                 await self._emit_connection_event("queue_filled", processed_message)
-                continue
-            if response := await self._process_for_target(processed_message, target, prompt):
-                responses.append(response)
+        elif self.parallel:
+            results = await run_all([
+                self._process_for_target(processed_message, target, prompt)
+                for target in target_list
+            ])
+            responses = [r for r in results if r is not None]
+        else:
+            for target in target_list:
+                if response := await self._process_for_target(processed_message, target, prompt):
+                    responses.append(response)
         await self._emit_connection_event("message_processed", processed_message)
         return responses
 

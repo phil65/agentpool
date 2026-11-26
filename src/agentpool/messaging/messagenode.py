@@ -289,6 +289,7 @@ class MessageNode[TDeps, TResult](ABC):
         stop_condition: AsyncFilterFn | None = None,
         exit_condition: AsyncFilterFn | None = None,
         session: ConnectionSessionPolicy = "target",
+        parallel: bool = False,
     ) -> Talk[TResult]: ...
 
     @overload
@@ -315,6 +316,7 @@ class MessageNode[TDeps, TResult](ABC):
         stop_condition: AsyncFilterFn | None = None,
         exit_condition: AsyncFilterFn | None = None,
         session: ConnectionSessionPolicy = "target",
+        parallel: bool = False,
     ) -> TeamTalk[TResult]: ...
 
     @overload
@@ -332,6 +334,7 @@ class MessageNode[TDeps, TResult](ABC):
         stop_condition: AsyncFilterFn | None = None,
         exit_condition: AsyncFilterFn | None = None,
         session: ConnectionSessionPolicy = "target",
+        parallel: bool = False,
     ) -> TeamTalk: ...
 
     def connect_to(
@@ -350,8 +353,13 @@ class MessageNode[TDeps, TResult](ABC):
         stop_condition: AsyncFilterFn | None = None,
         exit_condition: AsyncFilterFn | None = None,
         session: ConnectionSessionPolicy = "target",
+        parallel: bool = False,
     ) -> Talk[Any] | TeamTalk:
-        """Create connection(s) to target(s)."""
+        """Create connection(s) to target(s).
+
+        With several targets, a message goes to them in order, one after another;
+        ``parallel=True`` sends it to all at once (their runs overlap).
+        """
         # Handle callable case
         from agentpool.agents import Agent
         from agentpool.delegation.base_team import BaseTeam
@@ -392,6 +400,7 @@ class MessageNode[TDeps, TResult](ABC):
             stop_condition=stop_condition,
             exit_condition=exit_condition,
             session=session,
+            parallel=parallel,
         )
 
     async def disconnect_all(self) -> None:

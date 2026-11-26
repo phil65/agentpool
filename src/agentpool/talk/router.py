@@ -11,6 +11,7 @@ from agentpool.talk.registry import ConnectionRegistry
 from agentpool.talk.sessions import SessionPicker
 from agentpool.talk.triggers import Triggers
 from agentpool.utils.inspection import get_fn_name
+from agentpool.utils.tasks import run_all
 
 
 if TYPE_CHECKING:
@@ -145,12 +146,23 @@ class Router:
     async def route(self, source: MessageNode[Any, Any], message: ChatMessage[Any]) -> None:
         """Send ``message`` from ``source`` along its connections.
 
+        Connections are served in the order they were made; neighbouring ``parallel``
+        ones (``connect_to([...], parallel=True)``) at once.
         Waits for the targets (and what they route on) when a connection asks for it.
         """
         talks = self.outgoing(source)
         logger.debug("Routing message", sender=message.name, connections=len(talks))
+        batch: list[Talk[Any]] = []  # Neighbouring parallel connections run at once
         for talk in talks:
+            if talk.parallel:
+                batch.append(talk)
+                continue
+            if batch:
+                await run_all([t._handle_message(message, None) for t in batch])
+                batch = []
             await talk._handle_message(message, None)
+        if batch:
+            await run_all([t._handle_message(message, None) for t in batch])
         if any(talk.wait_for_connections for talk in talks if talk.active):
             await self.wait_for(source)
 

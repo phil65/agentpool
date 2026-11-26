@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import asyncio
 from types import CoroutineType
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, cast
 
 import anyio
 
@@ -13,7 +13,7 @@ from agentpool.utils.inspection import get_fn_name
 
 
 if TYPE_CHECKING:
-    from collections.abc import Coroutine
+    from collections.abc import Coroutine, Sequence
     from datetime import timedelta
 
 
@@ -23,6 +23,18 @@ logger = get_logger(__name__)
 async def _after[T](delay: timedelta, coro: Coroutine[Any, Any, T]) -> T:
     await anyio.sleep(delay.total_seconds())
     return await coro
+
+
+async def run_all[T](coros: Sequence[Coroutine[Any, Any, T]]) -> list[T]:
+    """Await ``coros`` concurrently; when all ended, raise the first error, if any.
+
+    Unlike a bare ``gather``, a failing one doesn't leave the others running unawaited.
+    """
+    results = await asyncio.gather(*coros, return_exceptions=True)
+    for result in results:
+        if isinstance(result, BaseException):
+            raise result
+    return cast("list[T]", results)
 
 
 class TaskManager:

@@ -108,6 +108,16 @@ team = agent_b & agent_c & agent_d
 connection = agent_a.connect_to(team)
 ```
 
+### Several Targets
+
+A list of targets makes one connection per target. A message goes to them in order,
+one after another (the default); with `parallel=True` it goes to all of them at once:
+
+```python
+in_order = agent_a.connect_to([agent_b, agent_c])
+at_once = agent_a.connect_to([agent_b, agent_c], parallel=True)
+```
+
 ### Team-to-Team
 
 Connect groups of agents:
