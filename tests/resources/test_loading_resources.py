@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 import pytest
 from upathtools.filesystems import UnionFileSystem
 import yamling

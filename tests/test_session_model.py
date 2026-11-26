@@ -1,7 +1,5 @@
 """Tests for first-class Session, SessionOverrides, SessionRegistry, and BaseAgent integration."""
 
-from __future__ import annotations
-
 import asyncio
 from typing import Any
 

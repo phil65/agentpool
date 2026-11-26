@@ -1,7 +1,5 @@
 """Delete path tool."""
 
-from __future__ import annotations
-
 from typing import TYPE_CHECKING, Literal
 
 from agentpool.tool_impls.delete_path.tool import DeletePathTool

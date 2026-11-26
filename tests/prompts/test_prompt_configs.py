@@ -1,7 +1,5 @@
 """Tests for the `system_prompt` config types (static, file, function, library)."""
 
-from __future__ import annotations
-
 from typing import TYPE_CHECKING
 
 from pydantic import ValidationError

@@ -1,7 +1,5 @@
 """Agent CLI tool for executing internal commands."""
 
-from __future__ import annotations
-
 from typing import Literal
 
 from agentpool.tool_impls.agent_cli.tool import AgentCliTool

@@ -1,7 +1,5 @@
 """agentpool imports without tokonomics' Claude model names (1.5.0 dropped them)."""
 
-from __future__ import annotations
-
 import subprocess
 import sys
 

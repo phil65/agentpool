@@ -1,7 +1,5 @@
 """MCP connection lifecycle: server processes, failures, timeouts, signals, elicitation."""
 
-from __future__ import annotations
-
 import asyncio
 import contextlib
 from pathlib import Path

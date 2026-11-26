@@ -6,8 +6,6 @@ to a *project*. As in OpenCode, the project ID of a git checkout is its root com
 other directories belong to the ``global`` project.
 """
 
-from __future__ import annotations
-
 from dataclasses import dataclass, field
 import os
 from pathlib import Path

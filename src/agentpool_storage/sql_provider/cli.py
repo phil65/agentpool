@@ -4,8 +4,6 @@
 This script provides easy commands for managing database migrations using Alembic.
 """
 
-from __future__ import annotations
-
 import os
 from pathlib import Path
 import subprocess

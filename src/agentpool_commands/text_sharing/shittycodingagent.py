@@ -3,8 +3,6 @@
 Creates a GitHub Gist and returns a preview URL via shittycodingagent.ai.
 """
 
-from __future__ import annotations
-
 import os
 from typing import TYPE_CHECKING, Any
 

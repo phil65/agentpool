@@ -1,7 +1,5 @@
 """Skills manager for pool-wide management."""
 
-from __future__ import annotations
-
 from typing import TYPE_CHECKING, Self, overload
 
 from upathtools import to_upath

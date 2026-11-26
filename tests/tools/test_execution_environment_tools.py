@@ -1,7 +1,5 @@
 """End-to-end tests for execution environment tools."""
 
-from __future__ import annotations
-
 import re
 from typing import TYPE_CHECKING, Any
 

@@ -1,7 +1,5 @@
 """Base class for teams."""
 
-from __future__ import annotations
-
 from abc import abstractmethod
 import asyncio
 from contextlib import suppress

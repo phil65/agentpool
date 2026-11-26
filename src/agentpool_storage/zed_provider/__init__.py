@@ -7,8 +7,6 @@ Zed stores conversations as zstd-compressed JSON in a SQLite database.
 This provider enables importing and analyzing Zed conversations.
 """
 
-from __future__ import annotations
-
 from agentpool_storage.zed_provider.provider import ZedStorageProvider
 
 __all__ = [

@@ -1,7 +1,5 @@
 """The T3 storage provider reads an environment's threads as sessions (replayed ``/mcp``)."""
 
-from __future__ import annotations
-
 from datetime import UTC, datetime
 from typing import Any
 

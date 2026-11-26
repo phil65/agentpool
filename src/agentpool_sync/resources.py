@@ -1,7 +1,5 @@
 """Registry for tracking external resource state (URLs, APIs, etc.)."""
 
-from __future__ import annotations
-
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 import hashlib

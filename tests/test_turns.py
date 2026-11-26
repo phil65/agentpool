@@ -1,7 +1,5 @@
 """Every agent turn ends with a ``Turn``: on the final event, announced, from ``run_turn``."""
 
-from __future__ import annotations
-
 import asyncio
 from typing import TYPE_CHECKING, Any
 

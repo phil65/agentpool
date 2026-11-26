@@ -1,7 +1,5 @@
 """Convert between Google Antigravity SDK and AgentPool types."""
 
-from __future__ import annotations
-
 from pathlib import Path
 import re
 from typing import TYPE_CHECKING, Any, assert_never

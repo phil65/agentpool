@@ -1,7 +1,5 @@
 """Loading a pool session resumes the Codex thread it runs on."""
 
-from __future__ import annotations
-
 from typing import Any
 
 from agentpool import AgentPool

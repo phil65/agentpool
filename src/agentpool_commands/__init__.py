@@ -1,7 +1,5 @@
 """Built-in commands for AgentPool."""
 
-from __future__ import annotations
-
 from agentpool_commands.agents import (
     CreateAgentCommand,
     CreateTeamCommand,

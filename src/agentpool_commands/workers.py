@@ -1,7 +1,5 @@
 """Tool management commands."""
 
-from __future__ import annotations
-
 from slashed import CommandContext, CommandError
 from slashed.completers import CallbackCompleter
 

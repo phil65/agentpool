@@ -1,7 +1,5 @@
 """Provider for process management tools with event emission."""
 
-from __future__ import annotations
-
 import re
 import time
 from typing import TYPE_CHECKING

@@ -1,7 +1,5 @@
 """Config options of the Codex agent."""
 
-from __future__ import annotations
-
 from typing import TYPE_CHECKING, Any, cast
 
 from agentpool.agents.modes import ConfigOption, ModelOption

@@ -5,8 +5,6 @@ the canonical tool lifecycle (``ToolCallStartEvent`` -> ``ToolCallCompleteEvent`
 compaction onto ``CompactionEvent``. Blocks without user-visible content are dropped.
 """
 
-from __future__ import annotations
-
 from typing import TYPE_CHECKING, Any, assert_never
 
 from anthropic.types.beta import (

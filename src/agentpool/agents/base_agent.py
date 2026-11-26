@@ -1,7 +1,5 @@
 """Base class for all agent types."""
 
-from __future__ import annotations
-
 from abc import abstractmethod
 import asyncio
 from contextlib import contextmanager, nullcontext, suppress

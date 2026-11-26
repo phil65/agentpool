@@ -1,7 +1,5 @@
 """Configuration models for observability providers."""
 
-from __future__ import annotations
-
 from typing import Annotated, Any, Literal
 
 from pydantic import ConfigDict, Field, PrivateAttr, SecretStr

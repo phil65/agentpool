@@ -18,8 +18,6 @@ the denial stops it. A decision with ``scope="session"`` (ACP's ``allow_always``
 the session remembers it (``SessionOverrides.tool_decisions``), for every agent type alike.
 """
 
-from __future__ import annotations
-
 from dataclasses import dataclass
 from typing import Any, Literal
 

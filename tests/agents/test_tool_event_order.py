@@ -1,7 +1,5 @@
 """Tool calls run through the MCP bridge: progress never before the call's start."""
 
-from __future__ import annotations
-
 from agentpool.agents.events import (
     ToolCallCompleteEvent,
     ToolCallProgressEvent,

@@ -1,7 +1,5 @@
 """serve-mcp takes the manifest's pool_server settings, with the command line's on top."""
 
-from __future__ import annotations
-
 from datetime import timedelta
 
 from agentpool.models.manifest import AgentsManifest

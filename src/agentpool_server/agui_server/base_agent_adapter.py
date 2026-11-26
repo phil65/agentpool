@@ -9,8 +9,6 @@ the core streaming events (text, thinking, tool calls) work automatically.
 Custom events like ToolCallProgressEvent are silently ignored.
 """
 
-from __future__ import annotations
-
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 

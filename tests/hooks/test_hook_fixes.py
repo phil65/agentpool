@@ -1,7 +1,5 @@
 """Command and prompt hook fixes (issue #59.4)."""
 
-from __future__ import annotations
-
 import asyncio
 import sys
 from typing import TYPE_CHECKING, Any

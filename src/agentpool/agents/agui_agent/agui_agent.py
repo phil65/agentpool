@@ -8,8 +8,6 @@ remote AG-UI agent. When the agent requests tool execution, the tools are execut
 locally and results sent back.
 """
 
-from __future__ import annotations
-
 import asyncio
 from dataclasses import replace
 from typing import TYPE_CHECKING, Any, ClassVar, Self, cast

@@ -3,8 +3,6 @@
 The client side is aclientp's, talking to a real ``ACPServer`` over a local WebSocket.
 """
 
-from __future__ import annotations
-
 import asyncio
 from pathlib import Path
 import socket

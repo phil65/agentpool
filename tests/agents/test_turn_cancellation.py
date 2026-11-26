@@ -1,7 +1,5 @@
 """A turn cancelled from outside tells the agent's backend to stop, once."""
 
-from __future__ import annotations
-
 import asyncio
 from contextlib import suppress
 from typing import TYPE_CHECKING, Any

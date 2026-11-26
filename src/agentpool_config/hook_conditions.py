@@ -1,7 +1,5 @@
 """Condition models for hook filtering."""
 
-from __future__ import annotations
-
 from typing import Annotated, Any, Literal
 
 from pydantic import ConfigDict, Field

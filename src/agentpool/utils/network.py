@@ -1,7 +1,5 @@
 """Small helpers for the localhost servers agentpool runs (tool bridge, code-mode tools)."""
 
-from __future__ import annotations
-
 import secrets
 from typing import TYPE_CHECKING
 

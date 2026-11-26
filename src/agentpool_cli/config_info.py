@@ -1,7 +1,5 @@
 """Command for displaying configuration resolution information."""
 
-from __future__ import annotations
-
 from typing import Annotated
 
 import typer as t

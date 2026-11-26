@@ -1,7 +1,5 @@
 """Agent session slash commands."""
 
-from __future__ import annotations
-
 from slashed import CommandContext  # noqa: TC002
 
 from agentpool.agents.context import AgentContext  # noqa: TC001

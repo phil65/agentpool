@@ -1,7 +1,5 @@
 """Slash commands run in the caller's session, with their own output stream (#59.2a/b)."""
 
-from __future__ import annotations
-
 import asyncio
 from typing import Any
 

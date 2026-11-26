@@ -1,7 +1,5 @@
 """Tool management for AgentPool."""
 
-from __future__ import annotations
-
 import asyncio
 from collections.abc import Callable, Sequence
 from contextlib import asynccontextmanager

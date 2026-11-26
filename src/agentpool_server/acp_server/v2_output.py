@@ -7,8 +7,6 @@ v2 sessions reuse the v1 output: its updates reach the client through
 (``CancellableToolCalls``).
 """
 
-from __future__ import annotations
-
 import dataclasses
 from typing import TYPE_CHECKING, Any
 

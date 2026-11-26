@@ -1,7 +1,5 @@
 """The built wheel ships every top-level package of ``src`` (except the unshipped ones)."""
 
-from __future__ import annotations
-
 from pathlib import Path
 import shutil
 import subprocess

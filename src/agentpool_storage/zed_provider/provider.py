@@ -1,7 +1,5 @@
 """Zed IDE storage provider - reads from ~/.local/share/zed/threads format."""
 
-from __future__ import annotations
-
 from collections import defaultdict
 from contextlib import closing
 from datetime import datetime

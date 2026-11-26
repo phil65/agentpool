@@ -6,8 +6,6 @@ This example shows how to:
 3. Access each agent via its own route with A2A protocol
 """
 
-from __future__ import annotations
-
 import asyncio
 
 import anyio

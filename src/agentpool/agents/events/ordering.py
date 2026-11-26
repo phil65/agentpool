@@ -9,8 +9,6 @@ call. Consumers rely on start before progress (see ``ToolCallStartEvent``): the 
 of a call not started yet is held back until its start, its end or the end of the stream.
 """
 
-from __future__ import annotations
-
 from typing import Any
 
 from agentpool.agents.events.events import (

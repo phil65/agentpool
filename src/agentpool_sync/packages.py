@@ -1,7 +1,5 @@
 """Registry for tracking Python package versions."""
 
-from __future__ import annotations
-
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from importlib.metadata import PackageNotFoundError, version as get_version

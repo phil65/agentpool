@@ -1,7 +1,5 @@
 """Test integration of ProcessManagementTools with MockExecutionEnvironment."""
 
-from __future__ import annotations
-
 from typing import TYPE_CHECKING, Any
 
 from anyenv.process_manager.models import ProcessOutput

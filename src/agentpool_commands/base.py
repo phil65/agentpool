@@ -1,7 +1,5 @@
 """Base command class with node-type filtering support."""
 
-from __future__ import annotations
-
 from abc import ABC
 from typing import TYPE_CHECKING, Any
 

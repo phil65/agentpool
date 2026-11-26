@@ -1,7 +1,5 @@
 """Integration tests for context injection in code execution environment."""
 
-from __future__ import annotations
-
 import re
 
 from pydantic_ai import RunContext  # noqa: TC002

@@ -5,8 +5,6 @@ A tool call that started a stoppable task (a subagent run, a background command)
 background task outlives it). Cancelling it stops the task (``BaseAgent.stop_task``).
 """
 
-from __future__ import annotations
-
 from typing import TYPE_CHECKING, Any
 
 from aclientp.schema import v2

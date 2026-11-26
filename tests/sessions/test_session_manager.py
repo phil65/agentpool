@@ -1,7 +1,5 @@
 """Tests for session data models and storage provider session CRUD."""
 
-from __future__ import annotations
-
 from typing import TYPE_CHECKING
 
 import pytest

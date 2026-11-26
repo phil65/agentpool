@@ -7,8 +7,6 @@ The Claude agent can then use our internal tools through MCP.
 Run with: pytest tests/agents/claude_code_agent/test_claude_code_toolset_integration.py -v
 """
 
-from __future__ import annotations
-
 import asyncio
 import shutil
 

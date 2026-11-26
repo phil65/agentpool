@@ -1,7 +1,5 @@
 """Tests for the multi-file repository map and its command line interface."""
 
-from __future__ import annotations
-
 import subprocess
 import sys
 from typing import TYPE_CHECKING

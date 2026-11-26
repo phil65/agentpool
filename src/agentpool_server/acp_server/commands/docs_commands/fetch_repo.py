@@ -1,7 +1,5 @@
 """Fetch contents from a GitHub repository via UIThub."""
 
-from __future__ import annotations
-
 import os
 import uuid
 

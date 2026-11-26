@@ -1,7 +1,5 @@
 """Background shell commands (``/api/shell`` and ``session.shell``)."""
 
-from __future__ import annotations
-
 import asyncio
 from dataclasses import dataclass, field
 import os

@@ -4,8 +4,6 @@ Modes represent switchable behaviors/configurations that agents can expose
 to clients. Each agent type can define its own mode categories.
 """
 
-from __future__ import annotations
-
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field, replace
 from typing import TYPE_CHECKING, Any, ClassVar, Literal

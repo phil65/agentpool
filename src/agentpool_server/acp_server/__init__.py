@@ -1,7 +1,5 @@
 """ACP (Agent Client Protocol) integration for agentpool."""
 
-from __future__ import annotations
-
 from agentpool_server.acp_server.server import ACPServer
 from agentpool_server.acp_server.acp_agent import AgentPoolACPAgent
 from agentpool_server.acp_server.session import ACPSession

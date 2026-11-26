@@ -1,7 +1,5 @@
 """Conversions between internal and MCP types."""
 
-from __future__ import annotations
-
 import base64
 from typing import TYPE_CHECKING, Any, assert_never
 

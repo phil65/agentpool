@@ -14,8 +14,6 @@ Each layer is optional. Configs are deep-merged: conflicting keys override,
 non-conflicting settings from all configs are preserved.
 """
 
-from __future__ import annotations
-
 from dataclasses import dataclass, field
 import os
 from pathlib import Path

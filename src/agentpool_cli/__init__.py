@@ -1,7 +1,5 @@
 """CLI commands for agentpool."""
 
-from __future__ import annotations
-
 from agentpool_cli.store import ConfigStore
 
 

@@ -1,7 +1,5 @@
 """WhatsApp channel implementation using Node.js bridge."""
 
-from __future__ import annotations
-
 import asyncio
 from typing import TYPE_CHECKING
 

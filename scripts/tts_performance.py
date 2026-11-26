@@ -7,8 +7,6 @@ Requires:
 - For Edge TTS: No API key needed (install with `uv pip install edge-tts miniaudio`)
 """
 
-from __future__ import annotations
-
 import time
 from typing import TYPE_CHECKING, Any, Literal
 

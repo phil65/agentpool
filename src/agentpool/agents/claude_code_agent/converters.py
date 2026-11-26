@@ -5,8 +5,6 @@ agentpool streaming events, enabling ClaudeCodeAgent to yield the same
 event types as native agents.
 """
 
-from __future__ import annotations
-
 from collections.abc import Mapping
 from dataclasses import dataclass
 import re

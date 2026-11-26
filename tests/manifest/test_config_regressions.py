@@ -1,7 +1,5 @@
 """Regression tests for manifest and config handling (issues #57, #63.6c)."""
 
-from __future__ import annotations
-
 from typing import TYPE_CHECKING
 
 import pytest

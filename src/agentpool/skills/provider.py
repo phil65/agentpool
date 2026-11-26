@@ -1,7 +1,5 @@
 """Skills of one workspace, as a resource provider (a session's client-side skills)."""
 
-from __future__ import annotations
-
 from typing import TYPE_CHECKING
 
 from upathtools import to_upath

@@ -8,8 +8,6 @@ Based on MCP's elicitation primitives:
 https://modelcontextprotocol.io/specification/draft/client/elicitation
 """
 
-from __future__ import annotations
-
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, Literal, Protocol
 

@@ -1,7 +1,5 @@
 """Live updates over T3's native socket: text streaming and approvals."""
 
-from __future__ import annotations
-
 import asyncio
 from typing import TYPE_CHECKING, Any
 

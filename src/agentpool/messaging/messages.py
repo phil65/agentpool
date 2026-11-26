@@ -1,7 +1,5 @@
 """Message and token usage models."""
 
-from __future__ import annotations
-
 from collections.abc import Sequence
 from dataclasses import dataclass, field, replace
 from decimal import Decimal

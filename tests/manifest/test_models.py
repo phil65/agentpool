@@ -1,7 +1,5 @@
 """Tests for agent configuration models."""
 
-from __future__ import annotations
-
 from pydantic import ValidationError
 import pytest
 from schemez import InlineSchemaDef

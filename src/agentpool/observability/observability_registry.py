@@ -1,7 +1,5 @@
 """Simplified observability registry using Logfire with single backend."""
 
-from __future__ import annotations
-
 import os
 from typing import TYPE_CHECKING
 

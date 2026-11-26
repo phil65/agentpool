@@ -1,7 +1,5 @@
 """Discord channel implementation using Discord Gateway websocket."""
 
-from __future__ import annotations
-
 import asyncio
 import contextlib
 from pathlib import Path

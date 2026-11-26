@@ -19,8 +19,6 @@ Design: ``ARCHITECTURE_SESSIONS_AGENTS.md`` §9.3-§9.4 (runtime), §6 step 7, �
 definition still lives on the agent instance; this splits off the session-bound part.
 """
 
-from __future__ import annotations
-
 import asyncio
 from contextlib import contextmanager
 from contextvars import ContextVar

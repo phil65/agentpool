@@ -1,7 +1,5 @@
 """FSSpecTools edit tools and grep (#52.1, #52.2, #52.4, #52.5)."""
 
-from __future__ import annotations
-
 from types import SimpleNamespace
 from typing import TYPE_CHECKING, Any
 

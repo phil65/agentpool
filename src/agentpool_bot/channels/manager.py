@@ -1,7 +1,5 @@
 """Channel manager for coordinating chat channels."""
 
-from __future__ import annotations
-
 import asyncio
 import contextlib
 from typing import TYPE_CHECKING, Any

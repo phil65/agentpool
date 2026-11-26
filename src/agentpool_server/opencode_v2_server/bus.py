@@ -5,8 +5,6 @@ encoded SSE frames. Subscribers that fall behind are dropped (the stream is vola
 durable session history is served from the session log instead).
 """
 
-from __future__ import annotations
-
 import asyncio
 from dataclasses import dataclass, field
 import json

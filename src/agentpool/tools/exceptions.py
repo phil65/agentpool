@@ -1,7 +1,5 @@
 """Tool-related exceptions."""
 
-from __future__ import annotations
-
 from agentpool.utils.baseregistry import AgentPoolError
 
 

@@ -1,7 +1,5 @@
 """serve-mcp serves agent tools without caching their results."""
 
-from __future__ import annotations
-
 from typing import TYPE_CHECKING
 from uuid import uuid4
 

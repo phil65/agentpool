@@ -3,8 +3,6 @@
 The generated client code the execution environment runs carries the token.
 """
 
-from __future__ import annotations
-
 from exxec_config import LocalExecutionEnvironmentConfig
 import httpx2
 

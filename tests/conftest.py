@@ -1,7 +1,6 @@
 """Test configuration and shared fixtures."""
 
-from __future__ import annotations
-
+import annotationlib
 import inspect
 import os
 from typing import Any
@@ -47,7 +46,11 @@ def pytest_collection_modifyitems(items: list[pytest.Item]) -> None:
     for item in items:
         if not isinstance(item, pytest.Function):
             continue
-        if LIVE_MODEL_FIXTURES.isdisjoint(inspect.signature(item.function).parameters):
+        if LIVE_MODEL_FIXTURES.isdisjoint(
+            inspect.signature(
+                item.function, annotation_format=annotationlib.Format.FORWARDREF
+            ).parameters
+        ):
             continue
         item.add_marker(pytest.mark.live_model)
         if item.get_closest_marker("integration") is None:

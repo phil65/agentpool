@@ -8,8 +8,6 @@ This module provides configurable orchestration for running diagnostic tools
 - Extensible server definitions
 """
 
-from __future__ import annotations
-
 import asyncio
 from dataclasses import dataclass
 import re

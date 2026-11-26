@@ -14,8 +14,6 @@ Upstream (https://github.com/pingdotgg/t3code): the tool in
 client builds answers in ``packages/client-runtime/src/state/pendingUserInput.ts``.
 """
 
-from __future__ import annotations
-
 from typing import TYPE_CHECKING, Any
 
 from mcp.types import ElicitRequestFormParams, ElicitResult

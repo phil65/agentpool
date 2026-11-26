@@ -9,8 +9,6 @@ once the message is accepted, and the turn reports itself through ``state_update
 ``ACP_V2_SERVER.md``.
 """
 
-from __future__ import annotations
-
 from typing import TYPE_CHECKING, Any, assert_never
 import uuid
 

@@ -1,7 +1,5 @@
 """Filtering resource provider implementation."""
 
-from __future__ import annotations
-
 from typing import TYPE_CHECKING, Any, Self
 
 from agentpool.resource_providers import ResourceProvider

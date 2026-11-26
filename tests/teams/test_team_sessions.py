@@ -1,7 +1,5 @@
 """A team turn of a session runs its members in child sessions of it."""
 
-from __future__ import annotations
-
 from typing import TYPE_CHECKING
 
 from pydantic_ai import ModelRequest, UserPromptPart

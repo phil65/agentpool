@@ -1,7 +1,5 @@
 """Cron scheduling toolset — lets agents manage scheduled jobs at runtime."""
 
-from __future__ import annotations
-
 from datetime import datetime
 from typing import TYPE_CHECKING, Any, Self
 

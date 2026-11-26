@@ -1,8 +1,5 @@
 """Built-in toolsets for agent capabilities."""
 
-from __future__ import annotations
-
-
 # Import provider classes
 from agentpool_toolsets.builtin.code import CodeTools
 from agentpool_toolsets.builtin.debug import DebugTools

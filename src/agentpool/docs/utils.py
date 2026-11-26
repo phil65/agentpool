@@ -1,7 +1,5 @@
 """Helper functions for running examples in different environments."""
 
-from __future__ import annotations
-
 import asyncio
 from dataclasses import dataclass
 from pathlib import Path

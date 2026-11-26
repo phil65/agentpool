@@ -1,7 +1,5 @@
 """Functions to discover available MCP servers from PulseMCP."""
 
-from __future__ import annotations
-
 from typing import Any, Literal
 
 import anyenv

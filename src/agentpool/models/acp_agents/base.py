@@ -1,7 +1,5 @@
 """Configuration models for ACP (Agent Client Protocol) agents."""
 
-from __future__ import annotations
-
 from collections.abc import Sequence  # noqa: TC003
 from typing import TYPE_CHECKING, Annotated, Any, Literal, assert_never
 

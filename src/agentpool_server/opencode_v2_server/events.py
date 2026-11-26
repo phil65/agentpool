@@ -1,7 +1,5 @@
 """Construction and serialization helpers for OpenCode V2 events."""
 
-from __future__ import annotations
-
 from typing import TYPE_CHECKING, Any, TypeIs, get_args
 
 from agentpool.utils import identifiers

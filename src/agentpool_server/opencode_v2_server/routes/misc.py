@@ -8,8 +8,6 @@ limits, plugin RPC and debugging. Machines answer ``ForbiddenError`` (403), like
 server without the ``machines`` flag.
 """
 
-from __future__ import annotations
-
 from typing import TYPE_CHECKING, Any
 
 from fastapi import APIRouter

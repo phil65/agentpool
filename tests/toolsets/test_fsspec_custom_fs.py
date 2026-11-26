@@ -1,7 +1,5 @@
 """FSSpecTools with a custom filesystem never touch the host filesystem (#52.3)."""
 
-from __future__ import annotations
-
 from typing import TYPE_CHECKING, Any
 
 from fsspec.implementations.memory import MemoryFileSystem

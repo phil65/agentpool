@@ -1,7 +1,5 @@
 """The ACP v2 agent over a real v2 connection (in-memory streams, wire-validated)."""
 
-from __future__ import annotations
-
 import asyncio
 from contextlib import asynccontextmanager
 import json

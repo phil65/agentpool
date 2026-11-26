@@ -1,7 +1,5 @@
 """Permission requests of the Claude Code agent, and the mode changes they cause."""
 
-from __future__ import annotations
-
 from typing import Any
 
 from clawd_code_sdk import PermissionResultAllow, PermissionResultDeny

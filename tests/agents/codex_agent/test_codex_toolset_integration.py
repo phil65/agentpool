@@ -7,8 +7,6 @@ The Codex agent can then use our internal tools through MCP.
 Run with: pytest tests/agents/codex_agent/test_codex_toolset_integration.py -v
 """
 
-from __future__ import annotations
-
 import asyncio
 from pathlib import Path
 import shutil

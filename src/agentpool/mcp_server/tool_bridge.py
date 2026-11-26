@@ -18,8 +18,6 @@ requests carrying its random bearer token (:attr:`ToolManagerBridge.headers`), w
 backends get in the MCP server config they are handed.
 """
 
-from __future__ import annotations
-
 import asyncio
 from contextlib import asynccontextmanager, suppress
 from dataclasses import dataclass, field, replace

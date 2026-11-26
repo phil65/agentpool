@@ -1,7 +1,5 @@
 """SQL storage keeps a message's metadata (an answer's turn), also for databases from before."""
 
-from __future__ import annotations
-
 import sqlite3
 from typing import TYPE_CHECKING
 

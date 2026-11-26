@@ -1,7 +1,5 @@
 """Helper functions for ACP agent."""
 
-from __future__ import annotations
-
 from typing import TYPE_CHECKING
 
 

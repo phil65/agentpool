@@ -4,8 +4,6 @@ This module provides the main server class for exposing AgentPool via
 the Agent Client Protocol.
 """
 
-from __future__ import annotations
-
 import asyncio
 from typing import TYPE_CHECKING, Any, Literal, Self
 

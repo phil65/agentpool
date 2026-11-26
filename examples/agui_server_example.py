@@ -6,8 +6,6 @@ This example shows how to:
 3. Access each agent via its own route
 """
 
-from __future__ import annotations
-
 import anyio
 
 from agentpool import Agent, AgentPool

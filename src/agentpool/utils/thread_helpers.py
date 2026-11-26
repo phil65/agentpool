@@ -5,8 +5,6 @@ on free-threaded Python builds (3.13+ with GIL disabled) and fall back
 to sequential or I/O-only concurrent execution on standard builds.
 """
 
-from __future__ import annotations
-
 import asyncio
 from concurrent.futures import ThreadPoolExecutor
 from functools import wraps

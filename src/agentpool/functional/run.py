@@ -1,7 +1,5 @@
 """Functional wrappers for Agent usage."""
 
-from __future__ import annotations
-
 from typing import TYPE_CHECKING, Any, Unpack, overload
 
 from anyenv import run_sync

@@ -1,7 +1,5 @@
 """``POST /api/experimental/mcp/{server}/connect`` and ``/disconnect``."""
 
-from __future__ import annotations
-
 from typing import TYPE_CHECKING, Any
 
 from agentpool.agents.exceptions import UnsupportedOperationError

@@ -1,17 +1,15 @@
 """Tasks of the agent's turns: list them, stop one, read its output."""
 
-from __future__ import annotations
-
 from typing import TYPE_CHECKING, Any
 
 from slashed import CommandContext, CommandError
 
+from agentpool.agents.context import AgentContext  # noqa: TC001
 from agentpool_commands.base import NodeCommand
 
 
 if TYPE_CHECKING:
     from agentpool.agents.agent_tasks import RunningTask
-    from agentpool.agents.context import AgentContext
     from agentpool.messaging import MessageNode
 
 

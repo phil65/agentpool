@@ -1,7 +1,5 @@
 """FastAPI dependencies and router helpers of the V2 server."""
 
-from __future__ import annotations
-
 from typing import TYPE_CHECKING, Annotated, Any
 from urllib.parse import unquote
 

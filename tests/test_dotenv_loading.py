@@ -1,7 +1,5 @@
 """Only the CLI loads .env files; importing agentpool as a library must not."""
 
-from __future__ import annotations
-
 import subprocess
 import sys
 from types import SimpleNamespace

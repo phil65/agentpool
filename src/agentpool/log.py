@@ -1,7 +1,5 @@
 """Logging configuration for agentpool with structlog support."""
 
-from __future__ import annotations
-
 from contextlib import contextmanager
 import logging
 from logging.handlers import RotatingFileHandler

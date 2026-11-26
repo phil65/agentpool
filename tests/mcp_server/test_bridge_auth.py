@@ -1,7 +1,5 @@
 """The tool bridge only serves callers holding its token; every backend config carries it."""
 
-from __future__ import annotations
-
 from dataclasses import dataclass, field
 from typing import Any
 

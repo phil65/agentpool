@@ -1,7 +1,5 @@
 """Fixtures for the OpenCode V2 server tests."""
 
-from __future__ import annotations
-
 import asyncio
 from typing import TYPE_CHECKING, Any
 

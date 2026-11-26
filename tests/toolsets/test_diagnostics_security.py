@@ -1,7 +1,5 @@
 """Security regressions for the diagnostics runner (issue #45.1)."""
 
-from __future__ import annotations
-
 import os
 import shlex
 import sys

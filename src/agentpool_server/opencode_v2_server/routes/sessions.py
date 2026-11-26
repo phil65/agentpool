@@ -1,7 +1,5 @@
 """Session routes: lifecycle, agent/model selection, prompting, messages and the log."""
 
-from __future__ import annotations
-
 import asyncio
 from typing import TYPE_CHECKING, Literal
 

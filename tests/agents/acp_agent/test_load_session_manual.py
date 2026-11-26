@@ -12,8 +12,6 @@ This tests the full flow:
 Logs are written to /tmp/load_session_test.log for inspection.
 """
 
-from __future__ import annotations
-
 import asyncio
 import logging
 from pathlib import Path

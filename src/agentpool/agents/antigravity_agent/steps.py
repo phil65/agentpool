@@ -1,7 +1,5 @@
 """Convert Google Antigravity SDK Step streams into AgentPool stream events."""
 
-from __future__ import annotations
-
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 

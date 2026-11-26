@@ -3,8 +3,6 @@
 This demonstrates how the question tool works with OpenCode's question system.
 """
 
-from __future__ import annotations
-
 import asyncio
 
 from agentpool_server.opencode_server.input_provider import OpenCodeInputProvider

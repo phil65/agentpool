@@ -1,7 +1,5 @@
 """Filesystem, VCS (git) and worktree routes for the request's location."""
 
-from __future__ import annotations
-
 import asyncio
 import mimetypes
 import os

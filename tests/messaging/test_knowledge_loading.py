@@ -1,7 +1,5 @@
 """Configured knowledge / resources reach the model (#51)."""
 
-from __future__ import annotations
-
 from typing import TYPE_CHECKING
 
 from pydantic_ai.models.function import AgentInfo, FunctionModel

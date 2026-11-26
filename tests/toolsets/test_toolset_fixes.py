@@ -1,7 +1,5 @@
 """Regression tests for toolset, command and client bugs (#63)."""
 
-from __future__ import annotations
-
 import asyncio
 from importlib.metadata import EntryPoint
 import json

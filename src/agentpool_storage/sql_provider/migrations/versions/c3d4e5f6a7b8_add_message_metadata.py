@@ -5,8 +5,6 @@ Revises: b2c3d4e5f6a7
 Create Date: 2026-11-24
 """
 
-from __future__ import annotations
-
 from typing import TYPE_CHECKING
 
 from alembic import op

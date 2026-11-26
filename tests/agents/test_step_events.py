@@ -1,7 +1,5 @@
 """Step lifecycle events (one per model request)."""
 
-from __future__ import annotations
-
 from pydantic_ai.models.test import TestModel
 
 from agentpool import Agent

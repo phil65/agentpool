@@ -1,7 +1,5 @@
 """Codex agent - wraps Codex app-server via JSON-RPC protocol."""
 
-from __future__ import annotations
-
 from contextlib import nullcontext
 from dataclasses import replace
 from decimal import Decimal

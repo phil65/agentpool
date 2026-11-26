@@ -1,7 +1,5 @@
 """Claude Code compacts with the CLI's ``/compact`` and forks the CLI's session."""
 
-from __future__ import annotations
-
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 

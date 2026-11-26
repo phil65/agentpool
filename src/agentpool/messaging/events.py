@@ -1,7 +1,5 @@
 """Events of connections between nodes."""
 
-from __future__ import annotations
-
 from dataclasses import dataclass, field
 from datetime import datetime  # noqa: TC003
 from typing import TYPE_CHECKING, Any, Literal

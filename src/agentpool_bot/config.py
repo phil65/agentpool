@@ -1,7 +1,5 @@
 """Configuration models for agentpool_bot channels."""
 
-from __future__ import annotations
-
 from typing import TYPE_CHECKING, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator

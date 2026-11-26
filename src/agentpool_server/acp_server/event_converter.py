@@ -8,8 +8,6 @@ by the caller.
 This separation enables easy testing without mocks.
 """
 
-from __future__ import annotations
-
 from dataclasses import dataclass, field
 from decimal import Decimal
 from typing import TYPE_CHECKING, Any, Literal, assert_never

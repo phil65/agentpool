@@ -1,7 +1,5 @@
 """Utilities for database storage."""
 
-from __future__ import annotations
-
 from datetime import datetime
 from decimal import Decimal
 from pathlib import Path

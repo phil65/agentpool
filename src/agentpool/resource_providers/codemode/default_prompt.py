@@ -1,6 +1,3 @@
-from __future__ import annotations
-
-
 USAGE = """
 A tool to execute python code.
 You can (and should) use the provided stubs as async function calls

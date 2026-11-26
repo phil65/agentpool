@@ -9,8 +9,6 @@ This module provides a system for:
 - Triggering LLM-powered reconciliation when dependencies change
 """
 
-from __future__ import annotations
-
 from agentpool_sync.config import (
     FileSyncConfig,
     PackageSyncConfig,

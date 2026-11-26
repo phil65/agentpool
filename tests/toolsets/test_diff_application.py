@@ -5,8 +5,6 @@ This module tests both:
 2. apply_diff_hunks_streaming - Uses Zed-style streaming fuzzy matcher with DP
 """
 
-from __future__ import annotations
-
 import pytest
 from sublime_search import apply_diff_hunks, parse_locationless_diff
 

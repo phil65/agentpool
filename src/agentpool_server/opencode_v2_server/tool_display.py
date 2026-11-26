@@ -8,8 +8,6 @@ and the original tool name is kept in the tool metadata (``agentpoolTool``).
 Unknown tools keep their name and arguments and use OpenCode's generic renderer.
 """
 
-from __future__ import annotations
-
 from dataclasses import dataclass, field
 from typing import Any
 

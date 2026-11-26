@@ -1,7 +1,5 @@
 """Package resources for AgentPool configuration."""
 
-from __future__ import annotations
-
 import importlib.resources
 from functools import cache
 from typing import Final, Literal

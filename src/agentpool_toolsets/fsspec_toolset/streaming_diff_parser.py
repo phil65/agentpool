@@ -4,8 +4,6 @@ Parses unified diff format incrementally as chunks arrive,
 emitting events that can be used with StreamingFuzzyMatcher.
 """
 
-from __future__ import annotations
-
 from dataclasses import dataclass
 from enum import Enum, auto
 

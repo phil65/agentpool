@@ -6,8 +6,6 @@ Centralizes all hook-related logic:
 - Injection consumption from PromptInjectionManager
 """
 
-from __future__ import annotations
-
 from typing import TYPE_CHECKING
 
 from agentpool.log import get_logger

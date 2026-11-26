@@ -7,8 +7,6 @@ Usage:
     uv run python scripts/test_acp_mcp_capabilities.py
 """
 
-from __future__ import annotations
-
 import asyncio
 from dataclasses import dataclass
 import sys

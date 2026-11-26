@@ -1,7 +1,5 @@
 """OpenAI-compatible API server for AgentPool."""
 
-from __future__ import annotations
-
 import hmac
 import ipaddress
 from typing import TYPE_CHECKING, Annotated, Any

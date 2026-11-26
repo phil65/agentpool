@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from agentpool.running import NodeFunction, node_function
 
 

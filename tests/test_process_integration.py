@@ -1,7 +1,5 @@
 """Integration tests for process management with AgentPool."""
 
-from __future__ import annotations
-
 import platform
 
 import pytest

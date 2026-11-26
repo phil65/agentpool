@@ -1,7 +1,5 @@
 """Concurrent runs on one session (#59.1c): queue, steer, interrupt + run, nested self-calls."""
 
-from __future__ import annotations
-
 import asyncio
 import json
 from typing import TYPE_CHECKING, Any

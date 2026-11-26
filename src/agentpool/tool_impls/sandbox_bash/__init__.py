@@ -5,8 +5,6 @@ filesystem access. Built on bashkit (Rust) for safe, sandboxed command execution
 in AI agent workloads.
 """
 
-from __future__ import annotations
-
 from typing import Literal
 
 from agentpool.tool_impls.sandbox_bash.tool import SandboxBashTool

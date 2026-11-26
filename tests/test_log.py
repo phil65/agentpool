@@ -1,7 +1,5 @@
 """Logged exceptions render as plain tracebacks: rich ones take seconds and block the loop."""
 
-from __future__ import annotations
-
 import logging
 import sys
 from typing import TYPE_CHECKING

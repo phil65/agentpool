@@ -10,8 +10,6 @@ verify the event sequence matches the expected flow documented in
 claude_code_agent.py's module docstring.
 """
 
-from __future__ import annotations
-
 import asyncio
 from collections import defaultdict
 from dataclasses import dataclass, field

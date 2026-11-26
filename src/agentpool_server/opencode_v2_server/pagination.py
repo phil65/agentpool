@@ -5,8 +5,6 @@ after the last item of a page, ``previous`` goes back before its first item, bot
 order of the first page.
 """
 
-from __future__ import annotations
-
 import base64
 from dataclasses import dataclass
 import json

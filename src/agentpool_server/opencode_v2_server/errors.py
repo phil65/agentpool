@@ -1,7 +1,5 @@
 """Typed OpenCode V2 API errors (``{"_tag": ..., "message": ...}`` bodies)."""
 
-from __future__ import annotations
-
 from typing import TYPE_CHECKING
 
 from opencode_v2_sdk.models import (

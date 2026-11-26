@@ -1,7 +1,5 @@
 """Static model catalog and mode definitions for the Antigravity agent."""
 
-from __future__ import annotations
-
 from tokonomics.model_discovery.model_info import Modality, ModelInfo
 
 from agentpool.agents.modes import ModeInfo

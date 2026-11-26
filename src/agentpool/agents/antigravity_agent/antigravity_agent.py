@@ -1,7 +1,5 @@
 """Google Antigravity agent - wraps the official google-antigravity Python SDK."""
 
-from __future__ import annotations
-
 from contextlib import suppress
 from datetime import UTC, datetime
 from decimal import Decimal

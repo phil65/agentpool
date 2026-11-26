@@ -1,7 +1,5 @@
 """YAML connections set what ``connect_to`` takes: ``parallel`` and ``stats_history``."""
 
-from __future__ import annotations
-
 from typing import TYPE_CHECKING
 
 from agentpool import AgentPool, AgentsManifest

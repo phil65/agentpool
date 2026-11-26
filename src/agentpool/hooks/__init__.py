@@ -1,7 +1,5 @@
 """Runtime hook classes for agent lifecycle events."""
 
-from __future__ import annotations
-
 from agentpool.hooks.agent_hooks import AgentHooks
 from agentpool.hooks.base import Hook, HookEvent, HookInput, HookResult
 from agentpool.hooks.callable import CallableHook

@@ -1,7 +1,5 @@
 """Tests for converting backend account info to AuthStatus."""
 
-from __future__ import annotations
-
 from aclientp.schema import AuthAccount as ACPAuthAccount, AuthStatusResponse
 from clawd_code_sdk.models.server_info import ClaudeCodeAccountInfo
 from codexed.models import GetAccountResponse

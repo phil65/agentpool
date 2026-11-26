@@ -4,8 +4,6 @@ These tests demonstrate how the converter pattern makes testing easy -
 no mocks needed, just assert on the yielded ACP session updates.
 """
 
-from __future__ import annotations
-
 from aclientp.schema import AgentMessageChunk, ToolCallProgress
 from pydantic_ai import (
     PartDeltaEvent,

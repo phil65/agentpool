@@ -1,7 +1,5 @@
 """Triggers run where their node's router runs them, and connection triggers fire."""
 
-from __future__ import annotations
-
 import asyncio
 from typing import TYPE_CHECKING, Any, Self
 

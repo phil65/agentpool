@@ -1,7 +1,5 @@
 """Steering user messages into a running Claude Code turn."""
 
-from __future__ import annotations
-
 from typing import TYPE_CHECKING, Any
 
 from clawd_code_sdk.models import message_adapter

@@ -1,7 +1,5 @@
 """V2 turns are stored under their prompt's ID: revert, fork and diffs find them by it."""
 
-from __future__ import annotations
-
 from typing import TYPE_CHECKING, Any
 
 from agentpool.utils.file_ops_tracker import FileOpsTracker

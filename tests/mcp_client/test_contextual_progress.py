@@ -1,7 +1,5 @@
 """Test contextual progress handler functionality with Agent and TestModel."""
 
-from __future__ import annotations
-
 from pathlib import Path
 from typing import TYPE_CHECKING
 

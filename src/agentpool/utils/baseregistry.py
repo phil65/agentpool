@@ -1,7 +1,5 @@
 """Base class for component registries."""
 
-from __future__ import annotations
-
 from abc import ABC, abstractmethod
 from collections.abc import MutableMapping
 from typing import TYPE_CHECKING, Any

@@ -1,7 +1,5 @@
 """Tests for Team execution."""
 
-from __future__ import annotations
-
 import pytest
 
 from agentpool import Agent, AgentPool, ChatMessage, Team, TeamRun

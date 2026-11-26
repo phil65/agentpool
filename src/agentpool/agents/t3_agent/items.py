@@ -13,8 +13,6 @@ Upstream (https://github.com/pingdotgg/t3code): item kinds in
 ``packages/contracts/src/providerRuntime.ts`` and ``orchestrationV2.ts``.
 """
 
-from __future__ import annotations
-
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, Protocol
 

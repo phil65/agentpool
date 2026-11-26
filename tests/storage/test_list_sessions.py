@@ -1,7 +1,5 @@
 """Storage-level ``list_sessions``: one query in the SQL provider; errors surface."""
 
-from __future__ import annotations
-
 from datetime import timedelta
 from typing import Any
 

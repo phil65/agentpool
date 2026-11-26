@@ -14,8 +14,6 @@ This example demonstrates:
 - Storage providers: SQLite and pretty-printed text files
 """
 
-from __future__ import annotations
-
 from dataclasses import dataclass
 import os
 from typing import TYPE_CHECKING, Any

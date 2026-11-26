@@ -1,7 +1,5 @@
 """Proper integration tests for ACP functionality."""
 
-from __future__ import annotations
-
 import tempfile
 from unittest.mock import AsyncMock
 

@@ -1,7 +1,5 @@
 """Test enum elicitation response handling in ACP server."""
 
-from __future__ import annotations
-
 from aclientp import RequestPermissionResponse
 from mcp import types
 

@@ -1,7 +1,5 @@
 """Command for running agents as an AG-UI server."""
 
-from __future__ import annotations
-
 import os
 from typing import TYPE_CHECKING, Annotated, Any
 

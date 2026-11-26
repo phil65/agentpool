@@ -1,7 +1,5 @@
 """Converters between OpenCode V2 SDK models and AgentPool types."""
 
-from __future__ import annotations
-
 import base64
 from datetime import UTC, datetime
 import re

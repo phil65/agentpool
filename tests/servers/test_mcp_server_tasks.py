@@ -1,7 +1,5 @@
 """serve-mcp: agent and team tools as MCP background tasks (SEP-2663)."""
 
-from __future__ import annotations
-
 import asyncio
 from datetime import timedelta
 from typing import TYPE_CHECKING

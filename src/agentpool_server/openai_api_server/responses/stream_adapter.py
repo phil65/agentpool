@@ -4,8 +4,6 @@ Maps agent-side tool calls to MCP call output items, since MCP calls
 are the Responses API's model for server-side tool execution.
 """
 
-from __future__ import annotations
-
 from dataclasses import dataclass, field
 from datetime import datetime
 from typing import TYPE_CHECKING, Any

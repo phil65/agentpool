@@ -1,7 +1,5 @@
 """Todo/plan entry models and tracker."""
 
-from __future__ import annotations
-
 import asyncio
 from collections.abc import Callable, Coroutine
 from dataclasses import dataclass, field

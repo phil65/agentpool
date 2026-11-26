@@ -7,8 +7,6 @@ Note: These are slow integration tests that spawn real subprocesses.
 Run with: pytest tests/servers/acp_server/test_acp_agent_integration.py -v
 """
 
-from __future__ import annotations
-
 from pathlib import Path
 import sys
 from typing import TYPE_CHECKING, Any

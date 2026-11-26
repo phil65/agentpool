@@ -1,7 +1,5 @@
 """Sequential, ordered group of agents / nodes."""
 
-from __future__ import annotations
-
 from dataclasses import dataclass, field
 from decimal import Decimal
 from itertools import pairwise

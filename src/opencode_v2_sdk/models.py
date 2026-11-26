@@ -1,6 +1,5 @@
 """OpenCode V2 HTTP API models (generated from opencode v2.4.1, do not edit)."""
 
-from __future__ import annotations
 from typing import Annotated, Any, Literal
 from pydantic import BaseModel, ConfigDict, Field, RootModel
 

@@ -1,7 +1,5 @@
 """A failed agent setup undoes the steps that succeeded (issue #59.2f)."""
 
-from __future__ import annotations
-
 from typing import Any
 
 import pytest

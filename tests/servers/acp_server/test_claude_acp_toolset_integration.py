@@ -5,8 +5,6 @@ the Subagent toolset, which gets exposed via an internal MCP server bridge.
 The Claude agent can then use our internal tools through MCP.
 """
 
-from __future__ import annotations
-
 import asyncio
 from pathlib import Path
 import shutil

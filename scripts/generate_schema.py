@@ -6,8 +6,6 @@ Can be used:
 3. From CI
 """
 
-from __future__ import annotations
-
 import argparse
 import json
 from pathlib import Path

@@ -6,8 +6,6 @@ So nothing of agentpool is imported here: each filter imports its implementation
 when a template first calls it.
 """
 
-from __future__ import annotations
-
 from importlib import import_module
 from typing import TYPE_CHECKING, Any
 

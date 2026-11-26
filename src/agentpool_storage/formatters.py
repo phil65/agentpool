@@ -1,7 +1,5 @@
 """Formatting utilities."""
 
-from __future__ import annotations
-
 from typing import TYPE_CHECKING, Any, Literal, TypeGuard, assert_never
 
 from rich.console import Console

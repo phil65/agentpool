@@ -13,8 +13,6 @@ Both should capture the same events, ensuring event handlers receive everything.
 Run with: pytest tests/agents/test_external_agent_event_sequence.py -v -m integration
 """
 
-from __future__ import annotations
-
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any

@@ -1,7 +1,5 @@
 """Configuration models for OpenCode V2 agents."""
 
-from __future__ import annotations
-
 from typing import TYPE_CHECKING, Any, Literal, assert_never
 
 from pydantic import ConfigDict, Field

@@ -1,7 +1,5 @@
 """FSSpec filesystem toolset implementation."""
 
-from __future__ import annotations
-
 import contextlib
 from dataclasses import replace
 from pathlib import Path

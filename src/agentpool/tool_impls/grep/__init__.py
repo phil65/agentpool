@@ -1,7 +1,5 @@
 """Grep search tool."""
 
-from __future__ import annotations
-
 from typing import TYPE_CHECKING, Literal
 
 from agentpool.tool_impls.grep.tool import GrepTool

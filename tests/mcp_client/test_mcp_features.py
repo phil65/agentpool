@@ -4,8 +4,6 @@
 
 """Demo: Agent using the MCP test server (progress reporting)."""
 
-from __future__ import annotations
-
 from pathlib import Path
 
 from agentpool import Agent

@@ -1,7 +1,5 @@
 """serve-mcp over HTTP lets in only clients that authenticate (``auth``)."""
 
-from __future__ import annotations
-
 from contextlib import asynccontextmanager
 from typing import TYPE_CHECKING, Any
 

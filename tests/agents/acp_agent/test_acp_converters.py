@@ -1,7 +1,5 @@
 """Tests for ACP to ChatMessage converters."""
 
-from __future__ import annotations
-
 from typing import TYPE_CHECKING
 
 from aclientp.schema import (

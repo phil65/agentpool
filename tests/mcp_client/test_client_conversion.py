@@ -4,8 +4,6 @@ Tests that our MCP client properly converts FastMCP server responses
 to PydanticAI-compatible return types without mocks.
 """
 
-from __future__ import annotations
-
 from pathlib import Path
 
 import anyio

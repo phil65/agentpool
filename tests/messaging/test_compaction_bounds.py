@@ -1,7 +1,5 @@
 """Compaction steps with zero counts and tiny lengths (issue #59.3)."""
 
-from __future__ import annotations
-
 from pydantic_ai.messages import ModelRequest, ModelResponse, TextPart, UserPromptPart
 import pytest
 

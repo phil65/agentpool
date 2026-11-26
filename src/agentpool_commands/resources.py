@@ -1,7 +1,5 @@
 """Resource management commands."""
 
-from __future__ import annotations
-
 from slashed import CommandContext, CommandError
 
 from agentpool.agents.context import AgentContext  # noqa: TC001

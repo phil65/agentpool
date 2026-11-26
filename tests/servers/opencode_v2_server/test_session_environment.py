@@ -1,7 +1,5 @@
 """A V2 session's directory and instructions reach its turns, not other sessions'."""
 
-from __future__ import annotations
-
 from typing import TYPE_CHECKING, Any
 
 from pydantic_ai import ModelRequest, ToolReturnPart, UserPromptPart

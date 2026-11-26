@@ -1,7 +1,5 @@
 """List directory tool implementation."""
 
-from __future__ import annotations
-
 from dataclasses import dataclass
 from fnmatch import fnmatch
 import os

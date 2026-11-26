@@ -1,7 +1,5 @@
 """Tests for converting ACP session updates in the ACP agent stream adapter."""
 
-from __future__ import annotations
-
 import asyncio
 from typing import TYPE_CHECKING
 

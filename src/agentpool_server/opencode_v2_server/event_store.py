@@ -5,8 +5,6 @@ for the V2 view of a session (messages, inbox, agent/model switches). The agent'
 conversation history keeps living in AgentPool's regular storage.
 """
 
-from __future__ import annotations
-
 import json
 from pathlib import Path
 import re

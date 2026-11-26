@@ -1,7 +1,5 @@
 """Native agents act in the session of the running turn (issue #59.1b, #59.2c-e, #59.4e)."""
 
-from __future__ import annotations
-
 from decimal import Decimal
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock

@@ -1,7 +1,5 @@
 """Tests for the native agent."""
 
-from __future__ import annotations
-
 import asyncio
 from typing import Any
 

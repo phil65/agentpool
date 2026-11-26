@@ -1,7 +1,5 @@
 """Tests for ToolManagerBridge - exposing ToolManager tools to ACP agents via MCP."""
 
-from __future__ import annotations
-
 import shutil
 from typing import TYPE_CHECKING, Any
 

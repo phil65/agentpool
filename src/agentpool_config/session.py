@@ -1,7 +1,5 @@
 """Memory configuration for agent memory and history handling."""
 
-from __future__ import annotations
-
 from typing import TYPE_CHECKING, Literal, Self
 from uuid import UUID
 

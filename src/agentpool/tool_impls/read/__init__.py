@@ -1,7 +1,5 @@
 """Read file tool."""
 
-from __future__ import annotations
-
 from typing import TYPE_CHECKING, Literal
 
 from agentpool.tool_impls.read.tool import ReadTool

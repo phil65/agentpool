@@ -1,7 +1,5 @@
 """Slack channel implementation using Socket Mode."""
 
-from __future__ import annotations
-
 import asyncio
 import re
 from typing import TYPE_CHECKING, assert_never

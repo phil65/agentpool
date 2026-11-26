@@ -1,7 +1,5 @@
 """Base class for text sharing services."""
 
-from __future__ import annotations
-
 import abc
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Literal

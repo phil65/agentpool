@@ -1,7 +1,5 @@
 """Base classes for protocol bridge servers."""
 
-from __future__ import annotations
-
 import abc
 from typing import TYPE_CHECKING, Any, Self
 

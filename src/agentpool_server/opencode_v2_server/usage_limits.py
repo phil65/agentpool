@@ -6,8 +6,6 @@ meters: session -> rolling, the first weekly window -> weekly, a monthly window 
 extra-usage credits) -> monthly. A plan without a monthly window reports it as unused.
 """
 
-from __future__ import annotations
-
 from typing import TYPE_CHECKING, Any
 
 from agentpool.log import get_logger

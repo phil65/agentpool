@@ -1,7 +1,5 @@
 """High-level pipeline functions for agent execution."""
 
-from __future__ import annotations
-
 from enum import Enum
 from typing import TYPE_CHECKING, Literal, get_args
 

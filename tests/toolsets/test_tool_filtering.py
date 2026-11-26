@@ -1,7 +1,5 @@
 """Tests for tool filtering in toolset configurations."""
 
-from __future__ import annotations
-
 from agentpool_config.toolsets import CodeToolsetConfig, SkillsToolsetConfig, SubagentToolsetConfig
 
 

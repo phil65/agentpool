@@ -1,7 +1,5 @@
 """Command for serving agents via Vercel AI protocol."""
 
-from __future__ import annotations
-
 from contextlib import asynccontextmanager
 import os
 from typing import TYPE_CHECKING, Annotated, Any

@@ -1,7 +1,5 @@
 """Tool management for AgentPool."""
 
-from __future__ import annotations
-
 from datetime import datetime
 from typing import TYPE_CHECKING, Any, Literal
 from uuid import uuid4

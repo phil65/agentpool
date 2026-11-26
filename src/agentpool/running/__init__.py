@@ -1,7 +1,5 @@
 """Decorator auto-injection / run package."""
 
-from __future__ import annotations
-
 from agentpool.running.decorators import with_nodes
 from agentpool.running.discovery import NodeFunction, node_function
 from agentpool.running.executor import execute_single, execute_functions

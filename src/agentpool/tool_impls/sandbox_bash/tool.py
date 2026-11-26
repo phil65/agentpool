@@ -1,7 +1,5 @@
 """Sandboxed bash tool for agentpool's tool framework."""
 
-from __future__ import annotations
-
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 

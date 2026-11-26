@@ -5,8 +5,6 @@ Provides converters for:
 - MCP server configs (Native configs -> Codex types)
 """
 
-from __future__ import annotations
-
 import base64
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any, assert_never, overload

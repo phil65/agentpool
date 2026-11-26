@@ -1,7 +1,5 @@
 """Session persistence: save/load round trips and model message (de)serialization."""
 
-from __future__ import annotations
-
 from datetime import timedelta
 from typing import TYPE_CHECKING
 

@@ -1,7 +1,5 @@
 """Backend-specific options pass through to the agents' SDKs (``sdk_options``, ...)."""
 
-from __future__ import annotations
-
 from typing import Any
 
 from clawd_code_sdk.models.mcp import SdkPluginConfig

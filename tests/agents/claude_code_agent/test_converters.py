@@ -1,7 +1,5 @@
 """Converters of the Claude Code agent: turn results and prompt content."""
 
-from __future__ import annotations
-
 from typing import Any
 
 from clawd_code_sdk.models import UserTextPrompt, message_adapter

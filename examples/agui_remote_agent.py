@@ -3,8 +3,6 @@
 This example shows how to connect to and use a remote AG-UI protocol server.
 """
 
-from __future__ import annotations
-
 import anyio
 from pydantic_ai import PartDeltaEvent, TextPartDelta
 

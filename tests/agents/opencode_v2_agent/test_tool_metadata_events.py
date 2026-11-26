@@ -1,7 +1,5 @@
 """OpenCode's tool metadata, translated into diffs and the plan."""
 
-from __future__ import annotations
-
 from typing import Any
 
 from agentpool.agents.events import DiffContentItem, PlanUpdateEvent, ToolCallProgressEvent

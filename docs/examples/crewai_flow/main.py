@@ -4,8 +4,6 @@
 
 """Adaption of a CrewAI-like flow."""
 
-from __future__ import annotations
-
 import os
 
 from agentpool import Agent, AgentsManifest

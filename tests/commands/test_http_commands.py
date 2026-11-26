@@ -1,7 +1,5 @@
 """Commands that call web APIs through anyenv (3.x response API), with faked responses."""
 
-from __future__ import annotations
-
 from types import SimpleNamespace
 from typing import TYPE_CHECKING, Any
 from unittest.mock import AsyncMock

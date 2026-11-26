@@ -4,8 +4,6 @@ This module contains stateless utility functions that support MCP tool conversio
 and content handling for PydanticAI integration.
 """
 
-from __future__ import annotations
-
 from typing import TYPE_CHECKING, Any
 
 from agentpool.log import get_logger

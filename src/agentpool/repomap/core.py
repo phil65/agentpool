@@ -4,8 +4,6 @@ This module contains the main RepoMap class that uses tree-sitter and PageRank
 to generate intelligent code structure maps.
 """
 
-from __future__ import annotations
-
 from collections import Counter, defaultdict
 from dataclasses import dataclass, field
 import math

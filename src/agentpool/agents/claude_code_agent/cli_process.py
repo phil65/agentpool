@@ -11,8 +11,6 @@ the SDK's reader and the tasks it starts for callbacks and hooks inherit it, and
 the idle watcher, so they act for that session.
 """
 
-from __future__ import annotations
-
 from dataclasses import dataclass, field
 import time
 from typing import TYPE_CHECKING

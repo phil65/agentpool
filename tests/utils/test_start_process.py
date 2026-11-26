@@ -1,7 +1,5 @@
 """start_process waits for the server instead of trusting a fixed delay."""
 
-from __future__ import annotations
-
 import socket
 import sys
 

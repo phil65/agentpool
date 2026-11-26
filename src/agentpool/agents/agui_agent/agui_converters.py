@@ -7,8 +7,6 @@ Also provides conversion of native Tool objects to AG-UI Tool format for
 client-side tool execution.
 """
 
-from __future__ import annotations
-
 import base64
 from typing import TYPE_CHECKING, Any, assert_never
 from uuid import uuid4

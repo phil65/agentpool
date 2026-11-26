@@ -1,7 +1,5 @@
 """History replay shows what the user wrote: not injected context, not tool content."""
 
-from __future__ import annotations
-
 from aclientp.schema import TextContentBlock, ToolCallProgress, UserMessageChunk
 from pydantic_ai import ModelRequest, ToolReturnPart, UserPromptPart
 

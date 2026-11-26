@@ -1,7 +1,5 @@
 """Display mapping of tool calls onto OpenCode's tool renderers."""
 
-from __future__ import annotations
-
 from typing import TYPE_CHECKING, Any
 
 from agentpool_server.opencode_v2_server.tool_display import (

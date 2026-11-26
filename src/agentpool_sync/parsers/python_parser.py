@@ -1,7 +1,5 @@
 """Python parser."""
 
-from __future__ import annotations
-
 import re
 from typing import TYPE_CHECKING
 

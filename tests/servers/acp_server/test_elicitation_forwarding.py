@@ -1,7 +1,5 @@
 """Tests for forwarding MCP elicitation to ACP clients."""
 
-from __future__ import annotations
-
 from types import SimpleNamespace
 from typing import Any
 from unittest.mock import AsyncMock

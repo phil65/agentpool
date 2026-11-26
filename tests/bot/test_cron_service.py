@@ -1,7 +1,5 @@
 """Tests for the cron service."""
 
-from __future__ import annotations
-
 import asyncio
 from typing import TYPE_CHECKING
 

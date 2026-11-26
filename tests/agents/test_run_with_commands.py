@@ -1,7 +1,5 @@
 """run_stream_with_commands runs the agent's own commands; everything else is the prompt."""
 
-from __future__ import annotations
-
 from typing import Any
 
 import pytest

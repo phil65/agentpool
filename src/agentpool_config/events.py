@@ -1,7 +1,5 @@
 """Event sources for AgentPool."""
 
-from __future__ import annotations
-
 from typing import TYPE_CHECKING, Annotated, Any, Literal
 
 from evented_config import (

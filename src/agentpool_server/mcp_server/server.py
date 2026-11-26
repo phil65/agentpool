@@ -1,7 +1,5 @@
 """MCP protocol server implementation using FastMCP decorators."""
 
-from __future__ import annotations
-
 from typing import TYPE_CHECKING, Any, assert_never
 
 import mcp

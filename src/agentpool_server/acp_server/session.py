@@ -4,8 +4,6 @@ This module provides session lifecycle management, state tracking, and coordinat
 between agents and ACP clients through the JSON-RPC protocol.
 """
 
-from __future__ import annotations
-
 import asyncio
 import contextlib
 from dataclasses import dataclass, field

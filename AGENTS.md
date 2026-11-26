@@ -276,7 +276,7 @@ AgentPool acts as a protocol adapter:
 - Follow PEP 8 via Ruff
 - Google-style docstrings (no types in Args section)
 - Type hints required (type-checked with ty; complete annotations enforced by ruff's ANN rules)
-- Use `from __future__ import annotations` for forward references
+- No `from __future__ import annotations` (Python 3.14+, PEP 649 lazy annotations; banned via ruff TID251)
 
 ### Testing
 - Tests use pytest (not in classes)
@@ -294,7 +294,6 @@ AgentPool acts as a protocol adapter:
 ### Import Patterns
 ```python
 # Avoid circular imports - use TYPE_CHECKING
-from __future__ import annotations
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:

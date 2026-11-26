@@ -1,7 +1,5 @@
 """Helper functions for bash tool output formatting."""
 
-from __future__ import annotations
-
 
 def truncate_output(output: str, limit: int) -> tuple[str, bool]:
     """Truncate output to limit bytes, returning (output, was_truncated)."""

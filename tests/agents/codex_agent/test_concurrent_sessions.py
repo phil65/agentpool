@@ -1,7 +1,5 @@
 """Sessions of one Codex agent: a thread each, on their own bridge route."""
 
-from __future__ import annotations
-
 from dataclasses import dataclass, field
 from typing import Any
 

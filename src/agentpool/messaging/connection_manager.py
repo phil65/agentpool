@@ -1,7 +1,5 @@
 """A node's view of its connections, which its router owns."""
 
-from __future__ import annotations
-
 from collections.abc import Sequence
 from contextlib import asynccontextmanager
 from typing import TYPE_CHECKING, Any, Self

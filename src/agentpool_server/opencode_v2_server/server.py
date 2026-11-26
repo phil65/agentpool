@@ -9,8 +9,6 @@ Unlike the V1 server, this server is pool-wide: every session is bound to one po
 (agent or team) and the client can switch it at any time.
 """
 
-from __future__ import annotations
-
 from contextlib import asynccontextmanager
 import os
 from pathlib import Path

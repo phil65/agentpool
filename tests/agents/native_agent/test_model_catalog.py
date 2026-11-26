@@ -1,7 +1,5 @@
 """Tests for the process-wide model catalogue cache of native agents."""
 
-from __future__ import annotations
-
 import asyncio
 from datetime import datetime, timedelta
 from typing import TYPE_CHECKING

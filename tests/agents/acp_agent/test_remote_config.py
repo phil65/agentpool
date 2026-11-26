@@ -1,7 +1,5 @@
 """Remote ACP agents (Streamable HTTP): configuration and construction."""
 
-from __future__ import annotations
-
 import pytest
 
 from agentpool import AgentsManifest

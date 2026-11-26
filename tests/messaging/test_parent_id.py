@@ -1,7 +1,5 @@
 """Tests for parent_id tree structure in conversations."""
 
-from __future__ import annotations
-
 from typing import Any
 
 from pydantic_ai.models.test import TestModel

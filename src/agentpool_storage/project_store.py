@@ -1,7 +1,5 @@
 """High-level project store with auto-detection."""
 
-from __future__ import annotations
-
 import hashlib
 from pathlib import Path
 from typing import TYPE_CHECKING

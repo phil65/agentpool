@@ -1,7 +1,5 @@
 """Test MCP server integration with ACP sessions."""
 
-from __future__ import annotations
-
 import sys
 import tempfile
 from typing import TYPE_CHECKING

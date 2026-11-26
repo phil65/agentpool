@@ -1,7 +1,5 @@
 """Messages Claude Code sends between runs (background task ends, turns of its own)."""
 
-from __future__ import annotations
-
 import asyncio
 from typing import TYPE_CHECKING, Any
 

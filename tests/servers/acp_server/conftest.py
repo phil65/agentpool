@@ -1,7 +1,5 @@
 """Test fixtures for ACP tests."""
 
-from __future__ import annotations
-
 from unittest.mock import Mock
 
 from aclientp import ClientCapabilities, DefaultACPClient, FileSystemCapabilities

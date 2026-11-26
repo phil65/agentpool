@@ -15,8 +15,6 @@ turn and activates it there.
 Design: ``ARCHITECTURE_SESSIONS_AGENTS.md`` §11 (session environment).
 """
 
-from __future__ import annotations
-
 from contextlib import contextmanager
 from contextvars import ContextVar
 from dataclasses import dataclass

@@ -1,7 +1,5 @@
 """Telegram channel implementation using python-telegram-bot."""
 
-from __future__ import annotations
-
 import asyncio
 from pathlib import Path
 import re

@@ -4,8 +4,6 @@ This module provides functionality to interact with the Model Context Protocol
 registry API for server discovery and configuration.
 """
 
-from __future__ import annotations
-
 from dataclasses import dataclass
 import logging
 import time

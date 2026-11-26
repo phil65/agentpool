@@ -1,7 +1,5 @@
 """Debug commands for ACP notification replay and testing."""
 
-from __future__ import annotations
-
 import json
 from pathlib import Path
 

@@ -1,7 +1,5 @@
 """StorageManager writes: every provider at once, a failing one logged, not raised."""
 
-from __future__ import annotations
-
 import asyncio
 from typing import Any
 

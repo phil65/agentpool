@@ -1,7 +1,5 @@
 """Regression tests for AgentPool and team wiring (issue #58)."""
 
-from __future__ import annotations
-
 from typing import TYPE_CHECKING, Any, Self
 
 from agentpool import Agent, AgentPool, AgentsManifest, Team, TeamRun

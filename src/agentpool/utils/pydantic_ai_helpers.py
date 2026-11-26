@@ -1,7 +1,5 @@
 """Helper utilities for working with pydantic-ai message types."""
 
-from __future__ import annotations
-
 from typing import TYPE_CHECKING, Any
 from urllib.parse import unquote, urlparse
 

@@ -6,8 +6,6 @@ configurable interval. When the file contains actionable content the
 agent) so the agent can process whatever tasks are listed.
 """
 
-from __future__ import annotations
-
 import asyncio
 from typing import TYPE_CHECKING
 

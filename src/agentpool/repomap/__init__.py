@@ -34,8 +34,6 @@ Command line: ``python -m agentpool.repomap PATH [--tokens N] [--focus IDENT,...
 (see ``agentpool.repomap.__main__``).
 """
 
-from __future__ import annotations
-
 from importlib import import_module
 from typing import TYPE_CHECKING, Any
 

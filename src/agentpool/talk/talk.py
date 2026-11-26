@@ -1,7 +1,5 @@
 """Manages message flow between agents/groups."""
 
-from __future__ import annotations
-
 from collections import defaultdict
 from collections.abc import Callable, Sequence
 from contextlib import asynccontextmanager

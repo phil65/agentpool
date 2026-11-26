@@ -4,8 +4,6 @@ Fork, move, compact, revert, diff, generate, environment, instructions, stats an
 export/import.
 """
 
-from __future__ import annotations
-
 import json
 from typing import TYPE_CHECKING, Any, Literal
 

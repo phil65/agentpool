@@ -1,7 +1,5 @@
 """Cron scheduling service for periodic and one-shot agent tasks."""
 
-from __future__ import annotations
-
 from agentpool_bot.cron.service import CronService
 from agentpool_bot.cron.cron_types import (
     CronJob,

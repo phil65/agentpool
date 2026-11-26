@@ -1,7 +1,5 @@
 """Claude Code warnings and errors that are shown to the user as ``NoticeEvent``."""
 
-from __future__ import annotations
-
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, assert_never
 

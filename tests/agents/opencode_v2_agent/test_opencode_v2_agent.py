@@ -1,7 +1,5 @@
 """End-to-end tests for OpenCodeV2Agent against mock V2 servers and AgentPool's V2 server."""
 
-from __future__ import annotations
-
 import asyncio
 import json
 from typing import TYPE_CHECKING, Any

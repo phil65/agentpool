@@ -1,7 +1,5 @@
 """Antigravity links the conversation to the session acting (issue #50.5)."""
 
-from __future__ import annotations
-
 from unittest.mock import AsyncMock, MagicMock
 
 from agentpool.agents.antigravity_agent import AntigravityAgent

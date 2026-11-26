@@ -1,7 +1,5 @@
 """The user's decision on a native agent's tool calls (``Approve`` / ``Deny``)."""
 
-from __future__ import annotations
-
 from typing import TYPE_CHECKING, Any, Literal
 
 from pydantic_ai.messages import ToolReturnPart

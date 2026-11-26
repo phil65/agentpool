@@ -1,7 +1,5 @@
 """``${VAR}`` expansion in configuration values (HTTP headers of remote agents)."""
 
-from __future__ import annotations
-
 import pytest
 
 from agentpool.models.agui_agents import AGUIAgentConfig

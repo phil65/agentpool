@@ -1,7 +1,5 @@
 """Provider for subagent/task tools with streaming support."""
 
-from __future__ import annotations
-
 import asyncio
 import datetime as dt
 import functools

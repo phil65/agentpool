@@ -5,8 +5,6 @@ from LLM APIs that stream JSON arguments incrementally (like Anthropic's
 input_json_delta or OpenAI's function call streaming).
 """
 
-from __future__ import annotations
-
 from dataclasses import dataclass
 from typing import Any
 

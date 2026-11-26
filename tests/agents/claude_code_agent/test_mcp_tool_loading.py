@@ -4,8 +4,6 @@ Covers ``always_load`` on MCP server configs, the tool bridge always loading
 its tools, and the ``enable_tool_search`` passthrough.
 """
 
-from __future__ import annotations
-
 from clawd_code_sdk.models import McpHttpServerConfig, McpSSEServerConfig, McpStdioServerConfig
 from pydantic import HttpUrl
 import pytest

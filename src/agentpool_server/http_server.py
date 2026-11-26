@@ -3,8 +3,6 @@
 This module provides a base class for servers that expose HTTP routes via Starlette.
 """
 
-from __future__ import annotations
-
 from abc import abstractmethod
 from contextlib import asynccontextmanager
 from typing import TYPE_CHECKING, Self

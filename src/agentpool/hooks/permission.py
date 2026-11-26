@@ -1,7 +1,5 @@
 """Static permission hooks (used to map agent-file permission rules onto hooks)."""
 
-from __future__ import annotations
-
 from typing import TYPE_CHECKING, Any, Literal
 
 

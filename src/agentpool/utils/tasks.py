@@ -1,7 +1,5 @@
 """Task management mixin."""
 
-from __future__ import annotations
-
 import asyncio
 from types import CoroutineType
 from typing import TYPE_CHECKING, Any, cast

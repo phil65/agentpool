@@ -7,8 +7,6 @@ Based on:
 - packages/coding-agent/src/core/agent-session.ts (session types)
 """
 
-from __future__ import annotations
-
 import sys
 from typing import Annotated, Any, Literal
 

@@ -1,7 +1,5 @@
 """CLI interface for AgentPool."""
 
-from __future__ import annotations
-
 from importlib import metadata
 
 import typer as t

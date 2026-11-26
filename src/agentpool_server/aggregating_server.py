@@ -1,7 +1,5 @@
 """AggregatingServer for managing multiple servers with shared pool."""
 
-from __future__ import annotations
-
 import asyncio
 from contextlib import AsyncExitStack
 from dataclasses import dataclass

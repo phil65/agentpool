@@ -1,7 +1,5 @@
 """Races and edge cases of the OpenCode V2 runtime (#55, #61)."""
 
-from __future__ import annotations
-
 import asyncio
 from typing import TYPE_CHECKING, Any
 

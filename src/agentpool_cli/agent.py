@@ -1,7 +1,5 @@
 """Agent-related CLI commands."""
 
-from __future__ import annotations
-
 import shutil
 from typing import Annotated
 

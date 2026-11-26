@@ -1,7 +1,5 @@
 """Runtime introspection (backends, node functions, loaders) of TYPE_CHECKING-only names."""
 
-from __future__ import annotations
-
 import pathlib
 from typing import TYPE_CHECKING, Any
 

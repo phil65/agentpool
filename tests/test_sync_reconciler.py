@@ -1,7 +1,5 @@
 """AgentReconciler must never return the no-changes sentinel as file content."""
 
-from __future__ import annotations
-
 from dataclasses import dataclass
 from typing import Any
 

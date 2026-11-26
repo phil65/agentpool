@@ -1,7 +1,5 @@
 """Shared state of the OpenCode V2 server."""
 
-from __future__ import annotations
-
 import asyncio
 import contextlib
 from dataclasses import dataclass, field

@@ -12,8 +12,6 @@ Configuration is resolved from multiple layers (in precedence order):
 5. Built-in fallback (only if no agents defined elsewhere)
 """
 
-from __future__ import annotations
-
 import asyncio
 import os
 from typing import TYPE_CHECKING, Annotated, Literal

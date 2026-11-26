@@ -6,8 +6,6 @@ replay from their cursor, then a ``0x00`` + JSON ``{"cursor": n}`` meta frame, t
 output. Inbound frames are terminal input.
 """
 
-from __future__ import annotations
-
 import asyncio
 from dataclasses import dataclass, field
 import json

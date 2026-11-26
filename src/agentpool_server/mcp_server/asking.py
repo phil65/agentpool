@@ -15,8 +15,6 @@ A run whose question goes unanswered for ``PENDING_TTL`` is cancelled. Meanwhile
 reports what it does (tool calls starting, tools' own progress) as the call's progress.
 """
 
-from __future__ import annotations
-
 import asyncio
 from dataclasses import dataclass, field, replace
 import json

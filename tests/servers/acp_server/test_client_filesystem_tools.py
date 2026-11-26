@@ -1,7 +1,5 @@
 """Tests for FSSpecTools using MockExecutionEnvironment."""
 
-from __future__ import annotations
-
 from exxec import MockExecutionEnvironment
 import pytest
 

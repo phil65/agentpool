@@ -8,8 +8,6 @@ backend doesn't know, and one agentpool sets itself (it wires those to its own h
 permissions, hooks, MCP, sessions), is refused.
 """
 
-from __future__ import annotations
-
 import dataclasses
 from typing import TYPE_CHECKING, Any
 

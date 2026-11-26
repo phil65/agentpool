@@ -1,7 +1,5 @@
 """MCP OAuth honours ``auth.persist`` (keyring token storage instead of memory)."""
 
-from __future__ import annotations
-
 from typing import TYPE_CHECKING
 
 from fastmcp.client.auth import OAuth

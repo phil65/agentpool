@@ -1,7 +1,5 @@
 """Unified diff utilities for computing and analyzing text differences."""
 
-from __future__ import annotations
-
 import difflib
 
 

@@ -1,7 +1,5 @@
 """Text sharing services for sharing content via paste services."""
 
-from __future__ import annotations
-
 from typing import Any, Literal, assert_never, overload
 
 from agentpool_commands.text_sharing.base import ShareResult, TextSharer, Visibility

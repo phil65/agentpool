@@ -1,7 +1,5 @@
 """Tests for command get_callable functionality."""
 
-from __future__ import annotations
-
 import inspect
 from pathlib import Path
 import tempfile

@@ -29,8 +29,6 @@ Usage:
     uv run python scripts/generate_opencode_v2_models.py --version 2.4.1   # pin, download, generate
 """
 
-from __future__ import annotations
-
 import argparse
 import ast
 import json

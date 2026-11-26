@@ -1,7 +1,5 @@
 """v1 session setup with an unknown or malformed MCP transport: -32602, nothing launched."""
 
-from __future__ import annotations
-
 import json
 from typing import TYPE_CHECKING, Any
 

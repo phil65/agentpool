@@ -1,7 +1,5 @@
 """Tests for OpenCode V2 converters."""
 
-from __future__ import annotations
-
 from mcp.types import ElicitResult
 from pydantic_ai import BinaryContent, ImageUrl
 import pytest

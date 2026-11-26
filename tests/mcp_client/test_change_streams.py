@@ -1,7 +1,5 @@
 """MCPClient learns about a server's list changes on either protocol era."""
 
-from __future__ import annotations
-
 import asyncio
 from pathlib import Path
 import sys

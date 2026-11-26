@@ -1,7 +1,5 @@
 """Base class for message processing nodes."""
 
-from __future__ import annotations
-
 from abc import ABC, abstractmethod
 from collections.abc import Sequence
 from typing import TYPE_CHECKING, Any, Literal, Self, overload

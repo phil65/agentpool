@@ -1,7 +1,5 @@
 """``ConversionManager.convert_file`` uses the first converter that supports the file."""
 
-from __future__ import annotations
-
 from typing import Any
 
 import pytest

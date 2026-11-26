@@ -1,7 +1,5 @@
 """Tests for the OpenAI-compatible API server (issue #46 and the dead-endpoint bug N1)."""
 
-from __future__ import annotations
-
 from typing import Any
 
 import anyenv

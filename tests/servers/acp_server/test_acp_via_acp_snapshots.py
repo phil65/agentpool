@@ -8,8 +8,6 @@ This complements the direct harness tests by verifying the protocol layer:
 - This test: Tests full subprocess → JSON-RPC → client event flow
 """
 
-from __future__ import annotations
-
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 import sys

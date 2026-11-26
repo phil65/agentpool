@@ -15,8 +15,6 @@ has no removal. Per spec, a child takes ``session/cancel`` only (when it adverti
 which stops its task); other client methods are refused.
 """
 
-from __future__ import annotations
-
 from dataclasses import dataclass, field
 from pathlib import PurePath
 from typing import TYPE_CHECKING, Any, Literal

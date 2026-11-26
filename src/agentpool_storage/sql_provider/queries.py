@@ -1,8 +1,5 @@
 """Some pre-defined Queries."""
 
-from __future__ import annotations
-
-
 DELETE_AGENT_MESSAGES = """\
 DELETE FROM message
 WHERE session_id IN (

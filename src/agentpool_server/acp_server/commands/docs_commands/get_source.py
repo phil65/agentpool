@@ -1,7 +1,5 @@
 """Get Python source code using dot notation."""
 
-from __future__ import annotations
-
 import uuid
 
 from pydantic_ai import UserPromptPart

@@ -5,8 +5,6 @@ two-turn run (claudeAgent / haiku: a shell command and a reply, then a follow-up
 in call order, with repeated identical thread reads left out.
 """
 
-from __future__ import annotations
-
 import copy
 from dataclasses import dataclass, field
 import json

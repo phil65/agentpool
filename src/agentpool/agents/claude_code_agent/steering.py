@@ -15,8 +15,6 @@ cycle a steer was folded into names the steer, not the prompt. So a result that 
 the run's messages answers every message the CLI had taken in by then.
 """
 
-from __future__ import annotations
-
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 

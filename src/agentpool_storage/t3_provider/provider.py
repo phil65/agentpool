@@ -1,7 +1,5 @@
 """T3 Code storage provider: read-only, over the environment's MCP endpoint."""
 
-from __future__ import annotations
-
 from typing import TYPE_CHECKING, Any, Self
 
 from agentpool.agents.t3_agent import threads

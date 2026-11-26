@@ -1,7 +1,5 @@
 """Tests for minimal DAG implementation."""
 
-from __future__ import annotations
-
 import pytest
 
 from agentpool.utils.dag import DAGNode, dag_iterator, dag_to_list

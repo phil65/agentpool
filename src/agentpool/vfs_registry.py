@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from typing import TYPE_CHECKING, Literal, assert_never, overload
 
 from upathtools import AsyncUPath, list_files, read_folder, read_path

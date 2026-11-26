@@ -1,7 +1,5 @@
 """Declared runtime capabilities for AgentPool agent implementations."""
 
-from __future__ import annotations
-
 from dataclasses import dataclass
 
 

@@ -1,7 +1,5 @@
 """The ACP session offers the commands of its agent, not only its own."""
 
-from __future__ import annotations
-
 import asyncio
 from typing import TYPE_CHECKING, Any
 from unittest.mock import AsyncMock

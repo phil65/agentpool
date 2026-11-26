@@ -1,7 +1,5 @@
 """MCP event triggers: subscriptions to events MCP servers publish (SEP-3415, experimental)."""
 
-from __future__ import annotations
-
 from dataclasses import dataclass, field
 import json
 from typing import TYPE_CHECKING, Any, Self

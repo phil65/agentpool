@@ -1,7 +1,5 @@
 """AG-UI agents: explicit sessions and local tool round-trips (issue #50.4)."""
 
-from __future__ import annotations
-
 import json
 from typing import TYPE_CHECKING, Any
 from unittest.mock import AsyncMock, MagicMock

@@ -1,8 +1,5 @@
 """Helper functions and constants for documentation commands."""
 
-from __future__ import annotations
-
-
 # Scripts run where the session runs its tools (client terminal or this host)
 SCHEMA_EXTRACTION_SCRIPT = """
 import sys

@@ -6,8 +6,6 @@ installed package metadata (summaries). Run after dependency changes:
     uv sync --all-extras && uv run python scripts/gen_ecosystem.py
 """
 
-from __future__ import annotations
-
 from importlib import metadata
 from pathlib import Path
 import tomllib

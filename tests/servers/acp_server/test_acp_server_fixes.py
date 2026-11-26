@@ -1,7 +1,5 @@
 """ACP server fixes (#60): v2 prompt race, fallback message ids, requires_action, swap_pool."""
 
-from __future__ import annotations
-
 import asyncio
 from typing import TYPE_CHECKING, Any
 

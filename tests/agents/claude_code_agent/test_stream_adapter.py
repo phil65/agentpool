@@ -1,7 +1,5 @@
 """Tests for the Claude Code stream adapter."""
 
-from __future__ import annotations
-
 from typing import TYPE_CHECKING, Any
 
 from clawd_code_sdk.models import PromptSuggestionMessage, StatusSystemMessage, message_adapter

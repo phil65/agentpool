@@ -12,8 +12,6 @@ This example shows:
 - Team-level MCP server configuration
 """
 
-from __future__ import annotations
-
 import os
 
 from agentpool import AgentPool, AgentsManifest

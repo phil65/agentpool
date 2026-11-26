@@ -1,7 +1,5 @@
 """Tests for `output_type` on agents: inline definitions and named references."""
 
-from __future__ import annotations
-
 from typing import Any
 
 from pydantic import BaseModel, ValidationError

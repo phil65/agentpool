@@ -1,7 +1,5 @@
 """Tests for Claude Code style file_agents parsing and loading."""
 
-from __future__ import annotations
-
 import tempfile
 from typing import TYPE_CHECKING
 

@@ -1,7 +1,5 @@
 """T3 agent config, model selection and question conversion."""
 
-from __future__ import annotations
-
 from mcp import types
 from pydantic import ValidationError
 import pytest

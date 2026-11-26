@@ -12,8 +12,6 @@ with the reconstructed message, so servers can show it as a turn of the session.
 the agent first waits until such a turn has finished.
 """
 
-from __future__ import annotations
-
 import asyncio
 import contextlib
 from dataclasses import replace

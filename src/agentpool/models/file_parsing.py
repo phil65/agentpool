@@ -6,8 +6,6 @@ Supports loading agents from markdown files with YAML frontmatter in various for
 - AgentPool (native): Full NativeAgentConfig fields in frontmatter
 """
 
-from __future__ import annotations
-
 import re
 from typing import TYPE_CHECKING, Any, Literal, assert_never
 

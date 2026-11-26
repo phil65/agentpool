@@ -5,8 +5,6 @@ agentpool package (which pulls in pydantic-ai, llmling-models, etc.)
 just for CLI help text.
 """
 
-from __future__ import annotations
-
 import logging
 import sys
 from typing import Any

@@ -4,8 +4,6 @@ Transforms TEXT_MESSAGE_CHUNK and TOOL_CALL_CHUNK events into proper
 START/CONTENT/END sequences for easier downstream processing.
 """
 
-from __future__ import annotations
-
 from typing import TYPE_CHECKING
 
 from agentpool.log import get_logger

@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 import inspect
 
 from pydantic_ai.capabilities import ProcessHistory

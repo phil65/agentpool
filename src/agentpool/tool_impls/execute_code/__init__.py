@@ -1,7 +1,5 @@
 """Python code execution tool."""
 
-from __future__ import annotations
-
 from typing import TYPE_CHECKING, Literal
 
 from agentpool.tool_impls.execute_code.tool import ExecuteCodeTool

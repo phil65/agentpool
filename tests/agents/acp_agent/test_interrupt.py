@@ -1,7 +1,5 @@
 """Tests for interrupting an ACP agent's prompt turn."""
 
-from __future__ import annotations
-
 import asyncio
 from unittest.mock import AsyncMock
 

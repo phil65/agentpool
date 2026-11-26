@@ -1,7 +1,5 @@
 """External agents give a backend session the session's instructions when it starts."""
 
-from __future__ import annotations
-
 from dataclasses import dataclass, field
 from typing import Any
 

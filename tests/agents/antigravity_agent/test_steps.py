@@ -1,7 +1,5 @@
 """Tests for StepTracker event translation."""
 
-from __future__ import annotations
-
 from google.antigravity.connections.local.types import RunCommandResult
 from google.antigravity.types import (
     Step,

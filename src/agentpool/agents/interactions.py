@@ -1,7 +1,5 @@
 """Agent interaction patterns."""
 
-from __future__ import annotations
-
 from collections.abc import Callable, Mapping
 from contextlib import asynccontextmanager
 from typing import TYPE_CHECKING, Any, Literal, cast, overload

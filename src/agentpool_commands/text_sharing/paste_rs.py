@@ -1,7 +1,5 @@
 """paste.rs text sharing provider."""
 
-from __future__ import annotations
-
 from typing import TYPE_CHECKING
 
 from agentpool_commands.text_sharing.base import ShareResult, TextSharer

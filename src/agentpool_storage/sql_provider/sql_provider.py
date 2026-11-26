@@ -1,7 +1,5 @@
 """SQLModel-based storage provider."""
 
-from __future__ import annotations
-
 from typing import TYPE_CHECKING, Any, Self
 
 from pydantic_ai import RunUsage

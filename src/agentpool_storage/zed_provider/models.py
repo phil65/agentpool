@@ -1,7 +1,5 @@
 """Zed IDE storage format models."""
 
-from __future__ import annotations
-
 import io
 import sys
 from typing import Annotated, Any, Literal

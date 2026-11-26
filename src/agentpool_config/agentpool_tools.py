@@ -1,7 +1,5 @@
 """Models for agentpool standalone tool configuration."""
 
-from __future__ import annotations
-
 from typing import TYPE_CHECKING, Literal
 
 from exxec_config import ExecutionEnvironmentConfig  # noqa: TC002

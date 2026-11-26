@@ -1,7 +1,5 @@
 """Command for watching agents and displaying messages."""
 
-from __future__ import annotations
-
 import asyncio
 from typing import TYPE_CHECKING, Annotated, Any
 

@@ -1,7 +1,5 @@
 """Protocol behaviour of the ACP server: errors, session loading, cancellation, usage."""
 
-from __future__ import annotations
-
 import asyncio
 from decimal import Decimal
 import time

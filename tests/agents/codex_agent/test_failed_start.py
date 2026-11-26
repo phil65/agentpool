@@ -1,7 +1,5 @@
 """A Codex agent whose start fails closes its client (issue #50.3b)."""
 
-from __future__ import annotations
-
 from typing import Any, Self
 
 import pytest

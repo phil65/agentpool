@@ -1,7 +1,5 @@
 """The v2 terminals a session reports (``TerminalTracker``)."""
 
-from __future__ import annotations
-
 from aclientp.schema import v2
 
 from agentpool.agents.events import (

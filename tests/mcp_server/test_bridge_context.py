@@ -1,7 +1,5 @@
 """Tool bridge: argument validation and context injection (#49.4), toolset cleanup (#49.5)."""
 
-from __future__ import annotations
-
 import asyncio
 from typing import Any, Self
 from unittest.mock import AsyncMock

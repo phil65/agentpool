@@ -1,7 +1,5 @@
 """Model, effort and fast mode options of the Claude Code agent, from the CLI's model list."""
 
-from __future__ import annotations
-
 from typing import TYPE_CHECKING, Any
 
 from clawd_code_sdk.models import SDKControlGetContextUsageResponse, message_adapter

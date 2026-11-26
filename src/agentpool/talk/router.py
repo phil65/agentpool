@@ -1,7 +1,5 @@
 """The router: owns the connections between nodes and routes messages along them."""
 
-from __future__ import annotations
-
 from collections import defaultdict
 from contextlib import asynccontextmanager
 from typing import TYPE_CHECKING, Any

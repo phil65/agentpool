@@ -4,8 +4,6 @@ Usage:
     python scripts/check_union_docs.py
 """
 
-from __future__ import annotations
-
 from pathlib import Path
 import sys
 

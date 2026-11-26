@@ -1,7 +1,5 @@
 """ToolResult must stay resolvable at runtime for pydantic-ai's return schemas."""
 
-from __future__ import annotations
-
 import warnings
 
 from pydantic_ai import Tool

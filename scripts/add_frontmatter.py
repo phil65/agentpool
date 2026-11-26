@@ -1,7 +1,5 @@
 """Script to add frontmatter metadata from Python doc definitions to markdown files."""
 
-from __future__ import annotations
-
 import ast
 from pathlib import Path
 from typing import Any

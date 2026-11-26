@@ -1,7 +1,5 @@
 """Tests for discovering client-side skills over the ACP filesystem."""
 
-from __future__ import annotations
-
 from textwrap import dedent
 from typing import TYPE_CHECKING
 

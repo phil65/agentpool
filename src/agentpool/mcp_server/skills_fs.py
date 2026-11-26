@@ -7,8 +7,6 @@ entry does not list, and verifies every read against the entry before returning
 it, as the Skills extension requires of hosts.
 """
 
-from __future__ import annotations
-
 import hashlib
 from typing import TYPE_CHECKING, Any, Literal, Protocol, Required, overload
 from urllib.parse import unquote, urlsplit

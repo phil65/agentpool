@@ -1,7 +1,5 @@
 """Database models for agentpool storage."""
 
-from __future__ import annotations
-
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
 from uuid import uuid4

@@ -7,8 +7,6 @@ Supports all agent types (native, ACP, Claude Code, Codex, AG-UI) through
 the BaseAgentAGUIAdapter.
 """
 
-from __future__ import annotations
-
 from typing import TYPE_CHECKING
 
 from agentpool.log import get_logger

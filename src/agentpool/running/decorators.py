@@ -1,7 +1,5 @@
 """Decorators for agent injection and execution."""
 
-from __future__ import annotations
-
 from functools import wraps
 from typing import TYPE_CHECKING, overload
 

@@ -1,7 +1,5 @@
 """Translate OpenCode V2 SSE events into AgentPool stream events."""
 
-from __future__ import annotations
-
 from dataclasses import dataclass, field
 from decimal import Decimal
 from typing import TYPE_CHECKING, Any

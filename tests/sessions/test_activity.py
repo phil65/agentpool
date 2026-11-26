@@ -1,7 +1,5 @@
 """The pool's activity feed: session lifecycle and foreground state (ACP v2 style)."""
 
-from __future__ import annotations
-
 import asyncio
 from typing import TYPE_CHECKING, Any
 

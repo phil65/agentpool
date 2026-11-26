@@ -9,8 +9,6 @@ listed root are dropped everywhere; on a local filesystem, ignored paths too
 Paths through symlinks are kept when the symlink is (see ``_visible_local_paths``).
 """
 
-from __future__ import annotations
-
 import asyncio
 import os
 from pathlib import Path, PurePosixPath

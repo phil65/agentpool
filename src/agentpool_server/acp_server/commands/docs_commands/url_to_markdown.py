@@ -1,7 +1,5 @@
 """Convert a webpage to markdown using urltomarkdown.herokuapp.com."""
 
-from __future__ import annotations
-
 import urllib.parse
 import uuid
 

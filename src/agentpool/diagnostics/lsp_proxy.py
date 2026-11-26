@@ -3,8 +3,6 @@
 The actual proxy script is in lsp_proxy_script.py and is executed as a subprocess.
 """
 
-from __future__ import annotations
-
 from pathlib import Path
 
 

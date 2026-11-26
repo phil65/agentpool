@@ -1,7 +1,5 @@
 """Code execution provider with secure tool isolation via FastAPI server."""
 
-from __future__ import annotations
-
 import asyncio
 import contextlib
 from dataclasses import dataclass

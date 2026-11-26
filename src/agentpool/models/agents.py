@@ -1,7 +1,5 @@
 """Models for agent configuration."""
 
-from __future__ import annotations
-
 from collections.abc import Callable, Sequence  # noqa: TC003
 from pathlib import Path
 from typing import TYPE_CHECKING, Annotated, Any, Literal, assert_never

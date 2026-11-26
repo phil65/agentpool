@@ -1,7 +1,5 @@
 """Zed tool results: the content Zed stored, in its old and current forms."""
 
-from __future__ import annotations
-
 import base64
 
 from pydantic_ai import BinaryContent

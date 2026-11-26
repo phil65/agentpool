@@ -1,7 +1,5 @@
 """FSSpec Toolset."""
 
-from __future__ import annotations
-
 from agentpool_toolsets.fsspec_toolset.diagnostics import (
     DiagnosticsConfig,
     DiagnosticsManager,

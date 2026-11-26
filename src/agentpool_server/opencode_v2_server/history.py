@@ -6,8 +6,6 @@ same :class:`RunEventConverter` that handles live runs, so history and live sess
 render identically.
 """
 
-from __future__ import annotations
-
 from typing import TYPE_CHECKING, Any
 
 from pydantic_ai.messages import (

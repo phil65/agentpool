@@ -7,8 +7,6 @@ Usage:
     uv run python scripts/check_site.py [site_dir]
 """
 
-from __future__ import annotations
-
 import html as html_module
 from pathlib import Path
 import re

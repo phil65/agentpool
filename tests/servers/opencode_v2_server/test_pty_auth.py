@@ -1,7 +1,5 @@
 """PTY websocket auth (#44.1): the HTTP auth middleware does not see websockets."""
 
-from __future__ import annotations
-
 import base64
 from typing import TYPE_CHECKING, Any
 

@@ -1,7 +1,5 @@
 """Configuration models for Google Antigravity agents."""
 
-from __future__ import annotations
-
 from typing import TYPE_CHECKING, Any, Literal, Self, assert_never
 
 from pydantic import ConfigDict, Field, model_validator

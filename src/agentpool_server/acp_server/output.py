@@ -6,8 +6,6 @@ between turns, a changed mode or model, the command list, an error); a
 ``V1SessionOutput`` (``v1_output.py``); see ``ACP_V2_SERVER.md`` for v2.
 """
 
-from __future__ import annotations
-
 from typing import TYPE_CHECKING, Any, Literal, Protocol
 
 

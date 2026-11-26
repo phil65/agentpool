@@ -1,7 +1,5 @@
 """Run command for agent execution."""
 
-from __future__ import annotations
-
 import asyncio
 import traceback
 from typing import TYPE_CHECKING, Annotated, Any

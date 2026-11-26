@@ -1,7 +1,5 @@
 """Meta-resource provider that exposes tools through Python execution."""
 
-from __future__ import annotations
-
 from datetime import UTC, datetime
 from functools import partial
 import inspect

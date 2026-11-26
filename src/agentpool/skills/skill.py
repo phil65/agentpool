@@ -1,7 +1,5 @@
 """Claude Code Skill following the Agent Skills Spec."""
 
-from __future__ import annotations
-
 import html
 import json
 import os

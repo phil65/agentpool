@@ -1,7 +1,5 @@
 """Serve the pool's skills through the MCP Skills extension (SEP-2640)."""
 
-from __future__ import annotations
-
 from typing import TYPE_CHECKING
 
 from fastmcp.skills import Skill as FastMCPSkill

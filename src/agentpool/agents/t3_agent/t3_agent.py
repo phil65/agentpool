@@ -11,8 +11,6 @@ permission requests, so a run that waits for an approval waits until someone
 approves it in T3 Code.
 """
 
-from __future__ import annotations
-
 from contextlib import AsyncExitStack
 import time
 from typing import TYPE_CHECKING, Any, ClassVar, Literal, Self, cast

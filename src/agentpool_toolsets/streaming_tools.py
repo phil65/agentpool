@@ -37,8 +37,6 @@ Example usage:
     # Exposed to outer agent as: edit_file(description: str, path: str) -> str
 """
 
-from __future__ import annotations
-
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 import functools

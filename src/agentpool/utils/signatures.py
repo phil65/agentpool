@@ -1,7 +1,5 @@
 """Signature utils."""
 
-from __future__ import annotations
-
 import annotationlib
 import ast
 from collections.abc import Awaitable

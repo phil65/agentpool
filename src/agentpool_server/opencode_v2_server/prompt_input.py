@@ -1,7 +1,5 @@
 """Prompt admission: V2 prompt bodies -> inbox payloads -> agent prompt content."""
 
-from __future__ import annotations
-
 import base64
 import binascii
 import mimetypes

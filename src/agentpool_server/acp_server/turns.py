@@ -7,8 +7,6 @@ runs the turn (``ACPSession.run_turn``); each protocol supplies a ``TurnOutput``
 maps the ``TurnOutcome`` (``agentpool.turns``, shared with the other servers).
 """
 
-from __future__ import annotations
-
 from typing import TYPE_CHECKING, Any, Protocol
 
 

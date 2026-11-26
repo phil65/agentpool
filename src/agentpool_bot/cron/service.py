@@ -1,7 +1,5 @@
 """Cron service for scheduling and executing agent tasks."""
 
-from __future__ import annotations
-
 import asyncio
 from datetime import datetime
 from typing import TYPE_CHECKING

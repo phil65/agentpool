@@ -1,7 +1,5 @@
 """Agent, model and provider routes."""
 
-from __future__ import annotations
-
 from fastapi import APIRouter
 from fastapi.responses import Response
 

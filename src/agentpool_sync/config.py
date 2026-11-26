@@ -3,8 +3,6 @@
 These models can be embedded in the main agent manifest or used standalone.
 """
 
-from __future__ import annotations
-
 from pydantic import BaseModel, Field
 
 

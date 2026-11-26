@@ -4,8 +4,6 @@ These tests use the ToolCallTestHarness to capture the exact wire format of
 JSON-RPC notifications for regression testing.
 """
 
-from __future__ import annotations
-
 from typing import TYPE_CHECKING
 
 from exxec.models import ExecutionResult

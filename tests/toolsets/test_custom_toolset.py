@@ -1,7 +1,5 @@
 """Tests for CustomToolsetConfig parameter passing support."""
 
-from __future__ import annotations
-
 from agentpool.resource_providers import ResourceProvider
 from agentpool_config.toolsets import CustomToolsetConfig
 

@@ -1,7 +1,5 @@
 """Image processing utilities for the fsspec toolset."""
 
-from __future__ import annotations
-
 from io import BytesIO
 
 

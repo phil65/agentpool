@@ -1,7 +1,5 @@
 """Unit tests for AGUIServer."""
 
-from __future__ import annotations
-
 import pytest
 
 from agentpool import Agent, AgentPool

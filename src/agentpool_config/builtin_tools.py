@@ -1,7 +1,5 @@
 """Models for PydanticAI builtin tools configuration."""
 
-from __future__ import annotations
-
 from typing import TYPE_CHECKING, Annotated, Literal
 
 from pydantic import ConfigDict, Field

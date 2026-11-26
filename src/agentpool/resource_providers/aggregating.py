@@ -1,7 +1,5 @@
 """Aggregating resource provider."""
 
-from __future__ import annotations
-
 from typing import TYPE_CHECKING, Literal
 
 from agentpool.resource_providers.base import ResourceChangeEvent, ResourceProvider

@@ -1,7 +1,5 @@
 """Agents reconnect, enable and disable their MCP servers (``/mcp``)."""
 
-from __future__ import annotations
-
 from pathlib import Path
 import sys
 from typing import Any

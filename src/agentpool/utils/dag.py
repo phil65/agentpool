@@ -5,8 +5,6 @@ and generating mermaid diagrams. It replaces the bigtree dependency with
 only the functionality actually used.
 """
 
-from __future__ import annotations
-
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 

@@ -3,8 +3,6 @@
 Usage: ``python skills_server.py <skills-root>``
 """
 
-from __future__ import annotations
-
 from pathlib import Path
 import sys
 

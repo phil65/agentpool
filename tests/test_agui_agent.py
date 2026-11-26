@@ -1,7 +1,5 @@
 """Tests for AG-UI remote agent."""
 
-from __future__ import annotations
-
 import socket
 import sys
 from typing import TYPE_CHECKING

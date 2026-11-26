@@ -1,7 +1,5 @@
 """Tests for the skill model, the MCP skills filesystem, and Skills over MCP (SEP-2640)."""
 
-from __future__ import annotations
-
 import base64
 from pathlib import Path
 import sys

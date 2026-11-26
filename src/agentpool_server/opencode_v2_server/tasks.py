@@ -15,8 +15,6 @@ job, so finished tasks must not linger. Each change of a task is reported (``on_
 the server can publish ``experimental.job.updated``, which clients follow instead of polling.
 """
 
-from __future__ import annotations
-
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, Literal
 

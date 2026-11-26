@@ -1,7 +1,5 @@
 """Main orchestrator for file sync operations."""
 
-from __future__ import annotations
-
 from dataclasses import replace
 from datetime import datetime
 from enum import Enum

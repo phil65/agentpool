@@ -6,8 +6,6 @@ Create Date: 2026-01-22 11:39:54.081008
 
 """
 
-from __future__ import annotations
-
 from typing import TYPE_CHECKING
 
 from alembic import op

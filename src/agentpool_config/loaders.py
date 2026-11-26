@@ -1,7 +1,5 @@
 """Models for resource information."""
 
-from __future__ import annotations
-
 from collections.abc import Sequence as TypingSequence
 from typing import Annotated, Literal
 import warnings

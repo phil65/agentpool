@@ -1,7 +1,5 @@
 """Utility functions and constants for repomap."""
 
-from __future__ import annotations
-
 from pathlib import PurePosixPath
 from typing import TYPE_CHECKING
 

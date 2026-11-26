@@ -1,7 +1,5 @@
 """Models for response fields and definitions."""
 
-from __future__ import annotations
-
 from typing import Any
 
 from pydantic import Field, model_validator

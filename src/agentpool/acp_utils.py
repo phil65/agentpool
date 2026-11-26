@@ -1,7 +1,5 @@
 """Utility functions for ACP (Agent Client Protocol)."""
 
-from __future__ import annotations
-
 import base64
 from collections.abc import Sequence
 from typing import TYPE_CHECKING, Any

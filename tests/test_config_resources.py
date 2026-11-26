@@ -1,7 +1,5 @@
 """Tests for config_resources to ensure all configs stay in sync."""
 
-from __future__ import annotations
-
 import pathlib
 
 import pytest

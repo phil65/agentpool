@@ -1,7 +1,5 @@
 """The V2 server reports an execution by its turn's outcome (not only by errors)."""
 
-from __future__ import annotations
-
 from typing import TYPE_CHECKING, Any
 
 from agentpool import AgentContext  # noqa: TC001  # Tools' annotations resolve at runtime

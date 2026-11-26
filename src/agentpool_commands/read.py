@@ -1,7 +1,5 @@
 """Command for reading file content into conversations."""
 
-from __future__ import annotations
-
 from typing import TYPE_CHECKING, Any
 
 from slashed import CommandContext, CommandError

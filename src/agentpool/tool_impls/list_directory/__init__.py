@@ -1,7 +1,5 @@
 """List directory tool."""
 
-from __future__ import annotations
-
 from typing import TYPE_CHECKING, Literal
 
 from agentpool.tool_impls.list_directory.tool import ListDirectoryTool

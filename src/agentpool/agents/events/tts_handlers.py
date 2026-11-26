@@ -1,7 +1,5 @@
 """TTS event handlers for streaming text-to-speech synthesis."""
 
-from __future__ import annotations
-
 from abc import abstractmethod
 from typing import TYPE_CHECKING, Any, Literal
 

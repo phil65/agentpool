@@ -1,7 +1,5 @@
 """Message toolset — lets agents send messages to chat channels via the bus."""
 
-from __future__ import annotations
-
 from typing import TYPE_CHECKING
 
 from agentpool.log import get_logger

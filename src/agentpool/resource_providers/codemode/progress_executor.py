@@ -1,7 +1,5 @@
 """Statement-by-statement execution with automatic progress tracking."""
 
-from __future__ import annotations
-
 import ast
 from dataclasses import dataclass
 import inspect

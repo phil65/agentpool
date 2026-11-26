@@ -4,8 +4,6 @@
 
 """Demo: Agent using an MCP server that asks the user for input via elicitation."""
 
-from __future__ import annotations
-
 from pathlib import Path
 
 import anyio

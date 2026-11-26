@@ -1,7 +1,5 @@
 """Models for OpenAI responses endpoint."""
 
-from __future__ import annotations
-
 import base64
 from typing import TYPE_CHECKING, Any, Literal, assert_never
 

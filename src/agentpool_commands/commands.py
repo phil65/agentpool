@@ -1,7 +1,5 @@
 """Slashed command to list nodes."""
 
-from __future__ import annotations
-
 from slashed import CommandContext  # noqa: TC002
 
 from agentpool.log import get_logger

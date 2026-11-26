@@ -1,7 +1,5 @@
 """Storage provider correctness: counts, resets, parent ids, ancestry, lookups (#56, #62)."""
 
-from __future__ import annotations
-
 import asyncio
 from datetime import timedelta
 import sqlite3

@@ -1,7 +1,5 @@
 """Server password and origin checks (shared by the HTTP middleware and the websockets)."""
 
-from __future__ import annotations
-
 import base64
 import hmac
 import re

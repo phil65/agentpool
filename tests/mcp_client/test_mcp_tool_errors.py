@@ -1,7 +1,5 @@
 """An MCP tool's error reaches the model as a failed tool result; it doesn't end the run."""
 
-from __future__ import annotations
-
 from pathlib import Path
 import sys
 from typing import TYPE_CHECKING, Any

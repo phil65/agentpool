@@ -1,7 +1,5 @@
 """ACP Agent - Session state tracking."""
 
-from __future__ import annotations
-
 import asyncio
 from collections import deque
 from dataclasses import dataclass, field as dataclass_field

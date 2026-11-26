@@ -1,7 +1,5 @@
 """Agent pool management for collaboration."""
 
-from __future__ import annotations
-
 import asyncio
 from asyncio import Lock
 from contextlib import AsyncExitStack, asynccontextmanager, suppress

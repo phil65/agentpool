@@ -1,7 +1,5 @@
 """Tests for repomap structure outlines."""
 
-from __future__ import annotations
-
 from typing import TYPE_CHECKING
 
 from agentpool.repomap import languages

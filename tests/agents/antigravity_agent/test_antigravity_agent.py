@@ -1,7 +1,5 @@
 """End-to-end unit tests for AntigravityAgent with an in-memory stub SDK Agent."""
 
-from __future__ import annotations
-
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, Self
 

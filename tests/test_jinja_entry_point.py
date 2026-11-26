@@ -1,7 +1,5 @@
 """The jinjarope entry point registers agentpool's filters without importing agentpool."""
 
-from __future__ import annotations
-
 from pathlib import Path
 import subprocess
 import sys

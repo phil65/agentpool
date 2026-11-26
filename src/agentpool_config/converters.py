@@ -1,7 +1,5 @@
 """Converter configuration."""
 
-from __future__ import annotations
-
 from docler_config import ConverterConfig
 from pydantic import ConfigDict, Field
 from schemez import Schema

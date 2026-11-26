@@ -9,8 +9,6 @@ Only ``agentpool.repomap`` modules are imported (``agentpool`` itself imports la
 so startup stays light.
 """
 
-from __future__ import annotations
-
 import argparse
 import asyncio
 from fnmatch import fnmatch

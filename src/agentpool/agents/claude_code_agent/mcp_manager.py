@@ -4,8 +4,6 @@ Holds server configs in Claude SDK format. Unlike the base MCPManager
 (which spawns processes), this just stores configs to pass to the SDK.
 """
 
-from __future__ import annotations
-
 from typing import TYPE_CHECKING
 
 from agentpool_config.mcp_server import BaseMCPServerConfig

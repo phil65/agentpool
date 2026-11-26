@@ -12,8 +12,6 @@ Usage:
     uv run python scripts/generate_openresponses_models.py
 """
 
-from __future__ import annotations
-
 from pathlib import Path
 import subprocess
 import sys

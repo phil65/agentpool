@@ -1,7 +1,5 @@
 """Agents know their definition; sessions record its version and follow its changes (R2)."""
 
-from __future__ import annotations
-
 from typing import Any
 
 from agentpool import AgentPool, AgentsManifest

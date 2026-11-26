@@ -6,8 +6,6 @@ is projected into the message list (:class:`SessionProjection`) and :class:`Sess
 Ephemeral events (deltas, progress, status) only go to live subscribers.
 """
 
-from __future__ import annotations
-
 import asyncio
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any

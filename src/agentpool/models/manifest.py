@@ -1,7 +1,5 @@
 """Models for agent configuration."""
 
-from __future__ import annotations
-
 from functools import cached_property
 from typing import TYPE_CHECKING, Annotated, Any, Self
 

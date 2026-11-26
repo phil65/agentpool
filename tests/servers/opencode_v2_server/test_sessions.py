@@ -1,7 +1,5 @@
 """End-to-end tests of the OpenCode V2 session API against TestModel agents."""
 
-from __future__ import annotations
-
 from datetime import UTC, datetime
 import json
 from typing import TYPE_CHECKING, Any

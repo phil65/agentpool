@@ -1,7 +1,5 @@
 """Tests for the agentic_edit tool with forked agent context."""
 
-from __future__ import annotations
-
 from pathlib import Path
 import tempfile
 from typing import TYPE_CHECKING

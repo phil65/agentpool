@@ -1,7 +1,5 @@
 """Event emitter delegate for AgentContext with fluent API."""
 
-from __future__ import annotations
-
 from typing import TYPE_CHECKING, Any, Literal
 
 from agentpool.agents.events import (

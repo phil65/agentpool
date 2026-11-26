@@ -1,7 +1,5 @@
 """Event triggers of a router's nodes: their sources run here, their events run the nodes."""
 
-from __future__ import annotations
-
 import asyncio
 from typing import TYPE_CHECKING, Any, Self
 

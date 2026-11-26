@@ -5,8 +5,6 @@ Provides converters for:
 - MCP server configs (Native configs -> Codex types)
 """
 
-from __future__ import annotations
-
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, Literal
 from uuid import uuid4

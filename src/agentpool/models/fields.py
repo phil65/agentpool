@@ -1,7 +1,5 @@
 """Predefined Configuration fields."""
 
-from __future__ import annotations
-
 from collections.abc import Sequence
 from typing import Annotated
 

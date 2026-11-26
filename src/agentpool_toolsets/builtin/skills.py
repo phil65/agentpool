@@ -1,7 +1,5 @@
 """Provider for skills tools."""
 
-from __future__ import annotations
-
 from typing import TYPE_CHECKING
 
 from pydantic_ai import ModelRetry

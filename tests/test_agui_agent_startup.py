@@ -1,7 +1,5 @@
 """Integration tests for AGUIAgent with startup command lifecycle management."""
 
-from __future__ import annotations
-
 import socket
 import sys
 

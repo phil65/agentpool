@@ -1,7 +1,5 @@
 """What Claude Code's structured tool results show beyond their text, as events."""
 
-from __future__ import annotations
-
 from typing import Any
 
 import pytest

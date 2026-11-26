@@ -1,7 +1,5 @@
 """Hook configuration models for agent lifecycle events."""
 
-from __future__ import annotations
-
 from typing import TYPE_CHECKING, Annotated, Any, Literal
 
 from exxec_config import ExecutionEnvironmentConfig

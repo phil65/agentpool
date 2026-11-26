@@ -1,7 +1,5 @@
 """MCP event triggers subscribe to an MCP server's events and run their node on each."""
 
-from __future__ import annotations
-
 import asyncio
 from pathlib import Path
 import sys

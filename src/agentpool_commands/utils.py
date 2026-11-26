@@ -1,19 +1,14 @@
 """Command utilities."""
 
-from __future__ import annotations
-
 import importlib.util
-from typing import TYPE_CHECKING, Literal
+from typing import Literal
 import webbrowser
 
 from slashed import CommandContext, CommandError
 
 from agentpool.messaging.context import NodeContext  # noqa: TC001
 from agentpool_commands.base import NodeCommand
-
-
-if TYPE_CHECKING:
-    from agentpool_commands.text_sharing import TextSharerStr, Visibility
+from agentpool_commands.text_sharing import TextSharerStr, Visibility  # noqa: TC001
 
 
 LogLevel = Literal["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"]

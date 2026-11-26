@@ -1,7 +1,5 @@
 """Tests for the declarative config options behind get_modes()/set_mode()."""
 
-from __future__ import annotations
-
 import pytest
 
 from agentpool.agents.claude_code_agent import ClaudeCodeAgent

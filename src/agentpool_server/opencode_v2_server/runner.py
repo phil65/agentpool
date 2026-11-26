@@ -7,8 +7,6 @@ current turn (``load_session`` for existing conversations, ``start_new_session``
 ones) before running it.
 """
 
-from __future__ import annotations
-
 import asyncio
 import contextlib
 from contextlib import asynccontextmanager

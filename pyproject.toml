@@ -260,10 +260,10 @@ asyncio_mode = "auto"
 [tool.ruff]
 line-length = 100
 extend-exclude = ["docs"]
+force-exclude = true  # hooks pass excluded files explicitly
 target-version = "py314"
 
 [tool.ruff.lint]
-future-annotations = true
 select = [
   "A",  # Flake8-builtins
   "ANN",  # Flake8-Annotations (enforces complete annotations; ty does not)
@@ -283,7 +283,6 @@ select = [
   # "ERA",  #  Eradicate
   "EXE",  # flake8-executable
   "F",  # PyFlakes
-  "FA",  # flake8-future-annotations
   # "FBT",  # flake8-boolean-trap
   # "FIX",  # flake8-fixme
   "FLY",  # flynt
@@ -385,13 +384,16 @@ lines-after-imports = 2
 force-sort-within-sections = true
 combine-as-imports = true
 
+[tool.ruff.lint.flake8-tidy-imports.banned-api]
+"__future__.annotations".msg = "Python 3.14+ evaluates annotations lazily (PEP 649); drop the import."
+
 [tool.ruff.lint.mccabe]
 max-complexity = 15
 
 [tool.ruff.lint.per-file-ignores]
 "__init__.py" = ["E402", "I001"]
 "scripts/*" = ["INP001", "ANN"]
-"src/opencode_v2_sdk/models.py" = ["D", "E501", "PYI051", "PIE790", "I001"]  # generated
+"src/opencode_v2_sdk/models.py" = ["D", "E501", "PYI051", "PIE790", "I001", "TID251"]  # generated
 "*tests/*" = ["D100", "PLR2004", "ANN"]  # tests need not be fully annotated
 "duties.py" = ["ANN"]  # tooling, not package code
 "examples/**/*.py" = ["ANN"]

@@ -5,8 +5,6 @@ conversation history): signing in, finding a project, listing threads and readin
 messages.
 """
 
-from __future__ import annotations
-
 from datetime import UTC, datetime
 from pathlib import PurePath, PurePosixPath, PureWindowsPath
 from typing import TYPE_CHECKING, Literal

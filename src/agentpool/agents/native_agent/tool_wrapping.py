@@ -1,7 +1,5 @@
 """Tool wrapping utilities for pydantic-ai integration."""
 
-from __future__ import annotations
-
 from dataclasses import replace
 from functools import wraps
 import time

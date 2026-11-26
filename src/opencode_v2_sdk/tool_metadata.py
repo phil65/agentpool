@@ -15,8 +15,6 @@ the ``truncated`` and ``output_path`` fields that the tool framework
 execution.
 """
 
-from __future__ import annotations
-
 from typing import Any, Literal, NotRequired, TypedDict
 
 

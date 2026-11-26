@@ -1,7 +1,5 @@
 """PTY routes (terminals in the server's execution environment)."""
 
-from __future__ import annotations
-
 import asyncio
 import contextlib
 from typing import TYPE_CHECKING

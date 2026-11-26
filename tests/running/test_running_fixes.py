@@ -1,7 +1,5 @@
 """Discovery, injection and type checks of the running module (issue #59.5)."""
 
-from __future__ import annotations
-
 from typing import TYPE_CHECKING, Any
 
 import pytest

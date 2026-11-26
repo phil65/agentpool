@@ -5,9 +5,6 @@ in ACP sessions, including source code fetching, git operations, schema
 generation, URL conversion, and repository fetching.
 """
 
-from __future__ import annotations
-
-
 from .fetch_repo import FetchRepoCommand
 from .get_schema import GetSchemaCommand
 from .get_source import GetSourceCommand

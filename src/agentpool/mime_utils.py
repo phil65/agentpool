@@ -6,8 +6,6 @@ distributions, ``.rs`` to ``application/rls-services+xml``), which made results
 differ between machines and sent such files down the binary path.
 """
 
-from __future__ import annotations
-
 import mimetypes
 
 

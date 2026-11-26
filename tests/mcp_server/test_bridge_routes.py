@@ -1,7 +1,5 @@
 """The tool bridge routes each session's tool calls to the turn running on its route."""
 
-from __future__ import annotations
-
 from dataclasses import replace
 
 from fastmcp import Client

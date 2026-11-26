@@ -1,7 +1,5 @@
 """Prepare LLM output to be in proper shape and executable."""
 
-from __future__ import annotations
-
 import ast
 from typing import TYPE_CHECKING
 

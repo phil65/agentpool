@@ -8,8 +8,6 @@ registered at connection time, and it delegates to the handler of the tool call
 the request belongs to (allowing AgentContext.handle_elicitation to be used).
 """
 
-from __future__ import annotations
-
 import asyncio
 import base64
 import contextlib

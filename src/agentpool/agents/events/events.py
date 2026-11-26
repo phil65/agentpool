@@ -15,8 +15,6 @@ Use `replace_content=True` for streaming/final content that should replace previ
 If no content is emitted, the return value is automatically converted for UI (fallback).
 """
 
-from __future__ import annotations
-
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Annotated, Any, Literal
 

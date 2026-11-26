@@ -1,7 +1,5 @@
 """Compacting an idle Claude Code session shortly before its prompt cache expires."""
 
-from __future__ import annotations
-
 import asyncio
 from typing import Any
 

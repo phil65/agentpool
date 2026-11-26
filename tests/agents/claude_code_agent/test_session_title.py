@@ -1,7 +1,5 @@
 """Claude Code sessions are titled through the CLI's title model."""
 
-from __future__ import annotations
-
 from typing import TYPE_CHECKING, Any
 
 from clawd_code_sdk._errors import ControlRequestError

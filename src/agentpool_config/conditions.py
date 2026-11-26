@@ -1,7 +1,5 @@
 """Condition configuration."""
 
-from __future__ import annotations
-
 from collections.abc import Awaitable, Callable
 from datetime import timedelta
 from typing import TYPE_CHECKING, Annotated, Any, Literal, assert_never

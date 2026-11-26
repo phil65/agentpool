@@ -7,9 +7,6 @@ See ARCHITECTURE.md for detailed documentation of the storage format and
 design decisions.
 """
 
-from __future__ import annotations
-
-
 from agentpool_storage.claude_provider.provider import ClaudeStorageProvider, SessionMetadata
 
 __all__ = ["ClaudeStorageProvider", "SessionMetadata"]

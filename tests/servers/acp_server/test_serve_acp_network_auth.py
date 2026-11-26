@@ -4,8 +4,6 @@ Agents run shell and file tools on the serving machine, so the network transport
 not let anyone (or any web page, for localhost) drive them.
 """
 
-from __future__ import annotations
-
 import asyncio
 import secrets
 import socket

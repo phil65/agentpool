@@ -1,7 +1,5 @@
 """Manages message flow between agents/groups."""
 
-from __future__ import annotations
-
 from collections import Counter, deque
 from dataclasses import dataclass, field
 from functools import cached_property

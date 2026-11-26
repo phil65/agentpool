@@ -1,7 +1,5 @@
 """Canonical tool lifecycle events (ToolCallStartEvent -> ToolCallCompleteEvent)."""
 
-from __future__ import annotations
-
 from collections import Counter
 
 from pydantic_ai import ModelRetry

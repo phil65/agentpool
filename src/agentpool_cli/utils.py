@@ -1,7 +1,5 @@
 """Utilities for creating Typer commands from Pydantic models."""
 
-from __future__ import annotations
-
 import inspect
 import types as pytypes
 from typing import TYPE_CHECKING, Annotated, Any, Union, get_args, get_origin

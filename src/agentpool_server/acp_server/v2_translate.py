@@ -17,8 +17,6 @@ Modes, config options and command lists are not translated: the v2 output
 builds them natively (v1's ``current_mode_update`` has no v2 counterpart).
 """
 
-from __future__ import annotations
-
 import difflib
 from typing import TYPE_CHECKING, Any, assert_never
 import uuid

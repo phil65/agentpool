@@ -1,7 +1,5 @@
 """T3 thread items as agentpool stream events."""
 
-from __future__ import annotations
-
 from typing import Any
 
 from pydantic_ai import PartDeltaEvent, PartStartEvent, TextPart, ThinkingPart

@@ -10,8 +10,6 @@ prompt's message ID, under which storage keeps its answer.
 See ``ARCHITECTURE_TURNS.md`` (stage 1).
 """
 
-from __future__ import annotations
-
 import asyncio
 from contextlib import contextmanager
 from contextvars import ContextVar

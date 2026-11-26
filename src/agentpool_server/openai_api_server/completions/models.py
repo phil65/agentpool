@@ -1,7 +1,5 @@
 """OpenAI-compatible API models for AgentPool chat completions."""
 
-from __future__ import annotations
-
 from typing import Any, Literal
 
 from openai.types import Model

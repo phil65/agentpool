@@ -6,8 +6,6 @@ Format: {prefix}_{hex_timestamp}{random_base62}
 Compatible with OpenCode's identifier format.
 """
 
-from __future__ import annotations
-
 import re
 import secrets
 import time

@@ -4,8 +4,6 @@ Provides a read-only virtual filesystem view of conversation history,
 allowing tools and agents to browse messages as files.
 """
 
-from __future__ import annotations
-
 from typing import TYPE_CHECKING, Any, Literal, Required, overload
 
 import anyenv

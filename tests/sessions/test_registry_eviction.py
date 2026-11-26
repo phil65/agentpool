@@ -1,7 +1,5 @@
 """The session registry never evicts a session whose turn runs."""
 
-from __future__ import annotations
-
 from agentpool.sessions.activity import ActivityFeed
 from agentpool.sessions.session import SessionRegistry
 

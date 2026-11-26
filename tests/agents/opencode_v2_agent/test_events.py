@@ -1,7 +1,5 @@
 """Tests for V2EventTracker SSE event translation."""
 
-from __future__ import annotations
-
 from decimal import Decimal
 from itertools import count
 

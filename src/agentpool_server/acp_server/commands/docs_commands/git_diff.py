@@ -1,7 +1,5 @@
 """Fetch git diff for a specific commit."""
 
-from __future__ import annotations
-
 import uuid
 
 from pydantic_ai import UserPromptPart

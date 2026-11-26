@@ -1,7 +1,5 @@
 """Tag extraction using tree-sitter."""
 
-from __future__ import annotations
-
 import inspect
 import re
 from typing import TYPE_CHECKING, Any, Literal, NamedTuple, cast

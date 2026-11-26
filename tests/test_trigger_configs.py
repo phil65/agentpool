@@ -1,7 +1,5 @@
 """Configured `triggers:` reach the node for every agent type and for teams."""
 
-from __future__ import annotations
-
 from typing import Any
 
 import pytest

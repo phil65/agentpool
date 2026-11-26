@@ -1,7 +1,5 @@
 """Lifecycle of pools, servers, storage and background runs (issue #48)."""
 
-from __future__ import annotations
-
 import asyncio
 from typing import Any
 from unittest.mock import MagicMock

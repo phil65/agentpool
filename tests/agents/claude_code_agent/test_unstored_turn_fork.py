@@ -1,7 +1,5 @@
 """An unstored Claude Code turn runs on a fork of the CLI session (issue #50.1a/b)."""
 
-from __future__ import annotations
-
 from typing import TYPE_CHECKING, Any
 from unittest.mock import AsyncMock, MagicMock
 

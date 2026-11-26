@@ -5,8 +5,6 @@ ModelRequestNode/CallToolsNode and converting tool call/result pairs
 into the canonical ToolCallStartEvent / ToolCallCompleteEvent lifecycle.
 """
 
-from __future__ import annotations
-
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 

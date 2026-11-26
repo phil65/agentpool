@@ -1,7 +1,5 @@
 """Turns cancelled from outside raise, and a turn is stored before its end is yielded."""
 
-from __future__ import annotations
-
 import asyncio
 from typing import TYPE_CHECKING, Any
 

@@ -5,8 +5,6 @@ The tests use fsspec's local filesystem behind ``AsyncFileSystemWrapper``, which
 everything, like upathtools' ``AsyncLocalFileSystem`` now does.
 """
 
-from __future__ import annotations
-
 import os
 from pathlib import PurePath
 from typing import TYPE_CHECKING, Any

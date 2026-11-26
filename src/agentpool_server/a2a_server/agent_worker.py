@@ -1,5 +1,3 @@
-from __future__ import annotations, annotations as _annotations
-
 import base64
 from contextlib import AsyncExitStack, asynccontextmanager
 from dataclasses import dataclass

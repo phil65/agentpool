@@ -11,8 +11,6 @@ This example shows:
 3. Chained tool calls.
 """
 
-from __future__ import annotations
-
 import os
 from pathlib import Path
 

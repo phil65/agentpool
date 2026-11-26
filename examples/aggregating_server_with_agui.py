@@ -6,8 +6,6 @@ This example shows how to:
 3. Run them together with coordinated lifecycle management
 """
 
-from __future__ import annotations
-
 import asyncio
 
 import anyio

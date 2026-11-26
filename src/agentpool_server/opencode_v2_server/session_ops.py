@@ -1,7 +1,5 @@
 """Session operations that rewrite or derive session state: fork, revert, import, stats."""
 
-from __future__ import annotations
-
 from collections import Counter, defaultdict
 import dataclasses
 from datetime import UTC, datetime

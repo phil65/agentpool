@@ -1,7 +1,5 @@
 """Bash command execution tool."""
 
-from __future__ import annotations
-
 from typing import TYPE_CHECKING, Literal
 
 from agentpool.tool_impls.bash.tool import BashTool

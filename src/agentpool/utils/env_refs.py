@@ -1,7 +1,5 @@
 """``${VAR}`` references to environment variables in configuration values."""
 
-from __future__ import annotations
-
 import os
 import string
 from typing import TYPE_CHECKING

@@ -1,7 +1,5 @@
 """Parsers for extracting sync metadata from different file types."""
 
-from __future__ import annotations
-
 from .python_parser import PythonSyncParser
 from .markdown_parser import MarkdownSyncParser
 from .protocol import MetadataParser

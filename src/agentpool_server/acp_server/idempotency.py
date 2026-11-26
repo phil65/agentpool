@@ -6,8 +6,6 @@ to recognize the key for as long as it keeps the session, across restarts. The r
 therefore live in the session's stored metadata, next to its other ACP data.
 """
 
-from __future__ import annotations
-
 from typing import TYPE_CHECKING, Any
 import weakref
 

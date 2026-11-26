@@ -1,7 +1,5 @@
 """A Claude Code turn cancelled before the CLI answered (issue #50.1c)."""
 
-from __future__ import annotations
-
 import asyncio
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock

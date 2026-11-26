@@ -7,8 +7,6 @@
   (via the `union_to_markdown` / `schema_to_markdown` filters).
 """
 
-from __future__ import annotations
-
 import importlib
 from pathlib import Path
 import re

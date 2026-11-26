@@ -11,8 +11,6 @@ callables, ``Model`` instances and types aren't part of a config, and a hash wit
 would claim more than it knows (the "extras" of ``ARCHITECTURE_SESSIONS_AGENTS.md`` §9.1).
 """
 
-from __future__ import annotations
-
 from dataclasses import dataclass
 import hashlib
 from typing import TYPE_CHECKING, Self

@@ -9,8 +9,6 @@ Usage:
 The resulting database can be used for semantic search over MCP servers.
 """
 
-from __future__ import annotations
-
 import argparse
 import asyncio
 from pathlib import Path

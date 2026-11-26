@@ -1,7 +1,5 @@
 """Command configuration for prompt shortcuts."""
 
-from __future__ import annotations
-
 from collections.abc import Callable
 import inspect
 from pathlib import Path

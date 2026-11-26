@@ -5,8 +5,6 @@ updates are pushed into an ACPSessionState queue, and this adapter polls that
 queue (gated by an asyncio event) until the prompt task completes.
 """
 
-from __future__ import annotations
-
 from dataclasses import dataclass, field, replace
 from typing import TYPE_CHECKING, Any
 

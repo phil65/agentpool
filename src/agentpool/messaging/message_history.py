@@ -1,7 +1,5 @@
 """Conversation management for AgentPool."""
 
-from __future__ import annotations
-
 import asyncio
 from collections import deque
 from contextlib import asynccontextmanager

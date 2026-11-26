@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from logging.config import fileConfig
 import os
 from typing import TYPE_CHECKING

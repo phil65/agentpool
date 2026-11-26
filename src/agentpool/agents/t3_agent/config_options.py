@@ -1,7 +1,5 @@
 """Config options of the T3 agent: they apply to threads it launches from then on."""
 
-from __future__ import annotations
-
 from typing import TYPE_CHECKING, Any, cast
 
 from agentpool.agents.modes import ConfigOption, ModeInfo, ModelOption

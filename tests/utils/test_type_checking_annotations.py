@@ -1,7 +1,5 @@
 """Introspection of callables whose annotations name TYPE_CHECKING-only imports."""
 
-from __future__ import annotations
-
 from typing import Any
 
 from pydantic_ai import RunContext
@@ -93,3 +91,29 @@ async def test_bound_callable_binds_by_type_name() -> None:
     bound = create_bound_callable(tc.run_ctx_tool, by_type={RunContext: marker})
     assert list(bound.__signature__.parameters) == ["text"]  # type: ignore[attr-defined]  # ty:ignore[unresolved-attribute]
     assert await bound(text="x") == "object:x"
+
+
+@pytest.mark.parametrize(
+    ("fn", "params"),
+    [
+        ("agentpool.resource_providers.plan_provider:PlanProvider.add_plan_entry", ["priority"]),
+        (
+            "agentpool.resource_providers.plan_provider:PlanProvider.update_plan_entry",
+            ["status", "priority"],
+        ),
+        ("agentpool_toolsets.search_toolset:SearchTools.web_search", ["country", "language"]),
+        ("agentpool_toolsets.search_toolset:SearchTools.news_search", ["country", "language"]),
+    ],
+)
+def test_builtin_tool_parameter_types_resolve(fn: str, params: list[str]) -> None:
+    """Tool parameter types must be importable at runtime: they make the tool's schema."""
+    import annotationlib
+    import importlib
+
+    module, _, qualname = fn.partition(":")
+    obj: Any = importlib.import_module(module)
+    for part in qualname.split("."):
+        obj = getattr(obj, part)
+    hints = annotationlib.get_annotations(obj, format=annotationlib.Format.FORWARDREF)
+    for param in params:
+        assert "ForwardRef" not in repr(hints[param]), param

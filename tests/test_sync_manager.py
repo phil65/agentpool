@@ -1,7 +1,5 @@
 """Tests for SyncManager file scanning and GitHub release lookup (issue #57.6b/c)."""
 
-from __future__ import annotations
-
 from typing import TYPE_CHECKING, Any
 
 import anyenv

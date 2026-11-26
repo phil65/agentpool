@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from pydantic_ai import ImageUrl
 import pytest
 

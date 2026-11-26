@@ -6,8 +6,6 @@ Provides unified handling for:
 - Fallback behavior (unconsumed injections become queued prompts)
 """
 
-from __future__ import annotations
-
 from contextlib import contextmanager
 from contextvars import ContextVar
 from typing import TYPE_CHECKING

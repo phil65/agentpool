@@ -1,7 +1,5 @@
 """Tests for the Codex stream adapter."""
 
-from __future__ import annotations
-
 from typing import TYPE_CHECKING, Any
 
 from codexed.models import (

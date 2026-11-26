@@ -10,8 +10,6 @@ Create Date: 2026-02-16 00:00:00.000000
 
 """
 
-from __future__ import annotations
-
 from typing import TYPE_CHECKING
 
 from alembic import op

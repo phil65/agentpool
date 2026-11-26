@@ -1,7 +1,5 @@
 """System prompts configuration for agents."""
 
-from __future__ import annotations
-
 from collections.abc import Callable
 from typing import Annotated, Any, Literal
 

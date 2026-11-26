@@ -1,7 +1,5 @@
 """Storage provider base class."""
 
-from __future__ import annotations
-
 from collections import defaultdict
 from datetime import datetime
 from typing import TYPE_CHECKING, Any, Self, assert_never

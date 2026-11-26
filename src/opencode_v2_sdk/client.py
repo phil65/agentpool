@@ -1,7 +1,5 @@
 """Async HTTP and SSE client for the OpenCode V2 server API (pinned in ``_version.py``)."""
 
-from __future__ import annotations
-
 import base64
 from typing import TYPE_CHECKING, Any, Literal, Self
 from urllib.parse import quote

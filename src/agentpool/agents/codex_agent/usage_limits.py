@@ -4,8 +4,6 @@ Read with ``account/rateLimits/read``; the ``account/rateLimits/updated`` notifi
 each turn keep codexed's ``client.account.rate_limits`` current in between.
 """
 
-from __future__ import annotations
-
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 

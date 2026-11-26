@@ -1,7 +1,5 @@
 """Nested self-calls (a tool running its own agent on the same session) leave the turn alone."""
 
-from __future__ import annotations
-
 import asyncio
 import json
 from typing import TYPE_CHECKING, Any

@@ -1,7 +1,5 @@
 """Agents served over MCP ask the client's user, on either protocol era, never stdin."""
 
-from __future__ import annotations
-
 import asyncio
 from typing import Any
 

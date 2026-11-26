@@ -9,8 +9,6 @@ Also provides ACPMessageAccumulator for converting ACP notification streams
 into ChatMessage objects (the reverse of replaying).
 """
 
-from __future__ import annotations
-
 import base64
 from collections.abc import Sequence
 from dataclasses import dataclass, field

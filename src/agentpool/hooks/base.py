@@ -1,7 +1,5 @@
 """Base hook classes and types."""
 
-from __future__ import annotations
-
 from abc import ABC, abstractmethod
 import re
 from typing import TYPE_CHECKING, Any, Literal, TypedDict

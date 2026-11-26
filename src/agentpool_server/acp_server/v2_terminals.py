@@ -16,8 +16,6 @@ Processes outlive the tool call that started them (``start_process``, then
 when a cancelled turn leaves their tool call unfinished.
 """
 
-from __future__ import annotations
-
 from typing import TYPE_CHECKING, Any
 
 from aclientp.schema import v2

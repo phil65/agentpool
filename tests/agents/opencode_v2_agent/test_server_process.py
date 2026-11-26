@@ -1,7 +1,5 @@
 """The private ``opencode serve`` runs in its own process group (killing it spares us)."""
 
-from __future__ import annotations
-
 import os
 import sys
 from typing import TYPE_CHECKING, Any

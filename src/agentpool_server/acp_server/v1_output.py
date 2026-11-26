@@ -1,7 +1,5 @@
 """ACP v1 output of a session: session updates in the v1 schema."""
 
-from __future__ import annotations
-
 from typing import TYPE_CHECKING, Any, assert_never
 
 from aclientp.schema import AvailableCommand, Notice

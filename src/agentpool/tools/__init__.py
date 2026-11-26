@@ -1,7 +1,5 @@
 """Tool implementations and related classes / functions."""
 
-from __future__ import annotations
-
 from agentpool.tools.base import FunctionTool, Tool
 from agentpool.tools.decisions import Approve, Deny, ToolDecision
 from agentpool.tools.manager import ToolManager, ToolError

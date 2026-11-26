@@ -4,8 +4,6 @@
 
 """Example: Two agents working together to explore git commit history."""
 
-from __future__ import annotations
-
 from agentpool import Agent, Team
 from agentpool.docs.utils import run
 

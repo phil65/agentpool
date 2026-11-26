@@ -1,7 +1,5 @@
 """An MCP error the model can act on is retried; transport and server faults end the run."""
 
-from __future__ import annotations
-
 import sys
 from typing import Any
 

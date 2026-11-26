@@ -3,8 +3,6 @@
 Stateless conversion and utility functions for working with Zed format.
 """
 
-from __future__ import annotations
-
 import base64
 import io
 from typing import TYPE_CHECKING, Literal

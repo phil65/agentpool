@@ -1,7 +1,5 @@
 """Tests for OpenCodeV2AgentConfig and manifest integration."""
 
-from __future__ import annotations
-
 from typing import TYPE_CHECKING
 
 from agentpool.agents.opencode_v2_agent import OpenCodeV2Agent

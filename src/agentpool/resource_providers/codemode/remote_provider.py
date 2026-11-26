@@ -1,7 +1,5 @@
 """Secure code execution provider using isolated execution environments."""
 
-from __future__ import annotations
-
 import asyncio
 import contextlib
 from typing import TYPE_CHECKING, Any, Self

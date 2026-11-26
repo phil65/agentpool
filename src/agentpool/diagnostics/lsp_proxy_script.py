@@ -4,8 +4,6 @@ This script is executed as a subprocess to proxy between TCP clients
 and a stdio-based LSP server.
 """
 
-from __future__ import annotations
-
 import argparse
 import asyncio
 import contextlib

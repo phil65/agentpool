@@ -4,8 +4,6 @@ Spawns the agent in RPC mode and provides a typed async API for all operations.
 Communication uses JSONL over stdin/stdout.
 """
 
-from __future__ import annotations
-
 import asyncio
 from collections.abc import Callable
 import contextlib

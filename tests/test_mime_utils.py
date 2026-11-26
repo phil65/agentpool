@@ -1,7 +1,5 @@
 """Tests for MIME type helpers."""
 
-from __future__ import annotations
-
 import pytest
 
 from agentpool.mime_utils import guess_type, is_binary_mime

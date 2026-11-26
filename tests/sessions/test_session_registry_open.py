@@ -1,7 +1,5 @@
 """Concurrent ``SessionRegistry.open`` of one id gives every caller the same session."""
 
-from __future__ import annotations
-
 import asyncio
 from typing import Any
 

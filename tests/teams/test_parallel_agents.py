@@ -1,7 +1,5 @@
 """Tests for parallel agent execution."""
 
-from __future__ import annotations
-
 from typing import TYPE_CHECKING, Any
 
 from pydantic import BaseModel

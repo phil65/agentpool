@@ -1,7 +1,5 @@
 """The sessions routed messages and triggered events run in (session policies)."""
 
-from __future__ import annotations
-
 from typing import TYPE_CHECKING, Any
 
 from agentpool.sessions import Session

@@ -7,8 +7,6 @@ entries and activated skills are its instructions: agents that take session inst
 (native ones) get the current set with every run, as system instructions.
 """
 
-from __future__ import annotations
-
 from dataclasses import dataclass, field
 import os
 from pathlib import Path

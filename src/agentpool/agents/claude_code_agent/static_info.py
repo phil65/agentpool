@@ -1,7 +1,5 @@
 """Static info of the Claude Code agent: model aliases and option choices."""
 
-from __future__ import annotations
-
 from tokonomics.model_discovery.model_info import ModelInfo
 
 from agentpool.agents.claude_code_agent.converters import DEFAULT_CONTEXT_WINDOW

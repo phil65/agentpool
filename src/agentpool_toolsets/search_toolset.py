@@ -1,8 +1,8 @@
 """Search toolset implementation using searchly providers."""
 
-from __future__ import annotations
-
 from typing import TYPE_CHECKING, Any
+
+from searchly.base import CountryCode, LanguageCode  # noqa: TC002
 
 from agentpool.log import get_logger
 from agentpool.resource_providers import ResourceProvider
@@ -12,8 +12,6 @@ if TYPE_CHECKING:
     from collections.abc import Sequence
 
     from searchly.base import (
-        CountryCode,
-        LanguageCode,
         NewsSearchProvider,
         NewsSearchResponse,
         WebSearchProvider,

@@ -1,7 +1,5 @@
 """Approval requests of the Codex agent follow the user's decision."""
 
-from __future__ import annotations
-
 from typing import TYPE_CHECKING
 
 from codexed.models import CommandExecutionRequestApprovalParams

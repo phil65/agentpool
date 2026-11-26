@@ -4,8 +4,6 @@ Pydantic-AI based Multi-Agent Framework with YAML-based Agents, Teams, Workflows
 Extended ACP / AGUI integration.
 """
 
-from __future__ import annotations
-
 from importlib.metadata import version
 import sys
 from typing import TYPE_CHECKING, Any

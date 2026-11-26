@@ -15,8 +15,6 @@ gets this adapter as its client:
   ``ACP_V2_SERVER.md``); a v2 session never advertises them, so they are not called.
 """
 
-from __future__ import annotations
-
 from contextlib import asynccontextmanager
 from typing import TYPE_CHECKING, Any, assert_never
 

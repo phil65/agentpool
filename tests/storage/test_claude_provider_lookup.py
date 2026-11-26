@@ -1,7 +1,5 @@
 """Message lookups in the Claude storage provider without a session hint."""
 
-from __future__ import annotations
-
 from typing import TYPE_CHECKING, Any
 
 import anyenv

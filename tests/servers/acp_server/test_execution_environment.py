@@ -1,7 +1,5 @@
 """Tests for choosing the session execution environment from client capabilities."""
 
-from __future__ import annotations
-
 import sys
 from typing import TYPE_CHECKING
 

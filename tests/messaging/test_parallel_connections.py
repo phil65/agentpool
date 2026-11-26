@@ -1,7 +1,5 @@
 """``connect_to([...])`` sends in order by default; ``parallel=True`` sends at once."""
 
-from __future__ import annotations
-
 import asyncio
 
 from agentpool import Agent

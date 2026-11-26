@@ -1,7 +1,5 @@
 """ACP (Agent Client Protocol) Agent implementation."""
 
-from __future__ import annotations
-
 import contextlib
 from dataclasses import KW_ONLY, dataclass, field
 from importlib.metadata import version as _version

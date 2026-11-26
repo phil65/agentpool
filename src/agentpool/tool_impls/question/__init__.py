@@ -1,7 +1,5 @@
 """User interaction tool for asking clarifying questions."""
 
-from __future__ import annotations
-
 from typing import Literal
 
 from agentpool.tool_impls.question.tool import QuestionTool

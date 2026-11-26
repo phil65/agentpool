@@ -1,7 +1,5 @@
 """Rate limit notices: shown once per state, not with every request."""
 
-from __future__ import annotations
-
 from clawd_code_sdk.models import RateLimitInfo
 
 from agentpool.agents.claude_code_agent.notices import RateLimitNotices, rate_limit_notice

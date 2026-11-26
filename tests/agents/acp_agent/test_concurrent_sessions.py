@@ -1,7 +1,5 @@
 """Sessions of one ACP agent: an ACP session each, over one connection."""
 
-from __future__ import annotations
-
 from typing import TYPE_CHECKING, Any
 from unittest.mock import AsyncMock
 

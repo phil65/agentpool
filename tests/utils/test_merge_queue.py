@@ -1,7 +1,5 @@
 """merge_queue_into_iterator: both sources in order, without polling the queue."""
 
-from __future__ import annotations
-
 import asyncio
 from typing import TYPE_CHECKING
 

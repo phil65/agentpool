@@ -1,7 +1,5 @@
 """Entry point based toolset implementation."""
 
-from __future__ import annotations
-
 from importlib.metadata import EntryPoint, entry_points
 import re
 from typing import TYPE_CHECKING

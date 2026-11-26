@@ -1,7 +1,5 @@
 """System prompt management."""
 
-from __future__ import annotations
-
 from functools import cache
 from typing import TYPE_CHECKING, Any, Literal
 

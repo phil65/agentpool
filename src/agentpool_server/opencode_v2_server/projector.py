@@ -6,8 +6,6 @@ plus the inbox projection of ``projector.ts``. The message list served by
 stream, the replayable log and the message list can never disagree.
 """
 
-from __future__ import annotations
-
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, assert_never
 

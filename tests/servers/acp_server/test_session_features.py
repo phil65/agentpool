@@ -1,7 +1,5 @@
 """Tests for ACP session lifecycle features (delete, title, status, system prompt, notices)."""
 
-from __future__ import annotations
-
 from typing import TYPE_CHECKING, Any
 from unittest.mock import AsyncMock
 

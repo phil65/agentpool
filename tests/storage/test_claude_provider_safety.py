@@ -1,7 +1,5 @@
 """Claude storage safety: transcripts are never wiped, session ids can't escape."""
 
-from __future__ import annotations
-
 from typing import TYPE_CHECKING
 
 import pytest

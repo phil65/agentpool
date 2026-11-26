@@ -6,8 +6,6 @@ keeps the running ones (:class:`RunningTask`), so users can list, stop and read 
 (``BaseAgent.running_tasks``, ``stop_task``, ``task_output``).
 """
 
-from __future__ import annotations
-
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 

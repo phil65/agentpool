@@ -1,7 +1,5 @@
 """Native steering of a running turn (``steer()``)."""
 
-from __future__ import annotations
-
 from agentpool.agents.codex_agent import CodexAgent
 
 

@@ -1,7 +1,5 @@
 """Claude plan rate-limit windows -> UsageLimits."""
 
-from __future__ import annotations
-
 from datetime import UTC, datetime
 import time
 from typing import Any

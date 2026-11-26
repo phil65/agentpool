@@ -1,7 +1,5 @@
 """OpenCode V2 agent - wraps an OpenCode v2.3+ HTTP/SSE server."""
 
-from __future__ import annotations
-
 import asyncio
 from collections import deque
 from contextlib import suppress

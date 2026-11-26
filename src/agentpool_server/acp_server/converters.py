@@ -4,8 +4,6 @@ This module handles conversion between pydantic-ai message formats and ACP proto
 content blocks, session updates, and other data structures using the external acp library.
 """
 
-from __future__ import annotations
-
 import base64
 from typing import TYPE_CHECKING, Any, assert_never, overload
 

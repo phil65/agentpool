@@ -4,8 +4,6 @@ This module provides a file editing interface using sublime_search's Rust-based
 replacement engine with multiple fallback strategies.
 """
 
-from __future__ import annotations
-
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 

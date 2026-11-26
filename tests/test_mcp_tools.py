@@ -1,7 +1,5 @@
 """Tests for MCP tools functionality."""
 
-from __future__ import annotations
-
 from pydantic_ai import FunctionToolCallEvent
 import pytest
 

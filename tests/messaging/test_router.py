@@ -1,7 +1,5 @@
 """The router owns the connections between nodes."""
 
-from __future__ import annotations
-
 from datetime import timedelta
 
 from pydantic_ai.models.test import TestModel

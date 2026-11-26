@@ -7,8 +7,6 @@ catalogue, once, with the release-date cut-off (``max_age``) applied as it is re
 A model picker can leave out old models while a lookup still finds them.
 """
 
-from __future__ import annotations
-
 import asyncio
 from dataclasses import dataclass
 from datetime import datetime

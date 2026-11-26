@@ -18,8 +18,6 @@ Compaction runs when all of these hold:
   ``idleCompaction``) nor ``DISABLE_COMPACT`` / ``DISABLE_AUTO_COMPACT`` turn it off.
 """
 
-from __future__ import annotations
-
 import asyncio
 from dataclasses import dataclass, field
 import time

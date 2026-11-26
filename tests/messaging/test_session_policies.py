@@ -1,7 +1,5 @@
 """Which session routed messages and triggered events run in (session policies)."""
 
-from __future__ import annotations
-
 import asyncio
 from datetime import timedelta
 from typing import TYPE_CHECKING, Any

@@ -1,7 +1,5 @@
 """Parallel, unordered group of agents / nodes."""
 
-from __future__ import annotations
-
 import asyncio
 from decimal import Decimal
 from time import perf_counter

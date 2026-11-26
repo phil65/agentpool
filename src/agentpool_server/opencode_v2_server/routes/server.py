@@ -1,7 +1,5 @@
 """Server-level routes: info, location, events, projects and configuration."""
 
-from __future__ import annotations
-
 import asyncio
 import contextlib
 import os

@@ -34,8 +34,6 @@ avoiding race conditions with permission dialogs:
    - If denied: SDK receives denial, continues with next turn
 """
 
-from __future__ import annotations
-
 from dataclasses import dataclass, field
 import re
 from typing import TYPE_CHECKING, Any, assert_never, cast

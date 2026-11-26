@@ -1,7 +1,5 @@
 """Prompt-based hook implementation."""
 
-from __future__ import annotations
-
 import asyncio
 from string import Template
 from typing import TYPE_CHECKING, Literal

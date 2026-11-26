@@ -1,7 +1,5 @@
 """Configuration models for Claude Code agents."""
 
-from __future__ import annotations
-
 from typing import TYPE_CHECKING, Any, Literal
 
 from pydantic import ConfigDict, Field

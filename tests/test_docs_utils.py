@@ -1,7 +1,5 @@
 """Tests for the docs example runner `agentpool.docs.utils.run`."""
 
-from __future__ import annotations
-
 import asyncio
 
 import pytest

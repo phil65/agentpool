@@ -5,8 +5,6 @@ the ``rate_limit_event`` messages of the stream (as t3code does). Window IDs are
 across both sources: ``five_hour``, ``seven_day``, ``seven_day:<model>``, ...
 """
 
-from __future__ import annotations
-
 from dataclasses import replace
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any

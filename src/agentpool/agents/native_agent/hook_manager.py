@@ -6,8 +6,6 @@ Centralizes all hook-related logic:
 - Combined hook result handling
 """
 
-from __future__ import annotations
-
 from typing import TYPE_CHECKING, Any
 
 from agentpool.hooks.base import HookResult

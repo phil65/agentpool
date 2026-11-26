@@ -4,8 +4,6 @@ This module provides a server that exposes all agents in an AgentPool
 via the A2A (Agent-to-Agent) protocol, with each agent accessible at its own route.
 """
 
-from __future__ import annotations
-
 from contextlib import AsyncExitStack, asynccontextmanager
 from functools import partial
 from typing import TYPE_CHECKING, Any

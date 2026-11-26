@@ -4,8 +4,6 @@
 
 """Run round-robin example demonstrating cyclic communication pattern."""
 
-from __future__ import annotations
-
 import os
 
 from agentpool_cli.run import run_command

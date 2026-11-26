@@ -1,7 +1,5 @@
 """Event handler configuration models for AgentPool."""
 
-from __future__ import annotations
-
 from typing import TYPE_CHECKING, Annotated, Literal
 
 from pydantic import ConfigDict, Field

@@ -1,7 +1,5 @@
 """Tests for AntigravityAgentConfig and manifest integration."""
 
-from __future__ import annotations
-
 from pydantic import ValidationError
 import pytest
 

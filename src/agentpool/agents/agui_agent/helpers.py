@@ -1,7 +1,5 @@
 """AG-UI agent helpers."""
 
-from __future__ import annotations
-
 from dataclasses import replace
 from typing import TYPE_CHECKING, Any, assert_never
 from uuid import uuid4

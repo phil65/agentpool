@@ -1,7 +1,5 @@
 """v1 updates of the event converter in their ACP v2 form."""
 
-from __future__ import annotations
-
 from typing import Any
 
 from aclientp.schema import (

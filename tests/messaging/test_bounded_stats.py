@@ -1,7 +1,5 @@
 """Connection stats keep the last N messages (totals count all); file changes are bounded."""
 
-from __future__ import annotations
-
 from agentpool import Agent
 from agentpool.messaging import ChatMessage
 from agentpool.talk.stats import TalkStats

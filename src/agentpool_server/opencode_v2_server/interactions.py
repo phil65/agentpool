@@ -7,8 +7,6 @@
   answered via ``POST /api/session/{id}/form/{formID}/reply``.
 """
 
-from __future__ import annotations
-
 import asyncio
 from dataclasses import dataclass, field
 import fnmatch

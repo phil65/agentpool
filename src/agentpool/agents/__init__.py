@@ -1,7 +1,5 @@
 """CLI commands for agentpool."""
 
-from __future__ import annotations
-
 from agentpool.agents.native_agent import Agent
 from agentpool.agents.agui_agent import AGUIAgent
 from agentpool.agents.antigravity_agent import AntigravityAgent

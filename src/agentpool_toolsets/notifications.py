@@ -1,7 +1,5 @@
 """Apprise-based notifications toolset implementation."""
 
-from __future__ import annotations
-
 from typing import TYPE_CHECKING, Any
 
 from schemez.functionschema.typedefs import OpenAIFunctionDefinition

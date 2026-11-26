@@ -11,8 +11,6 @@ The toolset exposes three main capabilities:
 3. call_mcp_tool - Execute a tool on any server (reuses connections)
 """
 
-from __future__ import annotations
-
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 

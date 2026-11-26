@@ -1,7 +1,5 @@
 """Integration tests for agent pipeline functions."""
 
-from __future__ import annotations
-
 import pytest
 
 from agentpool.functional import run_agent, run_agent_sync

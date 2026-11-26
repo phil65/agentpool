@@ -1,7 +1,5 @@
 """Tests for builtin event handlers."""
 
-from __future__ import annotations
-
 from io import StringIO
 import sys
 from typing import Any

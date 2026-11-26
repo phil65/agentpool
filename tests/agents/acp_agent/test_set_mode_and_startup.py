@@ -1,7 +1,5 @@
 """ACP agents: boolean config options and a failed start (issue #50.3)."""
 
-from __future__ import annotations
-
 import sys
 from unittest.mock import AsyncMock
 

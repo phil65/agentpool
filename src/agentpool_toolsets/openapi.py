@@ -1,7 +1,5 @@
 """OpenAPI toolset provider."""
 
-from __future__ import annotations
-
 from typing import TYPE_CHECKING, Any
 
 from schemez.openapi.callable_factory import OpenAPICallableFactory

@@ -1,7 +1,5 @@
 """Tests for async subagent task execution with internal_fs output."""
 
-from __future__ import annotations
-
 import asyncio
 
 from pydantic_ai.exceptions import UnexpectedModelBehavior

@@ -1,7 +1,5 @@
 """VFS registry filesystem toolset implementation."""
 
-from __future__ import annotations
-
 from fnmatch import fnmatch
 
 from agentpool.agents.context import AgentContext  # noqa: TC001

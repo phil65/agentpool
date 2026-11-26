@@ -1,7 +1,5 @@
 """ACP-based input provider for agent interactions."""
 
-from __future__ import annotations
-
 from typing import TYPE_CHECKING, Any, assert_never
 import uuid
 

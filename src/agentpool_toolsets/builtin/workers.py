@@ -1,7 +1,5 @@
 """Provider for worker agent tools."""
 
-from __future__ import annotations
-
 from typing import TYPE_CHECKING, Any
 
 from agentpool.agents.context import AgentContext  # noqa: TC001

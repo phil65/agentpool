@@ -1,7 +1,5 @@
 """ACP Agent - MessageNode wrapping an external ACP subprocess."""
 
-from __future__ import annotations
-
 from dataclasses import replace
 from pathlib import Path
 from typing import TYPE_CHECKING, Any

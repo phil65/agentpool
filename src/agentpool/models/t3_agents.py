@@ -1,7 +1,5 @@
 """Configuration models for T3 Code agents."""
 
-from __future__ import annotations
-
 from typing import TYPE_CHECKING, Any, Literal, Self
 
 from pydantic import ConfigDict, Field, model_validator

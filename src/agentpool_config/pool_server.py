@@ -1,7 +1,5 @@
 """Pool server configuration."""
 
-from __future__ import annotations
-
 from datetime import timedelta
 from typing import Annotated, Literal, assert_never
 

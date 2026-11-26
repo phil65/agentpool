@@ -7,8 +7,6 @@ model ``agentpool/<agent name>`` so that ``Session.Message.Assistant.model`` can
 be filled.
 """
 
-from __future__ import annotations
-
 import asyncio
 from dataclasses import dataclass, field
 import time

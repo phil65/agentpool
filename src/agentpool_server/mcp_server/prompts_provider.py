@@ -1,7 +1,5 @@
 """Serve the pool's prompt library as MCP prompts."""
 
-from __future__ import annotations
-
 from typing import TYPE_CHECKING
 
 from fastmcp.prompts.base import Prompt

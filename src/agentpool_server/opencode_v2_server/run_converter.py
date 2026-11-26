@@ -12,8 +12,6 @@ agent reports them, otherwise they are inferred: a new step starts when model ou
 after tools of the current step were called.
 """
 
-from __future__ import annotations
-
 from dataclasses import dataclass, field
 import json
 from typing import TYPE_CHECKING, Any, Literal, Protocol

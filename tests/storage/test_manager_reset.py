@@ -1,7 +1,5 @@
 """StorageManager.reset: skip providers whose data agentpool doesn't own, bounded fan-out."""
 
-from __future__ import annotations
-
 import asyncio
 from typing import TYPE_CHECKING
 
