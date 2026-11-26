@@ -852,8 +852,9 @@ class AntigravityAgent[TDeps = None, OutputDataT = str](BaseAgent[TDeps, OutputD
     async def _sync_sdk_session_id(self, conversation_id: str) -> None:
         if conversation_id and self._sdk_session_id != conversation_id:
             self._sdk_session_id = conversation_id
-            if self.storage is not None and self.session_id is not None:
-                await self.storage.update_sdk_session_id(self.session_id, conversation_id)
+            # Under the session acting: an explicit session is not the agent's own
+            if self.storage is not None and (session_id := self._acting_session_id):
+                await self.storage.update_sdk_session_id(session_id, conversation_id)
 
     async def _stream_events(
         self,
