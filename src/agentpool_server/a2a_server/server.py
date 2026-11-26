@@ -6,17 +6,23 @@ via the A2A (Agent-to-Agent) protocol, with each agent accessible at its own rou
 
 from __future__ import annotations
 
+from contextlib import AsyncExitStack, asynccontextmanager
 from functools import partial
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from agentpool.log import get_logger
 from agentpool_server.http_server import HTTPServer
 
 
 if TYPE_CHECKING:
+    from collections.abc import AsyncGenerator
+
+    from fasta2a import FastA2A  # type: ignore[import-untyped]
+    from starlette.applications import Starlette
     from starlette.requests import Request
     from starlette.responses import Response
-    from starlette.routing import Route
+    from starlette.routing import BaseRoute
+    from starlette.types import ASGIApp, Receive, Scope, Send
 
     from agentpool import AgentPool
 
@@ -24,6 +30,22 @@ if TYPE_CHECKING:
 logger = get_logger(__name__)
 
 DEFAULT_PORT = 8001
+
+
+class _AtRoot:
+    """Serve ``POST /{agent}`` (no trailing slash) as the mounted app's ``/``.
+
+    The agent card advertises ``/{agent}`` as the JSON-RPC endpoint; a ``Mount`` would
+    answer it with a redirect, which A2A clients don't follow for a POST.
+    """
+
+    def __init__(self, app: ASGIApp, prefix: str) -> None:
+        self.app = app
+        self.prefix = prefix
+
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        root_path = scope.get("root_path", "") + self.prefix
+        await self.app({**scope, "path": "/", "root_path": root_path}, receive, send)
 
 
 class A2AServer(HTTPServer):
@@ -66,69 +88,53 @@ class A2AServer(HTTPServer):
             raise_exceptions: Whether to raise exceptions during server start
         """
         super().__init__(pool, name=name, host=host, port=port, raise_exceptions=raise_exceptions)
+        self.apps: dict[str, FastA2A] = {}
+        """One FastA2A app per agent (task storage, broker and worker live for the server)."""
 
-    async def get_routes(self) -> list[Route]:
-        """Get Starlette routes for A2A protocol.
-
-        Returns:
-            List of Route objects for each agent plus root listing endpoint
-        """
+    def _create_agent_app(self, agent_name: str) -> FastA2A:
         from fasta2a import FastA2A  # type: ignore[import-untyped]
         from fasta2a.broker import InMemoryBroker  # type: ignore[import-untyped]
         from fasta2a.storage import InMemoryStorage  # type: ignore[import-untyped]
-        from starlette.responses import JSONResponse, Response
-        from starlette.routing import Route
 
         from agentpool_server.a2a_server.agent_worker import AgentWorker, worker_lifespan
 
-        routes: list[Route] = []
-        # Create route for each agent in the pool
-        for agent_name in self.pool.all_agents:
+        agent = self.pool.all_agents[agent_name]
+        storage: InMemoryStorage[Any] = InMemoryStorage()
+        broker = InMemoryBroker()
+        worker = AgentWorker(agent=agent, broker=broker, storage=storage)
+        # The pool owns the agent's lifecycle: the app runs only its task manager + worker.
+        lifespan = partial(worker_lifespan, worker=worker, agent=None)
+        return FastA2A(
+            storage=storage,
+            broker=broker,
+            name=agent.name,
+            description=agent.description,
+            url=self.get_agent_url(agent_name),
+            lifespan=lifespan,
+        )
 
-            async def agent_handler(request: Request, agent_name: str = agent_name) -> Response:
-                """Handle A2A requests for a specific agent."""
-                try:
-                    # Get the agent from pool
-                    agent = self.pool.all_agents.get(agent_name)
-                    if agent is None:
-                        error = {"error": f"Agent '{agent_name}' not found"}
-                        return JSONResponse(error, status_code=404)
-                    # Get the underlying pydantic-ai agentlet and convert to A2A app
-                    storage = InMemoryStorage()
-                    broker = InMemoryBroker()
-                    worker = AgentWorker(agent=agent, broker=broker, storage=storage)
-                    lifespan = partial(worker_lifespan, worker=worker, agent=agent)
-                    a2a_app = FastA2A(
-                        storage=storage,
-                        broker=broker,
-                        name=agent.name,
-                        lifespan=lifespan,
-                    )
-                    # ASGI apps don't return a value, they write to send()
-                    await a2a_app(request.scope, request.receive, request._send)
-                    return Response()
+    async def get_routes(self) -> list[BaseRoute]:
+        """Get Starlette routes for A2A protocol.
 
-                except Exception as e:
-                    self.log.exception("Error handling A2A request", agent=agent_name)
-                    return JSONResponse({"error": str(e)}, status_code=500)
+        Each agent's FastA2A app is mounted at ``/{agent_name}`` (JSON-RPC endpoint,
+        ``/.well-known/agent-card.json``, ``/docs``); ``/`` lists the agents.
 
-            # A2A protocol routes
-            routes.append(Route(f"/{agent_name}", agent_handler, methods=["POST"]))
-            routes.append(
-                Route(
-                    f"/{agent_name}/.well-known/agent-card.json",
-                    agent_handler,
-                    methods=["HEAD", "GET", "OPTIONS"],
-                )
-            )
-            routes.append(Route(f"/{agent_name}/docs", agent_handler, methods=["GET"]))
-            self.log.debug("Registered A2A routes", agent=agent_name, route=f"/{agent_name}")
+        Returns:
+            Routes for each agent plus the root listing endpoint
+        """
+        from starlette.responses import JSONResponse
+        from starlette.routing import Mount, Route
 
-        # Add root endpoint that lists available agents
+        routes: list[BaseRoute] = []
+        self.apps = {name: self._create_agent_app(name) for name in self.pool.all_agents}
+        for agent_name, app in self.apps.items():
+            prefix = f"/{agent_name}"
+            routes.append(Route(prefix, _AtRoot(app, prefix), methods=["POST"]))
+            routes.append(Mount(prefix, app=app))
+            self.log.debug("Registered A2A routes", agent=agent_name, route=prefix)
+
         async def list_agents(request: Request) -> Response:
             """List all available agents."""
-            from starlette.responses import JSONResponse
-
             agent_list = [
                 {
                     "name": name,
@@ -143,12 +149,20 @@ class A2AServer(HTTPServer):
                 "agents": agent_list,
                 "count": len(agent_list),
                 "protocol": "A2A",
-                "version": "0.3.0",
+                "version": "1.0",
             })
 
         routes.append(Route("/", list_agents, methods=["GET"]))
-        self.log.info("Created A2A routes", agent_count=len(self.pool.all_agents))
+        self.log.info("Created A2A routes", agent_count=len(self.apps))
         return routes
+
+    @asynccontextmanager
+    async def app_lifespan(self, app: Starlette) -> AsyncGenerator[None]:
+        """Run every agent app's lifespan (task manager and worker) for the server's life."""
+        async with AsyncExitStack() as stack:
+            for a2a_app in self.apps.values():
+                await stack.enter_async_context(a2a_app.router.lifespan_context(a2a_app))
+            yield
 
     def get_agent_url(self, agent_name: str) -> str:
         """Get the URL for a specific agent.

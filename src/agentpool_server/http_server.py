@@ -6,6 +6,7 @@ This module provides a base class for servers that expose HTTP routes via Starle
 from __future__ import annotations
 
 from abc import abstractmethod
+from contextlib import asynccontextmanager
 from typing import TYPE_CHECKING, Self
 
 from agentpool.log import get_logger
@@ -13,8 +14,10 @@ from agentpool_server.base import BaseServer
 
 
 if TYPE_CHECKING:
+    from collections.abc import AsyncGenerator, Sequence
+
     from starlette.applications import Starlette
-    from starlette.routing import Route
+    from starlette.routing import BaseRoute
     from upathtools import JoinablePathLike
 
     from agentpool import AgentPool
@@ -67,15 +70,24 @@ class HTTPServer(BaseServer):
         self.port = port
 
     @abstractmethod
-    async def get_routes(self) -> list[Route]:
+    async def get_routes(self) -> Sequence[BaseRoute]:
         """Get Starlette routes for this server.
 
         Subclasses must implement this method to provide their HTTP routes.
 
         Returns:
-            List of Starlette Route objects
+            List of Starlette routes (``Route``, ``Mount``, ...)
         """
         ...
+
+    @asynccontextmanager
+    async def app_lifespan(self, app: Starlette) -> AsyncGenerator[None]:
+        """Lifespan of the Starlette app (startup / shutdown of per-app resources).
+
+        Starlette doesn't run the lifespans of mounted sub-applications: a server that
+        mounts ASGI apps with their own lifespan enters them here.
+        """
+        yield
 
     async def create_app(self) -> Starlette:
         """Create Starlette application with this server's routes.
@@ -86,7 +98,7 @@ class HTTPServer(BaseServer):
         from starlette.applications import Starlette
 
         routes = await self.get_routes()
-        app = Starlette(debug=False, routes=routes)
+        app = Starlette(debug=False, routes=list(routes), lifespan=self.app_lifespan)
         self.log.info(
             "Created HTTP app",
             route_count=len(routes),

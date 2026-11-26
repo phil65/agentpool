@@ -2,16 +2,28 @@
 
 from __future__ import annotations
 
+import asyncio
+from typing import TYPE_CHECKING, Any
+
+from pydantic_ai import ModelRequest, UserPromptPart
+from pydantic_ai.models.function import AgentInfo, FunctionModel
 import pytest
 
 from agentpool import Agent, AgentPool
 from agentpool_server.a2a_server import A2AServer
 
 
+if TYPE_CHECKING:
+    from collections.abc import AsyncIterator
+
+    from fasta2a.client import A2AClient
+    from pydantic_ai import ModelMessage
+
+
 # Test constants
 TEST_PORT_BASE = 8001
 AGENT_COUNT = 2
-EXPECTED_ROUTES = 7  # 2 agents * 3 routes each + 1 root endpoint
+EXPECTED_ROUTES = 5  # 2 agents * (POST endpoint + mount) + 1 root endpoint
 
 
 @pytest.fixture
@@ -102,7 +114,7 @@ async def test_a2a_server_app_creation(simple_agent_pool: AgentPool):
     async with server:
         routes = await server.get_routes()
         assert routes is not None
-        # Should have routes for each agent (3 per agent: endpoint, card, docs) plus root
+        # Per agent: the POST endpoint and the mounted FastA2A app; plus the root listing
         assert len(routes) == EXPECTED_ROUTES
 
 
@@ -153,6 +165,71 @@ async def test_a2a_server_custom_name(simple_agent_pool: AgentPool):
     """Test A2AServer uses custom name when provided."""
     server = A2AServer(simple_agent_pool, name="custom-a2a-server")
     assert server.name == "custom-a2a-server"
+
+
+def _echo_model() -> FunctionModel:
+    """Answers with the user prompts it has seen so far (shows the session history)."""
+
+    async def stream(messages: list[ModelMessage], info: AgentInfo) -> AsyncIterator[str]:
+        prompts = [
+            part.content if isinstance(part.content, str) else "".join(map(str, part.content))
+            for message in messages
+            if isinstance(message, ModelRequest)
+            for part in message.parts
+            if isinstance(part, UserPromptPart)
+        ]
+        yield " | ".join(prompts)
+
+    return FunctionModel(stream_function=stream)
+
+
+async def _wait_done(client: A2AClient, task_id: str) -> dict[str, Any]:
+    for _ in range(200):
+        response = await client.get_task(task_id)
+        task = response["result"]
+        if task["status"]["state"] in {"completed", "failed", "canceled"}:
+            return task
+        await asyncio.sleep(0.02)
+    raise AssertionError("task did not finish")
+
+
+async def test_a2a_end_to_end_over_asgi():
+    """Agent card, message/send, task polling and a second turn in the same context (#54)."""
+    from fasta2a.client import A2AClient
+    import httpx
+
+    async with AgentPool() as pool:
+        await pool.add_agent(Agent(name="bot", model=_echo_model()))
+        server = A2AServer(pool, port=TEST_PORT_BASE + 9)
+        app = await server.create_app()
+        async with app.router.lifespan_context(app):
+            transport = httpx.ASGITransport(app=app)
+            async with httpx.AsyncClient(transport=transport, base_url="http://test") as http:
+                card = (await http.get("/bot/.well-known/agent-card.json")).json()
+                assert card["name"] == "bot"
+                assert (await http.get("/bot/docs")).status_code == 200
+                assert (await http.get("/")).json()["count"] == 1
+
+                client = A2AClient("http://test/bot", http_client=http)
+                message = {"role": "user", "parts": [{"text": "hello"}], "message_id": "m1"}
+                sent = await client.send_message(message)  # type: ignore[arg-type]
+                task = await _wait_done(client, sent["result"]["task"]["id"])
+                assert task["status"]["state"] == "completed"
+                assert task["artifacts"][0]["parts"][0]["text"] == "hello"
+                context_id = task["context_id"]
+
+                follow_up = {
+                    "role": "user",
+                    "parts": [{"text": "again"}],
+                    "message_id": "m2",
+                    "context_id": context_id,
+                }
+                sent = await client.send_message(follow_up)  # type: ignore[arg-type]
+                task = await _wait_done(client, sent["result"]["task"]["id"])
+                assert task["status"]["state"] == "completed"
+                # The second turn sees the first one: same session, history kept
+                assert task["artifacts"][0]["parts"][0]["text"] == "hello | again"
+                assert pool.sessions.get(context_id) is not None
 
 
 if __name__ == "__main__":

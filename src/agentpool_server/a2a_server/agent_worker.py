@@ -1,7 +1,7 @@
 from __future__ import annotations, annotations as _annotations
 
 import base64
-from contextlib import asynccontextmanager
+from contextlib import AsyncExitStack, asynccontextmanager
 from dataclasses import dataclass
 from functools import partial
 from typing import TYPE_CHECKING, Any
@@ -28,6 +28,8 @@ from pydantic_ai import (
     VideoUrl,
 )
 
+from agentpool.sessions.session import Session
+
 
 if TYPE_CHECKING:
     from collections.abc import AsyncGenerator, Sequence
@@ -44,12 +46,19 @@ if TYPE_CHECKING:
 
 
 @asynccontextmanager
-async def worker_lifespan(app: FastA2A, worker: Worker, agent: BaseAgent) -> AsyncGenerator[None]:
+async def worker_lifespan(
+    app: FastA2A, worker: Worker, agent: BaseAgent | None
+) -> AsyncGenerator[None]:
     """Custom lifespan that runs the worker during application startup.
 
-    This ensures the worker is started and ready to process tasks as soon as the application starts.
+    This ensures the worker is started and ready to process tasks as soon as the application
+    starts. ``agent`` is entered too unless it is None (its pool owns its lifecycle).
     """
-    async with app.task_manager, agent, worker.run():
+    async with AsyncExitStack() as stack:
+        await stack.enter_async_context(app.task_manager)
+        if agent is not None:
+            await stack.enter_async_context(agent)
+        await stack.enter_async_context(worker.run())
         yield
 
 
@@ -95,8 +104,13 @@ def agent_to_a2a(
 
 
 @dataclass
-class AgentWorker[WorkerOutputT, AgentDepsT](Worker[list[ModelMessage]]):  # type: ignore[misc]
-    """A worker that uses an agent to execute tasks."""
+class AgentWorker[WorkerOutputT, AgentDepsT](Worker[Session]):  # type: ignore[misc]
+    """A worker that uses an agent to execute tasks.
+
+    Each A2A context is a :class:`Session` of the agent (kept as the storage's context, and
+    registered in the pool's session registry when the agent has a pool): a task's messages
+    are the prompt of a turn in that session, which holds the earlier turns' history.
+    """
 
     agent: BaseAgent[AgentDepsT, WorkerOutputT]
 
@@ -113,14 +127,20 @@ class AgentWorker[WorkerOutputT, AgentDepsT](Worker[list[ModelMessage]]):  # typ
             )
 
         await self.storage.update_task(task["id"], state="working")
-        # Load context - contains pydantic-ai msg history from previous tasks in this conversation
-        message_history = await self.storage.load_context(task["context_id"]) or []
-        message_history.extend(self.build_message_history(task.get("history", [])))
+        context_id = task["context_id"]
+        session = await self.storage.load_context(context_id)
+        if session is None:
+            session = self._create_session(context_id)
+            await self.storage.update_context(context_id, session)
+        prompts = [
+            content
+            for message in task.get("history", [])
+            if message["role"] == "user"
+            for part in _request_parts_from_a2a(message["parts"])
+            for content in _prompt_contents(part)
+        ]
         try:
-            result = await self.agent.run(message_history=message_history)  # type: ignore[arg-type]  # ty: ignore[invalid-argument-type]
-            chat_msgs = self.agent.conversation.chat_messages
-            messages = [msg for chat_msg in chat_msgs for msg in chat_msg.messages]
-            await self.storage.update_context(task["context_id"], messages)
+            result = await self.agent.run(*prompts, session=session)
             # Convert new messages to A2A format for task history
             a2a_messages: list[Message] = []
             for message in result.messages:
@@ -133,8 +153,13 @@ class AgentWorker[WorkerOutputT, AgentDepsT](Worker[list[ModelMessage]]):  # typ
                     id_ = str(uuid.uuid4())
                     msg = Message(role="agent", parts=a2a_parts, message_id=id_)
                     a2a_messages.append(msg)
-
-            artifacts = self.build_artifacts(result.data)
+            if not a2a_messages and isinstance(result.content, str):
+                # Backends without pydantic-ai messages (callbacks, external agents)
+                msg = Message(
+                    role="agent", parts=[Part(text=result.content)], message_id=str(uuid.uuid4())
+                )
+                a2a_messages.append(msg)
+            artifacts = self.build_artifacts(result.content)
         except Exception:
             await self.storage.update_task(task["id"], state="failed")
             raise
@@ -142,6 +167,11 @@ class AgentWorker[WorkerOutputT, AgentDepsT](Worker[list[ModelMessage]]):  # typ
             await self.storage.update_task(
                 task["id"], state="completed", new_artifacts=artifacts, new_messages=a2a_messages
             )
+
+    def _create_session(self, context_id: str) -> Session:
+        if (pool := self.agent.agent_pool) is not None:
+            return pool.sessions.create(self.agent.name, session_id=context_id)
+        return Session.create(self.agent.name, session_id=context_id)
 
     async def cancel_task(self, params: TaskIdParams) -> None:
         pass
@@ -222,6 +252,15 @@ def _request_parts_from_a2a(parts: list[Part]) -> list[ModelRequestPart]:
         else:  # pragma: no cover
             raise ValueError(f"Unsupported part: {part}")
     return model_parts
+
+
+def _prompt_contents(part: ModelRequestPart) -> list[UserContent]:
+    """The user contents of a request part, as prompts for ``agent.run``."""
+    if not isinstance(part, UserPromptPart):
+        return []
+    if isinstance(part.content, str):
+        return [part.content]
+    return list(part.content)
 
 
 def _response_parts_from_a2a(parts: list[Part]) -> list[ModelResponsePart]:
