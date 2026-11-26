@@ -143,7 +143,10 @@ async def test_read_negative_line(tmp_path: Path):
 
 
 async def test_create_agent_on_team():
-    """/create-agent works when the current node is a team (#63.6b)."""
+    """/create-agent works when the current node is a team (#63.6b).
+
+    (An explicit model: the default one needs an OpenAI key.)
+    """
     manifest = AgentsManifest.from_yaml(
         "agents:\n  a:\n    type: native\n    model: test\n"
         "teams:\n  t:\n    mode: parallel\n    members: [a]\n"
@@ -154,7 +157,7 @@ async def test_create_agent_on_team():
             NodeContext(node=pool.teams["t"], pool=pool), output_writer=messages.append
         )
         await CreateAgentCommand().execute(
-            ctx=context, args=["helper"], kwargs={"system_prompt": "help"}
+            ctx=context, args=["helper"], kwargs={"system_prompt": "help", "model": "test"}
         )
         assert "helper" in pool.all_agents
 
