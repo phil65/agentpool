@@ -407,6 +407,7 @@ class ServerState:
         session.close_followers()
         self.sessions.pop(session_id, None)
         self.pool.sessions.remove(session_id)
+        self.pool.file_ops.drop_session(session_id)
         await self.store.delete(session_id)
         await self.storage.delete_session(session_id)
         await self.storage.delete_session_messages(session_id)

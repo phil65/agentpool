@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections import Counter, deque
 from dataclasses import dataclass, field
 from functools import cached_property
 from typing import TYPE_CHECKING, Any
@@ -49,6 +50,10 @@ class MessageStats:
         """Total bytes transmitted."""
         return sum(len(str(msg.content).encode()) for msg in self.messages)
 
+    def count_from(self, name: str | None) -> int:
+        """Number of messages sent by ``name``."""
+        return sum(1 for m in self.messages if m.name == name)
+
     def format(self, style: FormatStyle = "simple", **kwargs: Any) -> str:
         """Format the conversation that happened on this connection."""
         return "\n".join(msg.format(style, **kwargs) for msg in self.messages)
@@ -59,12 +64,76 @@ class MessageStats:
         return sum(float(m.cost_info.total_cost) for m in self.messages if m.cost_info)
 
 
+TALK_STATS_HISTORY = 100
+"""Messages a connection's stats keep by default (the totals count all)."""
+
+
+@dataclass
+class StatsTotals:
+    """Running totals over every message a connection carried."""
+
+    messages: int = 0
+    tokens: int = 0
+    cost: float = 0.0
+    bytes: int = 0
+    senders: Counter[str | None] = field(default_factory=Counter)
+
+    def add(self, message: ChatMessage[Any]) -> None:
+        self.messages += 1
+        self.tokens += message.usage.total_tokens
+        if message.cost_info:
+            self.cost += float(message.cost_info.total_cost)
+        self.bytes += len(str(message.content).encode())
+        self.senders[message.name] += 1
+
+
 @dataclass(frozen=True, kw_only=True)
 class TalkStats(MessageStats):
-    """Statistics for a single connection."""
+    """Statistics for a single connection.
+
+    ``messages`` keeps the last ``history`` messages (None: all), so a long-lived
+    connection doesn't hold every message it carried. The counts, tokens, cost and
+    bytes are totals over all of them. Add messages with :meth:`record`.
+    """
 
     source_name: str | None
     target_names: set[str]
+    history: int | None = TALK_STATS_HISTORY
+    totals: StatsTotals = field(default_factory=StatsTotals, init=False, compare=False)
+
+    def __post_init__(self) -> None:
+        for message in self.messages:
+            self.totals.add(message)
+        object.__setattr__(self, "messages", deque(self.messages, maxlen=self.history))
+
+    def record(self, message: ChatMessage[Any]) -> None:
+        """Add a message the connection carried."""
+        self.messages.append(message)
+        self.totals.add(message)
+
+    @property
+    def message_count(self) -> int:
+        """Number of messages transmitted (all, not only the kept ones)."""
+        return self.totals.messages
+
+    @property
+    def token_count(self) -> int:
+        """Total tokens used."""
+        return self.totals.tokens
+
+    @property
+    def total_cost(self) -> float:
+        """Total cost in USD."""
+        return self.totals.cost
+
+    @property
+    def byte_count(self) -> int:
+        """Total bytes transmitted."""
+        return self.totals.bytes
+
+    def count_from(self, name: str | None) -> int:
+        """Number of messages sent by ``name`` (all, not only the kept ones)."""
+        return self.totals.senders[name]
 
 
 @dataclass(kw_only=True)
@@ -84,7 +153,7 @@ class AggregatedMessageStats:
     @property
     def message_count(self) -> int:
         """Total messages across all connections."""
-        return len(self.messages)
+        return sum(stat.message_count for stat in self.stats)
 
     @property
     def tool_calls(self) -> list[ToolCallInfo]:
@@ -104,17 +173,17 @@ class AggregatedMessageStats:
     @property
     def token_count(self) -> int:
         """Total tokens across all connections."""
-        return sum(m.usage.total_tokens for m in self.messages)
+        return sum(stat.token_count for stat in self.stats)
 
     @property
     def total_cost(self) -> float:
         """Total cost in USD."""
-        return sum(float(m.cost_info.total_cost) for m in self.messages if m.cost_info)
+        return sum(stat.total_cost for stat in self.stats)
 
     @property
     def byte_count(self) -> int:
         """Total bytes transmitted."""
-        return sum(len(str(msg.content).encode()) for msg in self.messages)
+        return sum(stat.byte_count for stat in self.stats)
 
     @property
     def last_message_time(self) -> datetime | None:

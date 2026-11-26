@@ -246,7 +246,7 @@ class TeamRun[TDeps, TResult](BaseTeam[TDeps, TResult]):
                 if target == all_nodes[-1]:
                     last_talk = Talk[Any](target, [], connection_type="run")
                     if response.message:
-                        last_talk.stats.messages.append(response.message)
+                        last_talk.stats.record(response.message)
                     self._team_talk.append(last_talk)
 
                 timing = perf_counter() - start

@@ -7,6 +7,9 @@ from typing import Any, Literal
 
 FileOperation = Literal["create", "write", "edit", "delete"]
 
+MAX_CHANGES = 1000
+"""File changes a tracker keeps by default."""
+
 
 @dataclass
 class FileChange:
@@ -89,6 +92,9 @@ class FileOpsTracker:
     reverted_changes: list[FileChange] = field(default_factory=list)
     """Changes that were reverted and can be restored with unrevert."""
 
+    max_changes: int | None = MAX_CHANGES
+    """Changes kept (the oldest go first; None: all). Each holds file contents."""
+
     def record_change(
         self,
         path: str,
@@ -120,6 +126,15 @@ class FileOpsTracker:
             session_id=session_id,
         )
         self.changes.append(change)
+        if self.max_changes is not None and len(self.changes) > self.max_changes:
+            del self.changes[: len(self.changes) - self.max_changes]
+
+    def drop_session(self, session_id: str) -> int:
+        """Forget the changes of a closed session. Returns how many were dropped."""
+        before = len(self.changes) + len(self.reverted_changes)
+        self.changes = [c for c in self.changes if c.session_id != session_id]
+        self.reverted_changes = [c for c in self.reverted_changes if c.session_id != session_id]
+        return before - len(self.changes) - len(self.reverted_changes)
 
     def get_changes_for_path(self, path: str) -> list[FileChange]:
         """Get all changes for a specific file path.

@@ -858,6 +858,7 @@ class ACPSession:
             self._watch_agent_commands(self.agent, watch=False)
             if self.agent.agent_pool is not None:
                 self.agent.agent_pool.sessions.remove(self.session_id)
+                self.agent.agent_pool.file_ops.drop_session(self.session_id)
             if self._commands_update is not None:
                 self._commands_update.cancel()
             if self.skills_loading is not None:

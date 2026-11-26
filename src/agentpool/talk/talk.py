@@ -12,7 +12,7 @@ from anyenv.signals import Signal
 
 from agentpool.log import get_logger
 from agentpool.messaging import ChatMessage
-from agentpool.talk.stats import AggregatedTalkStats, TalkStats
+from agentpool.talk.stats import TALK_STATS_HISTORY, AggregatedTalkStats, TalkStats
 from agentpool.utils.inspection import execute
 from agentpool.utils.tasks import run_all
 from agentpool.utils.time_utils import get_now
@@ -78,6 +78,7 @@ class Talk[TTransmittedData = Any]:
         exit_condition: AnyFilterFn | None = None,
         session: ConnectionSessionPolicy = "target",
         parallel: bool = False,
+        stats_history: int | None = TALK_STATS_HISTORY,
     ) -> None:
         """Initialize talk connection.
 
@@ -106,6 +107,8 @@ class Talk[TTransmittedData = Any]:
             parallel: Process a message for the targets at once (and, in the router,
                 together with the neighbouring parallel connections of the source)
                 instead of one after another
+            stats_history: Messages the connection's stats keep (None: all; the
+                totals count every message)
         """
         from agentpool.talk.sessions import check_policy_target
 
@@ -124,7 +127,7 @@ class Talk[TTransmittedData = Any]:
         self.queue_strategy = queue_strategy
         self._pending_messages = defaultdict[str, list[ChatMessage[TTransmittedData]]](list)
         names = {t.name for t in targets}
-        self._stats = TalkStats(source_name=source.name, target_names=names)
+        self._stats = TalkStats(source_name=source.name, target_names=names, history=stats_history)
         self.transform_fn = transform
         self.filter_condition = filter_condition
         self.stop_condition = stop_condition
@@ -297,8 +300,7 @@ class Talk[TTransmittedData = Any]:
         )
         # 8. if we have targets, update stats and emit message forwarded
         if target_list:
-            messages = [*self._stats.messages, processed_message]
-            self._stats = replace(self._stats, messages=messages)
+            self._stats.record(processed_message)
             await self.message_forwarded.emit(processed_message)
             await self._emit_connection_event("message_forwarded", processed_message)
 

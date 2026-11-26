@@ -69,7 +69,7 @@ class Team[TDeps = None](BaseTeam[TDeps, Any]):
                 responses.append(r)
                 # Update talk stats for this agent
                 talk = next(t for t in execution_talks if t.source == node)
-                talk._stats.messages.append(message)
+                talk._stats.record(message)
             except Exception as e:  # noqa: BLE001
                 errors[node.name] = e
 

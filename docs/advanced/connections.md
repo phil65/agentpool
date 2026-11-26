@@ -159,6 +159,9 @@ Each connection tracks:
 - Byte count
 - Timing information
 
+The counts and totals cover every message; `talk.stats.messages` keeps the last
+100 (`Talk(..., stats_history=...)`).
+
 ### Control Mechanisms
 
 1. **Message Filtering**:
