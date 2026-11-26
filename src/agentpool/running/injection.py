@@ -1,7 +1,8 @@
 """Agent injection utilities."""
 
 import inspect
-from typing import TYPE_CHECKING, Any
+from types import UnionType
+from typing import TYPE_CHECKING, Any, Union, get_args, get_origin
 
 from agentpool.log import get_logger
 from agentpool.utils.inspection import get_fn_qualname
@@ -18,7 +19,7 @@ logger = get_logger(__name__)
 
 
 def is_node_type(typ: Any) -> bool:
-    """Check if a type is or inherits from MessageNode."""
+    """Check if a type is or inherits from MessageNode (including generics and unions)."""
     from agentpool import MessageNode
 
     if typ is MessageNode:
@@ -28,9 +29,11 @@ def is_node_type(typ: Any) -> bool:
     if isinstance(typ, type):
         return issubclass(typ, MessageNode)
 
-    # For generic types (Agent[T], etc)
-    origin = getattr(typ, "__origin__", None)
-    if origin is not None and isinstance(origin, type):
+    # For generic types (Agent[T], etc.) and unions containing a node type
+    origin = get_origin(typ)
+    if origin in (Union, UnionType):
+        return any(is_node_type(arg) for arg in get_args(typ))
+    if isinstance(origin, type):
         return issubclass(origin, MessageNode)
 
     return False
@@ -69,21 +72,8 @@ def inject_nodes[T, **P](
             logger.debug("Skipping: no type hint", name=name)
             continue
 
-        # Handle Optional/Union types
-        origin = getattr(hint, "__origin__", None)
-        args = getattr(hint, "__args__", ())
-
-        # Check for MessageNode or any of its subclasses
-        is_node = (
-            is_node_type(hint)  # Direct node type
-            or (  # Optional[Node[T]] or Union containing Node
-                origin is not None and any(is_node_type(arg) for arg in args)
-            )
-        )
-
-        if not is_node:
-            msg = "Skipping. Not a node type."
-            logger.debug(msg, name=name, hint=hint, origin=origin, args=args)
+        if not is_node_type(hint):
+            logger.debug("Skipping. Not a node type.", name=name, hint=hint)
             continue
 
         logger.debug("Found node parameter", name=name)

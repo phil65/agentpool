@@ -41,8 +41,8 @@ def with_nodes[T, **P](
             all_kwargs = {**bound_args.arguments, **kwargs}
             # Get needed nodes
             nodes = inject_nodes(func, pool, all_kwargs)
-            # The given arguments (positional ones by name) and the injected nodes
-            final_kwargs = {**bound_args.arguments, **nodes, **kwargs}
+            # The given arguments and the injected nodes (injected nodes replace None placeholders)
+            final_kwargs = {**all_kwargs, **nodes}
             # Convert back to args/kwargs using signature
             bound = sig.bind(**final_kwargs)
             bound.apply_defaults()

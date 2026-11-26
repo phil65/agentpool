@@ -13,6 +13,7 @@ import anyio
 import agentpool
 from agentpool.log import get_logger
 from agentpool.running import with_nodes
+from agentpool.running.injection import is_node_type
 from agentpool.utils.signatures import resolve_type_hints
 
 
@@ -166,12 +167,17 @@ async def execute_single(
     """
     logger.debug("Executing function", name=func.name)
     try:
-        kwargs = func.default_inputs.copy()
-        if inputs:
-            kwargs.update(inputs)
-
         # Get type hints for the function
         hints = resolve_type_hints(func.func, vars(agentpool))
+
+        # Apply defaults only for non-node parameters so node injection is not bypassed
+        kwargs = {
+            name: default
+            for name, default in func.default_inputs.items()
+            if not is_node_type(hints.get(name))
+        }
+        if inputs:
+            kwargs.update(inputs)
 
         # Add and validate dependency results
         for dep in func.depends_on:

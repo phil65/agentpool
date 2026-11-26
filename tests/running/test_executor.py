@@ -205,3 +205,42 @@ async def test_parallel_without_limit_runs_group_at_once(pool):
 async def test_invalid_max_concurrency(pool):
     with pytest.raises(ValueError, match="max_concurrency"):
         await execute_functions([], pool, parallel=True, max_concurrency=0)
+
+
+async def test_node_param_with_default_none_is_injected(pool):
+    """Node parameters with default None are still injected from the pool."""
+
+    @node_function
+    async def func(
+        agent1: Agent | None = None,
+        agent2: Agent[None] | None = None,
+        optional: int = 42,
+    ) -> tuple[str | None, str | None, int]:
+        return (
+            agent1.name if agent1 is not None else None,
+            agent2.name if agent2 is not None else None,
+            optional,
+        )
+
+    # Default case: node params get injected, plain param keeps its default
+    results = await execute_functions([func._node_function], pool)
+    assert results["func"] == ("agent1", "agent2", 42)
+
+    # Explicitly passed input overrides plain default while nodes are still injected
+    results = await execute_functions([func._node_function], pool, inputs={"optional": 100})
+    assert results["func"] == ("agent1", "agent2", 100)
+
+
+async def test_node_param_with_non_none_default_is_injected(pool):
+    """Node parameters with a non-None default still receive the pool node."""
+    fallback = pool.get_agent("agent2")
+
+    @node_function
+    async def func(agent1: Agent[None] = fallback, label: str = "default") -> tuple[str, str]:
+        return agent1.name, label
+
+    results = await execute_functions([func._node_function], pool)
+    assert results["func"] == ("agent1", "default")
+
+    results = await execute_functions([func._node_function], pool, inputs={"label": "override"})
+    assert results["func"] == ("agent1", "override")
