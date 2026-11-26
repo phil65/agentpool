@@ -104,7 +104,7 @@ agentpool = "agentpool_cli.__main__:cli"
 agentpool-db = "agentpool_storage.sql_provider.cli:main"
 
 [project.entry-points."jinjarope.environment"]
-agentpool = "agentpool.utils:setup_env"
+agentpool = "agentpool_jinja:setup_env"
 
 [project.optional-dependencies]
 a2a = ["fasta2a", "starlette"]  # A2A Server
@@ -458,6 +458,7 @@ module-name = [
   "agentpool_bot",
   "agentpool_config",
   "agentpool_cli",
+  "agentpool_jinja",
   "agentpool_commands",
   "agentpool_storage",
   "agentpool_prompts",
