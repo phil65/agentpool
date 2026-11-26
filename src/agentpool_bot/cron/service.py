@@ -84,6 +84,7 @@ class CronService:
         self._store: CronStore | None = None
         self._timer_task: asyncio.Task[None] | None = None
         self._running = False
+        self._in_on_timer = False
 
     # ── Persistence ──────────────────────────────────────────────────
 
@@ -157,7 +158,11 @@ class CronService:
 
     def _arm_timer(self) -> None:
         """Schedule a single asyncio task that fires at the next due time."""
-        if self._timer_task is not None:
+        if self._in_on_timer:
+            # Called from a running job (e.g. ``add_job``): cancelling the timer task would
+            # cancel the job itself. ``_on_timer`` re-arms once the due jobs are done.
+            return
+        if self._timer_task is not None and not self._timer_task.done():
             self._timer_task.cancel()
 
         next_wake = self._get_next_wake_ms()
@@ -185,10 +190,14 @@ class CronService:
             if j.enabled and j.state.next_run_at_ms is not None and now >= j.state.next_run_at_ms
         ]
 
-        for job in due_jobs:
-            await self._execute_job(job)
-
+        self._in_on_timer = True
+        try:
+            for job in due_jobs:
+                await self._execute_job(job)
+        finally:
+            self._in_on_timer = False
         self._save_store()
+        self._timer_task = None  # the current task: finishing, nothing to cancel
         self._arm_timer()
 
     async def _execute_job(self, job: CronJob) -> None:
