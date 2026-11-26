@@ -509,3 +509,12 @@ async def test_machines_are_forbidden(client: AsyncClient) -> None:
         response = await client.request(method, path)
         assert response.status_code == 403
         assert response.json()["_tag"] == "ForbiddenError"
+
+
+async def test_delete_session_with_a_parent_cycle(client: AsyncClient, state: ServerState) -> None:
+    """Corrupted data (a session that is its child's parent) must not recurse forever."""
+    sid = await create_session(client)
+    child = await create_session(client, parentID=sid)
+    state.sessions[sid].info.parent_id = child
+    assert (await client.delete(f"/api/session/{sid}")).status_code == 204
+    assert (await client.get(f"/api/session/{child}")).status_code == 404

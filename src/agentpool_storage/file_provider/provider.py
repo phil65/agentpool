@@ -158,26 +158,7 @@ class FileProvider(StorageProvider):
                 continue
             if query.roles and msg["role"] not in query.roles:
                 continue
-            # Convert to ChatMessage
-            cost = Decimal(msg["cost"] or 0.0)
-            chat_message = ChatMessage[str](
-                content=msg["content"],
-                session_id=msg["session_id"],
-                role=cast(MessageRole, msg["role"]),
-                name=msg["name"],
-                model_name=msg["model"],
-                cost_info=TokenCost(total_cost=cost),
-                usage=TypeAdapter(RunUsage).validate_python(msg["token_usage"])
-                if msg["token_usage"]
-                else RunUsage(),
-                response_time=msg["response_time"],
-                timestamp=datetime.fromisoformat(msg["timestamp"]),
-                provider_name=msg["provider_name"],
-                provider_response_id=msg["provider_response_id"],
-                messages=deserialize_messages(msg["messages"]),
-                finish_reason=msg["finish_reason"],
-            )
-            messages.append(chat_message)
+            messages.append(_to_chat_message(msg))
 
             if query.limit and len(messages) >= query.limit:
                 break
@@ -286,10 +267,12 @@ class FileProvider(StorageProvider):
         *,
         session_id: str | None = None,
     ) -> list[ChatMessage[str]]:
-        """Get the ancestry chain of a message."""
+        """Get the ancestry chain of a message. Stops at a cycle."""
         ancestors: list[ChatMessage[str]] = []
         current_id: str | None = message_id
-        while current_id:
+        seen: set[str] = set()
+        while current_id and current_id not in seen:
+            seen.add(current_id)
             msg = await self.get_message(current_id, session_id=session_id)
             if not msg:
                 break
@@ -419,17 +402,13 @@ class FileProvider(StorageProvider):
             return conv_count, msg_count
 
         if agent_name:
-            # Filter out data for specific agent
+            # Filter out data for specific agent (collect its session ids first)
+            ids = {c["id"] for c in self._data["conversations"] if c["agent_name"] == agent_name}
             self._data["conversations"] = [
                 c for c in self._data["conversations"] if c["agent_name"] != agent_name
             ]
             self._data["messages"] = [
-                m
-                for m in self._data["messages"]
-                if m["session_id"]
-                not in {
-                    c["id"] for c in self._data["conversations"] if c["agent_name"] == agent_name
-                }
+                m for m in self._data["messages"] if m["session_id"] not in ids
             ]
         else:
             # Clear all
@@ -577,6 +556,8 @@ def _to_chat_message(msg: MessageData) -> ChatMessage[str]:
         if msg["token_usage"]
         else RunUsage(),
         "response_time": msg.get("response_time"),
+        "provider_name": msg.get("provider_name"),
+        "provider_response_id": msg.get("provider_response_id"),
         "parent_id": msg.get("parent_id"),
         "session_id": msg.get("session_id"),
         "messages": deserialize_messages(msg.get("messages")),

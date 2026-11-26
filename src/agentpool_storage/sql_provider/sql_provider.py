@@ -64,7 +64,6 @@ class SQLModelProvider(StorageProvider):
         super().__init__(config)
         self.engine = config.get_engine()
         self.auto_migrate = config.auto_migration
-        self.session: AsyncSession | None = None
 
     async def _init_database(self, auto_migrate: bool = True) -> None:
         """Initialize database tables and run migrations.
@@ -259,13 +258,15 @@ class SQLModelProvider(StorageProvider):
     ) -> list[ChatMessage[str]]:
         """Get the ancestry chain of a message.
 
-        Traverses parent_id chain to build full history.
+        Traverses parent_id chain to build full history. Stops at a cycle.
         """
         ancestors: list[ChatMessage[str]] = []
         current_id: str | None = message_id
+        seen: set[str] = set()
 
         async with AsyncSession(self.engine) as session:
-            while current_id:
+            while current_id and current_id not in seen:
+                seen.add(current_id)
                 result = await session.execute(select(Message).where(Message.id == current_id))
                 msg = result.scalar_one_or_none()
                 if not msg:
@@ -497,54 +498,41 @@ class SQLModelProvider(StorageProvider):
             DELETE_ALL_MESSAGES,
         )
 
+        if hard:
+            if agent_name:
+                msg = "Hard reset cannot be used with agent_name"
+                raise ValueError(msg)
+            # Drop and recreate all tables
+            async with self.engine.begin() as conn:
+                await conn.run_sync(SQLModel.metadata.drop_all)
+            await self._init_database()
+            return 0, 0
+
+        conv_count, msg_count = await self.get_session_counts(agent_name=agent_name)
         async with AsyncSession(self.engine) as session:
-            if hard:
-                if agent_name:
-                    msg = "Hard reset cannot be used with agent_name"
-                    raise ValueError(msg)
-                # Drop and recreate all tables
-                async with self.engine.begin() as conn:
-                    await conn.run_sync(SQLModel.metadata.drop_all)
-                await session.commit()
-                # Recreate schema
-                await self._init_database()
-                return 0, 0
-
-            # Get counts first
-            conv_count, msg_count = await self.get_session_counts(agent_name=agent_name)
-
-            # Delete data
             if agent_name:
                 await session.execute(text(DELETE_AGENT_MESSAGES), {"agent": agent_name})
                 await session.execute(text(DELETE_AGENT_CONVERSATIONS), {"agent": agent_name})
             else:
                 await session.execute(text(DELETE_ALL_MESSAGES))
                 await session.execute(text(DELETE_ALL_CONVERSATIONS))
-
             await session.commit()
         return conv_count, msg_count
 
     async def get_session_counts(self, *, agent_name: str | None = None) -> tuple[int, int]:
         """Get conversation and message counts."""
-        from agentpool_storage.sql_provider import Conversation, Message
+        from sqlalchemy import func
 
-        if not self.session:
-            msg = "Session not initialized. Use provider as async context manager."
-            raise RuntimeError(msg)
+        conv_query = select(func.count()).select_from(Conversation)
+        msg_query = select(func.count()).select_from(Message)
         if agent_name:
-            conv_query = select(Conversation).where(Conversation.agent_name == agent_name)
-            msg_query = (
-                select(Message).join(Conversation).where(Conversation.agent_name == agent_name)
+            conv_query = conv_query.where(Conversation.agent_name == agent_name)
+            msg_query = msg_query.join(Conversation, Message.session_id == Conversation.id).where(  # ty:ignore[invalid-argument-type]
+                Conversation.agent_name == agent_name
             )
-        else:
-            conv_query = select(Conversation)
-            msg_query = select(Message)
-
-        conv_result = await self.session.execute(conv_query)
-        msg_result = await self.session.execute(msg_query)
-        conv_count = len(conv_result.scalars().all())
-        msg_count = len(msg_result.scalars().all())
-
+        async with AsyncSession(self.engine) as session:
+            conv_count = (await session.execute(conv_query)).scalar() or 0
+            msg_count = (await session.execute(msg_query)).scalar() or 0
         return conv_count, msg_count
 
     async def delete_session_messages(self, session_id: str) -> int:

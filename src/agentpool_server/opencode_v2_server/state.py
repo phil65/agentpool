@@ -385,16 +385,18 @@ class ServerState:
                 infos[sid] = summary
         return sorted(infos.values(), key=lambda i: i.time.updated, reverse=True)
 
-    async def delete_session(self, session_id: str) -> None:
+    async def delete_session(self, session_id: str, *, _deleting: set[str] | None = None) -> None:
         """Delete a session, its children, history and event log.
 
         Raises:
             SessionNotFoundError: If the session does not exist
         """
         session = await self.get_session(session_id)
+        deleting = _deleting if _deleting is not None else set()
+        deleting.add(session_id)
         for info in await self.list_sessions():
-            if info.parent_id == session_id:
-                await self.delete_session(info.id)
+            if info.parent_id == session_id and info.id not in deleting:
+                await self.delete_session(info.id, _deleting=deleting)
         runner = self.runners.pop(session_id, None)
         if runner is not None:
             await runner.shutdown()

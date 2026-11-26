@@ -174,10 +174,13 @@ class StorageManager:
             4. Raises error if no capable provider found
         """
 
-        # Function to find capable provider by name
+        # Find a capable provider by its config type ("sql", "file", ...) or class name
         def find_provider(name: str) -> StorageProvider | None:
+            name = name.lower()
             for p in self.providers:
-                if p.can_load_history and p.__class__.__name__.lower() == name.lower():
+                if not p.can_load_history:
+                    continue
+                if p.config.type == name or type(p).__name__.lower() == name:
                     return p
             return None
 
@@ -737,13 +740,16 @@ class StorageManager:
         """Get provider capable of storing projects.
 
         Returns:
-            First provider that supports project storage.
+            First provider that implements project storage.
 
         Raises:
             RuntimeError: If no capable provider found.
         """
-        if self.providers:
-            return self.providers[0]
+        from agentpool_storage.base import StorageProvider
+
+        for provider in self.providers:
+            if type(provider).save_project is not StorageProvider.save_project:
+                return provider
 
         raise RuntimeError("No provider found that supports project storage")
 

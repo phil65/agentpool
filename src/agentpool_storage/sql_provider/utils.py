@@ -48,6 +48,7 @@ def to_chat_message(db_message: Message) -> ChatMessage[str]:
     return ChatMessage[str](
         message_id=db_message.id,
         session_id=db_message.session_id,
+        parent_id=db_message.parent_id,
         content=db_message.content,
         role=db_message.role,  # type: ignore
         name=db_message.name,
@@ -186,12 +187,14 @@ def format_conversation(
     include_tokens: bool = False,
     compact: bool = False,
 ) -> ConversationData:
-    """Format SQL conversation model to ConversationData."""
-    msgs = list(messages)
-    if compact and len(msgs) > 1:
-        msgs = [msgs[0], msgs[-1]]
+    """Format SQL conversation model to ConversationData.
 
-    # Convert Conversation to ConversationData format
+    With ``compact``, only the first and last message are kept. Token usage is always
+    computed over all messages.
+    """
+    all_msgs = list(messages)
+    msgs = [all_msgs[0], all_msgs[-1]] if compact and len(all_msgs) > 1 else all_msgs
+    usage = aggregate_token_usage(all_msgs) if include_tokens else None
     if isinstance(conv, Conversation):
         return ConversationData(
             id=conv.id,
@@ -199,10 +202,10 @@ def format_conversation(
             title=conv.title,
             start_time=conv.start_time.isoformat(),
             messages=msgs,
-            token_usage=aggregate_token_usage(msgs) if include_tokens else None,
+            token_usage=usage,
         )
-
-    # If it's already ConversationData, update token_usage if needed
-    if include_tokens and conv["token_usage"] is None:
-        conv["token_usage"] = aggregate_token_usage(msgs)
-    return conv
+    result = ConversationData(**conv)
+    result["messages"] = msgs
+    if include_tokens and result["token_usage"] is None:
+        result["token_usage"] = usage
+    return result

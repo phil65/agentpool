@@ -62,11 +62,18 @@ class T3StorageProvider(StorageProvider):
                 login=self.config.login,
                 client_name="agentpool:storage",
             )
-            await self._client.__aenter__()
         client = self._client
-        if self.config.project is not None:
-            self._project_id = await threads.resolve_project(client, self.config.project)
-        self._folders = await threads.project_folders(client)
+        try:
+            if self._owns_client:
+                await client.__aenter__()
+            if self.config.project is not None:
+                self._project_id = await threads.resolve_project(client, self.config.project)
+            self._folders = await threads.project_folders(client)
+        except BaseException:
+            if self._owns_client:
+                await client.aclose()
+                self._client = None
+            raise
         return self
 
     async def __aexit__(

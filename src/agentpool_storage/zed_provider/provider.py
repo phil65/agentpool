@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections import defaultdict
+from contextlib import closing
 from datetime import datetime
 from pathlib import Path
 import sqlite3
@@ -68,12 +69,13 @@ class ZedStorageProvider(StorageProvider):
             # If path is directory, add default db location
             self.db_path = self.db_path / "threads" / "threads.db"
 
-    def _get_connection(self) -> sqlite3.Connection:
-        """Get a SQLite connection."""
+    def _get_connection(self) -> closing[sqlite3.Connection]:
+        """Open Zed's live database read-only; use as a context manager (closes it)."""
         if not self.db_path.exists():
             msg = f"Zed threads database not found: {self.db_path}"
             raise FileNotFoundError(msg)
-        return sqlite3.connect(self.db_path)
+        uri = f"{self.db_path.resolve().as_uri()}?mode=ro"
+        return closing(sqlite3.connect(uri, uri=True))
 
     def _list_threads(
         self,
@@ -92,22 +94,21 @@ class ZedStorageProvider(StorageProvider):
             worktree_branch, folder_paths, folder_paths_order) tuples
         """
         try:
-            conn = self._get_connection()
-            query = (
-                "SELECT id, summary, updated_at, created_at, parent_id,"
-                " worktree_branch, folder_paths, folder_paths_order FROM threads"
-            )
-            params: list[Any] = []
-            if since:
-                query += " WHERE updated_at >= ?"
-                params.append(since.isoformat())
-            query += " ORDER BY updated_at DESC"
-            if limit:
-                query += " LIMIT ?"
-                params.append(limit)
-            cursor = conn.execute(query, params)
-            threads = cursor.fetchall()
-            conn.close()
+            with self._get_connection() as conn:
+                query = (
+                    "SELECT id, summary, updated_at, created_at, parent_id,"
+                    " worktree_branch, folder_paths, folder_paths_order FROM threads"
+                )
+                params: list[Any] = []
+                if since:
+                    query += " WHERE updated_at >= ?"
+                    params.append(since.isoformat())
+                query += " ORDER BY updated_at DESC"
+                if limit:
+                    query += " LIMIT ?"
+                    params.append(limit)
+                cursor = conn.execute(query, params)
+                threads = cursor.fetchall()
         except FileNotFoundError:
             return []
         except sqlite3.Error as e:
@@ -119,11 +120,10 @@ class ZedStorageProvider(StorageProvider):
     def _load_thread(self, thread_id: str) -> ZedThread | None:
         """Load a single thread by ID."""
         try:
-            conn = self._get_connection()
-            query = "SELECT data_type, data FROM threads WHERE id = ? LIMIT 1"
-            cursor = conn.execute(query, (thread_id,))
-            row = cursor.fetchone()
-            conn.close()
+            with self._get_connection() as conn:
+                query = "SELECT data_type, data FROM threads WHERE id = ? LIMIT 1"
+                cursor = conn.execute(query, (thread_id,))
+                row = cursor.fetchone()
             if row is None:
                 return None
 
@@ -262,14 +262,13 @@ class ZedStorageProvider(StorageProvider):
         conv_count = 0
         msg_count = 0
         try:
-            conn = self._get_connection()
-            for data_type, data in conn.execute("SELECT data_type, data FROM threads"):
-                json_data = helpers.decompress(data, data_type)
-                thread_dict = anyenv.load_json(json_data, return_type=dict)
-                if (messages := thread_dict.get("messages")) is not None:
-                    conv_count += 1
-                    msg_count += len(messages)
-            conn.close()
+            with self._get_connection() as conn:
+                for data_type, data in conn.execute("SELECT data_type, data FROM threads"):
+                    json_data = helpers.decompress(data, data_type)
+                    thread_dict = anyenv.load_json(json_data, return_type=dict)
+                    if (messages := thread_dict.get("messages")) is not None:
+                        conv_count += 1
+                        msg_count += len(messages)
         except FileNotFoundError:
             pass
         except sqlite3.Error as e:

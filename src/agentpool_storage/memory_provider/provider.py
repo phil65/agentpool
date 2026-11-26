@@ -165,11 +165,13 @@ class MemoryStorageProvider(StorageProvider):
         *,
         session_id: str | None = None,
     ) -> list[ChatMessage[str]]:
-        """Get the ancestry chain of a message."""
+        """Get the ancestry chain of a message. Stops at a cycle."""
         ancestors: list[ChatMessage[str]] = []
         current_id: str | None = message_id
+        seen: set[str] = set()
 
-        while current_id:
+        while current_id and current_id not in seen:
+            seen.add(current_id)
             msg = await self.get_message(current_id, session_id=session_id)
             if not msg:
                 break

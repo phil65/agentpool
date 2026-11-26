@@ -786,12 +786,16 @@ class ClaudeStorageProvider(StorageProvider):
         # Parent chains run through attachments and system entries, not only messages.
         # Walk the parsed JSON (validating every entry of a large transcript costs far
         # more than the walk) and validate only the user and assistant messages on it.
-        # Fast path: if we know the session, read it once and walk in memory.
+        # Fast path: if we know the session, read it once and walk in memory. A chain that
+        # leaves the session (a fork's first message points into the source session) takes
+        # the slow path.
         if session_id and (session_path := self._find_session_path(session_id)):
             index = read_raw_chain_entries(session_path)
-            tool_mapping = _tool_names_from_raw(index.values())
             chain = walk_raw_ancestry(index, message_id)
-            return _raw_messages_to_chat(reversed(chain), session_id, tool_mapping)
+            parent = chain[-1].get("parentUuid") if chain else None
+            if chain and (not isinstance(parent, str) or parent in index):
+                tool_mapping = _tool_names_from_raw(index.values())
+                return _raw_messages_to_chat(reversed(chain), session_id, tool_mapping)
 
         # Slow path: the chain may span sessions. Read only transcripts that contain the
         # UUID being looked up, each at most once.
