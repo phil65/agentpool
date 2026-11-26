@@ -597,14 +597,23 @@ class MCPClient:
         hints = ToolHints.from_mcp(tool.annotations) if tool.annotations else None
         return FunctionTool.from_callable(tool_callable, source="mcp", hints=hints)
 
-    async def call_tool(
+    async def call_tool(  # noqa: PLR0915
         self,
         name: str,
         run_context: RunContext,
         arguments: dict[str, Any] | None = None,
         agent_ctx: AgentContext[Any] | None = None,
     ) -> ToolReturn | str | Any:
-        """Call an MCP tool with full PydanticAI return type support."""
+        """Call an MCP tool with full PydanticAI return type support.
+
+        Raises:
+            ToolFailed: The tool reported an error (the model sees it and goes on)
+            ModelRetry: The server refused the call (a protocol error, e.g. bad arguments)
+            RuntimeError: The call failed in transport (ends the run)
+        """
+        from fastmcp.exceptions import McpError, ToolError
+        from pydantic_ai import ModelRetry, ToolFailed
+
         from agentpool.mcp_server.conversions import from_mcp_content
 
         self._ensure_connected()
@@ -685,7 +694,11 @@ class MCPClient:
             if content:
                 return ToolReturn(return_value="Tool executed successfully", content=content)
             return extract_text_content(result.content)
-        except Exception as e:
+        except ToolError as e:  # The tool failed (an isError result): the model sees it
+            raise ToolFailed(str(e)) from e
+        except McpError as e:  # The server refused the call (e.g. bad arguments)
+            raise ModelRetry(str(e)) from e
+        except Exception as e:  # Transport failures end the run
             raise RuntimeError(f"MCP tool call failed: {e}") from e
         finally:
             if call_id is not None:
