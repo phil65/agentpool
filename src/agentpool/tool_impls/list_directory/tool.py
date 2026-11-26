@@ -103,6 +103,7 @@ class ListDirectoryTool(Tool[ToolResult]):
         Returns:
             Markdown-formatted directory listing
         """
+        from agentpool.utils.listing_filter import filter_listing_detail
         from agentpool_toolsets.fsspec_toolset.helpers import format_directory_listing
 
         path = self._resolve_path(path, ctx)
@@ -122,6 +123,7 @@ class ListDirectoryTool(Tool[ToolResult]):
             # Build glob path
             glob_pattern = f"{path.rstrip('/')}/{pattern}"
             paths = await fs._glob(glob_pattern, maxdepth=max_depth, detail=True)
+            paths = await filter_listing_detail(fs, path, paths)
 
             files: list[dict[str, Any]] = []
             dirs: list[dict[str, Any]] = []

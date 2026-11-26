@@ -284,7 +284,9 @@ class Skill(BaseModel):
     async def list_files(self) -> list[str]:
         """List every file bundled with the skill, relative to the skill directory."""
         fs, root = self._filesystem()
-        found = await fs._find(root, withdirs=False)
+        from agentpool.utils.listing_filter import filter_listing
+
+        found = await filter_listing(fs, root, await fs._find(root, withdirs=False))
         prefix = f"{fs._strip_protocol(root).rstrip('/')}/"
         files = [
             stripped[len(prefix) :]

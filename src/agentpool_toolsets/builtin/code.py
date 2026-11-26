@@ -12,6 +12,7 @@ from upathtools import is_directory
 from agentpool.agents.context import AgentContext  # noqa: TC001
 from agentpool.log import get_logger
 from agentpool.resource_providers import ResourceProvider
+from agentpool.utils.listing_filter import filter_listing_detail
 from agentpool_toolsets.fsspec_toolset.diagnostics import (
     DiagnosticsManager,
     format_diagnostics_table,
@@ -372,6 +373,7 @@ class CodeTools(ResourceProvider):
             # Collect all files in directory
             try:
                 files = await fs._find(resolved, detail=True)
+                files = await filter_listing_detail(fs, resolved, files)
                 file_paths = [
                     p
                     for p, info in files.items()

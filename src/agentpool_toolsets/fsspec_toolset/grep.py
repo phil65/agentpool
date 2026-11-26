@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING, Any, Literal
 import anyenv
 
 from agentpool.log import get_logger
+from agentpool.utils.listing_filter import filter_listing
 from agentpool_toolsets.fsspec_toolset.helpers import DEFAULT_MAX_SIZE
 
 
@@ -501,7 +502,7 @@ async def grep_with_fsspec(
     total_bytes = 0
     was_truncated = False
     try:
-        file_paths = await fs._glob(glob_path)
+        file_paths = await filter_listing(fs, path, await fs._glob(glob_path))
         for file_path in file_paths:
             if was_truncated or match_count >= max_matches or total_bytes >= max_output_bytes:
                 was_truncated = True
