@@ -16,7 +16,9 @@ someone adds the MCPManager's aggregating provider to the ToolManager.
 ### ToolManagerBridge (`agentpool.mcp_server.tool_bridge`)
 The inverse of MCPManager: exposes an agent's internal ToolManager as an HTTP MCP
 server. Used by wrapped agents (Claude Code, Codex, ACP) so the external process
-can call back into our tools.
+can call back into our tools. It listens on 127.0.0.1, where any local process can
+reach it, so it serves only requests carrying its random bearer token
+(`ToolManagerBridge.headers`); every backend's MCP server config carries them.
 
 ---
 
