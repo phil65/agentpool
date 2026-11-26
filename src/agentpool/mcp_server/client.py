@@ -361,17 +361,17 @@ class MCPClient:
                 env = config.get_env_vars()
                 # Not kept alive: closing the client stops the server process
                 transport = StdioTransport(command=command, args=args, env=env, keep_alive=False)
-                oauth = False
+                auth_settings = None
                 if force_oauth:
                     raise ValueError("OAuth is not supported for StdioMCPServerConfig")
 
             case SSEMCPServerConfig(url=url, headers=headers, auth=auth):
                 transport = SSETransport(url=url, headers=headers)
-                oauth = auth.oauth
+                auth_settings = auth if (force_oauth or auth.oauth) else None
 
             case StreamableHTTPMCPServerConfig(url=url, headers=headers, auth=auth):
                 transport = StreamableHttpTransport(url=url, headers=headers)
-                oauth = auth.oauth
+                auth_settings = auth if (force_oauth or auth.oauth) else None
             case _ as unreachable:
                 assert_never(unreachable)
 
@@ -416,7 +416,7 @@ class MCPClient:
             init_timeout=config.init_timeout,
             elicitation_handler=self._forwarding_elicitation_callback,
             message_handler=msg_handler,
-            auth="oauth" if (force_oauth or oauth) else None,
+            auth=auth_settings.to_fastmcp_auth() if auth_settings else None,
             client_info=client_info,
         )
 

@@ -4,13 +4,19 @@ from __future__ import annotations
 
 import os
 from typing import TYPE_CHECKING, Annotated, Any, Literal, Self
+import warnings
 
 from pydantic import ConfigDict, Field, HttpUrl, model_validator
 from schemez import Schema
 
 
 if TYPE_CHECKING:
+    from fastmcp.client.auth import OAuth
+    from key_value.aio.protocols import AsyncKeyValue
     from pydantic_ai.mcp import MCPToolset
+
+
+KEYRING_SERVICE_NAME = "agentpool-mcp-oauth"
 
 
 class MCPServerAuthSettings(Schema):
@@ -44,6 +50,47 @@ class MCPServerAuthSettings(Schema):
         examples=["keyring", "memory"],
         title="Token persistence",
     )
+
+    def get_token_storage(self) -> AsyncKeyValue | None:
+        """Get the OAuth token store for the ``persist`` setting.
+
+        Returns None for ``memory`` (fastmcp then keeps tokens in memory), and also
+        for ``keyring`` when no usable keyring backend exists (e.g. headless CI).
+        """
+        if self.persist == "memory":
+            return None
+        import keyring
+        from keyring.backends.fail import Keyring as FailKeyring
+
+        if isinstance(keyring.get_keyring(), FailKeyring):
+            from agentpool.log import get_logger
+
+            msg = "No keyring backend available, MCP OAuth tokens are kept in memory"
+            get_logger(__name__).warning(msg)
+            return None
+        from key_value.aio.stores.keyring import KeyringStore
+        from key_value.aio.stores.keyring.store import (
+            KeyringV1CollectionSanitizationStrategy,
+            KeyringV1KeySanitizationStrategy,
+        )
+
+        with warnings.catch_warnings():  # "store is unstable" warning on every creation
+            warnings.simplefilter("ignore", UserWarning)
+            return KeyringStore(
+                service_name=KEYRING_SERVICE_NAME,
+                key_sanitization_strategy=KeyringV1KeySanitizationStrategy(),
+                collection_sanitization_strategy=KeyringV1CollectionSanitizationStrategy(),
+            )
+
+    def to_fastmcp_auth(self) -> OAuth:
+        """Create a fastmcp OAuth provider using the configured scope and token store."""
+        from fastmcp.client.auth import OAuth
+
+        return OAuth(
+            scopes=self.scope,
+            client_name="AgentPool",
+            token_storage=self.get_token_storage(),
+        )
 
 
 class BaseMCPServerConfig(Schema):
@@ -324,7 +371,8 @@ class SSEMCPServerConfig(BaseMCPServerConfig):
         from fastmcp.client.transports import SSETransport
         from pydantic_ai.mcp import MCPToolset
 
-        transport = SSETransport(url=str(self.url), headers=self.headers)
+        auth = self.auth.to_fastmcp_auth() if self.auth.oauth else None
+        transport = SSETransport(url=str(self.url), headers=self.headers, auth=auth)
         return MCPToolset(transport, id=self.name, init_timeout=self.init_timeout)
 
 
@@ -387,7 +435,8 @@ class StreamableHTTPMCPServerConfig(BaseMCPServerConfig):
         from fastmcp.client.transports import StreamableHttpTransport
         from pydantic_ai.mcp import MCPToolset
 
-        transport = StreamableHttpTransport(url=str(self.url), headers=self.headers)
+        auth = self.auth.to_fastmcp_auth() if self.auth.oauth else None
+        transport = StreamableHttpTransport(url=str(self.url), headers=self.headers, auth=auth)
         return MCPToolset(transport, id=self.name, init_timeout=self.init_timeout)
 
 
