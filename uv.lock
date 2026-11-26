@@ -275,7 +275,7 @@ requires-dist = [
     { name = "llmling-models", specifier = ">=1.8.1" },
     { name = "logfire", extras = ["fastapi"] },
     { name = "markitdown", marker = "python_full_version < '3.15' and extra == 'markitdown'" },
-    { name = "mcp", specifier = ">=1.2.0" },
+    { name = "mcp", specifier = ">=2.0.0" },
     { name = "mcpx-py", marker = "extra == 'mcp-run'", specifier = ">=0.7.0" },
     { name = "pillow", specifier = ">=11.3.0" },
     { name = "platformdirs" },

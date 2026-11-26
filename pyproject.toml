@@ -52,7 +52,7 @@ dependencies = [
   "keyring>=25.6.0",
   "llmling-models>=1.8.1",
   "logfire[fastapi]",
-  "mcp>=1.2.0",
+  "mcp>=2.0.0",
   "pillow>=11.3.0",
   "platformdirs",
   "promptantic>=1.1.3",
@@ -457,6 +457,7 @@ override-dependencies = ["centrifuge-python>=0.6"]
 [tool.uv.build-backend]
 module-name = [
   "agentpool",
+  "agentpool_bot",
   "agentpool_config",
   "agentpool_cli",
   "agentpool_commands",
