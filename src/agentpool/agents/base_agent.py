@@ -1271,6 +1271,7 @@ class BaseAgent[TDeps = None, TResult = str](MessageNode[TDeps, TResult]):
         _COMMAND_EVENTS.set(event_queue.put)
         cmd_ctx = self._command_store.create_context(data=self.get_context())
         command_str = f"{cmd_name} {args}".strip()
+        execute_task: asyncio.Task[Any] | None = None
         try:
             coro = self._command_store.execute_command(command_str, cmd_ctx)
             execute_task = asyncio.create_task(coro)
@@ -1310,6 +1311,10 @@ class BaseAgent[TDeps = None, TResult = str](MessageNode[TDeps, TResult]):
             yield CommandCompleteEvent(command=cmd_name, success=success)
 
         finally:
+            # The stream was closed or cancelled: the command goes with it
+            if execute_task is not None and not execute_task.done():
+                execute_task.cancel()
+                await asyncio.wait([execute_task])
             _COMMAND_EVENTS.set(previous)
 
     async def run_stream_with_commands(

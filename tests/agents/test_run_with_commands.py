@@ -56,3 +56,28 @@ async def test_unknown_command_is_the_prompt(agent: Agent[Any]) -> None:
     output, reply = await _run(agent, "/nonsense please")
     assert output == []
     assert reply == "model saw: /nonsense please"
+
+
+async def test_closing_the_stream_cancels_the_running_command() -> None:
+    import asyncio
+
+    started, cancelled = asyncio.Event(), asyncio.Event()
+
+    async def run(ctx: Any, args: list[str], kwargs: dict[str, str]) -> None:
+        await ctx.print("working")
+        started.set()
+        try:
+            await asyncio.Event().wait()  # Runs until cancelled
+        except asyncio.CancelledError:
+            cancelled.set()
+            raise
+
+    agent = Agent.from_callback(name="echo", callback=lambda prompt: prompt)
+    agent.command_store.register_command(Command.from_raw(run, name="slow", description="Slow"))
+    stream = agent.run_stream_with_commands("/slow")
+    async for event in stream:
+        if isinstance(event, CommandOutputEvent):
+            break
+    await stream.aclose()  # type: ignore[attr-defined]  # ty:ignore[unresolved-attribute]
+    await asyncio.wait_for(cancelled.wait(), 2)
+    assert started.is_set()
