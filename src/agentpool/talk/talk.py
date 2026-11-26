@@ -413,19 +413,19 @@ class Talk[TTransmittedData = Any]:
                 results = []
                 # Get latest message for each agent
                 for target in self.targets:
-                    if queue := self._pending_messages[target.name]:
+                    # Taken out first: what arrives while it runs waits for the next trigger
+                    if queue := self._pending_messages.pop(target.name, None):
                         latest = queue[-1]
                         if resp := await self._process_for_target(latest, target, prompt):
                             results.append(resp)
-                        queue.clear()
                 return results
 
             case "concat":
                 results = []
                 # Concat messages per agent
                 for target in self.targets:
-                    queue = self._pending_messages[target.name]
-                    if not queue:
+                    # Taken out first: what arrives while it runs waits for the next trigger
+                    if not (queue := self._pending_messages.pop(target.name, None)):
                         continue
 
                     base = queue[-1]
@@ -440,7 +440,6 @@ class Talk[TTransmittedData = Any]:
 
                     if response := await self._process_for_target(merged, target, prompt):
                         results.append(response)
-                    queue.clear()
 
                 return results
             case _:

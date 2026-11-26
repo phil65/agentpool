@@ -159,3 +159,25 @@ async def test_group_stats_aggregation():
 
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])
+
+
+@pytest.mark.parametrize("strategy", ["latest", "concat"])
+async def test_messages_queued_while_the_queue_is_processed_are_kept(strategy: str) -> None:
+    """A message arriving during ``trigger()`` waits for the next one; it isn't erased."""
+    from agentpool.messaging import ChatMessage
+
+    source = Agent[str](model="test", name="src")
+    target = Agent[str](model="test", name="dst")
+    talk = Talk(source, [target], queued=True, queue_strategy=strategy)  # type: ignore[arg-type]  # ty:ignore[invalid-argument-type]
+    processed: list[str] = []
+
+    async def process(message: ChatMessage, target: object, prompt: object) -> None:
+        processed.append(str(message.content))
+        if len(processed) == 1:  # The source answers again meanwhile
+            talk._pending_messages["dst"].append(ChatMessage(content="late", role="assistant"))
+
+    talk._process_for_target = process  # type: ignore[method-assign]  # ty:ignore[invalid-assignment]
+    talk._pending_messages["dst"].append(ChatMessage(content="early", role="assistant"))
+    await talk.trigger()
+    await talk.trigger()
+    assert processed == ["early", "late"]
