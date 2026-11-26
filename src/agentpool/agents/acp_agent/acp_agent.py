@@ -412,6 +412,14 @@ class ACPAgent[TDeps = None](BaseAgent[TDeps, str]):
     async def __aenter__(self) -> Self:
         """Start the subprocess (or connect to the remote agent) and initialize ACP."""
         await super().__aenter__()
+        try:
+            await self._connect_backend()
+        except BaseException as exc:  # Stop what was started: process, bridge, connection
+            await self.__aexit__(type(exc), exc, exc.__traceback__)
+            raise
+        return self
+
+    async def _connect_backend(self) -> None:
         await self._setup_toolsets()
         try:
             if self._url is not None:
@@ -441,7 +449,6 @@ class ACPAgent[TDeps = None](BaseAgent[TDeps, str]):
         except SubprocessError as e:
             raise RuntimeError(str(e)) from e
         await anyio.sleep(0.3)
-        return self
 
     async def __aexit__(
         self,
@@ -547,6 +554,8 @@ class ACPAgent[TDeps = None](BaseAgent[TDeps, str]):
                 self.log.exception("Error closing remote ACP transport")
             self._transport_stack = None
 
+        if self._process and self._process.returncode is not None:  # Exited by itself
+            self._process = None
         if self._process:
             try:
                 self._process.terminate()
@@ -803,6 +812,11 @@ class ACPAgent[TDeps = None](BaseAgent[TDeps, str]):
         """Forward mode change to remote ACP server."""
         if not self._api or not self._sdk_session_id or not self._state:
             raise RuntimeError("Not connected to ACP server")
+        from aclientp.schema import BooleanSessionConfigOption
+
+        # Boolean options are the categories with the values "true" and "false"
+        if isinstance(mode_id, bool):
+            mode_id = str(mode_id).lower()
         available_modes = await self.get_modes()
         if matching_category := next((c for c in available_modes if c.id == category_id), None):
             valid_ids = {str(m.value) for m in matching_category.available_modes}
@@ -813,13 +827,17 @@ class ACPAgent[TDeps = None](BaseAgent[TDeps, str]):
             raise UnknownCategoryError(category_id, sorted(available_cats))
         if self._state.config_options:
             assert category_id
+            is_boolean = any(
+                isinstance(o, BooleanSessionConfigOption) and o.id == category_id
+                for o in self._state.config_options
+            )
+            value: str | bool = mode_id == "true" if is_boolean else mode_id
             response = await self._api.set_session_config_option(
-                self._sdk_session_id, category_id, mode_id
+                self._sdk_session_id, category_id, value
             )
             if response and response.config_options:
                 self._state.config_options = list(response.config_options)
         elif category_id == "mode":
-            assert isinstance(mode_id, str)
             await self._api.set_session_mode(self._sdk_session_id, mode_id)
             if self._state.modes:
                 self._state.modes.current_mode_id = mode_id

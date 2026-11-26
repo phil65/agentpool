@@ -404,9 +404,17 @@ class CodexAgent[TDeps = None, OutputDataT = str](BaseAgent[TDeps, OutputDataT])
 
     async def __aenter__(self) -> Self:
         """Start Codex client and create or resume thread."""
+        await super().__aenter__()
+        try:
+            await self._connect_backend()
+        except BaseException as exc:  # Stop what was started: client, bridge
+            await self.__aexit__(type(exc), exc, exc.__traceback__)
+            raise
+        return self
+
+    async def _connect_backend(self) -> None:
         from codexed import CodexClient
 
-        await super().__aenter__()
         await self._setup_toolsets()
         # Collect MCP servers: extra (bridge) + configured servers
         # Build dict mapping server name -> McpServerConfig (Codex type)
@@ -435,7 +443,6 @@ class CodexAgent[TDeps = None, OutputDataT = str](BaseAgent[TDeps, OutputDataT])
             self.log.info("Restored conversation history", turn_count=len(thread.turns))
         else:
             await self._start_thread()
-        return self
 
     async def _start_thread(self) -> None:
         """Start a new Codex thread for the session acting."""

@@ -24,6 +24,7 @@ from aclientp.schema import (
     AgentThoughtChunk,
     AudioContentBlock,
     BlobResourceContents,
+    BooleanSessionConfigOption,
     CompactionUpdate,
     ContentToolCallContent,
     EmbeddedResourceContentBlock,
@@ -32,7 +33,6 @@ from aclientp.schema import (
     Notice,
     PromptSuggestionsUpdate,
     ResourceContentBlock,
-    SelectSessionConfigOption,
     SessionConfigSelectOption,
     TerminalToolCallContent,
     TextContentBlock,
@@ -321,6 +321,23 @@ def _to_native_category(
             return "other"
 
 
+def _boolean_category(option: BooleanSessionConfigOption) -> ModeCategory:
+    """A boolean option as a category with the values ``"true"`` and ``"false"``."""
+    from agentpool.agents.modes import ModeCategory, ModeInfo
+
+    modes = [
+        ModeInfo(value=str(flag).lower(), name=name, category_id=option.id)
+        for flag, name in ((True, "On"), (False, "Off"))
+    ]
+    return ModeCategory(
+        id=option.id,
+        name=option.name,
+        available_modes=modes,
+        current_mode_id=str(option.current_value).lower(),
+        category=_to_native_category(option.category),
+    )
+
+
 def to_native_modes(
     config_options: list[SessionConfigOption],
     available_modes: SessionModeState | None,
@@ -331,8 +348,8 @@ def to_native_modes(
 
     if config_options:
         for config_opt in config_options:
-            # Skip boolean config options - they don't map to mode categories
-            if not isinstance(config_opt, SelectSessionConfigOption):
+            if isinstance(config_opt, BooleanSessionConfigOption):
+                categories.append(_boolean_category(config_opt))
                 continue
             # Extract options from the config (ungrouped or grouped)
             mode_infos: list[ModeInfo] = []
