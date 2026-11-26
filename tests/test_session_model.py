@@ -180,6 +180,7 @@ async def test_agent_capabilities_and_base_fork_and_compact() -> None:
         native_fork=True,
         concurrent_sessions=True,
         session_instructions=True,
+        native_steer=True,
     )
     assert expected_native == Agent.CAPABILITIES
     assert ClaudeCodeAgent.CAPABILITIES.native_steer

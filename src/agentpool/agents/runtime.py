@@ -27,7 +27,7 @@ from contextvars import ContextVar
 from dataclasses import replace
 import time
 from types import MappingProxyType
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Literal
 
 from pydantic_ai import RunUsage
 
@@ -70,8 +70,24 @@ if TYPE_CHECKING:
     from agentpool.ui.base import InputProvider
 
 
+RunMode = Literal["queue", "steer"]
+"""What a run does when another run of the same session is in progress.
+
+``queue`` (default): wait until the running turn (and runs queued before) finished, then
+run as a new turn. ``steer``: deliver the prompt into the running turn at its next model
+step (where the backend supports it, ``capabilities.native_steer``; text prompts only,
+else queued). To stop the running turn and replace it: ``interrupt()``, then run.
+"""
+
+
 class SessionRuntime[TDeps = Any, TResult = Any]:
-    """One session's turns on an agent instance, and what they change while running."""
+    """One session's turns on an agent instance, and what they change while running.
+
+    Runs of one session run one at a time (``run_stream`` waits for the running one, see
+    :data:`RunMode`), except runs started from inside the running turn (a tool calling its
+    own agent): the active runtime of the context (:func:`active_runtime`) says so, and they
+    run nested, as before, instead of waiting for themselves.
+    """
 
     def __init__(
         self, agent: BaseAgent[TDeps, TResult], session: Session, *, default: bool = False
@@ -103,13 +119,24 @@ class SessionRuntime[TDeps = Any, TResult = Any]:
         """Tasks this session's turns started that still run, by task id."""
         self.last_turn: Turn[TResult] | None = None
         """The last turn of the running (or last) ``run_stream``, however it ended."""
-        """ID of the user message of the prompt group running (e.g. file changes record it)."""
+        self._turn_lock = asyncio.Lock()
+        """Held by the running (outermost) ``run_stream``: other runs of the session queue."""
+        self.waiting = 0
+        """Runs waiting for the running one (queued; they keep the runtime alive)."""
+        self._run_done: asyncio.Future[Turn[TResult] | None] | None = None
+        """Resolved with the last turn when the running ``run_stream`` ends (for steering)."""
+
+    @property
+    def running(self) -> bool:
+        """A ``run_stream`` of this session is in progress (a new run queues or steers)."""
+        return self._turn_lock.locked()
 
     @property
     def idle(self) -> bool:
         """Nothing runs, and nothing waits for the next turn."""
         return (
             self.active_runs == 0
+            and self.waiting == 0
             and not self.tasks  # Background tasks outlive their turn
             and not self.injections.has_queued()
             and not self.injections.has_pending()
@@ -121,7 +148,67 @@ class SessionRuntime[TDeps = Any, TResult = Any]:
         """The session as passed to the run: None for the agent's default session."""
         return None if self.is_default else self.session
 
-    async def run_stream(  # noqa: PLR0915
+    async def run_stream(
+        self,
+        *prompts: PromptCompatible,
+        mode: RunMode = "queue",
+        **kwargs: Any,
+    ) -> AsyncIterator[RichAgentStreamEvent[TResult]]:
+        """Run the prompts as this session's turn, then any queued during it.
+
+        Arguments as for ``BaseAgent.run_stream``; ``session_id`` only applies to the
+        default session (it re-points the agent's own session). ``user_message_id`` is the
+        ID of the given prompts' user message; queued prompts get their own.
+
+        While another run of the session is in progress, ``mode`` decides (see
+        :data:`RunMode`): queue behind it, or steer into it. A steered run yields the
+        running turn's final event once it ends (the answer that took the message in).
+        Runs from inside the running turn (same context) run nested at once.
+        """
+        if active_runtime(self.agent) is self:  # A nested self-call: don't wait for itself
+            async for event in self._run_stream_now(*prompts, **kwargs):
+                yield event
+            return
+        if mode == "steer" and self.running and (text := self._steerable(prompts)) is not None:
+            async for event in self._steer(text):
+                yield event
+            return
+        self.waiting += 1
+        try:
+            await self._turn_lock.acquire()
+        finally:
+            self.waiting -= 1
+        loop = asyncio.get_running_loop()
+        done: asyncio.Future[Turn[TResult] | None] = loop.create_future()
+        self._run_done = done
+        try:
+            async for event in self._run_stream_now(*prompts, **kwargs):
+                yield event
+        finally:
+            if not done.done():
+                done.set_result(self.last_turn)
+            self._run_done = None
+            self._turn_lock.release()
+
+    def _steerable(self, prompts: Sequence[PromptCompatible]) -> str | None:
+        """The text to steer with, if the prompts are text and the backend takes steering."""
+        if not self.agent.capabilities.native_steer:
+            return None
+        if not prompts or not all(isinstance(p, str) for p in prompts):
+            return None
+        return "\n\n".join(p for p in prompts if isinstance(p, str))
+
+    async def _steer(self, text: str) -> AsyncIterator[RichAgentStreamEvent[TResult]]:
+        """Steer ``text`` into the running turn; yield its final event once it ended."""
+        done = self._run_done
+        await self.agent.steer(text, session_id=self.session.session_id)
+        if done is None:
+            return
+        turn = await asyncio.shield(done)
+        if turn is not None and turn.result is not None:
+            yield StreamCompleteEvent(message=turn.result, turn=turn)
+
+    async def _run_stream_now(  # noqa: PLR0915
         self,
         *prompts: PromptCompatible,
         store_history: bool = True,
@@ -134,12 +221,7 @@ class SessionRuntime[TDeps = Any, TResult = Any]:
         deps: TDeps | None = None,
         event_handlers: Sequence[AnyEventHandlerType] | None = None,
     ) -> AsyncIterator[RichAgentStreamEvent[TResult]]:
-        """Run the prompts as this session's turn, then any queued during it.
-
-        Arguments as for ``BaseAgent.run_stream``; ``session_id`` only applies to the
-        default session (it re-points the agent's own session). ``user_message_id`` is the
-        ID of the given prompts' user message; queued prompts get their own.
-        """
+        """Run the prompts now (the caller holds the turn lock, or runs nested)."""
         agent = self.agent
         if self.is_default:
             effective_session_id = await self._start_default_session(prompts, session_id)

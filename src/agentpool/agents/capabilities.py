@@ -14,7 +14,8 @@ class AgentCapabilities:
     """
 
     native_steer: bool = False
-    """Backend natively accepts mid-turn steering input without ending the turn."""
+    """Backend accepts mid-turn steering input without ending the turn (``steer()``,
+    ``run_stream(mode="steer")``; native agents take it in after the running tool call)."""
 
     structured_output: bool = False
     """Backend natively enforces a JSON Schema / Pydantic output type."""

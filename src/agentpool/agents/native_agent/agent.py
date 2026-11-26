@@ -152,6 +152,7 @@ class Agent[TDeps = None, OutputDataT = str](BaseAgent[TDeps, OutputDataT]):
         native_fork=True,
         concurrent_sessions=True,
         session_instructions=True,  # Added per run (see _session_instructions)
+        native_steer=True,  # steer(): injected after the running tool call (post-tool hook)
     )
 
     def __init__(  # noqa: PLR0915

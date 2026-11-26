@@ -206,6 +206,12 @@ need to stay distinct:
    too: a native agent's tool confirmation and model, set within a session
    (`agent.use_session(...)`), go to `SessionOverrides` (`modes`, `model`); servers apply
    them that way. Native turns of different sessions run concurrently on one instance.
+   Runs of the *same* session (2026-11-26, #59.1c) don't: a second `run_stream` queues until
+   the running one finished (`mode="queue"`, default), or with `mode="steer"` delivers its
+   text into the running turn (`steer()`, on backends with `native_steer`; native agents take
+   it in after the running tool call) and yields that turn's final event. Runs from inside the
+   running turn (the context's active runtime is this one: a tool calling its own agent) run
+   nested at once. Stop and replace: `interrupt()`, then run.
    **External agents over one connection (2026-11-22):** `BaseAgent._sdk_session_id` (the
    backend's own session) resolves to the running session's `SessionData.sdk_session_id`, and
    `SessionRegistry.open()` restores a session with it after a restart. T3 is the first

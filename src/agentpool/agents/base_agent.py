@@ -23,7 +23,7 @@ from agentpool.agents.capabilities import AgentCapabilities
 from agentpool.agents.definition import AgentDefinition
 from agentpool.agents.events import StreamCompleteEvent, resolve_event_handlers
 from agentpool.agents.modes import ModeInfo
-from agentpool.agents.runtime import SessionRuntime, activate, active_runtime
+from agentpool.agents.runtime import RunMode, SessionRuntime, activate, active_runtime
 from agentpool.hooks import AgentHooks
 from agentpool.log import get_logger
 from agentpool.messaging import ChatMessage, MessageHistory, MessageNode
@@ -1175,6 +1175,7 @@ class BaseAgent[TDeps = None, TResult = str](MessageNode[TDeps, TResult]):
         input_provider: InputProvider | None = None,
         deps: TDeps | None = None,
         event_handlers: Sequence[AnyEventHandlerType] | None = None,
+        mode: RunMode = "queue",
     ) -> AsyncIterator[RichAgentStreamEvent[TResult]]:
         """Run agent with streaming output.
 
@@ -1197,12 +1198,18 @@ class BaseAgent[TDeps = None, TResult = str](MessageNode[TDeps, TResult]):
             input_provider: Optional input provider
             deps: Optional dependencies
             event_handlers: Optional event handlers
+            mode: While another run of the session is in progress: ``"queue"`` behind it
+                (default; a new turn once it finished) or ``"steer"`` the prompt into it
+                at its next model step (text, on backends with ``native_steer``; else
+                queued). Runs from inside the running turn (a tool calling its own agent)
+                don't wait. See :data:`agentpool.agents.runtime.RunMode`.
 
         Yields:
             Stream events during execution
         """
         async for event in self.runtime(session).run_stream(
             *prompts,
+            mode=mode,
             store_history=store_history,
             message_id=message_id,
             user_message_id=user_message_id,
@@ -1479,6 +1486,7 @@ class BaseAgent[TDeps = None, TResult = str](MessageNode[TDeps, TResult]):
         deps: TDeps | None = None,
         input_provider: InputProvider | None = None,
         event_handlers: Sequence[AnyEventHandlerType] | None = None,
+        mode: RunMode = "queue",
     ) -> ChatMessage[TResult]:
         """Run agent with prompt and get response.
 
@@ -1500,6 +1508,8 @@ class BaseAgent[TDeps = None, TResult = str](MessageNode[TDeps, TResult]):
             deps: Optional dependencies for the agent
             input_provider: Optional input provider for the agent
             event_handlers: Optional event handlers for this run (overrides agent's handlers)
+            mode: While another run of the session is in progress: queue or steer (see
+                :meth:`run_stream`); a steered run returns the running turn's answer
 
         Returns:
             ChatMessage containing response and run information
@@ -1522,6 +1532,7 @@ class BaseAgent[TDeps = None, TResult = str](MessageNode[TDeps, TResult]):
             deps=deps,
             input_provider=input_provider,
             event_handlers=event_handlers,
+            mode=mode,
         ):
             if isinstance(event, StreamCompleteEvent):
                 final_message = event.message
@@ -1544,6 +1555,7 @@ class BaseAgent[TDeps = None, TResult = str](MessageNode[TDeps, TResult]):
         deps: TDeps | None = None,
         input_provider: InputProvider | None = None,
         event_handlers: Sequence[AnyEventHandlerType] | None = None,
+        mode: RunMode = "queue",
     ) -> Turn[TResult]:
         """Run the prompts as a turn and return the :class:`Turn`, however it ended.
 
@@ -1570,6 +1582,7 @@ class BaseAgent[TDeps = None, TResult = str](MessageNode[TDeps, TResult]):
                 deps=deps,
                 input_provider=input_provider,
                 event_handlers=event_handlers,
+                mode=mode,
             ):
                 pass
         except asyncio.CancelledError:
