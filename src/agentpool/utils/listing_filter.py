@@ -6,6 +6,7 @@ grep, diagnostics, skill files) leave out ``.git``, ``.venv`` and ignored build 
 so the filtering happens here, for any filesystem: hidden path segments below the
 listed root are dropped everywhere; on a local filesystem, ignored paths too
 (ripgrep's rules: ``.gitignore`` inside a git repository, ``.ignore``, ``.rgignore``).
+Paths through symlinks are kept when the symlink is (see ``_visible_local_paths``).
 """
 
 from __future__ import annotations
@@ -85,20 +86,47 @@ async def filter_listing(
     depth = max((len(parts) for _, parts in candidates), default=0)
     if depth == 0:
         return [path for path, _ in candidates]
-    allowed = await asyncio.to_thread(_visible_local_paths, local_root, depth)
-    kept: list[str] = []
-    for path, parts in candidates:
-        local = _local_path(fs, path)
-        if not parts or local is None or local in allowed:
-            kept.append(path)
-    return kept
+    locals_ = [(path, parts, _local_path(fs, path)) for path, parts in candidates]
+    wanted = [local for _, parts, local in locals_ if parts and local is not None]
+    allowed = await asyncio.to_thread(_visible_local_paths, local_root, depth, wanted)
+    return [
+        path for path, parts, local in locals_ if not parts or local is None or local in allowed
+    ]
 
 
-def _visible_local_paths(root: str, max_depth: int) -> set[str]:
+def _walk(root: str, max_depth: int) -> set[str]:
+    """Paths below ``root`` ripgrep lists (as given: ``absolute`` would resolve symlinks)."""
     import ripgrep_rs
 
-    found = ripgrep_rs.files(paths=[root], include_dirs=True, absolute=True, max_depth=max_depth)
+    found = ripgrep_rs.files(paths=[root], include_dirs=True, max_depth=max_depth)
     return {os.path.normpath(p) for p in found}
+
+
+def _visible_local_paths(root: str, max_depth: int, wanted: Iterable[str]) -> set[str]:
+    """The visible paths below ``root``, including the ``wanted`` ones behind symlinks.
+
+    ripgrep doesn't follow symlinks: it lists a symlinked directory but nothing in it,
+    and leaves out symlinked files. A wanted path whose parent is visible is decided
+    here: below a symlinked directory by a walk from it (the target's own ignore files
+    apply, the listed root's don't), a symlinked file is kept.
+    """
+    root = str(Path(root).absolute())  # Not resolved: the paths keep their symlinks
+    allowed = _walk(root, max_depth)
+    walked: set[str] = set()
+    # Shallow ones first: a walk from a symlinked directory decides its descendants
+    for path in sorted(wanted, key=lambda p: p.count(os.sep)):
+        if path in allowed:
+            continue
+        parent = str(Path(path).parent)
+        if parent != root and parent not in allowed:
+            continue  # Below an ignored directory (or a hidden one)
+        if parent != root and parent not in walked and Path(parent).is_symlink():
+            walked.add(parent)
+            depth_left = max_depth - len(Path(parent).relative_to(root).parts)
+            allowed |= _walk(parent, max(depth_left, 1))
+        elif Path(path).is_symlink() and not Path(path).is_dir():
+            allowed.add(path)
+    return allowed
 
 
 async def filter_listing_detail(

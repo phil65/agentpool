@@ -83,6 +83,41 @@ async def test_filter_listing_inside_hidden_root(project: Path):
     assert _rel(project / ".venv", kept) == {"lib/site.py"}
 
 
+async def test_filter_listing_keeps_paths_through_symlinks(project: Path):
+    """Symlinked dirs and files are judged like the rest (ripgrep doesn't follow them)."""
+    shared = project.parent / "shared"
+    (shared / "nested").mkdir(parents=True)
+    (shared / "x.py").write_text("x = 1\n")
+    (shared / "nested" / "y.py").write_text("y = 1\n")
+    (shared / "z.log").write_text("ignored in the target\n")
+    (shared / ".ignore").write_text("*.log\n")  # The target's own rules
+    (project / "linked").symlink_to(shared, target_is_directory=True)
+    (project / "dist").symlink_to(shared, target_is_directory=True)
+    (project / "alias.py").symlink_to(project / "src" / "a.py")
+    (project / ".gitignore").write_text("node_modules/\nbuild/\n*.log\ndist\n")
+    rels = [
+        "linked",
+        "linked/x.py",
+        "linked/nested",
+        "linked/nested/y.py",
+        "linked/z.log",
+        "alias.py",
+        "dist",
+        "dist/x.py",
+        "build/out.py",
+        "src/a.py",
+    ]
+    kept = await filter_listing(_fs(), str(project), [str(project / rel) for rel in rels])
+    assert _rel(project, kept) == {
+        "linked",
+        "linked/x.py",
+        "linked/nested",
+        "linked/nested/y.py",
+        "alias.py",
+        "src/a.py",
+    }
+
+
 async def test_filter_listing_non_local_drops_only_hidden():
     fs = MemoryFileSystem(skip_instance_cache=True)
     fs.store = {}
