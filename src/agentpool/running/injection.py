@@ -3,11 +3,11 @@
 from __future__ import annotations
 
 import inspect
-import typing
 from typing import TYPE_CHECKING, Any
 
 from agentpool.log import get_logger
 from agentpool.utils.inspection import get_fn_qualname
+from agentpool.utils.signatures import get_forwardref_signature, resolve_type_hints
 
 
 if TYPE_CHECKING:
@@ -48,8 +48,11 @@ def inject_nodes[T, **P](
     provided_kwargs: dict[str, Any],
 ) -> dict[str, MessageNode[Any, Any]]:
     """Get nodes to inject based on function signature."""
-    hints = typing.get_type_hints(func)
-    params = inspect.signature(func).parameters
+    import agentpool
+
+    # node types imported only under TYPE_CHECKING are looked up in agentpool's namespace
+    hints = resolve_type_hints(func, vars(agentpool))
+    params = get_forwardref_signature(func).parameters
     logger.debug(
         "Injecting nodes", module=func.__module__, name=get_fn_qualname(func), type_hint=hints
     )

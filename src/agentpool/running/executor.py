@@ -8,12 +8,14 @@ import inspect
 from pathlib import Path
 import sys
 from types import UnionType
-from typing import TYPE_CHECKING, Any, Literal, Union, get_args, get_origin, get_type_hints
+from typing import TYPE_CHECKING, Any, Literal, Union, get_args, get_origin
 
 import anyio
 
+import agentpool
 from agentpool.log import get_logger
 from agentpool.running import with_nodes
+from agentpool.utils.signatures import resolve_type_hints
 
 
 if TYPE_CHECKING:
@@ -171,7 +173,7 @@ async def execute_single(
             kwargs.update(inputs)
 
         # Get type hints for the function
-        hints = get_type_hints(func.func)
+        hints = resolve_type_hints(func.func, vars(agentpool))
 
         # Add and validate dependency results
         for dep in func.depends_on:
@@ -201,19 +203,19 @@ def _validate_dependency_types(functions: list[NodeFunction]) -> None:
     # Get return types for all functions
     return_types = {}
     for func in functions:
-        hints = get_type_hints(func.func)
+        hints = resolve_type_hints(func.func, vars(agentpool))
         if "return" in hints:
             return_types[func.name] = hints["return"]
 
     # Check each function's dependencies
     for func in functions:
-        hints = get_type_hints(func.func)
+        hints = resolve_type_hints(func.func, vars(agentpool))
         for dep in func.depends_on:
             # Only validate if both dependency return type AND parameter are typed
             if dep in hints and dep in return_types:
                 expected_type = hints[dep]
                 provided_type = return_types[dep]
-                if expected_type != provided_type:
+                if Any not in (expected_type, provided_type) and expected_type != provided_type:
                     msg = (
                         f"Type mismatch in {func.name}: "
                         f"dependency {dep!r} is typed as {expected_type}, "

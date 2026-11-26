@@ -708,7 +708,7 @@ def codex_thread_options(raw: Mapping[str, Any]) -> dict[str, Any]:
 
 def options_taken_by(method: Callable[..., Any], options: Mapping[str, Any]) -> dict[str, Any]:
     """The ``options`` that ``method`` takes as keyword parameters (resume and fork take less)."""
-    import inspect
+    from agentpool.utils.signatures import get_forwardref_signature
 
-    parameters = inspect.signature(method).parameters
+    parameters = get_forwardref_signature(method).parameters
     return {name: value for name, value in options.items() if name in parameters}

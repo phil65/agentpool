@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from collections.abc import Sequence as TypingSequence
-import inspect
 from typing import Annotated, Literal
 import warnings
 
@@ -13,6 +12,7 @@ from upathtools import to_upath
 
 from agentpool.common_types import JsonObject
 from agentpool.utils.importing import import_callable
+from agentpool.utils.signatures import get_forwardref_signature
 
 
 class BaseResourceLoaderConfig(Schema):
@@ -309,7 +309,7 @@ class CallableResourceLoaderConfig(BaseResourceLoaderConfig):
     def is_templated(self) -> bool:
         """Callable resources are templated if they take parameters."""
         fn = import_callable(self.import_path)
-        sig = inspect.signature(fn)
+        sig = get_forwardref_signature(fn)
         return bool(sig.parameters)
 
 

@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from collections.abc import Callable, Sequence  # noqa: TC003
-import inspect
 from pathlib import Path
 from typing import TYPE_CHECKING, Annotated, Any, Literal, assert_never
 from uuid import UUID
@@ -19,6 +18,7 @@ from agentpool import log
 from agentpool.models.fields import OutputTypeField, SystemPromptField  # noqa: TC001
 from agentpool.prompts.prompts import PromptMessage, StaticPrompt
 from agentpool.resource_providers import StaticResourceProvider
+from agentpool.utils.signatures import get_forwardref_signature
 from agentpool_config import NativeAgentToolConfig
 from agentpool_config.agentpool_tools import BashToolConfig
 from agentpool_config.builtin_tools import BaseBuiltinToolConfig
@@ -64,7 +64,7 @@ def _validate_processor_signature(processor: Callable[..., Any]) -> None:
     Raises:
         ValueError: If signature is not valid.
     """
-    sig = inspect.signature(processor)
+    sig = get_forwardref_signature(processor)
     params = list(sig.parameters.values())
     if len(params) not in (1, _MAX_PROCESSOR_PARAMS):
         msg = (

@@ -11,11 +11,11 @@ permissions, hooks, MCP, sessions), is refused.
 from __future__ import annotations
 
 import dataclasses
-import inspect
-import typing
 from typing import TYPE_CHECKING, Any
 
 from pydantic import BaseModel, TypeAdapter, ValidationError
+
+from agentpool.utils.signatures import get_forwardref_signature, resolve_type_hints
 
 
 if TYPE_CHECKING:
@@ -27,8 +27,8 @@ def dataclass_field_types(cls: type, globalns: Mapping[str, Any]) -> dict[str, A
     if not (isinstance(cls, type) and dataclasses.is_dataclass(cls)):
         msg = f"{cls!r} is not a dataclass"
         raise TypeError(msg)
-    hints = typing.get_type_hints(cls, globalns=dict(globalns))
-    return {f.name: hints[f.name] for f in dataclasses.fields(cls) if f.init}
+    hints = resolve_type_hints(cls, globalns)
+    return {f.name: hints.get(f.name, Any) for f in dataclasses.fields(cls) if f.init}
 
 
 def model_field_types(cls: type[BaseModel]) -> dict[str, Any]:
@@ -38,10 +38,10 @@ def model_field_types(cls: type[BaseModel]) -> dict[str, Any]:
 
 def parameter_types(fn: Callable[..., Any], globalns: Mapping[str, Any]) -> dict[str, Any]:
     """The keyword parameters of ``fn`` and their types (``self`` and ``**kwargs`` left out)."""
-    hints = typing.get_type_hints(fn, globalns=dict(globalns))
+    hints = resolve_type_hints(fn, globalns)
     return {
         name: hints.get(name, Any)
-        for name, param in inspect.signature(fn).parameters.items()
+        for name, param in get_forwardref_signature(fn).parameters.items()
         if name != "self" and param.kind not in (param.VAR_POSITIONAL, param.VAR_KEYWORD)
     }
 

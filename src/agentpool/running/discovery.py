@@ -4,11 +4,11 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from dataclasses import dataclass, field
-import inspect
 from typing import TYPE_CHECKING, Any, Protocol, cast, overload
 
 from agentpool.log import get_logger
 from agentpool.utils.inspection import get_fn_name
+from agentpool.utils.signatures import get_forwardref_signature
 
 
 if TYPE_CHECKING:
@@ -43,7 +43,7 @@ class NodeFunction:
         self.name = get_fn_name(self.func)
         # Extract default inputs from function signature
 
-        sig = inspect.signature(self.func)
+        sig = get_forwardref_signature(self.func)
         self.default_inputs = {
             name: param.default
             for name, param in sig.parameters.items()

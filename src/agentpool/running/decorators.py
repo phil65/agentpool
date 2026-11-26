@@ -3,10 +3,10 @@
 from __future__ import annotations
 
 from functools import wraps
-import inspect
 from typing import TYPE_CHECKING, overload
 
 from agentpool.running.injection import inject_nodes
+from agentpool.utils.signatures import get_forwardref_signature
 
 
 if TYPE_CHECKING:
@@ -38,7 +38,7 @@ def with_nodes[T, **P](
         @wraps(func)
         async def wrapper(*args: P.args, **kwargs: P.kwargs) -> T:
             # Convert args to kwargs for injection check
-            sig = inspect.signature(func)
+            sig = get_forwardref_signature(func)
             bound_args = sig.bind_partial(*args)
             all_kwargs = {**bound_args.arguments, **kwargs}
             # Get needed nodes

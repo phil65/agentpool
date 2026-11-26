@@ -18,6 +18,7 @@ from agentpool.log import get_logger
 from agentpool.mcp_server import MCPClient
 from agentpool.utils import importing
 from agentpool.utils.inspection import execute
+from agentpool.utils.signatures import get_forwardref_signature
 
 
 if TYPE_CHECKING:
@@ -346,7 +347,7 @@ class DynamicPrompt(BasePrompt):
         from docstring_parser import parse as parse_docstring
         from mcp.types import Prompt as MCPPrompt
 
-        sig = inspect.signature(self.fn)
+        sig = get_forwardref_signature(self.fn)
         # hints = get_type_hints(self.fn, include_extras=True, localns=locals())
         if docstring := inspect.getdoc(self.fn):
             parsed = parse_docstring(docstring)
