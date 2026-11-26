@@ -40,6 +40,14 @@ class BaseTTSEventHandler:
         self._min_text_length = min_text_length
         self._mode: TTSMode = mode
         self._tts_stream: TTSStream | None = None
+        # async_cancel: the last run's stream, still playing in the background
+        # after its context exited; the next run cancels it
+        self._previous_stream: TTSStream | None = None
+
+    @property
+    def _stream_mode(self) -> Literal["sync_sentence", "sync_run", "async_queue"]:
+        """The mode for anyvoice: async_cancel is async_queue plus cancel() on the next run."""
+        return "async_queue" if self._mode == "async_cancel" else self._mode
 
     @abstractmethod
     async def _create_stream(self) -> TTSStream:
@@ -63,6 +71,8 @@ class BaseTTSEventHandler:
         """Close the TTS stream if open."""
         if self._tts_stream is not None:
             await self._tts_stream.__aexit__(None, None, None)
+            if self._mode == "async_cancel":
+                self._previous_stream = self._tts_stream
             self._tts_stream = None
 
     async def __call__(self, ctx: AgentContext[Any], event: RichAgentStreamEvent[Any]) -> None:
@@ -71,9 +81,12 @@ class BaseTTSEventHandler:
 
         match event:
             case RunStartedEvent():
-                # For async_cancel mode, cancel any pending audio from previous run
-                if self._mode == "async_cancel" and self._tts_stream is not None:
-                    await self._tts_stream.cancel()
+                # async_cancel: a new run cuts off the previous run's audio
+                if self._mode == "async_cancel":
+                    for stream in (self._previous_stream, self._tts_stream):
+                        if stream is not None:
+                            await stream.cancel()
+                    self._previous_stream = None
 
             case (
                 PartStartEvent(part=TextPart(content=delta))
@@ -131,7 +144,7 @@ class OpenAITTSEventHandler(BaseTTSEventHandler):
         return TTSStream(
             session,
             sink=sink,
-            mode=self._mode,
+            mode=self._stream_mode,
             min_text_length=self._min_text_length,
         )
 
@@ -179,6 +192,6 @@ class EdgeTTSEventHandler(BaseTTSEventHandler):
         return TTSStream(
             session,
             sink=sink,
-            mode=self._mode,
+            mode=self._stream_mode,
             min_text_length=self._min_text_length,
         )
