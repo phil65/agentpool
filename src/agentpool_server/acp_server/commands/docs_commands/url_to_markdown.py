@@ -64,11 +64,11 @@ class UrlToMarkdownCommand(NodeCommand):
                 kind="fetch",
             )
             response = await anyenv.get(api_url, params=params, timeout=30.0)
-            markdown_content = await response.text()
+            markdown_content = response.text
             page_title = ""
-            if "X-Title" in response.headers:
-                page_title = urllib.parse.unquote(response.headers["X-Title"])
-                page_title = f" - {page_title}"
+            # Header names are lower-case in response.headers.
+            if x_title := response.headers.get("x-title"):
+                page_title = f" - {urllib.parse.unquote(x_title)}"
             # Stage the markdown content for use in agent context
             content = f"Webpage content from {url}{page_title}:\n\n{markdown_content}"
             staged_part = UserPromptPart(content=content)

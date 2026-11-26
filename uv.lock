@@ -239,7 +239,7 @@ requires-dist = [
     { name = "aclientp", extras = ["bridge", "http2", "tracing", "websocket"], specifier = ">=0.7.1" },
     { name = "ag-ui-protocol", marker = "extra == 'ag-ui'", specifier = ">=0.1.10" },
     { name = "alembic", specifier = ">=1.16.5" },
-    { name = "anyenv", extras = ["httpx2"], specifier = ">=2.1.0" },
+    { name = "anyenv", extras = ["httpx2"], specifier = ">=3.0.0" },
     { name = "anyvoice", extras = ["tts-edge", "openai"], marker = "extra == 'tts'", specifier = ">=0.0.2" },
     { name = "apprise", marker = "extra == 'notifications'", specifier = ">=1.9.5" },
     { name = "ast-grep-py", marker = "extra == 'coding'", specifier = ">=0.40.0" },
@@ -594,7 +594,7 @@ wheels = [
 
 [[package]]
 name = "anyenv"
-version = "2.1.0"
+version = "3.0.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "aioitertools" },
@@ -602,9 +602,9 @@ dependencies = [
     { name = "appdirs" },
     { name = "universal-pathlib" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/72/71/ea8240c5e312b4e08292d7d719c6124d097df63aab1458fdc3b5c0b31a13/anyenv-2.1.0.tar.gz", hash = "sha256:7f856cce1ae2a2e80d8939d77f233884ceea719c81f50a24b00e2e67c7446c3a", size = 110715, upload-time = "2026-11-23T07:48:09.724Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/4f/3a/59fbbca32812b73101176ef557cdb410ffca529c65a69d656e3c7431ac03/anyenv-3.0.0.tar.gz", hash = "sha256:b1f295d5c97fb2e5142674854199449f0096d261501bc79aaead8864058788cc", size = 115190, upload-time = "2026-11-26T09:33:38.703Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/93/75/510d598f178efc8cf9bedb9f1a219d480f69886a2371565cba8fca5050d7/anyenv-2.1.0-py3-none-any.whl", hash = "sha256:6f60d6f94d0bd3b252d12e2f63806fddacb7875accf887950fac5d88e9ce6ae7", size = 166340, upload-time = "2026-11-23T07:48:08.219Z" },
+    { url = "https://files.pythonhosted.org/packages/53/dd/32329dba6cf04e57361e1e255e2035a2c22600861e3ee0a1bfa0640a40b8/anyenv-3.0.0-py3-none-any.whl", hash = "sha256:8f2c5376dc87895add993e3807d3674edbe32e4513646c32ec69fb046f976f24", size = 166332, upload-time = "2026-11-26T09:33:37.288Z" },
 ]
 
 [package.optional-dependencies]

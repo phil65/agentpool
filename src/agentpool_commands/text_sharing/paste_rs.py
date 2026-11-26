@@ -42,7 +42,7 @@ class PasteRsSharer(TextSharer):
         headers = {"Content-Type": "text/plain; charset=utf-8"}
         data = content.encode()
         response = await anyenv.request("POST", "https://paste.rs/", data=data, headers=headers)
-        url = (await response.text()).strip()
+        url = response.text.strip()
         ext = syntax or "txt"
         return ShareResult(url=f"{url}.{ext}", raw_url=url)
 
