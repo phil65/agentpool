@@ -679,9 +679,10 @@ and the migration step (§6) that should make the stopgap unnecessary.
   (one per `ModelResponse`), emitted by all agent types. This is independent of the session
   refactor and useful for ACP and AG-UI too.
 - **Status (2026-11-20): done** for native and Claude Code agents (`StepStartedEvent` /
-  `StepCompletedEvent` with per-request usage, finish reason and, for native agents, cost). Codex,
-  ACP and AG-UI agents don't expose individual model requests, so the V2 converter still infers
-  steps for them.
+  `StepCompletedEvent` with per-request usage, finish reason and, for native agents, cost). Codex
+  and Antigravity emit `StepCompletedEvent` alone (per-request usage from their usage updates; they
+  don't see a request start; Antigravity's with cost). ACP and AG-UI agents don't expose individual
+  model requests (nor their usage), so the V2 converter still infers steps for those four.
 
 ### 10.6 Two overlapping tool event vocabularies
 

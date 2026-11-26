@@ -24,6 +24,7 @@ from pydantic import BaseModel
 from agentpool.agents.antigravity_agent import AntigravityAgent
 from agentpool.agents.events import (
     RunStartedEvent,
+    StepCompletedEvent,
     StreamCompleteEvent,
     ToolCallCompleteEvent,
     ToolCallStartEvent,
@@ -54,6 +55,9 @@ class _StubConversation:
     turn_count: int = 0
     cancelled: bool = False
     last_turn_usage: UsageMetadata | None = None
+    total_usage: UsageMetadata = field(default_factory=UsageMetadata)
+    usage_after: dict[int, UsageMetadata] = field(default_factory=dict)
+    """Cumulative usage once the step at that position of the turn was received."""
     _last_turn_stop_reason: StopReason = StopReason.UNSPECIFIED
     _last_structured: Any | None = None
     _post_tool_results: dict[str, ToolResult] = field(default_factory=dict)
@@ -67,7 +71,9 @@ class _StubConversation:
         from google.antigravity.hooks.hooks import HookContext, PostToolCallHook
 
         steps = self.turns.pop(0) if self.turns else []
-        for step in steps:
+        for i, step in enumerate(steps):
+            if (usage := self.usage_after.get(i)) is not None:  # A model invocation ended
+                self.total_usage = usage
             # Trigger registered PostToolCallHook before terminal tool step
             if step.type == StepType.TOOL_CALL and step.status == StepStatus.DONE:
                 for call in step.tool_calls:
@@ -99,6 +105,7 @@ class _StubSDKAgent:
         post_tool_results: dict[str, ToolResult] | None = None,
         initial_history: list[Step] | None = None,
         usage: UsageMetadata | None = None,
+        usage_after: dict[int, UsageMetadata] | None = None,
     ) -> None:
         self.config = sdk_config
         self.is_started = False
@@ -107,6 +114,7 @@ class _StubSDKAgent:
             sdk_config=sdk_config,
             history=list(initial_history or []),
             last_turn_usage=usage,
+            usage_after=dict(usage_after or {}),
             _post_tool_results=dict(post_tool_results or {}),
         )
         self.entered = False
@@ -227,6 +235,64 @@ async def test_stream_text_tool_and_usage(tmp_path: Path) -> None:
     assert msg.finish_reason == "stop"
     assert msg.usage.input_tokens == 50
     assert msg.usage.output_tokens == 20
+
+
+async def test_cost_and_a_step_per_model_invocation(tmp_path: Path) -> None:
+    """Usage the SDK reports per model invocation becomes a step; the answer is priced."""
+    call = ToolCall(id="t:1", step_id="t:1", name="view_file", args={"path": "/tmp/a.py"})
+    tool_step = Step(
+        id="t:1",
+        step_index=1,
+        type=StepType.TOOL_CALL,
+        source=StepSource.MODEL,
+        target=StepTarget.ENVIRONMENT,
+        status=StepStatus.DONE,
+        tool_calls=[call],
+    )
+    text_step = Step(
+        id="t:2",
+        step_index=2,
+        type=StepType.TEXT_RESPONSE,
+        source=StepSource.MODEL,
+        target=StepTarget.USER,
+        status=StepStatus.DONE,
+        content="done",
+        content_delta="done",
+    )
+    first = UsageMetadata(
+        prompt_token_count=1000, candidates_token_count=100, total_token_count=1100
+    )
+    total = UsageMetadata(
+        prompt_token_count=2500, candidates_token_count=300, total_token_count=2800
+    )
+
+    def factory(cfg: SDKAgentConfig) -> Any:
+        return _StubSDKAgent(
+            cfg, [[tool_step, text_step]], usage=total, usage_after={0: first, 1: total}
+        )
+
+    agent = AntigravityAgent(
+        name="test-agy",
+        api_key="test-key",
+        model="gemini-2.5-flash",
+        save_dir=str(tmp_path),
+        enable_logging=False,
+        sdk_agent_factory=factory,
+    )
+    async with agent:
+        events = [event async for event in agent.run_stream("Read a.py")]
+
+    steps = [e for e in events if isinstance(e, StepCompletedEvent)]
+    assert [(s.usage.input_tokens, s.usage.output_tokens) for s in steps] == [
+        (1000, 100),
+        (1500, 200),
+    ]
+    assert all(s.cost is not None and s.cost > 0 for s in steps)
+    assert all(s.model_name == "gemini-2.5-flash" for s in steps)
+    message = events[-1].message
+    assert message.usage.input_tokens == 2500
+    assert message.cost_info is not None
+    assert message.cost_info.total_cost == sum(s.cost or 0 for s in steps)
 
 
 async def test_structured_output(tmp_path: Path) -> None:

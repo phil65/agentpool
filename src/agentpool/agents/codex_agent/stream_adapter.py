@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, Literal
+from uuid import uuid4
 
 from codexed.models import (
     ThreadTokenUsageUpdatedEvent,
@@ -21,12 +22,14 @@ from agentpool.agents.codex_agent.codex_converters import (
     _format_tool_result,
     _thread_item_to_tool_call_part,
     item_error,
+    to_request_usage,
 )
 from agentpool.agents.events import (
     CompactionEvent,
     PartDeltaEvent,
     PartStartEvent,
     PlanUpdateEvent,
+    StepCompletedEvent,
     TextContentItem,
     ToolCallCompleteEvent,
     ToolCallProgressEvent,
@@ -77,6 +80,7 @@ class CodexStreamedResponse(StreamedResponse):
         tool_outputs: dict[str, list[str]] = {}
         active_part: Literal["text", "thinking", "tool"] | None = None
         part_index = 0
+        reported_total: int | None = None  # The thread's total tokens at the last step
 
         async for event in self.stream:
             match event:
@@ -86,6 +90,16 @@ class CodexStreamedResponse(StreamedResponse):
                     self._turn_status = data.turn.status
                 case ThreadTokenUsageUpdatedEvent(params=data):
                     self._token_usage_data = data.token_usage.last
+                    # One update per model request (``last``); a repeated one (same
+                    # thread total) reports no new request
+                    total = data.token_usage.total.total_tokens
+                    if total != reported_total:
+                        reported_total = total
+                        yield StepCompletedEvent(
+                            step_id=str(uuid4()),
+                            usage=to_request_usage(data.token_usage.last),
+                            model_name=self._model_name,
+                        )
                 # === Stateful: Accumulate command execution output ===
                 case ItemCommandExecutionOutputDeltaNotification(params=data):
                     item_id = data.item_id

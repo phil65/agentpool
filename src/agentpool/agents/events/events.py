@@ -836,7 +836,11 @@ class StepStartedEvent:
 
 @dataclass(kw_only=True)
 class StepCompletedEvent:
-    """A model request finished, with the usage of this request alone."""
+    """A model request finished, with the usage of this request alone.
+
+    Agents that only learn of a request once it ended (Codex, Antigravity: from their
+    usage updates) emit it without a :class:`StepStartedEvent`.
+    """
 
     step_id: str
     """Identifier of the step (matches :class:`StepStartedEvent`)."""

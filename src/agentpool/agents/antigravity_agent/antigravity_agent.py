@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from contextlib import suppress
 from datetime import UTC, datetime
+from decimal import Decimal
 import os
 from pathlib import Path
 import time
@@ -13,6 +14,7 @@ from uuid import uuid4
 import anyenv
 import platformdirs
 from pydantic import TypeAdapter, ValidationError
+from pydantic_ai import RunUsage
 
 from agentpool.agents.antigravity_agent.converters import (
     antigravity_sdk_options,
@@ -22,6 +24,7 @@ from agentpool.agents.antigravity_agent.converters import (
     sanitize_mcp_server_name,
     steps_to_chat_messages,
     to_finish_reason,
+    to_request_usage,
     to_run_usage,
     user_content_to_antigravity,
 )
@@ -29,11 +32,16 @@ from agentpool.agents.antigravity_agent.static_info import DEFAULT_MODEL, MODELS
 from agentpool.agents.antigravity_agent.steps import StepTracker
 from agentpool.agents.base_agent import BaseAgent
 from agentpool.agents.capabilities import AgentCapabilities
-from agentpool.agents.events import RunErrorEvent, RunStartedEvent, StreamCompleteEvent
+from agentpool.agents.events import (
+    RunErrorEvent,
+    RunStartedEvent,
+    StepCompletedEvent,
+    StreamCompleteEvent,
+)
 from agentpool.agents.events.reconstructor import MessageReconstructor
 from agentpool.agents.exceptions import AgentNotInitializedError
 from agentpool.log import get_logger
-from agentpool.messaging import ChatMessage
+from agentpool.messaging import ChatMessage, TokenCost
 from agentpool.tools.decisions import Approve, Deny
 
 
@@ -52,8 +60,9 @@ if TYPE_CHECKING:
         StopReason,
         ToolCall,
         ToolResult,
+        UsageMetadata,
     )
-    from pydantic_ai import RunUsage, UserContent
+    from pydantic_ai import UserContent
     from slashed import BaseCommand
     from tokonomics.model_discovery.model_info import ModelInfo
     from toprompt import AnyPromptType
@@ -857,7 +866,7 @@ class AntigravityAgent[TDeps = None, OutputDataT = str](BaseAgent[TDeps, OutputD
             if self.storage is not None and (session_id := self._acting_session_id):
                 await self.storage.update_sdk_session_id(session_id, conversation_id)
 
-    async def _stream_events(
+    async def _stream_events(  # noqa: PLR0915
         self,
         prompts: list[UserContent],
         *,
@@ -907,6 +916,10 @@ class AntigravityAgent[TDeps = None, OutputDataT = str](BaseAgent[TDeps, OutputD
         failed = False
 
         self._active_input_provider = effective_provider
+        # The SDK reports usage per model invocation (not per step): each growth of the
+        # session's usage seen between steps is one model request
+        usage_seen = conversation.total_usage
+        step_costs: list[Decimal] = []
         try:
             async with self._tool_bridge.set_run_context(run_context, prompt=prompts):
                 await conversation.send(sdk_content)
@@ -915,6 +928,10 @@ class AntigravityAgent[TDeps = None, OutputDataT = str](BaseAgent[TDeps, OutputD
                     for event in tracker.process_step(step):
                         reconstructor.observe(event)
                         yield event
+                    if completed := await self._completed_request(conversation, usage_seen):
+                        usage_seen = conversation.total_usage
+                        step_costs.append(completed.cost or Decimal(0))
+                        yield completed
         except AntigravityCancelledError:
             self.log.info("Antigravity turn cancelled", run_id=run_id)
         except (AntigravityExecutionError, AntigravityConnectionError) as exc:
@@ -928,6 +945,9 @@ class AntigravityAgent[TDeps = None, OutputDataT = str](BaseAgent[TDeps, OutputD
             reconstructor.observe(event)
             yield event
 
+        if completed := await self._completed_request(conversation, usage_seen):
+            step_costs.append(completed.cost or Decimal(0))
+            yield completed
         await self._sync_sdk_session_id(conversation.conversation_id)
         stop_reason: StopReason | None = conversation._last_turn_stop_reason
         finish_reason = to_finish_reason(stop_reason, failed=failed)
@@ -938,6 +958,12 @@ class AntigravityAgent[TDeps = None, OutputDataT = str](BaseAgent[TDeps, OutputD
             structured = conversation.get_last_structured_output()
         final_content = self._parse_output(reconstructor.text_content, structured)
         run_usage: RunUsage = to_run_usage(conversation.last_turn_usage)
+        if step_costs:
+            cost_info: TokenCost | None = TokenCost(total_cost=sum(step_costs, Decimal(0)))
+        else:
+            cost_info = await TokenCost.from_usage(
+                usage=run_usage, model=self.model_name, provider="google"
+            )
 
         complete_msg: ChatMessage[OutputDataT] = ChatMessage(
             content=final_content,
@@ -947,11 +973,30 @@ class AntigravityAgent[TDeps = None, OutputDataT = str](BaseAgent[TDeps, OutputD
             session_id=final_session_id,
             parent_id=user_msg.message_id,
             usage=run_usage,
+            cost_info=cost_info,
             model_name=self.model_name,
             messages=reconstructor.model_messages,
             finish_reason=finish_reason,
         )
         yield StreamCompleteEvent[OutputDataT](message=complete_msg)
+
+    async def _completed_request(
+        self, conversation: Any, seen: UsageMetadata
+    ) -> StepCompletedEvent | None:
+        """A step for the model requests that ended since the usage was ``seen``, if any."""
+        current: UsageMetadata = conversation.total_usage
+        if (current.total_token_count or 0) <= (seen.total_token_count or 0):
+            return None
+        usage = to_request_usage(current - seen)
+        run_usage = RunUsage(requests=1)
+        run_usage.incr(usage)
+        cost = await TokenCost.from_usage(usage=run_usage, model=self.model_name, provider="google")
+        return StepCompletedEvent(
+            step_id=str(uuid4()),
+            usage=usage,
+            cost=cost.total_cost if cost is not None else None,
+            model_name=self.model_name,
+        )
 
     def _parse_output(self, final_text: str, structured: Any | None) -> OutputDataT:
         if self._output_type in (str, None):

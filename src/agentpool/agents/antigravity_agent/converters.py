@@ -17,6 +17,7 @@ from pydantic_ai import (
     ImageUrl,
     ModelRequest,
     ModelResponse,
+    RequestUsage,
     RunUsage,
     TextContent,
     TextPart,
@@ -164,6 +165,18 @@ def to_run_usage(usage: UsageMetadata | None) -> RunUsage:
         output_tokens=candidates + thoughts,
         cache_read_tokens=usage.cached_content_token_count or 0,
         details=details,
+    )
+
+
+def to_request_usage(usage: UsageMetadata) -> RequestUsage:
+    """Convert Antigravity ``UsageMetadata`` (of one model invocation) to ``RequestUsage``."""
+    candidates = usage.candidates_token_count or 0
+    thoughts = usage.thoughts_token_count or 0
+    return RequestUsage(
+        input_tokens=usage.prompt_token_count or 0,
+        output_tokens=candidates + thoughts,
+        cache_read_tokens=usage.cached_content_token_count or 0,
+        details={"thoughts_tokens": thoughts} if thoughts else {},
     )
 
 

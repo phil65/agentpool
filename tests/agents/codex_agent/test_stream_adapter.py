@@ -10,13 +10,20 @@ from codexed.models import (
     ItemReasoningTextDeltaNotification,
     ItemStartedEvent,
     ThreadItemContextCompaction,
+    ThreadTokenUsageUpdatedEvent,
 )
 from codexed.models.event_data import ItemCompletedData, ItemStartedData
-from codexed.models.v2_protocol import AgentMessageDeltaNotification, ReasoningTextDeltaNotification
+from codexed.models.v2_protocol import (
+    AgentMessageDeltaNotification,
+    ReasoningTextDeltaNotification,
+    ThreadTokenUsage,
+    ThreadTokenUsageUpdatedNotification,
+    TokenUsageBreakdown,
+)
 from pydantic_ai import PartDeltaEvent, PartEndEvent, PartStartEvent, TextPart, ThinkingPart
 
 from agentpool.agents.codex_agent.stream_adapter import CodexStreamedResponse
-from agentpool.agents.events import CompactionEvent
+from agentpool.agents.events import CompactionEvent, StepCompletedEvent
 
 
 if TYPE_CHECKING:
@@ -81,3 +88,29 @@ async def test_text_and_thinking_parts_have_start_and_end() -> None:
     assert text == ["P", "ONG"]
     assert isinstance(events[-1], PartEndEvent)
     assert isinstance(events[-1].part, TextPart)
+
+
+def _usage(last_input: int, last_output: int, total: int) -> ThreadTokenUsageUpdatedEvent:
+    def breakdown(input_tokens: int, output_tokens: int) -> TokenUsageBreakdown:
+        return TokenUsageBreakdown(
+            cached_input_tokens=0,
+            input_tokens=input_tokens,
+            output_tokens=output_tokens,
+            reasoning_output_tokens=0,
+            total_tokens=input_tokens + output_tokens,
+        )
+
+    usage = ThreadTokenUsage(last=breakdown(last_input, last_output), total=breakdown(total, 0))
+    data = ThreadTokenUsageUpdatedNotification(thread_id="t", turn_id="u", token_usage=usage)
+    return ThreadTokenUsageUpdatedEvent(params=data)
+
+
+async def test_each_model_request_is_a_completed_step() -> None:
+    """Codex reports each request's usage (``last``); a repeated update is no new step."""
+    events = await _stream(_usage(100, 10, 110), _usage(100, 10, 110), _usage(150, 20, 280))
+    steps = [e for e in events if isinstance(e, StepCompletedEvent)]
+    assert [(s.usage.input_tokens, s.usage.output_tokens) for s in steps] == [
+        (100, 10),
+        (150, 20),
+    ]
+    assert len({s.step_id for s in steps}) == 2
