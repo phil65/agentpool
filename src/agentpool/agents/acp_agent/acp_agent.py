@@ -45,6 +45,7 @@ from agentpool.agents.acp_agent.session_state import ACPSessionState
 from agentpool.agents.base_agent import BaseAgent
 from agentpool.agents.capabilities import AgentCapabilities as RuntimeCapabilities
 from agentpool.agents.events import RunStartedEvent, StreamCompleteEvent
+from agentpool.agents.events.ordering import ToolEventOrder
 from agentpool.agents.events.reconstructor import MessageReconstructor
 from agentpool.agents.exceptions import (
     AgentNotInitializedError,
@@ -276,6 +277,8 @@ class ACPAgent[TDeps = None](BaseAgent[TDeps, str]):
         self._states: dict[str, ACPSessionState] = {}
         """State of each session of the ACP server we use, by its ID."""
         self._extra_mcp_servers: list[McpServer] = []
+        self._tool_event_order = ToolEventOrder()
+        """Holds a bridge tool's progress until the remote agent announced its call."""
         self._sessions_cache: list[SessionData] | None = None
         # Create bridge (not started yet) - pass injection_manager for mid-run injection support
         self._tool_bridge = ToolManagerBridge(node=self)
@@ -635,7 +638,12 @@ class ACPAgent[TDeps = None](BaseAgent[TDeps, str]):
             ):
                 # On interrupt, keep draining: the remote agent flushes its last updates
                 # and ends the turn with stopReason "cancelled" (see _interrupt).
-                async for event in merged_events:
+                async for merged in merged_events:
+                    # Bridge tools report progress on their own channel: after the start
+                    for event in self._tool_event_order.feed(merged):
+                        reconstructor.observe(event)
+                        yield event
+                for event in self._tool_event_order.flush():
                     reconstructor.observe(event)
                     yield event
         except asyncio.CancelledError:
