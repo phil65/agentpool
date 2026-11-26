@@ -138,9 +138,11 @@
                 "exit_condition": null,
                 "filter_condition": null,
                 "name": "output_agent",
+                "parallel": false,
                 "queue_strategy": "latest",
                 "queued": false,
                 "session": "target",
+                "stats_history": 100,
                 "stop_condition": null,
                 "transform": null,
                 "type": "node",
@@ -153,10 +155,12 @@
                 "encoding": "utf-8",
                 "exit_condition": null,
                 "filter_condition": null,
+                "parallel": false,
                 "path": "logs/messages.txt",
                 "queue_strategy": "latest",
                 "queued": false,
                 "session": "target",
+                "stats_history": 100,
                 "stop_condition": null,
                 "template": "{{ message.content }}",
                 "transform": null,
@@ -1081,9 +1085,11 @@
                 "exit_condition": null,
                 "filter_condition": null,
                 "name": "output_agent",
+                "parallel": false,
                 "queue_strategy": "latest",
                 "queued": false,
                 "session": "target",
+                "stats_history": 100,
                 "stop_condition": null,
                 "transform": null,
                 "type": "node",
@@ -1096,10 +1102,12 @@
                 "encoding": "utf-8",
                 "exit_condition": null,
                 "filter_condition": null,
+                "parallel": false,
                 "path": "logs/messages.txt",
                 "queue_strategy": "latest",
                 "queued": false,
                 "session": "target",
+                "stats_history": 100,
                 "stop_condition": null,
                 "template": "{{ message.content }}",
                 "transform": null,
@@ -2780,9 +2788,11 @@
                 "exit_condition": null,
                 "filter_condition": null,
                 "name": "output_agent",
+                "parallel": false,
                 "queue_strategy": "latest",
                 "queued": false,
                 "session": "target",
+                "stats_history": 100,
                 "stop_condition": null,
                 "transform": null,
                 "type": "node",
@@ -2795,10 +2805,12 @@
                 "encoding": "utf-8",
                 "exit_condition": null,
                 "filter_condition": null,
+                "parallel": false,
                 "path": "logs/messages.txt",
                 "queue_strategy": "latest",
                 "queued": false,
                 "session": "target",
+                "stats_history": 100,
                 "stop_condition": null,
                 "template": "{{ message.content }}",
                 "transform": null,
@@ -7334,6 +7346,29 @@
             "null"
           ]
         },
+        "parallel": {
+          "default": false,
+          "description": "Process a message together with the source's neighbouring parallel connections\n(their runs overlap) instead of one connection after another.",
+          "title": "Run alongside the neighbouring connections",
+          "type": "boolean"
+        },
+        "stats_history": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": 100,
+          "description": "Messages the connection's stats keep (None: all; the totals count every message).\n\nThe default is ``agentpool.talk.stats.TALK_STATS_HISTORY``.",
+          "examples": [
+            100
+          ],
+          "title": "Stats history"
+        },
         "callable": {
           "description": "Import path to the message processing function.",
           "examples": [
@@ -7601,9 +7636,11 @@
                 "exit_condition": null,
                 "filter_condition": null,
                 "name": "output_agent",
+                "parallel": false,
                 "queue_strategy": "latest",
                 "queued": false,
                 "session": "target",
+                "stats_history": 100,
                 "stop_condition": null,
                 "transform": null,
                 "type": "node",
@@ -7616,10 +7653,12 @@
                 "encoding": "utf-8",
                 "exit_condition": null,
                 "filter_condition": null,
+                "parallel": false,
                 "path": "logs/messages.txt",
                 "queue_strategy": "latest",
                 "queued": false,
                 "session": "target",
+                "stats_history": 100,
                 "stop_condition": null,
                 "template": "{{ message.content }}",
                 "transform": null,
@@ -9538,9 +9577,11 @@
                 "exit_condition": null,
                 "filter_condition": null,
                 "name": "output_agent",
+                "parallel": false,
                 "queue_strategy": "latest",
                 "queued": false,
                 "session": "target",
+                "stats_history": 100,
                 "stop_condition": null,
                 "transform": null,
                 "type": "node",
@@ -9553,10 +9594,12 @@
                 "encoding": "utf-8",
                 "exit_condition": null,
                 "filter_condition": null,
+                "parallel": false,
                 "path": "logs/messages.txt",
                 "queue_strategy": "latest",
                 "queued": false,
                 "session": "target",
+                "stats_history": 100,
                 "stop_condition": null,
                 "template": "{{ message.content }}",
                 "transform": null,
@@ -21314,6 +21357,29 @@
             "null"
           ]
         },
+        "parallel": {
+          "default": false,
+          "description": "Process a message together with the source's neighbouring parallel connections\n(their runs overlap) instead of one connection after another.",
+          "title": "Run alongside the neighbouring connections",
+          "type": "boolean"
+        },
+        "stats_history": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": 100,
+          "description": "Messages the connection's stats keep (None: all; the totals count every message).\n\nThe default is ``agentpool.talk.stats.TALK_STATS_HISTORY``.",
+          "examples": [
+            100
+          ],
+          "title": "Stats history"
+        },
         "path": {
           "description": "Path to output file. Supports variables: {date}, {time}, {agent}",
           "examples": [
@@ -28681,9 +28747,11 @@
                 "exit_condition": null,
                 "filter_condition": null,
                 "name": "output_agent",
+                "parallel": false,
                 "queue_strategy": "latest",
                 "queued": false,
                 "session": "target",
+                "stats_history": 100,
                 "stop_condition": null,
                 "transform": null,
                 "type": "node",
@@ -28696,10 +28764,12 @@
                 "encoding": "utf-8",
                 "exit_condition": null,
                 "filter_condition": null,
+                "parallel": false,
                 "path": "logs/messages.txt",
                 "queue_strategy": "latest",
                 "queued": false,
                 "session": "target",
+                "stats_history": 100,
                 "stop_condition": null,
                 "template": "{{ message.content }}",
                 "transform": null,
@@ -31595,6 +31665,29 @@
             "null"
           ]
         },
+        "parallel": {
+          "default": false,
+          "description": "Process a message together with the source's neighbouring parallel connections\n(their runs overlap) instead of one connection after another.",
+          "title": "Run alongside the neighbouring connections",
+          "type": "boolean"
+        },
+        "stats_history": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": 100,
+          "description": "Messages the connection's stats keep (None: all; the totals count every message).\n\nThe default is ``agentpool.talk.stats.TALK_STATS_HISTORY``.",
+          "examples": [
+            100
+          ],
+          "title": "Stats history"
+        },
         "name": {
           "description": "Name of target agent.",
           "examples": [
@@ -32729,9 +32822,11 @@
                 "exit_condition": null,
                 "filter_condition": null,
                 "name": "output_agent",
+                "parallel": false,
                 "queue_strategy": "latest",
                 "queued": false,
                 "session": "target",
+                "stats_history": 100,
                 "stop_condition": null,
                 "transform": null,
                 "type": "node",
@@ -32744,10 +32839,12 @@
                 "encoding": "utf-8",
                 "exit_condition": null,
                 "filter_condition": null,
+                "parallel": false,
                 "path": "logs/messages.txt",
                 "queue_strategy": "latest",
                 "queued": false,
                 "session": "target",
+                "stats_history": 100,
                 "stop_condition": null,
                 "template": "{{ message.content }}",
                 "transform": null,
@@ -36949,9 +37046,11 @@
                 "exit_condition": null,
                 "filter_condition": null,
                 "name": "output_agent",
+                "parallel": false,
                 "queue_strategy": "latest",
                 "queued": false,
                 "session": "target",
+                "stats_history": 100,
                 "stop_condition": null,
                 "transform": null,
                 "type": "node",
@@ -36964,10 +37063,12 @@
                 "encoding": "utf-8",
                 "exit_condition": null,
                 "filter_condition": null,
+                "parallel": false,
                 "path": "logs/messages.txt",
                 "queue_strategy": "latest",
                 "queued": false,
                 "session": "target",
+                "stats_history": 100,
                 "stop_condition": null,
                 "template": "{{ message.content }}",
                 "transform": null,
@@ -37816,9 +37917,11 @@
                 "exit_condition": null,
                 "filter_condition": null,
                 "name": "output_agent",
+                "parallel": false,
                 "queue_strategy": "latest",
                 "queued": false,
                 "session": "target",
+                "stats_history": 100,
                 "stop_condition": null,
                 "transform": null,
                 "type": "node",
@@ -37831,10 +37934,12 @@
                 "encoding": "utf-8",
                 "exit_condition": null,
                 "filter_condition": null,
+                "parallel": false,
                 "path": "logs/messages.txt",
                 "queue_strategy": "latest",
                 "queued": false,
                 "session": "target",
+                "stats_history": 100,
                 "stop_condition": null,
                 "template": "{{ message.content }}",
                 "transform": null,
@@ -45907,9 +46012,11 @@
                 "exit_condition": null,
                 "filter_condition": null,
                 "name": "output_agent",
+                "parallel": false,
                 "queue_strategy": "latest",
                 "queued": false,
                 "session": "target",
+                "stats_history": 100,
                 "stop_condition": null,
                 "transform": null,
                 "type": "node",
@@ -45922,10 +46029,12 @@
                 "encoding": "utf-8",
                 "exit_condition": null,
                 "filter_condition": null,
+                "parallel": false,
                 "path": "logs/messages.txt",
                 "queue_strategy": "latest",
                 "queued": false,
                 "session": "target",
+                "stats_history": 100,
                 "stop_condition": null,
                 "template": "{{ message.content }}",
                 "transform": null,
@@ -46914,9 +47023,11 @@
                 "exit_condition": null,
                 "filter_condition": null,
                 "name": "output_agent",
+                "parallel": false,
                 "queue_strategy": "latest",
                 "queued": false,
                 "session": "target",
+                "stats_history": 100,
                 "stop_condition": null,
                 "transform": null,
                 "type": "node",
@@ -46929,10 +47040,12 @@
                 "encoding": "utf-8",
                 "exit_condition": null,
                 "filter_condition": null,
+                "parallel": false,
                 "path": "logs/messages.txt",
                 "queue_strategy": "latest",
                 "queued": false,
                 "session": "target",
+                "stats_history": 100,
                 "stop_condition": null,
                 "template": "{{ message.content }}",
                 "transform": null,

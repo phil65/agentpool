@@ -7,6 +7,7 @@ from contextlib import asynccontextmanager
 from typing import TYPE_CHECKING, Any, Self
 
 from agentpool.talk import AggregatedTalkStats, Talk, TeamTalk
+from agentpool.talk.stats import TALK_STATS_HISTORY
 
 
 if TYPE_CHECKING:
@@ -63,6 +64,7 @@ class ConnectionManager:
         name: str | None = None,
         session: ConnectionSessionPolicy = "target",
         parallel: bool = False,
+        stats_history: int | None = TALK_STATS_HISTORY,
     ) -> Talk[Any] | TeamTalk:
         """Connect ``source`` to one target, or to each of a sequence of targets.
 
@@ -80,6 +82,7 @@ class ConnectionManager:
             name: Name for the connection (single target only; else auto-generated)
             session: Which session of the target the messages run in
             parallel: Send a message to the targets at once instead of in order
+            stats_history: Messages each connection's stats keep (None: all)
         """
         if isinstance(target, Sequence):
             talks = [
@@ -96,6 +99,7 @@ class ConnectionManager:
                     exit_condition=exit_condition,
                     session=session,
                     parallel=parallel,
+                    stats_history=stats_history,
                 )
                 for t in target
             ]
@@ -114,6 +118,7 @@ class ConnectionManager:
             exit_condition=exit_condition,
             session=session,
             parallel=parallel,
+            stats_history=stats_history,
         )
         return source.router.add(talk, name=name)
 

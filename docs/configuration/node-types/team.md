@@ -135,6 +135,9 @@ teams:
 - `wait_for_completion`: Whether to wait for target to complete
 - `queued`: Queue messages for manual processing
 - `queue_strategy`: How to handle queued messages (latest/concat/buffer)
+- `parallel`: Process a message together with the source's neighbouring parallel
+  connections (their runs overlap) instead of one connection after another
+- `stats_history`: Messages the connection's stats keep (default 100; `null`: all)
 
 ### Filtering
 

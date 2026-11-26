@@ -11,6 +11,7 @@ from anyenv.signals import Signal
 from agentpool.log import get_logger
 from agentpool.messaging import ChatMessage
 from agentpool.talk import AggregatedTalkStats
+from agentpool.talk.stats import TALK_STATS_HISTORY
 from agentpool.utils.tasks import TaskManager
 
 
@@ -290,6 +291,7 @@ class MessageNode[TDeps, TResult](ABC):
         exit_condition: AsyncFilterFn | None = None,
         session: ConnectionSessionPolicy = "target",
         parallel: bool = False,
+        stats_history: int | None = TALK_STATS_HISTORY,
     ) -> Talk[TResult]: ...
 
     @overload
@@ -317,6 +319,7 @@ class MessageNode[TDeps, TResult](ABC):
         exit_condition: AsyncFilterFn | None = None,
         session: ConnectionSessionPolicy = "target",
         parallel: bool = False,
+        stats_history: int | None = TALK_STATS_HISTORY,
     ) -> TeamTalk[TResult]: ...
 
     @overload
@@ -335,6 +338,7 @@ class MessageNode[TDeps, TResult](ABC):
         exit_condition: AsyncFilterFn | None = None,
         session: ConnectionSessionPolicy = "target",
         parallel: bool = False,
+        stats_history: int | None = TALK_STATS_HISTORY,
     ) -> TeamTalk: ...
 
     def connect_to(
@@ -354,11 +358,13 @@ class MessageNode[TDeps, TResult](ABC):
         exit_condition: AsyncFilterFn | None = None,
         session: ConnectionSessionPolicy = "target",
         parallel: bool = False,
+        stats_history: int | None = TALK_STATS_HISTORY,
     ) -> Talk[Any] | TeamTalk:
         """Create connection(s) to target(s).
 
         With several targets, a message goes to them in order, one after another;
         ``parallel=True`` sends it to all at once (their runs overlap).
+        ``stats_history``: messages each connection's stats keep (None: all).
         """
         # Handle callable case
         from agentpool.agents import Agent
@@ -401,6 +407,7 @@ class MessageNode[TDeps, TResult](ABC):
             exit_condition=exit_condition,
             session=session,
             parallel=parallel,
+            stats_history=stats_history,
         )
 
     async def disconnect_all(self) -> None:

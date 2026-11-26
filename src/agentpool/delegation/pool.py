@@ -486,7 +486,7 @@ class AgentPool[TPoolDeps = None](BaseRegistry[NodeName, MessageNode[Any, Any]])
         for name, config in self.manifest.nodes.items():
             source = self[name]
             for target in config.connections or []:
-                target.connect_nodes(source, list(self.nodes.values()), name)
+                target.connect_nodes(source, list(self.nodes.values()))
 
     @overload
     def get_agent[TResult = str](

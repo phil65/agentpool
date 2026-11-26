@@ -106,17 +106,25 @@ class ConnectionConfig(Schema):
     )
     """Optional function to transform messages before forwarding."""
 
+    parallel: bool = Field(default=False, title="Run alongside the neighbouring connections")
+    """Process a message together with the source's neighbouring parallel connections
+    (their runs overlap) instead of one connection after another."""
+
+    stats_history: int | None = Field(default=100, ge=0, title="Stats history", examples=[100])
+    """Messages the connection's stats keep (None: all; the totals count every message).
+
+    The default is ``agentpool.talk.stats.TALK_STATS_HISTORY``."""
+
     def connect_nodes(
         self,
         source: MessageNode[Any, Any],
         agents: Sequence[MessageNode[Any, Any]],
-        name: str,
     ) -> None:
+        """Connect ``source`` to this config's target (named after both, made unique)."""
         target = self.get_node(agents)
         source.connect_to(
             target,
             connection_type=self.connection_type,
-            name=name,
             delay=self.delay,
             queued=self.queued,
             queue_strategy=self.queue_strategy,
@@ -125,6 +133,8 @@ class ConnectionConfig(Schema):
             stop_condition=self.stop_condition.check if self.stop_condition else None,
             exit_condition=self.exit_condition.check if self.exit_condition else None,
             session=self.session,
+            parallel=self.parallel,
+            stats_history=self.stats_history,
         )
         source.connections.set_wait_state(target, wait=self.wait_for_completion)
 
