@@ -130,3 +130,27 @@ async def test_ancestry_runs_through_attachments(tmp_path: Path, with_session_hi
     session_id = "with-attachments" if with_session_hint else None
     ancestry = await provider.get_message_ancestry("a1", session_id=session_id)
     assert [m.message_id for m in ancestry] == ["u1", "a1"]
+
+
+async def test_session_files_are_parsed_off_the_event_loop(
+    provider: ClaudeStorageProvider, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Parsing every session file must not block the server's other clients."""
+    import threading
+
+    from agentpool_config.session import SessionQuery
+    from agentpool_storage.claude_provider import provider as module
+    from agentpool_storage.models import QueryFilters
+
+    parse = module._parse_session_full
+    threads: set[int] = set()
+
+    def recording(*args: Any) -> Any:
+        threads.add(threading.get_ident())
+        return parse(*args)
+
+    monkeypatch.setattr(module, "_parse_session_full", recording)
+    assert await provider.filter_messages(SessionQuery())
+    assert await provider.get_sessions(QueryFilters())
+    assert threads
+    assert threading.get_ident() not in threads

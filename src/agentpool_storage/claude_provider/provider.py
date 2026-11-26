@@ -14,6 +14,7 @@ See ARCHITECTURE.md for detailed documentation of the storage format.
 
 from __future__ import annotations
 
+import asyncio
 from collections import defaultdict
 from dataclasses import dataclass
 from datetime import datetime
@@ -307,6 +308,17 @@ def _parse_session_full(session_id: str, session_path: Path) -> ParsedSession | 
     )
 
 
+async def _parse_sessions(sessions: list[tuple[str, Path]]) -> list[ParsedSession | None]:
+    """Parse session files in a worker thread (in parallel on free-threaded builds).
+
+    CPU-heavy (full validation of every line): on the event loop it would stall every
+    other client of the server.
+    """
+    return await asyncio.to_thread(
+        parallel_map, lambda item: _parse_session_full(item[0], item[1]), sessions
+    )
+
+
 class ClaudeStorageProvider(StorageProvider):
     """Storage provider that reads/writes Claude Code's native format.
 
@@ -494,11 +506,7 @@ class ClaudeStorageProvider(StorageProvider):
         if not sessions:
             return []
 
-        # Parse sessions in parallel (CPU-intensive)
-        parsed_sessions = parallel_map(
-            lambda item: _parse_session_full(item[0], item[1]),
-            sessions,
-        )
+        parsed_sessions = await _parse_sessions(sessions)
 
         # Filter messages (fast, sequential)
         messages: list[ChatMessage[str]] = []
@@ -581,12 +589,7 @@ class ClaudeStorageProvider(StorageProvider):
         if not sessions:
             return []
 
-        # Parse sessions in parallel (CPU-intensive Pydantic validation)
-        # parallel_map automatically falls back to sequential on GIL-enabled Python
-        parsed_sessions = parallel_map(
-            lambda item: _parse_session_full(item[0], item[1]),
-            sessions,
-        )
+        parsed_sessions = await _parse_sessions(sessions)
 
         # Filter and build results (fast, sequential)
         result: list[ConversationData] = []

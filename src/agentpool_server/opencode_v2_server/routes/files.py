@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import mimetypes
 import os
 from pathlib import Path
@@ -104,6 +105,11 @@ async def _candidate_files(directory: str) -> list[str]:
     listed = await _git(directory, "ls-files", "--cached", "--others", "--exclude-standard")
     if listed is not None:
         return [line for line in listed.splitlines() if line]
+    return await asyncio.to_thread(_walk_files, directory)  # Off the loop: a large tree
+
+
+def _walk_files(directory: str) -> list[str]:
+    """Files below ``directory`` (relative, at most about 50k), ignored dirs skipped."""
     files: list[str] = []
     for root, dirs, names in os.walk(directory):
         dirs[:] = [d for d in dirs if d not in IGNORED_DIRS]
@@ -142,6 +148,19 @@ async def fs_find(
     except ValueError:
         raise invalid_request("limit must be an integer", field="limit") from None
     files = await _candidate_files(directory)
+    # Scoring up to 50k paths is CPU work: off the loop (it runs per keystroke)
+    ranked = await asyncio.to_thread(_rank, files, query, entry_type)
+    data = [
+        FileSystemEntry(path=str(Path(directory) / path), type=kind)
+        for path, kind in ranked[:max_items]
+    ]
+    return ok(FsFindResponse(location=public_ref(directory), data=data))
+
+
+def _rank(
+    files: list[str], query: str, entry_type: Literal["file", "directory"] | None
+) -> list[tuple[str, Literal["file", "directory"]]]:
+    """The files (and their directories) matching ``query``, best first."""
     candidates: list[tuple[str, Literal["file", "directory"]]] = []
     if entry_type != "directory":
         candidates.extend((f, "file") for f in files)
@@ -154,11 +173,7 @@ async def fs_find(
         if (score := _fuzzy_score(query, path)) is not None
     ]
     scored.sort()
-    data = [
-        FileSystemEntry(path=str(Path(directory) / path), type=kind)
-        for _, path, kind in scored[:max_items]
-    ]
-    return ok(FsFindResponse(location=public_ref(directory), data=data))
+    return [(path, kind) for _, path, kind in scored]
 
 
 @router.post("/api/experimental/fs/write")
