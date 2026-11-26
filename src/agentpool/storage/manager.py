@@ -19,7 +19,7 @@ from agentpool_config.storage import StorageConfig
 
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Sequence
+    from collections.abc import Awaitable, Callable, Sequence
     from datetime import datetime
     from types import TracebackType
 
@@ -217,15 +217,43 @@ class StorageManager:
         provider = self.get_history_provider(preferred_provider)
         return await provider.filter_messages(query)
 
+    async def _write_each(
+        self,
+        what: str,
+        providers: Sequence[StorageProvider],
+        write: Callable[[StorageProvider], Awaitable[Any]],
+        **log_context: Any,
+    ) -> None:
+        """Run ``write`` for each provider at once; a failing one is logged, not raised.
+
+        Writes come after the work they record (a finished turn): one broken provider
+        (disk full, a locked database) neither fails it nor keeps the others from writing.
+        """
+
+        async def write_one(provider: StorageProvider) -> None:
+            try:
+                await write(provider)
+            except Exception:
+                name = provider.__class__.__name__
+                logger.exception(
+                    "Storage provider failed", write=what, provider=name, **log_context
+                )
+
+        await asyncio.gather(*(write_one(provider) for provider in providers))
+
     @method_spawner
     async def log_message(self, message: ChatMessage[Any]) -> None:
-        """Log message to all providers."""
+        """Log message to all providers (at once; a failing one is logged)."""
         if not self.config.log_messages:
             return
-
-        for provider in self.providers:
-            if provider.should_log_agent(message.name or "no name"):
-                await provider.log_message(message=message)
+        name = message.name or "no name"
+        providers = [p for p in self.providers if p.should_log_agent(name)]
+        await self._write_each(
+            "log_message",
+            providers,
+            lambda provider: provider.log_message(message=message),
+            session_id=message.session_id,
+        )
 
     @method_spawner
     async def log_session(
@@ -263,16 +291,19 @@ class StorageManager:
             # Mark as logged before calling providers
             self._session_logged.add(session_id)
 
-            # Log to all providers
-            for provider in self.providers:
-                await provider.log_session(
+            await self._write_each(
+                "log_session",
+                self.providers,
+                lambda provider: provider.log_session(
                     session_id=session_id,
                     node_name=node_name,
                     start_time=start_time,
                     model=model,
                     agent_type=agent_type,
                     definition_version=definition_version,
-                )
+                ),
+                session_id=session_id,
+            )
 
         # Handle title generation based on prompt length
         # Skip during tests to avoid external API calls
@@ -308,18 +339,21 @@ class StorageManager:
         context_type: type | None = None,
         metadata: dict[str, JsonValue] | None = None,
     ) -> None:
-        """Log command to all providers."""
+        """Log command to all providers (at once; a failing one is logged)."""
         if not self.config.log_commands:
             return
-
-        for provider in self.providers:
-            await provider.log_command(
+        await self._write_each(
+            "log_command",
+            self.providers,
+            lambda provider: provider.log_command(
                 agent_name=agent_name,
                 session_id=session_id,
                 command=command,
                 context_type=context_type,
                 metadata=metadata,
-            )
+            ),
+            session_id=session_id,
+        )
 
     @method_spawner
     async def reset(
@@ -388,8 +422,12 @@ class StorageManager:
             session_id: ID of the conversation to update
             title: New title for the conversation
         """
-        for provider in self.providers:
-            await provider.update_session_title(session_id, title)
+        await self._write_each(
+            "update_session_title",
+            self.providers,
+            lambda provider: provider.update_session_title(session_id, title),
+            session_id=session_id,
+        )
 
     async def apply_session_title(self, session_id: str, title: str) -> None:
         """Store a title that an agent's backend generated, and announce it.
@@ -941,5 +979,9 @@ class StorageManager:
             session_id: Internal session identifier
             sdk_session_id: External SDK session ID
         """
-        for provider in self.providers:
-            await provider.update_sdk_session_id(session_id, sdk_session_id)
+        await self._write_each(
+            "update_sdk_session_id",
+            self.providers,
+            lambda provider: provider.update_sdk_session_id(session_id, sdk_session_id),
+            session_id=session_id,
+        )
