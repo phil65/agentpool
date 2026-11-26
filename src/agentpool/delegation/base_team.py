@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from abc import abstractmethod
 import asyncio
+from contextlib import suppress
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, overload
 
@@ -17,6 +18,7 @@ from agentpool.talk.stats import AggregatedMessageStats
 
 if TYPE_CHECKING:
     from collections.abc import AsyncIterator, Iterator, Sequence
+    from types import TracebackType
 
     from agentpool import Agent, AgentPool, Team
     from agentpool.agents.base_agent import BaseAgent
@@ -241,11 +243,22 @@ class BaseTeam[TDeps, TResult](MessageNode[TDeps, TResult]):
         """Check if team is processing any tasks."""
         return bool(self.task_manager._pending_tasks or self._main_task)
 
+    async def __aexit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc_val: BaseException | None,
+        exc_tb: TracebackType | None,
+    ) -> None:
+        """Stop the background run (an endless one would never let the exit finish)."""
+        await self.stop()
+        await super().__aexit__(exc_type, exc_val, exc_tb)
+
     async def stop(self) -> None:
         """Stop background execution if running."""
         if self._main_task and not self._main_task.done():
             self._main_task.cancel()
-            await self._main_task
+            with suppress(asyncio.CancelledError):
+                await self._main_task
         self._main_task = None
         await self.task_manager.cleanup_tasks()
 
@@ -276,7 +289,7 @@ class BaseTeam[TDeps, TResult](MessageNode[TDeps, TResult]):
             interval: Seconds between executions
             **kwargs: Additional args for execute()
         """
-        if self._main_task:
+        if self.is_running:
             raise RuntimeError("Execution already running")
         self._infinite = max_count is None
 

@@ -132,3 +132,35 @@ async def test_timing_accuracy():
 
 if __name__ == "__main__":
     pytest.main([__file__, "-vv"])
+
+
+async def test_background_run_can_start_again_after_it_finished():
+    async with AgentPool() as pool:
+        model = function_to_model(functools.partial(delayed_processor, delay=0))
+        a, b = Agent("a1", model=model), Agent("a2", model=model)
+        await pool.add_agent(a)
+        await pool.add_agent(b)
+        team = a | b
+        await team.run_in_background("one")
+        while team.is_running:
+            await anyio.sleep(0.01)
+        await team.run_in_background("two")  # Finished before: not "already running"
+        assert (await team.wait()) is not None
+
+
+async def test_exiting_a_team_stops_its_endless_background_run():
+    model = function_to_model(functools.partial(delayed_processor, delay=0))
+    a, b = Agent("a1", model=model), Agent("a2", model=model)
+    team = a & b
+    with anyio.fail_after(5):
+        async with team:
+            await team.run_in_background("go", max_count=None, interval=0.01)
+            await anyio.sleep(0.05)
+    assert not team.is_running
+
+
+async def test_exiting_an_agent_stops_its_background_run():
+    agent = Agent("a1", model=function_to_model(functools.partial(delayed_processor, delay=0)))
+    async with agent:
+        task = await agent.run_in_background("go", max_count=None, interval=0.01)
+    assert task.done()

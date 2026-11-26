@@ -37,6 +37,7 @@ if TYPE_CHECKING:
     from collections.abc import AsyncIterator, Awaitable, Generator, Sequence
     from contextlib import AbstractAsyncContextManager
     from datetime import datetime
+    from types import TracebackType
 
     from aclientp.schema import AvailableCommandsUpdate
     from exxec import ExecutionEnvironment
@@ -1049,6 +1050,16 @@ class BaseAgent[TDeps = None, TResult = str](MessageNode[TDeps, TResult]):
         self.log.debug("Started background task", task_name=task.get_name())
         self._background_task = task
         return task
+
+    async def __aexit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc_val: BaseException | None,
+        exc_tb: TracebackType | None,
+    ) -> None:
+        """Stop the background run (it would go on with the agent's resources closed)."""
+        await self.stop()
+        await super().__aexit__(exc_type, exc_val, exc_tb)
 
     async def stop(self) -> None:
         """Stop continuous execution if running."""
