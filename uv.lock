@@ -291,7 +291,7 @@ requires-dist = [
     { name = "rich" },
     { name = "ripgrep-rs", specifier = ">=0.4.3" },
     { name = "rustworkx", marker = "extra == 'coding'", specifier = ">=0.17.1" },
-    { name = "schemez", extras = ["codegen"], specifier = ">=2.3.0" },
+    { name = "schemez", extras = ["codegen"], specifier = ">=2.5.0" },
     { name = "searchly", extras = ["all"], specifier = ">=2.0.1" },
     { name = "slack-sdk", marker = "extra == 'bot'", specifier = ">=3.26.0" },
     { name = "slackify-markdown", marker = "extra == 'bot'", specifier = ">=0.2.0" },
@@ -5908,7 +5908,7 @@ wheels = [
 
 [[package]]
 name = "schemez"
-version = "2.4.0"
+version = "2.5.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "docstring-parser" },
@@ -5919,9 +5919,9 @@ dependencies = [
     { name = "typing-extensions" },
     { name = "universal-pathlib" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/bf/4b/70daa093459327708a97acded2253a3899e35787b383e5a02e1aebf931d0/schemez-2.4.0.tar.gz", hash = "sha256:f523a17f4a267ebc87aee0fbaa2b775a1ece7857eca524109d498cdcba88d5bf", size = 82871, upload-time = "2026-11-23T17:37:30.67Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/91/84/12f9f9e6a0f4bb6f226d74c92df6d8ed8d0dc6ebc37399f994c94772e4aa/schemez-2.5.0.tar.gz", hash = "sha256:18135ebde40e6a6f1950bd1f1929a1d91ff538c7dd2ce9b5110a59ade8b30f76", size = 89164, upload-time = "2026-11-26T13:23:25.423Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/93/17/c2e2ff0438fc9ac5dabea49e63e826be33bd973b7caa924a8e0bd3c69e94/schemez-2.4.0-py3-none-any.whl", hash = "sha256:13c6ed5aa9665d4e112959fbe092f00809e9479cb9d2219f2cae9a4a5f5cf07f", size = 94921, upload-time = "2026-11-23T17:37:29.574Z" },
+    { url = "https://files.pythonhosted.org/packages/87/5e/d6c3d9fccb2f4afa4e77c410dc85a0c26e98ef85ccbb3a4bedf6d3bb8218/schemez-2.5.0-py3-none-any.whl", hash = "sha256:91e0fff2c058de9715b58757f585830b503b649d8152e380ad299721fab0ed15", size = 100826, upload-time = "2026-11-26T13:23:24.054Z" },
 ]
 
 [package.optional-dependencies]

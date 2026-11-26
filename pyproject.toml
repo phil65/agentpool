@@ -65,7 +65,7 @@ dependencies = [
   "python-dotenv>=1.0.1",
   "rich",
   "ripgrep-rs>=0.4.3",  # First release with Python 3.15 wheels
-  "schemez[codegen]>=2.3.0",
+  "schemez[codegen]>=2.5.0",
   # "schemez @ file:///home/phil65/dev/oss/schemez",
   "searchly[all]>=2.0.1",
   "slashed>=0.1.0",

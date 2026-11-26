@@ -45,10 +45,9 @@ async def test_direct_context_call_fails():
     namespace = generator.generate_execution_namespace()
     # Try to call the tool directly without context - this should fail
     tool_func = namespace["tool_with_run_context"]
-    # This should fail because we're not providing RunContext
-    result = await tool_func("test message")
-    # Should get an error about missing context
-    assert "Error executing" in result
+    # This should fail because we're not providing RunContext (schemez >= 2.5 raises)
+    with pytest.raises(TypeError, match="missing 1 required positional argument"):
+        await tool_func("test message")
 
 
 async def test_simple_tool_works():
