@@ -194,3 +194,18 @@ async def test_concurrent_elicitations_reach_their_own_tool_call() -> None:
         )
         results = await asyncio.gather(slow_yes, fast_no)
     assert [result.return_value for result in results] == ["accepted: True", "accepted: False"]
+
+
+async def test_exit_closes_the_server_when_the_change_stream_died() -> None:
+    """A listen task that ended with an error doesn't keep the server process alive."""
+
+    async def died() -> None:
+        raise RuntimeError("change callback failed")
+
+    client = MCPClient(_config())
+    client._client = Mock(__aexit__=AsyncMock())
+    close = client._close_client = AsyncMock()  # type: ignore[method-assign]  # ty:ignore[invalid-assignment]
+    client._listen_task = asyncio.create_task(died())
+    await asyncio.wait([client._listen_task])
+    await client.__aexit__(None, None, None)
+    close.assert_awaited_once()

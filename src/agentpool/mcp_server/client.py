@@ -204,8 +204,12 @@ class MCPClient:
         if (task := self._listen_task) is not None:
             self._listen_task = None
             task.cancel()
-            with contextlib.suppress(asyncio.CancelledError):
+            try:
                 await task
+            except asyncio.CancelledError:
+                pass
+            except Exception:  # Its error: the server must still be closed
+                logger.exception("MCP change stream failed", server=self.config.client_id)
         try:
             await self._client.__aexit__(None, None, None)  # type: ignore[no-untyped-call]
         except Exception as e:  # noqa: BLE001
@@ -251,7 +255,10 @@ class MCPClient:
                 if lost > MAX_LISTEN_RECONNECTS:
                     logger.warning("MCP change stream lost for good", server=self.config.client_id)
                     return
-                await self._on_all_changed()  # Changes may have been missed: refetch
+                try:  # Changes may have been missed: refetch
+                    await self._on_all_changed()
+                except Exception:  # A failing callback must not end the stream
+                    logger.exception("MCP refetch failed", server=self.config.client_id)
                 await asyncio.sleep(min(2**lost, 30))
             except Exception:
                 logger.exception("MCP change stream failed", server=self.config.client_id)
