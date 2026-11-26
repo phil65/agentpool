@@ -305,7 +305,7 @@ class ACPAgent[TDeps = None](BaseAgent[TDeps, str]):
 
     def _session_mcp_servers(self) -> list[McpServer]:
         """MCP servers of an ACP session of the session acting (the bridge on its route)."""
-        from aclientp.schema import HttpMcpServer
+        from aclientp.schema import HttpHeader, HttpMcpServer
 
         from agentpool.agents.acp_agent.acp_converters import mcp_config_to_acp
         from agentpool.agents.acp_agent.helpers import filter_servers_by_capabilities
@@ -315,7 +315,9 @@ class ACPAgent[TDeps = None](BaseAgent[TDeps, str]):
             session = self._explicit_session
             route = session.session_id if session is not None else DEFAULT_ROUTE
             url = HttpUrl(self._tool_bridge.url_for(route))
-            servers.append(HttpMcpServer(name=self._tool_bridge.resolved_server_name, url=url))
+            headers = [HttpHeader(name=k, value=v) for k, v in self._tool_bridge.headers.items()]
+            name = self._tool_bridge.resolved_server_name
+            servers.append(HttpMcpServer(name=name, url=url, headers=headers))
         servers.extend(mcp_config_to_acp(config) for config in self.mcp.servers)
         return filter_servers_by_capabilities(servers, self._caps, logger=self.log)
 

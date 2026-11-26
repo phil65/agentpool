@@ -12,6 +12,10 @@ One bridge serves every session of its agent. Each session reaches it through it
 route (:meth:`ToolManagerBridge.url_for`): a tool call runs with the context of the turn
 running on its route, so turns of different sessions on one agent don't share their
 input provider, deps or injections.
+
+The bridge listens on localhost, where any local process could reach it: it serves only
+requests carrying its random bearer token (:attr:`ToolManagerBridge.headers`), which the
+backends get in the MCP server config they are handed.
 """
 
 from __future__ import annotations
@@ -20,6 +24,8 @@ import asyncio
 from contextlib import asynccontextmanager, suppress
 from dataclasses import dataclass, field, replace
 import inspect
+import secrets
+import socket
 import time
 from typing import TYPE_CHECKING, Any, Self, cast, get_args, get_origin, get_type_hints
 from urllib.parse import quote
@@ -45,6 +51,7 @@ if TYPE_CHECKING:
     from fastmcp import Context, FastMCP
     from fastmcp.tools import ToolResult as FastMCPToolResult
     from pydantic_ai import UserContent
+    from starlette.types import ASGIApp, Receive, Scope, Send
     from uvicorn import Server
 
     from agentpool.agents import AgentContext
@@ -84,6 +91,43 @@ def _request_route() -> str:
     except RuntimeError:  # No HTTP request in this context
         return DEFAULT_ROUTE
     return request.query_params.get(ROUTE_PARAM, DEFAULT_ROUTE)
+
+
+class _BearerAuth:
+    """ASGI middleware: refuse HTTP requests that don't carry ``token`` as bearer token."""
+
+    def __init__(self, app: ASGIApp, token: str) -> None:
+        self.app = app
+        self._expected = f"Bearer {token}".encode()
+
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        if scope["type"] in ("http", "websocket"):
+            given = dict(scope["headers"]).get(b"authorization", b"")
+            if not secrets.compare_digest(given, self._expected):
+                await send({
+                    "type": "http.response.start",
+                    "status": 401,
+                    "headers": [
+                        (b"content-type", b"text/plain"),
+                        (b"www-authenticate", b"Bearer"),
+                    ],
+                })
+                await send({"type": "http.response.body", "body": b"Unauthorized"})
+                return
+        await self.app(scope, receive, send)
+
+
+async def _wait_until_started(server: Server, task: asyncio.Task[None]) -> None:
+    """Wait until uvicorn ``server`` (run by ``task``) serves.
+
+    Raises:
+        RuntimeError: It exited without starting (a failed startup it logged itself)
+    """
+    while not server.started:
+        if task.done():
+            task.result()  # Its error, if it raised one
+            raise RuntimeError("Tool bridge server exited during startup")
+        await anyio.sleep(0.01)
 
 
 def _is_annotation_of_type(annotation: Any, type_name: str) -> bool:
@@ -236,6 +280,9 @@ class ToolManagerBridge:
     server_name: str | None = None
     """Name for the MCP server."""
 
+    token: str = field(default_factory=lambda: secrets.token_urlsafe(32), init=False)
+    """Bearer token a caller must send (see :attr:`headers`)."""
+
     _routes: dict[str, BridgeRoute] = field(default_factory=dict, init=False, repr=False)
     """Routes by key (one per session reaching the bridge; see ``url_for``)."""
 
@@ -250,6 +297,9 @@ class ToolManagerBridge:
 
     _actual_port: int | None = field(default=None, init=False, repr=False)
     """Actual port the server is bound to."""
+
+    _socket: socket.socket | None = field(default=None, init=False, repr=False)
+    """The listening socket (bound by us, served by uvicorn)."""
 
     def route(self, key: str = DEFAULT_ROUTE) -> BridgeRoute:
         """The route ``key`` (created on first use, then kept)."""
@@ -301,6 +351,9 @@ class ToolManagerBridge:
                         await self._server_task
             self._server = None
             self._server_task = None
+        if self._socket is not None:
+            self._socket.close()
+            self._socket = None
         self._mcp = None
         self._actual_port = None
         logger.info("ToolManagerBridge stopped")
@@ -373,6 +426,11 @@ class ToolManagerBridge:
     def url(self) -> str:
         """URL of the default route (the agent's default session)."""
         return f"http://127.0.0.1:{self.port}/mcp"
+
+    @property
+    def headers(self) -> dict[str, str]:
+        """HTTP headers a backend must send to the bridge: put them in its MCP config."""
+        return {"Authorization": f"Bearer {self.token}"}
 
     def url_for(self, key: str = DEFAULT_ROUTE) -> str:
         """URL of route ``key``: give each session's backend connection its own."""
@@ -586,26 +644,31 @@ class ToolManagerBridge:
         return result
 
     async def _start_server(self) -> None:
-        """Start the uvicorn server in the background."""
-        import socket
-
+        """Start the uvicorn server in the background, and wait until it serves."""
         import uvicorn
 
         if not self._mcp:
             raise RuntimeError("MCP server not initialized")
 
-        # Auto-select an available port
-        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-            s.bind(("127.0.0.1", 0))
-            port = s.getsockname()[1]
-        self._actual_port = port
-        app = self._mcp.http_app(transport="http")  # Create the ASGI app
-        cfg = uvicorn.Config(
-            app=app, host="127.0.0.1", port=port, log_level="warning", ws="websockets-sansio"
-        )
-        self._server = uvicorn.Server(cfg)
-        # Start server in background task
+        # Bind the port ourselves and hand uvicorn the bound socket: the port reported is
+        # the one served on, with no gap in which another process could take it.
+        self._socket = sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        try:
+            sock.bind(("127.0.0.1", 0))
+            sock.set_inheritable(True)
+        except BaseException:
+            sock.close()
+            self._socket = None
+            raise
+        app = _BearerAuth(self._mcp.http_app(transport="http"), self.token)
+        cfg = uvicorn.Config(app=app, log_level="warning", ws="websockets-sansio")
+        self._server = server = uvicorn.Server(cfg)
         name = f"mcp-bridge-{self.resolved_server_name}"
-        self._server_task = asyncio.create_task(self._server.serve(), name=name)
-        await anyio.sleep(0.1)  # Wait briefly for server to start
+        self._server_task = task = asyncio.create_task(server.serve(sockets=[sock]), name=name)
+        try:
+            await _wait_until_started(server, task)
+        except BaseException:
+            await self.stop()
+            raise
+        self._actual_port = sock.getsockname()[1]
         logger.info("ToolManagerBridge started", url=self.url)

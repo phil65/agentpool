@@ -373,7 +373,9 @@ class OpenCodeV2Agent[TDeps = None](BaseAgent[TDeps, str]):
             bridge_name = sanitize_mcp_name(self._tool_bridge.resolved_server_name)
             servers_to_add.append((
                 bridge_name,
-                McpRemoteConfigEncoded(url=self._tool_bridge.url, oauth=False),
+                McpRemoteConfigEncoded(
+                    url=self._tool_bridge.url, headers=self._tool_bridge.headers, oauth=False
+                ),
             ))
         servers_to_add.extend(
             converted

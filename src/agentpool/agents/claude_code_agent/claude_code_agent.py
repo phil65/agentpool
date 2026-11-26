@@ -932,7 +932,8 @@ class ClaudeCodeAgent[TDeps = None, TResult = str](BaseAgent[TDeps, TResult]):
             # Use HTTP transport to preserve _meta field with claudecode/toolUseId. Bridge
             # tools are the agent's own core tools: never defer them behind tool search.
             url = self._tool_bridge.url_for(self._route)
-            bridge = McpHttpServerConfig(type="http", url=url, alwaysLoad=True)
+            headers = self._tool_bridge.headers
+            bridge = McpHttpServerConfig(type="http", url=url, headers=headers, alwaysLoad=True)
             servers[self._tool_bridge.resolved_server_name] = bridge
         return servers
 

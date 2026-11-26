@@ -33,7 +33,10 @@ async def test_bridge_validates_arguments() -> None:
         agent = Agent(name="test", model=TestModel())
         await pool.add_agent(agent)
         agent.tools.register_tool(typed_tool)
-        async with ToolManagerBridge(node=agent) as bridge, fastmcp.Client(bridge.url) as client:
+        async with (
+            ToolManagerBridge(node=agent) as bridge,
+            fastmcp.Client(bridge.url, auth=bridge.token) as client,
+        ):
             result = await client.call_tool("typed_tool", {"count": "many"}, raise_on_error=False)
             assert result.is_error
             assert "invalid args" in str(result.content)

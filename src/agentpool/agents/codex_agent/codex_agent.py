@@ -300,7 +300,11 @@ class CodexAgent[TDeps = None, OutputDataT = str](BaseAgent[TDeps, OutputDataT])
         from codexed.models import HttpMcpServer as CodexHttpMcpServer
 
         url = self._tool_bridge.url_for(route)
-        return CodexHttpMcpServer(url=url, default_tools_approval_mode="approve")
+        return CodexHttpMcpServer(
+            url=url,
+            http_headers=self._tool_bridge.headers,
+            default_tools_approval_mode="approve",
+        )
 
     def _open_thread(self, session: Session) -> None:
         """Make ``session`` (a started or resumed thread) the thread of the session acting."""

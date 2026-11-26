@@ -12,8 +12,8 @@ from agentpool.mcp_server.tool_bridge import ToolManagerBridge
 from agentpool.sessions import Session
 
 
-async def _text(url: str, tool: str) -> str:
-    async with Client(url) as client:
+async def _text(url: str, tool: str, token: str) -> str:
+    async with Client(url, auth=token) as client:
         result = await client.call_tool(tool, {})
     return "".join(block.text for block in result.content if block.type == "text")
 
@@ -32,10 +32,10 @@ async def test_tool_calls_run_with_the_context_of_their_route() -> None:
             bridge.set_run_context(a, route=first.session_id),
             bridge.set_run_context(b, route=second.session_id),
         ):
-            assert await _text(bridge.url_for(first.session_id), "whoami") == "A"
-            assert await _text(bridge.url_for(second.session_id), "whoami") == "B"
+            assert await _text(bridge.url_for(first.session_id), "whoami", bridge.token) == "A"
+            assert await _text(bridge.url_for(second.session_id), "whoami", bridge.token) == "B"
             # The plain URL is the default session's: no turn runs on it
-            assert await _text(bridge.url, "whoami") == "None"
+            assert await _text(bridge.url, "whoami", bridge.token) == "None"
         assert bridge.context(first.session_id) is None  # Cleared when the turn ends
 
 
@@ -54,8 +54,12 @@ async def test_injections_reach_the_tool_calls_of_their_own_session() -> None:
             bridge.set_run_context(a, route=first.session_id),
             bridge.set_run_context(b, route=second.session_id),
         ):
-            assert "FOR FIRST" not in await _text(bridge.url_for(second.session_id), "work")
-            assert "FOR FIRST" in await _text(bridge.url_for(first.session_id), "work")
+            assert "FOR FIRST" not in await _text(
+                bridge.url_for(second.session_id), "work", bridge.token
+            )
+            assert "FOR FIRST" in await _text(
+                bridge.url_for(first.session_id), "work", bridge.token
+            )
 
 
 async def test_tool_calls_run_in_the_session_environment_of_their_turn() -> None:
@@ -75,5 +79,7 @@ async def test_tool_calls_run_in_the_session_environment_of_their_turn() -> None
             async with bridge.set_run_context(agent.get_context(), route=session.session_id):
                 # The call runs in the bridge server's task, which the turn's context
                 # doesn't reach: the route carries the environment there
-                where_it_ran = await _text(bridge.url_for(session.session_id), "where")
+                where_it_ran = await _text(
+                    bridge.url_for(session.session_id), "where", bridge.token
+                )
         assert where_it_ran == "/srv/session"

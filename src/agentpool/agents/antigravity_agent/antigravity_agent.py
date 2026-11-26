@@ -614,6 +614,7 @@ class AntigravityAgent[TDeps = None, OutputDataT = str](BaseAgent[TDeps, OutputD
                 McpStreamableHttpServer(
                     name=sanitize_mcp_server_name(self._tool_bridge.resolved_server_name),
                     url=self._tool_bridge.url,
+                    headers=self._tool_bridge.headers,
                 )
             )
         servers.extend(

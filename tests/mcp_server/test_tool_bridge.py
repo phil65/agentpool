@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING, Any
 
 from clawd_code_sdk import ClaudeAgentOptions, ClaudeSDKClient, tool
 from clawd_code_sdk.models import McpHttpServerConfig, ResultMessage
+import httpx2
 from mcp import ClientSession
 from mcp.client.streamable_http import streamable_http_client
 import pytest
@@ -143,7 +144,8 @@ async def test_tool_call_via_mcp_client():
 
         async with (
             ToolManagerBridge(node=agent) as bridge,
-            streamable_http_client(bridge.url) as (read_stream, write_stream),
+            httpx2.AsyncClient(headers=bridge.headers) as http,
+            streamable_http_client(bridge.url, http_client=http) as (read_stream, write_stream),
             ClientSession(read_stream, write_stream) as session,
         ):
             await session.initialize()
@@ -179,7 +181,8 @@ async def test_tool_call_with_meta_tool_use_id():
 
         async with (
             ToolManagerBridge(node=agent) as bridge,
-            streamable_http_client(bridge.url) as (read_stream, write_stream),
+            httpx2.AsyncClient(headers=bridge.headers) as http,
+            streamable_http_client(bridge.url, http_client=http) as (read_stream, write_stream),
             ClientSession(read_stream, write_stream) as session,
         ):
             await session.initialize()
@@ -250,7 +253,9 @@ async def test_claude_code_mcp_bridge_integration():
 
         async with ToolManagerBridge(node=agent) as bridge:
             options = ClaudeAgentOptions(
-                mcp_servers={"test_bridge": McpHttpServerConfig(url=bridge.url)},
+                mcp_servers={
+                    "test_bridge": McpHttpServerConfig(url=bridge.url, headers=bridge.headers)
+                },
                 allowed_tools=["mcp__test_bridge__capture_context_tool"],
             )
 
@@ -292,7 +297,10 @@ async def test_tool_changes_reach_listening_clients() -> None:
         agent = Agent(name="test", model="test", system_prompt="Test")
         await pool.add_agent(agent)
         agent.tools.register_tool(simple_add)
-        async with ToolManagerBridge(node=agent) as bridge, Client(bridge.url) as client:
+        async with (
+            ToolManagerBridge(node=agent) as bridge,
+            Client(bridge.url, auth=bridge.token) as client,
+        ):
             assert {t.name for t in await client.list_tools()} == {"simple_add"}
             async with client.listen(tools_list_changed=True) as subscription:
                 provider = agent.tools.builtin_provider
