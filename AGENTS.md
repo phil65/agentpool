@@ -27,7 +27,7 @@ uv run pytest -m integration
 uv run pytest -m live_model
 
 # What CI runs (everything but slow and acp_snapshot); the live_model tests
-# run in one job only (ubuntu, Python 3.13), the other jobs add "and not live_model"
+# run in one job only (ubuntu, Python 3.14), the other jobs add "and not live_model"
 uv run pytest -m "not slow and not acp_snapshot"
 
 # Run with coverage
