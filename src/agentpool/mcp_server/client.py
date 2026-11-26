@@ -99,6 +99,18 @@ def _enable_task_support() -> None:
 MetaDict = dict[str, Any]
 
 
+_FATAL_MCP_ERRORS = frozenset({
+    -32000,  # CONNECTION_CLOSED
+    -32001,  # REQUEST_TIMEOUT
+    -32600,  # INVALID_REQUEST
+    -32601,  # METHOD_NOT_FOUND
+    -32603,  # INTERNAL_ERROR
+    -32700,  # PARSE_ERROR
+})
+"""MCP errors a retry by the model can't fix: the connection closed or timed out, or the
+server failed. Others (bad arguments, server-defined codes) go back to the model."""
+
+
 class MCPClient:
     """FastMCP-based client for communicating with MCP servers."""
 
@@ -616,7 +628,7 @@ class MCPClient:
         Raises:
             ToolFailed: The tool reported an error (the model sees it and goes on)
             ModelRetry: The server refused the call (a protocol error, e.g. bad arguments)
-            RuntimeError: The call failed in transport (ends the run)
+            RuntimeError: The call failed in transport, or the server failed (ends the run)
         """
         from fastmcp.exceptions import McpError, ToolError
         from pydantic_ai import ModelRetry, ToolFailed
@@ -703,8 +715,10 @@ class MCPClient:
             return extract_text_content(result.content)
         except ToolError as e:  # The tool failed (an isError result): the model sees it
             raise ToolFailed(str(e)) from e
-        except McpError as e:  # The server refused the call (e.g. bad arguments)
-            raise ModelRetry(str(e)) from e
+        except McpError as e:
+            if e.error.code in _FATAL_MCP_ERRORS:  # Transport or server fault: ends the run
+                raise RuntimeError(f"MCP tool call failed: {e.error.message}") from e
+            raise ModelRetry(str(e)) from e  # Refused (e.g. bad arguments): the model retries
         except Exception as e:  # Transport failures end the run
             raise RuntimeError(f"MCP tool call failed: {e}") from e
         finally:
