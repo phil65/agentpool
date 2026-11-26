@@ -339,7 +339,7 @@ async def _fetch_github_release(repo_url: str, version: str) -> str | None:
     # Extract owner/repo from URL
     # https://github.com/owner/repo or https://github.com/owner/repo.git
     expected_parts = 2
-    parts = repo_url.rstrip("/").rstrip(".git").split("github.com/")
+    parts = repo_url.rstrip("/").removesuffix(".git").split("github.com/")
     if len(parts) != expected_parts:
         return None
 

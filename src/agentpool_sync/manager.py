@@ -123,7 +123,7 @@ class SyncManager:
             return None
 
         metadata = parser.parse(content)
-        if not metadata or not metadata.dependencies:
+        if not metadata or not (metadata.dependencies or metadata.urls):
             return None
 
         return (path, metadata)

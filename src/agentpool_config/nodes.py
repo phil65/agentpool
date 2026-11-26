@@ -20,7 +20,6 @@ from agentpool_config.hooks import HooksConfig
 from agentpool_config.mcp_server import (
     BaseMCPServerConfig,
     MCPServerConfig,
-    StdioMCPServerConfig,
     StreamableHTTPMCPServerConfig,
 )
 
@@ -122,7 +121,7 @@ class NodeConfig(Schema):
         ],
     )
     """List of MCP server configurations:
-    - str entries are converted to StdioMCPServerConfig
+    - str entries: URLs become HTTP / SSE servers, other strings stdio commands
     - MCPServerConfig for full server configuration
     """
     # Any should be InputProvider, but this leads to circular import
@@ -155,8 +154,8 @@ class NodeConfig(Schema):
     def get_mcp_servers(self) -> list[MCPServerConfig]:
         """Get processed MCP server configurations.
 
-        Converts string entries to StdioMCPServerConfigs by splitting
-        into command and arguments.
+        Converts string entries via ``BaseMCPServerConfig.from_string``: URLs become
+        HTTP / SSE servers, everything else a stdio command line.
 
         Returns:
             List of MCPServerConfig instances
@@ -169,11 +168,9 @@ class NodeConfig(Schema):
         for server in self.mcp_servers:
             match server:
                 case str():
-                    parts = server.split()
-                    if not parts:
+                    if not server.strip():
                         raise ValueError("Empty MCP server command")
-
-                    configs.append(StdioMCPServerConfig(command=parts[0], args=parts[1:]))
+                    configs.append(BaseMCPServerConfig.from_string(server))
                 case BaseMCPServerConfig():
                     configs.append(server)
 

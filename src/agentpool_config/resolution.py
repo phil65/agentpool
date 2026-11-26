@@ -75,7 +75,6 @@ CONFIG_FILE_NAMES: tuple[str, ...] = (
 # Environment variable names
 ENV_CONFIG_PATH = "AGENTPOOL_CONFIG"
 ENV_CONFIG_CONTENT = "AGENTPOOL_CONFIG_CONTENT"
-ENV_CONFIG_DIR = "AGENTPOOL_CONFIG_DIR"
 ENV_DISABLE_GLOBAL = "AGENTPOOL_NO_GLOBAL_CONFIG"
 ENV_DISABLE_PROJECT = "AGENTPOOL_NO_PROJECT_CONFIG"
 
@@ -158,11 +157,10 @@ def _load_yaml_data(path: JoinablePathLike) -> dict[str, Any]:
         path: Path to config file
 
     Returns:
-        Parsed configuration data
+        Parsed configuration data (an empty file gives an empty mapping)
 
     Raises:
-        ValueError: If file cannot be loaded or parsed
-        TypeError: If loaded data is not a mapping
+        ValueError: If file cannot be loaded or parsed, or is not a mapping
     """
     try:
         data = yamling.load_yaml_file(
@@ -172,9 +170,11 @@ def _load_yaml_data(path: JoinablePathLike) -> dict[str, Any]:
         )
     except Exception as e:
         raise ValueError(f"Failed to load config from {path}: {e}") from e
+    if data is None:
+        return {}
     if not isinstance(data, dict):
-        msg = f"Config must be a mapping, got {type(data).__name__}"
-        raise TypeError(msg)
+        msg = f"Config {path} must be a mapping, got {type(data).__name__}"
+        raise ValueError(msg)  # noqa: TRY004
     return data
 
 

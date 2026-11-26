@@ -388,8 +388,15 @@ class AgentsManifest(Schema):
     @model_validator(mode="before")
     @classmethod
     def set_default_agent_type(cls, data: dict[str, Any]) -> dict[str, Any]:
-        """Set default type='native' for agents without a type field."""
-        agents = data.get("agents", {})
+        """Set default type='native' for agents without a type field.
+
+        An empty ``agents:`` section (YAML ``None``) counts as no agents.
+        """
+        if not isinstance(data, dict):
+            return data
+        if "agents" in data and data["agents"] is None:
+            data = {**data, "agents": {}}
+        agents = data.get("agents") or {}
         for config in agents.values():
             if isinstance(config, dict) and "type" not in config:
                 config["type"] = "native"
@@ -444,15 +451,15 @@ class AgentsManifest(Schema):
         if actual_name in self.agents:
             raise ValueError(f"Agent {actual_name} already exists")
 
-        config = self.agents[name].model_copy(deep=True)
-        for key, value in overrides.items():
-            if not hasattr(config, key):
-                raise ValueError(f"Invalid override: {key}")
-            setattr(config, key, value)
-
-        # Handle template rendering if context provided
+        original = self.agents[name]
+        if invalid := [key for key in overrides if key not in type(original).model_fields]:
+            raise ValueError(f"Invalid override(s): {', '.join(invalid)}")
+        update = dict(overrides)
         if template_context and "name" in template_context and "name" not in overrides:
-            config.model_copy(update={"name": template_context["name"]})
+            update["name"] = template_context["name"]
+        # Agent configs are frozen: build a validated copy instead of setting attributes.
+        data = {**original.model_dump(exclude_unset=True), **update}
+        config = type(original).model_validate(data)
 
         # Note: system_prompts will be rendered during agent creation, not here
         # config.system_prompts remains as PromptConfig objects

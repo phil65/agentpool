@@ -55,13 +55,6 @@ class ConfigStore:
         """Get config file path."""
         return self.config_dir / self._filename
 
-    def _ensure_config_dir(self) -> None:
-        """Create config directory if needed."""
-        self.config_dir.mkdir(parents=True, exist_ok=True)
-        if not self.config_file.exists():
-            mapping = ConfigMapping(configs={}, active=None)
-            self.save_mapping(mapping)
-
     def load_mapping(self) -> ConfigMapping:
         """Load config mapping from disk."""
         import anyenv
@@ -83,6 +76,7 @@ class ConfigStore:
         import anyenv
 
         try:
+            self.config_file.parent.mkdir(parents=True, exist_ok=True)
             self.config_file.write_text(anyenv.dump_json(mapping, indent=True))
         except Exception:
             logger.exception("Failed to save config mapping")

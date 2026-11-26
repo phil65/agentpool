@@ -190,7 +190,7 @@
           "type": "array"
         },
         "mcp_servers": {
-          "description": "List of MCP server configurations:\n- str entries are converted to StdioMCPServerConfig\n- MCPServerConfig for full server configuration",
+          "description": "List of MCP server configurations:\n- str entries: URLs become HTTP / SSE servers, other strings stdio commands\n- MCPServerConfig for full server configuration",
           "examples": [
             [
               "uvx some-server"
@@ -211,6 +211,7 @@
                 "env": null,
                 "events": false,
                 "headers": null,
+                "init_timeout": 30.0,
                 "name": null,
                 "skills": true,
                 "timeout": 60.0,
@@ -1132,7 +1133,7 @@
           "type": "array"
         },
         "mcp_servers": {
-          "description": "List of MCP server configurations:\n- str entries are converted to StdioMCPServerConfig\n- MCPServerConfig for full server configuration",
+          "description": "List of MCP server configurations:\n- str entries: URLs become HTTP / SSE servers, other strings stdio commands\n- MCPServerConfig for full server configuration",
           "examples": [
             [
               "uvx some-server"
@@ -1153,6 +1154,7 @@
                 "env": null,
                 "events": false,
                 "headers": null,
+                "init_timeout": 30.0,
                 "name": null,
                 "skills": true,
                 "timeout": 60.0,
@@ -2830,7 +2832,7 @@
           "type": "array"
         },
         "mcp_servers": {
-          "description": "List of MCP server configurations:\n- str entries are converted to StdioMCPServerConfig\n- MCPServerConfig for full server configuration",
+          "description": "List of MCP server configurations:\n- str entries: URLs become HTTP / SSE servers, other strings stdio commands\n- MCPServerConfig for full server configuration",
           "examples": [
             [
               "uvx some-server"
@@ -2851,6 +2853,7 @@
                 "env": null,
                 "events": false,
                 "headers": null,
+                "init_timeout": 30.0,
                 "name": null,
                 "skills": true,
                 "timeout": 60.0,
@@ -7650,7 +7653,7 @@
           "type": "array"
         },
         "mcp_servers": {
-          "description": "List of MCP server configurations:\n- str entries are converted to StdioMCPServerConfig\n- MCPServerConfig for full server configuration",
+          "description": "List of MCP server configurations:\n- str entries: URLs become HTTP / SSE servers, other strings stdio commands\n- MCPServerConfig for full server configuration",
           "examples": [
             [
               "uvx some-server"
@@ -7671,6 +7674,7 @@
                 "env": null,
                 "events": false,
                 "headers": null,
+                "init_timeout": 30.0,
                 "name": null,
                 "skills": true,
                 "timeout": 60.0,
@@ -8821,7 +8825,7 @@
     },
     "ClaudeStorageConfig": {
       "additionalProperties": false,
-      "description": "Claude Code native storage format configuration.\n\nReads/writes to Claude Code's native JSONL format in ~/.claude/projects/.\nUseful for sharing conversation history between agentpool and Claude Code CLI.",
+      "description": "Claude Code native storage format configuration.\n\nReads/writes to Claude Code's native JSONL format in ~/.claude/projects/.\nUseful for sharing conversation history between agentpool and Claude Code CLI.\n\nThe transcripts belong to Claude Code: `reset` never deletes them (it reports 0\ndeleted), and the storage manager doesn't send resets to this provider. Session ids\nmust be plain file stems (no path separators or `..`).",
       "properties": {
         "type": {
           "const": "claude",
@@ -9622,7 +9626,7 @@
           "type": "array"
         },
         "mcp_servers": {
-          "description": "List of MCP server configurations:\n- str entries are converted to StdioMCPServerConfig\n- MCPServerConfig for full server configuration",
+          "description": "List of MCP server configurations:\n- str entries: URLs become HTTP / SSE servers, other strings stdio commands\n- MCPServerConfig for full server configuration",
           "examples": [
             [
               "uvx some-server"
@@ -9643,6 +9647,7 @@
                 "env": null,
                 "events": false,
                 "headers": null,
+                "init_timeout": 30.0,
                 "name": null,
                 "skills": true,
                 "timeout": 60.0,
@@ -28764,7 +28769,7 @@
           "type": "array"
         },
         "mcp_servers": {
-          "description": "List of MCP server configurations:\n- str entries are converted to StdioMCPServerConfig\n- MCPServerConfig for full server configuration",
+          "description": "List of MCP server configurations:\n- str entries: URLs become HTTP / SSE servers, other strings stdio commands\n- MCPServerConfig for full server configuration",
           "examples": [
             [
               "uvx some-server"
@@ -28785,6 +28790,7 @@
                 "env": null,
                 "events": false,
                 "headers": null,
+                "init_timeout": 30.0,
                 "name": null,
                 "skills": true,
                 "timeout": 60.0,
@@ -32811,7 +32817,7 @@
           "type": "array"
         },
         "mcp_servers": {
-          "description": "List of MCP server configurations:\n- str entries are converted to StdioMCPServerConfig\n- MCPServerConfig for full server configuration",
+          "description": "List of MCP server configurations:\n- str entries: URLs become HTTP / SSE servers, other strings stdio commands\n- MCPServerConfig for full server configuration",
           "examples": [
             [
               "uvx some-server"
@@ -32832,6 +32838,7 @@
                 "env": null,
                 "events": false,
                 "headers": null,
+                "init_timeout": 30.0,
                 "name": null,
                 "skills": true,
                 "timeout": 60.0,
@@ -37030,7 +37037,7 @@
           "type": "array"
         },
         "mcp_servers": {
-          "description": "List of MCP server configurations:\n- str entries are converted to StdioMCPServerConfig\n- MCPServerConfig for full server configuration",
+          "description": "List of MCP server configurations:\n- str entries: URLs become HTTP / SSE servers, other strings stdio commands\n- MCPServerConfig for full server configuration",
           "examples": [
             [
               "uvx some-server"
@@ -37051,6 +37058,7 @@
                 "env": null,
                 "events": false,
                 "headers": null,
+                "init_timeout": 30.0,
                 "name": null,
                 "skills": true,
                 "timeout": 60.0,
@@ -37896,7 +37904,7 @@
           "type": "array"
         },
         "mcp_servers": {
-          "description": "List of MCP server configurations:\n- str entries are converted to StdioMCPServerConfig\n- MCPServerConfig for full server configuration",
+          "description": "List of MCP server configurations:\n- str entries: URLs become HTTP / SSE servers, other strings stdio commands\n- MCPServerConfig for full server configuration",
           "examples": [
             [
               "uvx some-server"
@@ -37917,6 +37925,7 @@
                 "env": null,
                 "events": false,
                 "headers": null,
+                "init_timeout": 30.0,
                 "name": null,
                 "skills": true,
                 "timeout": 60.0,
@@ -39653,6 +39662,18 @@
           ],
           "exclusiveMinimum": 0,
           "title": "Server timeout",
+          "type": "number"
+        },
+        "init_timeout": {
+          "default": 30.0,
+          "description": "Seconds to wait for the server to start and finish the MCP handshake.\n\nA server that takes longer is marked failed instead of blocking its agent or pool.",
+          "examples": [
+            10.0,
+            30.0,
+            120.0
+          ],
+          "exclusiveMinimum": 0,
+          "title": "Startup timeout",
           "type": "number"
         },
         "enabled_tools": {
@@ -41510,6 +41531,18 @@
           ],
           "exclusiveMinimum": 0,
           "title": "Server timeout",
+          "type": "number"
+        },
+        "init_timeout": {
+          "default": 30.0,
+          "description": "Seconds to wait for the server to start and finish the MCP handshake.\n\nA server that takes longer is marked failed instead of blocking its agent or pool.",
+          "examples": [
+            10.0,
+            30.0,
+            120.0
+          ],
+          "exclusiveMinimum": 0,
+          "title": "Startup timeout",
           "type": "number"
         },
         "enabled_tools": {
@@ -43535,6 +43568,18 @@
           ],
           "exclusiveMinimum": 0,
           "title": "Server timeout",
+          "type": "number"
+        },
+        "init_timeout": {
+          "default": 30.0,
+          "description": "Seconds to wait for the server to start and finish the MCP handshake.\n\nA server that takes longer is marked failed instead of blocking its agent or pool.",
+          "examples": [
+            10.0,
+            30.0,
+            120.0
+          ],
+          "exclusiveMinimum": 0,
+          "title": "Startup timeout",
           "type": "number"
         },
         "enabled_tools": {
@@ -45950,7 +45995,7 @@
           "type": "array"
         },
         "mcp_servers": {
-          "description": "List of MCP server configurations:\n- str entries are converted to StdioMCPServerConfig\n- MCPServerConfig for full server configuration",
+          "description": "List of MCP server configurations:\n- str entries: URLs become HTTP / SSE servers, other strings stdio commands\n- MCPServerConfig for full server configuration",
           "examples": [
             [
               "uvx some-server"
@@ -45971,6 +46016,7 @@
                 "env": null,
                 "events": false,
                 "headers": null,
+                "init_timeout": 30.0,
                 "name": null,
                 "skills": true,
                 "timeout": 60.0,
@@ -46956,7 +47002,7 @@
           "type": "array"
         },
         "mcp_servers": {
-          "description": "List of MCP server configurations:\n- str entries are converted to StdioMCPServerConfig\n- MCPServerConfig for full server configuration",
+          "description": "List of MCP server configurations:\n- str entries: URLs become HTTP / SSE servers, other strings stdio commands\n- MCPServerConfig for full server configuration",
           "examples": [
             [
               "uvx some-server"
@@ -46977,6 +47023,7 @@
                 "env": null,
                 "events": false,
                 "headers": null,
+                "init_timeout": 30.0,
                 "name": null,
                 "skills": true,
                 "timeout": 60.0,
