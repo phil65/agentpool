@@ -187,3 +187,33 @@ async def test_runs_of_different_sessions_do_not_wait_for_each_other(mode: str) 
         assert sorted(started) == ["one", "two"]
         release.set()
         await asyncio.wait_for(asyncio.gather(*runs), 5)
+
+
+async def test_a_nested_self_call_keeps_the_outer_turns_state() -> None:
+    """The nested run runs its own prompt only; the outer turn keeps its queue and task."""
+    seen: list[list[str]] = []
+    state: dict[str, Any] = {}
+
+    async def ask_myself(ctx: AgentContext, question: str) -> str:
+        """Ask the agent itself."""
+        runtime = ctx.agent.runtime()
+        ctx.agent.queue_prompt("follow-up")
+        task, message_id = runtime.task, runtime.turn_message_id
+        answer = await ctx.agent.run(question, store_history=False)
+        state["task kept"] = runtime.task is task is not None
+        state["message id kept"] = runtime.turn_message_id == message_id is not None
+        return str(answer.content)
+
+    async def model(messages: list[ModelMessage], info: AgentInfo) -> AsyncIterator[Any]:
+        texts = _user_texts(messages)
+        seen.append(texts)
+        if texts[-1] == "outer" and len(messages) == 1:
+            args = json.dumps({"question": "inner"})
+            yield {0: DeltaToolCall(name="ask_myself", json_args=args, tool_call_id="c1")}
+        else:
+            yield f"answer to {texts[-1]}"
+
+    agent = Agent(name="a", model=FunctionModel(stream_function=model), tools=[ask_myself])
+    await asyncio.wait_for(agent.run("outer"), 5)
+    assert seen == [["outer"], ["inner"], ["outer"], ["outer", "follow-up"]]
+    assert state == {"task kept": True, "message id kept": True}

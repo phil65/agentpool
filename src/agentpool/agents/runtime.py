@@ -166,7 +166,7 @@ class SessionRuntime[TDeps = Any, TResult = Any]:
         Runs from inside the running turn (same context) run nested at once.
         """
         if active_runtime(self.agent) is self:  # A nested self-call: don't wait for itself
-            async for event in self._run_stream_now(*prompts, **kwargs):
+            async for event in self._run_stream_now(*prompts, nested=True, **kwargs):
                 yield event
             return
         if mode == "steer" and self.running and (text := self._steerable(prompts)) is not None:
@@ -220,8 +220,14 @@ class SessionRuntime[TDeps = Any, TResult = Any]:
         input_provider: InputProvider | None = None,
         deps: TDeps | None = None,
         event_handlers: Sequence[AnyEventHandlerType] | None = None,
+        nested: bool = False,
     ) -> AsyncIterator[RichAgentStreamEvent[TResult]]:
-        """Run the prompts now (the caller holds the turn lock, or runs nested)."""
+        """Run the prompts now (the caller holds the turn lock, or runs nested).
+
+        A nested run (a tool of the running turn calling its own agent) runs its prompts
+        only, inside the turn: what the turn queued stays queued for it, and the turn's
+        state (task, cancellation, message ID, last turn, reported state) stays the turn's.
+        """
         agent = self.agent
         if self.is_default:
             effective_session_id = await self._start_default_session(prompts, session_id)
@@ -240,14 +246,19 @@ class SessionRuntime[TDeps = Any, TResult = Any]:
                 yield notice
 
         with activate(agent, self):  # Turn state below is this session's
-            # Reset cancellation state and track current task
-            self.cancelled = self.interrupted = False
-            self.task = run_task = asyncio.current_task()
+            run_task = asyncio.current_task()
             # Cancellations requested before the run: only newer ones are the run's own
             baseline = run_task.cancelling() if run_task is not None else 0
-            # Queue the initial prompts
-            self.injections.insert_queued(prompts)
-            self._report_state("running")
+            outer_message_id, outer_turn = self.turn_message_id, self.last_turn
+            nested_prompts: list[Sequence[PromptCompatible]] = []
+            if nested:
+                nested_prompts.append(prompts)
+            else:
+                # Reset cancellation state and track current task
+                self.cancelled = self.interrupted = False
+                self.task = run_task
+                self.injections.insert_queued(prompts)  # Queue the initial prompts
+                self._report_state("running")
             self.last_turn = None
             stop_reason: StopReason = "cancelled"  # Unless the turn ends normally or fails
             error: str | None = None
@@ -256,10 +267,8 @@ class SessionRuntime[TDeps = Any, TResult = Any]:
                 # Process queued prompts until queue is empty
                 # The given IDs are the first group's: queued groups get their own
                 prompt_message_id, reply_message_id = user_message_id, message_id
-                while self.injections.has_queued() and not self.cancelled:
-                    current_prompts = self.injections.pop_queued()
-                    if current_prompts is None:
-                        break
+                own = nested_prompts if nested else None
+                while (current_prompts := self._next_prompts(own)) is not None:
                     group_message_id, prompt_message_id = prompt_message_id, None
                     group_reply_id, reply_message_id = reply_message_id, None
                     async for event in self._run_once(
@@ -278,8 +287,8 @@ class SessionRuntime[TDeps = Any, TResult = Any]:
                             usage.incr(event.message.usage)
                         self._report_event(event)
                         yield event
-                    # After each iteration, flush unconsumed injections to queue
-                    self.injections.flush_pending_to_queue()
+                    if not nested:  # Flush unconsumed injections to the queue
+                        self.injections.flush_pending_to_queue()
                 # Cancelled from outside, and the agent ended its turn instead of raising
                 # (native, Claude Code): the turn is stored, the cancellation goes on
                 swallowed = (
@@ -293,16 +302,29 @@ class SessionRuntime[TDeps = Any, TResult = Any]:
                 stop_reason, error = "error", str(e)
                 raise
             finally:
-                if (turn := self.last_turn) is not None:  # How its last turn ended
-                    stop_reason = turn_stop_reason(turn.outcome)
-                self._report_state("idle", stop_reason=stop_reason, usage=usage, error=error)
-                self.task = None
-                self.turn_message_id = None
-                self.injections.clear()  # Clean slate for next run
-                if not self.is_default and self.idle:
-                    agent._runtimes.pop(self.session.session_id, None)
+                if nested:  # The turn goes on: its state is its own again
+                    self.turn_message_id, self.last_turn = outer_message_id, outer_turn
+                else:
+                    if (turn := self.last_turn) is not None:  # How its last turn ended
+                        stop_reason = turn_stop_reason(turn.outcome)
+                    self._report_state("idle", stop_reason=stop_reason, usage=usage, error=error)
+                    self.task = None
+                    self.turn_message_id = None
+                    self.injections.clear()  # Clean slate for next run
+                    if not self.is_default and self.idle:
+                        agent._runtimes.pop(self.session.session_id, None)
         if swallowed:
             raise asyncio.CancelledError
+
+    def _next_prompts(
+        self, own: list[Sequence[PromptCompatible]] | None
+    ) -> Sequence[PromptCompatible] | None:
+        """The next prompt group to run (None: done): ``own`` ones (nested), else queued."""
+        if own is not None:
+            return own.pop() if own else None
+        if self.cancelled or not self.injections.has_queued():
+            return None
+        return self.injections.pop_queued()
 
     def _report_event(self, event: RichAgentStreamEvent[Any]) -> None:
         """Report what a turn's event says about the session to the pool's activity feed."""
