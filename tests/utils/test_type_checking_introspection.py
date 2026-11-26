@@ -52,3 +52,36 @@ def test_prompt_arguments() -> None:
 
     prompt = DynamicPrompt.from_callable(tc.path_tool)
     assert [arg.name for arg in prompt.to_mcp_prompt().arguments or []] == ["path"]
+
+
+def test_callable_resource_loader_config_defined_at_runtime() -> None:
+    from agentpool_config.loaders import CallableResourceLoaderConfig
+
+    assert CallableResourceLoaderConfig.__pydantic_complete__
+    CallableResourceLoaderConfig.model_rebuild(raise_errors=True)
+    schema = CallableResourceLoaderConfig.model_json_schema()
+    assert "keyword_args" in schema["properties"]
+    kwargs = {"a": 1, "b": ["x", True, None, {"nested": 2.5}]}
+    cfg = CallableResourceLoaderConfig(import_path="math.sqrt", keyword_args=kwargs)
+    assert cfg.import_path == "math.sqrt"
+    assert cfg.keyword_args == kwargs
+
+
+def test_command_history_defined_at_runtime() -> None:
+    from agentpool_storage.sql_provider.models import CommandHistory
+
+    assert CommandHistory.__pydantic_complete__
+    CommandHistory.model_rebuild(raise_errors=True)
+    schema = CommandHistory.model_json_schema()
+    assert "context_metadata" in schema["properties"]
+    metadata = {"k": [1, "v", None, {"nested": False}]}
+    entry = CommandHistory(
+        session_id="s1",
+        agent_name="agent",
+        command="/help",
+        context_metadata=metadata,
+    )
+    assert entry.session_id == "s1"
+    assert entry.agent_name == "agent"
+    assert entry.command == "/help"
+    assert entry.context_metadata == metadata
