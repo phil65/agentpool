@@ -130,9 +130,9 @@ class V2ClientAdapter:
             yield
             return
         self._waiting[session_id] = self._waiting.get(session_id, 0) + 1
-        if self._waiting[session_id] == 1:
-            await self._send_state(session_id, v2.RequiresActionStateSessionUpdate())
-        try:
+        try:  # Counted down however it ends (also when sending the state fails)
+            if self._waiting[session_id] == 1:
+                await self._send_state(session_id, v2.RequiresActionStateSessionUpdate())
             yield
         finally:
             self._waiting[session_id] -= 1
@@ -147,13 +147,17 @@ class V2ClientAdapter:
             mirror = v2.SubagentUpdate(session_id=child.session_id, state=_association_state(state))
             await self.send_update(child.parent_id, mirror)
 
+    async def wait_closed(self) -> None:
+        """Wait until the client disconnected."""
+        await self.conn.wait_closed()
+
     async def send_update(self, session_id: str, update: v2.SessionUpdate) -> None:
         """Send an update that has no v1 form (terminals, ``cancelled`` tool calls)."""
         notification = v2.UpdateSessionNotification(session_id=session_id, update=update)
         await self.conn.session_update(notification)
 
     async def session_update(self, params: SessionNotification) -> None:
-        if (update := self.translator.translate(params.update)) is None:
+        if (update := self.translator.translate(params.update, params.session_id)) is None:
             return
         notification = v2.UpdateSessionNotification(session_id=params.session_id, update=update)
         await self.conn.session_update(notification)

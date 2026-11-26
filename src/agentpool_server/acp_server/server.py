@@ -7,7 +7,6 @@ the Agent Client Protocol.
 from __future__ import annotations
 
 import asyncio
-import functools
 from typing import TYPE_CHECKING, Any, Literal, Self
 
 from aclientp import serve
@@ -163,31 +162,33 @@ class ACPServer(BaseServer):
         # Resolve agent instance from name
         default_agent = self._resolve_default_agent()
         self.log.info("Using default agent", agent=default_agent.name)
-        create_acp_agent = functools.partial(
-            AgentPoolACPAgent,
-            default_agent=default_agent,
-            debug_commands=self.debug_commands,
-            load_skills=self.load_skills,
-            server=self,
-        )
-        create_v2_agent = (
-            functools.partial(
-                AgentPoolV2Agent,
-                default_agent=default_agent,
+        # The default agent is resolved per connection: after swap_pool, the new pool's
+
+        def create_acp_agent(conn: Any) -> AgentPoolACPAgent:
+            return AgentPoolACPAgent(
+                conn,
+                default_agent=self._resolve_default_agent(),
                 debug_commands=self.debug_commands,
                 load_skills=self.load_skills,
                 server=self,
             )
-            if self.max_protocol >= 2  # noqa: PLR2004
-            else None
-        )
+
+        def create_v2_agent(conn: Any) -> AgentPoolV2Agent:
+            return AgentPoolV2Agent(
+                conn,
+                default_agent=self._resolve_default_agent(),
+                debug_commands=self.debug_commands,
+                load_skills=self.load_skills,
+                server=self,
+            )
+
         debug_file = self.debug_file if self.debug_messages else None
         self.log.info("ACP server started", max_protocol=self.max_protocol)
         try:
             await serve(
                 create_acp_agent,
                 transport=self.transport,
-                v2_agent=create_v2_agent,
+                v2_agent=create_v2_agent if self.max_protocol >= 2 else None,  # noqa: PLR2004
                 shutdown_event=self._shutdown_event,
                 debug_file=debug_file,
             )

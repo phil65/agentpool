@@ -617,6 +617,7 @@ async def test_mid_turn_prompt_steers_without_duplicate_running_state(
 
     monkeypatch.setattr(agent, "run_stream", run_stream)
     monkeypatch.setattr(agent, "steer", steer)
+    monkeypatch.setattr(agent, "turn_running", lambda session_id=None: started.is_set())
 
     first = await conn.prompt(_prompt(session_id, "start"))
     await asyncio.wait_for(started.wait(), TIMEOUT)

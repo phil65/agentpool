@@ -201,7 +201,10 @@ class AgentPoolV2Agent(V2Agent):
             server: The server, for pool hot-switching
         """
         self.conn = conn
-        self.client = V2ClientAdapter(conn, UpdateTranslator(message_id=str(uuid.uuid4())))
+        self.client = V2ClientAdapter(conn, UpdateTranslator())
+        self._turns: dict[str, list[Sequence[Any]]] = {}
+        """Sessions with a turn accepted and not over, with the prompts queued onto it
+        before its agent run started."""
         self.v1 = AgentPoolACPAgent(
             client=self.client,
             default_agent=default_agent,
@@ -415,28 +418,49 @@ class AgentPoolV2Agent(V2Agent):
             blocks = to_v1(params, V1PromptRequest).prompt
             contents = session.convert_prompt(blocks)
             message_id = str(uuid.uuid4())
-            if session.is_running:
-                if contents and all(isinstance(c, str) for c in contents):
+            # Decided without awaiting in between: a turn accepted, not yet running, is
+            # one too (a second prompt must not start another)
+            if (queued := self._turns.get(params.session_id)) is not None:
+                if not session.agent.turn_running(session.session_id):
+                    queued.append(contents)  # Its agent run hasn't started (or is over)
+                elif contents and all(isinstance(c, str) for c in contents):
                     text = "\n\n".join(c for c in contents if isinstance(c, str))
                     await session.agent.steer(text, session_id=session.session_id)
                 elif contents:
                     session.agent.queue_prompt(*contents, session_id=session.session_id)
                 await claim.record(message_id)
                 return v2.PromptResponse(message_id=message_id)
-            await claim.record(message_id)
+            self._turns[params.session_id] = []
+            try:
+                await claim.record(message_id)
+            except BaseException:
+                self._turns.pop(params.session_id, None)
+                raise
         self.v1.tasks.create_task(
             self._run_turn(session, contents), name=f"acp-v2-turn-{message_id[:8]}"
         )
         return v2.PromptResponse(message_id=message_id)
 
     async def _run_turn(self, session: ACPSession, contents: Sequence[Any]) -> None:
-        await self._send_state(session.session_id, v2.RunningStateSessionUpdate())
+        """Run the accepted prompt, then the ones queued onto it; one running .. idle."""
+        session_id = session.session_id
         try:
-            outcome = await session.run_turn(contents, session.output.turn())
-        except Exception as exc:  # Ends foreground work: v2 clients wait for idle
-            logger.exception("Turn failed outside the agent run")
-            outcome = TurnFailed(error=exc)
-        await self._send_state(session.session_id, idle_state(outcome, session))
+            await self._send_state(session_id, v2.RunningStateSessionUpdate())
+            while True:
+                self.client.translator.new_turn(session_id)
+                try:
+                    outcome = await session.run_turn(contents, session.output.turn())
+                except Exception as exc:  # Ends foreground work: v2 clients wait for idle
+                    logger.exception("Turn failed outside the agent run")
+                    outcome = TurnFailed(error=exc)
+                queued = self._turns.get(session_id)
+                if not queued or isinstance(outcome, TurnCancelled):
+                    break  # A cancel ends the foreground work, queued prompts too
+                contents = [content for prompt in queued for content in prompt]
+                queued.clear()
+        finally:
+            self._turns.pop(session_id, None)  # Before idle: the next prompt is a new turn
+        await self._send_state(session_id, idle_state(outcome, session))
 
     async def _send_state(self, session_id: str, state: v2.StateSessionUpdate) -> None:
         notification = v2.UpdateSessionNotification(session_id=session_id, update=state)

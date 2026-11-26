@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import contextlib
 from dataclasses import KW_ONLY, dataclass, field
 from importlib.metadata import version as _version
 from typing import TYPE_CHECKING, Any, ClassVar, assert_never
@@ -52,7 +53,7 @@ from agentpool_server.acp_server.session_manager import ACPSessionManager
 
 
 if TYPE_CHECKING:
-    from collections.abc import Callable
+    from collections.abc import Awaitable, Callable
 
     from aclientp import Client
     from aclientp.schema import (
@@ -207,7 +208,21 @@ class AgentPoolACPAgent(ACPAgent):
         self.tasks = TaskManager()
         self._initialized = False
         # Connect to title generation signal to notify clients of session updates
-        self.agent_pool.storage.metadata_generated.connect(self._on_metadata_generated)
+        self._metadata_pool = self.agent_pool
+        self._metadata_pool.storage.metadata_generated.connect(self._on_metadata_generated)
+        self._watching_connection = False
+
+    async def _close_when_disconnected(self, wait_closed: Callable[[], Awaitable[Any]]) -> None:
+        try:
+            await wait_closed()
+        finally:
+            await self.aclose()
+
+    async def aclose(self) -> None:
+        """The client disconnected: close its sessions, stop listening to the pool."""
+        with contextlib.suppress(ValueError):
+            self._metadata_pool.storage.metadata_generated.disconnect(self._on_metadata_generated)
+        await self.session_manager.__aexit__(None, None, None)
 
     async def _on_metadata_generated(self, event: SessionMetadataGeneratedEvent) -> None:
         """Handle metadata generation - notify active sessions of the update."""
@@ -244,6 +259,10 @@ class AgentPoolACPAgent(ACPAgent):
         self.client_info = params.client_info
         logger.info("Client info", request=params.model_dump_json())
         self._initialized = True
+        wait_closed = getattr(self.client, "wait_closed", None)
+        if wait_closed is not None and not self._watching_connection:
+            self._watching_connection = True  # Clean up once the client disconnected
+            self.tasks.create_task(self._close_when_disconnected(wait_closed))
         response = InitializeResponse.create(
             protocol_version=version,
             name="agentpool",
@@ -718,6 +737,10 @@ class AgentPoolACPAgent(ACPAgent):
         pool = new_agent.agent_pool
         assert pool
         self.session_manager._pool = pool
+        with contextlib.suppress(ValueError):  # Listen to the new pool's titles instead
+            self._metadata_pool.storage.metadata_generated.disconnect(self._on_metadata_generated)
+        self._metadata_pool = pool
+        pool.storage.metadata_generated.connect(self._on_metadata_generated)
         agent_names = list(pool.all_agents.keys())
         logger.info("Pool swap complete", agent_names=agent_names)
         return agent_names

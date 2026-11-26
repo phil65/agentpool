@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import difflib
 from typing import TYPE_CHECKING, Any, assert_never
+import uuid
 
 from aclientp.schema import (
     AgentMessageChunk as V1AgentMessageChunk,
@@ -209,27 +210,49 @@ def command(cmd: V1AvailableCommand) -> v2.Command:
 class UpdateTranslator:
     """Translates the v1 updates of one converter into v2 updates.
 
+    Chunks that carry no message id (v2 requires one) get a fallback: per session, kind of
+    chunk and turn (:meth:`new_turn`), so one session's turns and other sessions' chunks
+    don't share it.
+
     Args:
-        message_id: Message id for chunks that carry none (v2 requires one).
+        message_id: Fallback for chunks translated without a session (e.g. a child
+            session's translator)
     """
 
-    def __init__(self, message_id: str) -> None:
-        self.message_id = message_id
+    def __init__(self, message_id: str | None = None) -> None:
+        self.message_id = message_id or str(uuid.uuid4())
+        self._fallbacks: dict[tuple[str, str], str] = {}
 
-    def translate(self, update: V1SessionUpdate) -> v2.SessionUpdate | None:  # noqa: PLR0911
-        """The v2 form of a v1 update, or None when it has none."""
+    def fallback_id(self, session_id: str | None, kind: str) -> str:
+        """The message id of ``session_id``'s ``kind`` chunks without one in this turn."""
+        if session_id is None:
+            return self.message_id
+        return self._fallbacks.setdefault((session_id, kind), str(uuid.uuid4()))
+
+    def new_turn(self, session_id: str) -> None:
+        """A turn of ``session_id`` starts: its chunks without an id get new fallbacks."""
+        for key in [k for k in self._fallbacks if k[0] == session_id]:
+            del self._fallbacks[key]
+
+    def translate(  # noqa: PLR0911
+        self, update: V1SessionUpdate, session_id: str | None = None
+    ) -> v2.SessionUpdate | None:
+        """The v2 form of a v1 update of ``session_id``, or None when it has none."""
         match update:
             case V1AgentMessageChunk(content=block, message_id=message_id):
                 return v2.AgentMessageChunk(
-                    message_id=message_id or self.message_id, content=content_block(block)
+                    message_id=message_id or self.fallback_id(session_id, "agent"),
+                    content=content_block(block),
                 )
             case V1AgentThoughtChunk(content=block, message_id=message_id):
                 return v2.AgentThoughtChunk(
-                    message_id=message_id or self.message_id, content=content_block(block)
+                    message_id=message_id or self.fallback_id(session_id, "thought"),
+                    content=content_block(block),
                 )
             case V1UserMessageChunk(content=block, message_id=message_id):
                 return v2.UserMessageChunk(
-                    message_id=message_id or self.message_id, content=content_block(block)
+                    message_id=message_id or self.fallback_id(session_id, "user"),
+                    content=content_block(block),
                 )
             case V1ToolCallStart() | V1ToolCallProgress():
                 return tool_call_update(update, v2.ToolCallSessionUpdate)

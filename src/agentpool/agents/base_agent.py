@@ -390,6 +390,14 @@ class BaseAgent[TDeps = None, TResult = str](MessageNode[TDeps, TResult]):
         running = [r for r in self._runtimes_of(session_id) if r.active_runs]
         return running[0].session if running else None
 
+    def turn_running(self, session_id: str | None = None) -> bool:
+        """Whether a run of ``session_id`` (else the one in this context, else any) is going on.
+
+        From its start to its end, including prompts queued during it: what is steered into
+        it (:meth:`steer`, :meth:`queue_prompt`) is taken in until then.
+        """
+        return any(runtime.running for runtime in self._runtimes_of(session_id))
+
     def running_tasks(self, session_id: str | None = None) -> list[RunningTask]:
         """Tasks this agent's turns started that still run (of ``session_id``, else all)."""
         runtimes = [self._default_runtime, *self._runtimes.values()]
