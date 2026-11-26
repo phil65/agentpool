@@ -13,6 +13,7 @@ from pydantic_ai import RunContext  # noqa: TC002
 
 from agentpool.agents.context import AgentContext  # noqa: TC001
 from agentpool.resource_providers import StaticResourceProvider
+from agentpool.utils.identifiers import script_slug
 
 
 LogLevel = Literal["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"]
@@ -251,6 +252,7 @@ class DebugTools(StaticResourceProvider):
             self.create_tool(
                 self.execute_introspection, category="other", description_override=desc
             ),
+            self.create_tool(get_logs, category="read", read_only=True, idempotent=True),
             self.create_tool(get_platform_paths, category="other", read_only=True, idempotent=True),
         ]
 
@@ -291,7 +293,7 @@ class DebugTools(StaticResourceProvider):
         start_time = datetime.now(UTC)
         exit_code = 0
         error_msg = None
-        result_str = None
+        result_str = ""
         try:
             exec(code, namespace)
             if "main" not in namespace:
@@ -315,8 +317,9 @@ class DebugTools(StaticResourceProvider):
         finally:
             # Save to agent's internal filesystem
             timestamp = start_time.strftime("%Y%m%d_%H%M%S")
+            slug = script_slug(title)
             # Write script file
-            script_path = f"debug/scripts/{timestamp}_{title}.py"
+            script_path = f"debug/scripts/{timestamp}_{slug}.py"
             ctx.internal_fs.pipe(script_path, code.encode())
             # Write metadata file
             metadata = {
@@ -327,7 +330,6 @@ class DebugTools(StaticResourceProvider):
                 "result": result_str,
                 "error": error_msg,
             }
-            metadata_path = f"debug/scripts/{timestamp}_{title}.json"
+            metadata_path = f"debug/scripts/{timestamp}_{slug}.json"
             ctx.internal_fs.pipe(metadata_path, anyenv.dump_json(metadata, indent=True).encode())
-        assert result_str
-        return result_str
+        return result_str or "(empty result)"

@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING, Any, Literal
 from slashed import CommandContext, CommandError
 from slashed.completers import CallbackCompleter
 
+from agentpool.agents.base_agent import BaseAgent
 from agentpool.agents.native_agent import Agent
 from agentpool.messaging.context import NodeContext  # noqa: TC001
 from agentpool_commands.base import NodeCommand
@@ -27,7 +28,6 @@ class CreateAgentCommand(NodeCommand):
     Options:
       --system-prompt "prompt"   System instructions for the agent (required)
       --model model_name        Override model (default: same as current agent)
-      --role role_name         Agent role (assistant/specialist/overseer)
       --description "text"     Optional description of the agent
       --tools "import_path1|import_path2"   Optional list tools (by import path)
 
@@ -37,9 +37,6 @@ class CreateAgentCommand(NodeCommand):
 
       # Create analyzer with different model
       /create-agent analyzer --system-prompt "Analyze in detail" --model gpt-5
-
-      # Create specialized helper
-      /create-agent helper --system-prompt "Debug code" --role specialist
     """
 
     name = "create-agent"
@@ -52,7 +49,6 @@ class CreateAgentCommand(NodeCommand):
         system_prompt: str = "",
         *,
         model: str | None = None,
-        role: str | None = None,
         description: str | None = None,
         tools: str | None = None,
     ) -> None:
@@ -63,7 +59,6 @@ class CreateAgentCommand(NodeCommand):
             agent_name: Name for the new agent
             system_prompt: System instructions for the agent
             model: Override model (default: same as current agent)
-            role: Agent role (assistant/specialist/overseer)
             description: Optional description of the agent
             tools: Optional pipe-separated list of tools (by import path)
         """
@@ -71,12 +66,13 @@ class CreateAgentCommand(NodeCommand):
             if ctx.context.pool is None:
                 raise CommandError("No agent pool available")
 
-            # Get model from args or current agent
-            current_agent = ctx.context.agent
+            # Get model from args or the current agent (a team has no model)
+            node = ctx.context.node
+            current_model = node.model_name if isinstance(node, BaseAgent) else None
             tool_list = [t.strip() for t in tools.split("|")] if tools else None
             agent = Agent(
                 name=agent_name,
-                model=model or current_agent.model_name or "openai:gpt-4o-mini",
+                model=model or current_model or "openai:gpt-4o-mini",
                 system_prompt=system_prompt or (),
                 description=description,
                 tools=tool_list,

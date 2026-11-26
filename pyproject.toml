@@ -39,7 +39,6 @@ dependencies = [
   "codexed>=1.4.0",  # 1.4.0: default_tools_approval_mode (the bridge's tools run)
   "docler>=2.2.0",
   "docstring-parser>=0.17.0",
-  "epregistry",
   "evented>=1.0.5",
   "exxec>=0.10.1",  # 0.10.1: killing a process ends its tree on Windows too
   "fastapi",
@@ -436,7 +435,6 @@ override-dependencies = ["centrifuge-python>=0.6"]
 # codexed = "0 days"
 # clawd-code-sdk = "0 days"
 # docler = "0 days"
-# epregistry = "0 days"
 # anyenv = "0 days"
 # exxec = "0 days"
 # mknodes = "0 days"

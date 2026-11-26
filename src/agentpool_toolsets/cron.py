@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import TYPE_CHECKING, Self
+from typing import TYPE_CHECKING, Any, Self
 
 from agentpool.log import get_logger
 from agentpool.resource_providers import ResourceProvider
@@ -14,8 +14,9 @@ if TYPE_CHECKING:
     from collections.abc import Sequence
     from types import TracebackType
 
+    from agentpool.agents.base_agent import BaseAgent
     from agentpool.tools.base import Tool
-    from agentpool_bot.cron.cron_types import CronSchedule
+    from agentpool_bot.cron.cron_types import CronJob, CronSchedule
     from agentpool_bot.cron.service import CronService
 
 
@@ -41,7 +42,22 @@ class CronTools(ResourceProvider):
     def __init__(self, service: CronService, name: str = "cron") -> None:
         super().__init__(name=name)
         self.service = service
+        if service.on_job is None:
+            service.on_job = self._run_job
+        self._agent: BaseAgent[Any, Any] | None = None
         self._tools: list[Tool] | None = None
+
+    def attach_agent(self, agent: BaseAgent[Any, Any]) -> None:
+        """Run the jobs' prompts on this agent."""
+        self._agent = agent
+
+    async def _run_job(self, job: CronJob) -> str | None:
+        """Send the job's message to the agent."""
+        if self._agent is None:
+            msg = f"Cron job {job.name!r}: no agent attached to the cron toolset"
+            raise RuntimeError(msg)
+        result = await self._agent.run(job.payload.message)
+        return str(result.content)
 
     async def __aenter__(self) -> Self:
         """Start the cron service."""

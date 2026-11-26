@@ -14,6 +14,7 @@ from agentpool.resource_providers import ResourceProvider
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
+    from types import TracebackType
 
     import httpx2
     from upathtools import JoinablePathLike
@@ -42,6 +43,17 @@ class OpenAPITools(ResourceProvider):
         self._schemas: dict[str, dict[str, Any]] = {}
         self._operations: dict[str, Any] = {}
         self._factory: OpenAPICallableFactory | None = None
+
+    async def __aexit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc_val: BaseException | None,
+        exc_tb: TracebackType | None,
+    ) -> None:
+        """Close the HTTP client."""
+        if self._client is not None:
+            await self._client.aclose()
+            self._client = None
 
     async def get_tools(self) -> Sequence[Tool]:
         """Get all API operations as tools."""
@@ -115,4 +127,6 @@ class OpenAPITools(ResourceProvider):
 
         response = await self._client.request(method=method, url=path, params=params, json=body)
         response.raise_for_status()
+        if not response.content:  # e.g. 204 No Content
+            return {}
         return response.json()  # type: ignore[no-any-return]

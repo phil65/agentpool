@@ -19,6 +19,7 @@ if TYPE_CHECKING:
     from pydantic_ai import ModelRequestPart
     from schemez import OpenAIFunctionDefinition
 
+    from agentpool.agents.base_agent import BaseAgent
     from agentpool.prompts.prompts import BasePrompt
     from agentpool.resource_providers.resource_info import ResourceInfo
     from agentpool.skills.skill import Skill
@@ -93,6 +94,12 @@ class ResourceProvider:
             resource_type=resource_type,
             owner=self.owner,
         )
+
+    def attach_agent(self, agent: BaseAgent[Any, Any]) -> None:
+        """Called by the agent this provider was configured for (default: nothing).
+
+        For providers that act on their own, outside a tool call (e.g. scheduled jobs).
+        """
 
     async def __aenter__(self) -> Self:
         """Async context entry if required."""

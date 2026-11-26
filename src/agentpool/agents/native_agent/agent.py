@@ -285,6 +285,7 @@ class Agent[TDeps = None, OutputDataT = str](BaseAgent[TDeps, OutputDataT]):
         """Toolset providers: entered with the agent, so they can open and close resources."""
         self._toolsets_stack = AsyncExitStack()
         for toolset_provider in self._toolsets:
+            toolset_provider.attach_agent(self)
             self.tools.add_provider(toolset_provider)
         aggregating_provider = self.mcp.get_aggregating_provider()
         self.tools.add_provider(aggregating_provider)

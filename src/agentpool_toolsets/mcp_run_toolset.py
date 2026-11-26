@@ -96,16 +96,12 @@ class McpRunTools(ResourceProvider):
 
         self._tools = []
         for name, tool in self.client.tools.items():
-            session = self._session  # Capture session for use in tool calls
 
-            async def run(
-                tool_name: str = name,
-                _session: ClientSession | None = session,
-                **input_dict: Any,
-            ) -> CallToolResult:
-                if _session is not None:
-                    # Use persistent session if available
-                    return await _session.call_tool(tool_name, arguments=input_dict)
+            async def run(tool_name: str = name, **input_dict: Any) -> CallToolResult:
+                # Read the session at call time: tools may be fetched before __aenter__
+                # and outlive __aexit__.
+                if (session := self._session) is not None:
+                    return await session.call_tool(tool_name, arguments=input_dict)
                 # Fallback to creating a new connection (when not using context manager)
                 async with self.client.mcp_sse().connect() as new_session:
                     return await new_session.call_tool(tool_name, arguments=input_dict)  # type: ignore[no-any-return]

@@ -13,6 +13,7 @@ if TYPE_CHECKING:
 
     from pydantic_ai import ModelRequestPart
 
+    from agentpool.agents.base_agent import BaseAgent
     from agentpool.prompts.prompts import BasePrompt
     from agentpool.resource_providers.base import ResourceChangeEvent
     from agentpool.resource_providers.resource_info import ResourceInfo
@@ -51,6 +52,9 @@ class FilteringResourceProvider(ResourceProvider):
 
     def __repr__(self) -> str:
         return f"{self.__class__.__name__}({self._provider!r})"
+
+    def attach_agent(self, agent: BaseAgent[Any, Any]) -> None:
+        self._provider.attach_agent(agent)
 
     async def __aenter__(self) -> Self:
         await self._provider.__aenter__()

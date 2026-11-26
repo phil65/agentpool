@@ -6,6 +6,7 @@ import json
 import os
 from pathlib import Path
 import platform
+import shlex
 import signal
 import socket
 import subprocess
@@ -173,9 +174,7 @@ def toad_ui_command(
 def _run_toad_stdio(config: str | None) -> None:
     """Run Toad with stdio transport (Toad spawns server)."""
     # Build agentpool command that Toad will spawn
-    agentpool_cmd = "agentpool serve-acp"
-    if config:
-        agentpool_cmd += f" {config}"
+    agentpool_cmd = shlex.join(["agentpool", "serve-acp", *([config] if config else [])])
     os.system("clear" if os.name != "nt" else "cls")
     # Run toad with agentpool as subprocess
     result = subprocess.run(

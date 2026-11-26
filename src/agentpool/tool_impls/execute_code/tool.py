@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING
@@ -18,6 +19,7 @@ from exxec.events import (
 from agentpool.agents.context import AgentContext  # noqa: TC001
 from agentpool.log import get_logger
 from agentpool.tools.base import Tool
+from agentpool.utils.identifiers import script_slug
 from agentpool.utils.streams import closing
 
 
@@ -70,6 +72,7 @@ class ExecuteCodeTool(Tool[str]):
         output_parts: list[str] = []
         exit_code: int | None = None
         error_msg: str | None = None
+        result_str = ""
 
         # Check if we're running in ACP - terminal streams client-side
         from exxec.acp_provider import ACPExecutionEnvironment
@@ -127,13 +130,17 @@ class ExecuteCodeTool(Tool[str]):
             exit_code = 1
             error_msg = str(e)
             result_str = f"Error executing code: {e}"
+        except asyncio.CancelledError:
+            error_msg = "Cancelled"
+            raise
         finally:
             # Save to agent's internal filesystem
             end_time = datetime.now(UTC)
             timestamp = end_time.strftime("%Y%m%d_%H%M%S")
+            slug = script_slug(title)
 
             # Write script file
-            script_path = f"execute_code/scripts/{timestamp}_{title}.py"
+            script_path = f"execute_code/scripts/{timestamp}_{slug}.py"
             ctx.internal_fs.pipe(script_path, code.encode("utf-8"))
 
             # Write metadata file
@@ -144,7 +151,7 @@ class ExecuteCodeTool(Tool[str]):
                 "result": result_str,
                 "error": error_msg,
             }
-            metadata_path = f"execute_code/scripts/{timestamp}_{title}.json"
+            metadata_path = f"execute_code/scripts/{timestamp}_{slug}.json"
             ctx.internal_fs.pipe(metadata_path, anyenv.dump_json(metadata, indent=True).encode())
 
         return result_str

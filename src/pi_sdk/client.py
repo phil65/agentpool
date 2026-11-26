@@ -84,6 +84,7 @@ class RpcClient:
         self._request_id = 0
         self._stderr = ""
         self._reader_task: asyncio.Task[None] | None = None
+        self._stderr_task: asyncio.Task[None] | None = None
 
     # =========================================================================
     # Lifecycle
@@ -137,13 +138,16 @@ class RpcClient:
             self._process.kill()
             await self._process.wait()
 
-        if self._reader_task and not self._reader_task.done():
-            self._reader_task.cancel()
-            with contextlib.suppress(asyncio.CancelledError):
-                await self._reader_task
+        for task in (self._reader_task, self._stderr_task):
+            if task is not None and not task.done():
+                task.cancel()
+            if task is not None:
+                with contextlib.suppress(asyncio.CancelledError):
+                    await task
 
         self._process = None
         self._reader_task = None
+        self._stderr_task = None
 
         # Reject all pending requests
         for fut in self._pending.values():

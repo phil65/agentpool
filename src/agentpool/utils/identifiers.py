@@ -8,6 +8,7 @@ Compatible with OpenCode's identifier format.
 
 from __future__ import annotations
 
+import re
 import secrets
 import time
 from typing import Literal
@@ -116,3 +117,12 @@ def _create(prefix: PrefixType, *, descending: bool = False) -> str:
 def generate_session_id() -> str:
     """Generate a unique, chronologically sortable session ID ('ses_b71310fdf0...')."""
     return ascending("session")
+
+
+_UNSAFE_CHARS = re.compile(r"[^\w-]+")
+
+
+def script_slug(title: str, max_length: int = 50) -> str:
+    """Turn a model-supplied title into a safe file name part (no separators, no ``..``)."""
+    slug = _UNSAFE_CHARS.sub("_", title).strip("_")[:max_length]
+    return slug or "script"

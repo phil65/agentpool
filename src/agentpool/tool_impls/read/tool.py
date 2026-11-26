@@ -234,7 +234,7 @@ class ReadTool(Tool[ToolResult]):
             else:
                 # Normal read with optional offset/limit
                 lines = content.splitlines()
-                offset = (line - 1) if line else 0
+                offset = (line if line < 0 else line - 1) if line else 0
                 result_lines, was_truncated = truncate_lines(lines, offset, limit, max_file_size)
                 content = "\n".join(result_lines)
                 # Don't pass negative line numbers to events (ACP requires >= 0)
