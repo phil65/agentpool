@@ -123,7 +123,7 @@ async def test_history_sharing(tmp_path: Path):
         main_agent = pool.get_agent("main")
         worker = pool.get_agent("worker")
         # Configure models: real model for main agent, TestModel for worker
-        await main_agent.set_model("openai:gpt-5-nano")
+        await main_agent.set_model("openai:gpt-6-luna")
         worker_model = TestModel(custom_output_text="The value is 42")
         assert isinstance(worker, Agent)
         await worker.set_model(worker_model)

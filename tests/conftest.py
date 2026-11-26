@@ -20,13 +20,13 @@ TEST_RESPONSE = "I am a test response"
 @pytest.fixture
 def default_model() -> str:
     """Default model for testing (a real, paid model: its tests are ``live_model``)."""
-    return "openai:gpt-5-nano"
+    return "openai:gpt-6-luna"
 
 
 @pytest.fixture
 def vision_model() -> str:
     """Vision-capable model for testing (a real, paid model: its tests are ``live_model``)."""
-    return "openai:gpt-5-nano"
+    return "openai:gpt-6-luna"
 
 
 LIVE_MODEL_FIXTURES = frozenset({"default_model", "vision_model"})
