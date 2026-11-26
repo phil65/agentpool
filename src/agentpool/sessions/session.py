@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 from collections import OrderedDict
 from dataclasses import replace
 from decimal import Decimal
@@ -289,6 +290,8 @@ class SessionRegistry:
         self.activity = activity
         """Where new sessions are reported (the pool's activity feed)."""
         self._sessions: OrderedDict[str, Session] = OrderedDict()
+        self._opening: dict[str, asyncio.Future[Session]] = {}
+        """Opens in progress by session ID: concurrent opens of one ID wait for it."""
 
     def register(self, session: Session) -> Session:
         """Register an existing session in the registry."""
@@ -341,10 +344,38 @@ class SessionRegistry:
         resume; title; metadata) and loads the history. ``agent_name`` binds a new or
         restored session; a registered one is re-bound if it changed.
         """
+        while (opening := self._opening.get(session_id)) is not None:  # Another open's
+            await asyncio.wait([opening])
+            if not opening.cancelled():
+                break  # Registered now (after a failed or cancelled one: try ourselves)
         if (session := self.get(session_id)) is not None:
             if session.agent_name != agent_name:
                 session.rebind_agent(agent_name, agent_type=agent_type)
             return session
+        opening = self._opening[session_id] = asyncio.get_running_loop().create_future()
+        try:
+            session = await self._restore_or_create(
+                session_id, agent_name, parent_id=parent_id, cwd=cwd, agent_type=agent_type
+            )
+        except BaseException:
+            opening.cancel()
+            raise
+        else:
+            opening.set_result(session)
+            return session
+        finally:
+            del self._opening[session_id]
+
+    async def _restore_or_create(
+        self,
+        session_id: str,
+        agent_name: str,
+        *,
+        parent_id: str | None,
+        cwd: str | None,
+        agent_type: str | None,
+    ) -> Session:
+        """Restore ``session_id`` from storage, else create it (registered either way)."""
         stored = await self._storage.load_session(session_id) if self._storage else None
         if stored is None:
             return self.create(
