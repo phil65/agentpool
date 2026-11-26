@@ -5,12 +5,12 @@ from typing import TYPE_CHECKING, Any, Literal
 from pydantic import HttpUrl
 from slashed import CommandContext, CommandError
 
-from agentpool.agents.context import AgentContext  # noqa: TC001
 from agentpool_commands.base import NodeCommand
 
 
 if TYPE_CHECKING:
     from agentpool.agents.base_agent import BaseAgent
+    from agentpool.agents.context import AgentContext
     from agentpool.messaging import MessageNode
     from agentpool_config.mcp_server import MCPServerConfig
 

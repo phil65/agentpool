@@ -1,12 +1,15 @@
 """Pool-level commands for managing agent pools and configurations."""
 
-from typing import Any
-
-from slashed import CommandContext  # noqa: TC002
+from typing import TYPE_CHECKING, Any
 
 from agentpool.agents.base_agent import BaseAgent
-from agentpool.messaging.context import NodeContext  # noqa: TC001
 from agentpool_commands.base import NodeCommand
+
+
+if TYPE_CHECKING:
+    from slashed import CommandContext
+
+    from agentpool.messaging.context import NodeContext
 
 
 class ListPoolsCommand(NodeCommand):

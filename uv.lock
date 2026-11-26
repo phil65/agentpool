@@ -295,7 +295,7 @@ requires-dist = [
     { name = "searchly", extras = ["all"], specifier = ">=2.0.1" },
     { name = "slack-sdk", marker = "extra == 'bot'", specifier = ">=3.26.0" },
     { name = "slackify-markdown", marker = "extra == 'bot'", specifier = ">=0.2.0" },
-    { name = "slashed", specifier = ">=0.1.0" },
+    { name = "slashed", specifier = ">=1.3.1" },
     { name = "sqlalchemy", extras = ["aiosqlite"] },
     { name = "sqlmodel", specifier = ">=0.0.22" },
     { name = "starlette", marker = "extra == 'a2a'" },
@@ -6023,16 +6023,16 @@ wheels = [
 
 [[package]]
 name = "slashed"
-version = "1.2.1"
+version = "1.3.1"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "bashlex" },
     { name = "psygnal" },
     { name = "universal-pathlib" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/87/08/667f754d5e9ae6b59fd93d5f91e4bb70a54ca6daff00daa117748c4e9a10/slashed-1.2.1.tar.gz", hash = "sha256:35928d84c7813ae6a744aa4a772d1526b56d69b7a8a8d42005ae3b1667505ee5", size = 48309, upload-time = "2026-02-26T12:10:22.819Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/76/cb/4b955a80cd73cbfe3a8c63861b9b7fcdce750f5b1c6bdf550007cc7e7c00/slashed-1.3.1.tar.gz", hash = "sha256:177f3c2afec35bfdb46f7b8c6716ea9327bb1ca6ed96e040836212c380dede47", size = 57796, upload-time = "2026-11-26T18:42:58.025Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/c3/b6/906a4894d28eda3b15d2409aebf0943826b3aa1b611528ef5434c44b47f8/slashed-1.2.1-py3-none-any.whl", hash = "sha256:e6b381d6e5f6d6bb9529c2be0c8f9be83687d5797f99839609b78fc13f166848", size = 61284, upload-time = "2026-02-26T12:10:21.45Z" },
+    { url = "https://files.pythonhosted.org/packages/7d/0a/3469b03360e6756aeac3f4e6ef18f1c0a0f596274b868b61ca8d133bbb3a/slashed-1.3.1-py3-none-any.whl", hash = "sha256:30a91efa0b8464cfb5986cffc703ba775bb905d9c56e1c4804cf1f4590f014b4", size = 62888, upload-time = "2026-11-26T18:42:56.996Z" },
 ]
 
 [[package]]
