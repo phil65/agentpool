@@ -38,7 +38,7 @@ from agentpool.agents.events import (
     StreamCompleteEvent,
     ToolCallProgressEvent,
 )
-from agentpool.agents.prompt_injection import PromptInjectionManager
+from agentpool.agents.prompt_injection import PromptInjectionManager, held_back
 from agentpool.agents.staged_content import StagedContent
 from agentpool.prompts.convert import convert_prompts
 from agentpool.turns import (
@@ -119,6 +119,10 @@ class SessionRuntime[TDeps = Any, TResult = Any]:
         """Tasks this session's turns started that still run, by task id."""
         self.last_turn: Turn[TResult] | None = None
         """The last turn of the running (or last) ``run_stream``, however it ended."""
+        self._run_serial = 0
+        """Counts the (outermost) runs: a nested run ending late can tell the turn ended."""
+        self._nested_usage = RunUsage()
+        """Usage of the nested runs of the running turn (it reports them with its own)."""
         self._turn_lock = asyncio.Lock()
         """Held by the running (outermost) ``run_stream``: other runs of the session queue."""
         self.waiting = 0
@@ -226,7 +230,10 @@ class SessionRuntime[TDeps = Any, TResult = Any]:
 
         A nested run (a tool of the running turn calling its own agent) runs its prompts
         only, inside the turn: what the turn queued stays queued for it, and the turn's
-        state (task, cancellation, message ID, last turn, reported state) stays the turn's.
+        state (task, cancellation, message ID, reported state) stays the turn's. Its file
+        changes belong to the turn's message, user input steered in meanwhile is left for
+        the turn, and its usage counts for the turn. ``last_turn`` is the nested turn once
+        it ended (``run_turn`` returns it); the turn sets its own when it ends.
         """
         agent = self.agent
         if self.is_default:
@@ -249,17 +256,19 @@ class SessionRuntime[TDeps = Any, TResult = Any]:
             run_task = asyncio.current_task()
             # Cancellations requested before the run: only newer ones are the run's own
             baseline = run_task.cancelling() if run_task is not None else 0
-            outer_message_id, outer_turn = self.turn_message_id, self.last_turn
             nested_prompts: list[Sequence[PromptCompatible]] = []
+            run_serial = self._run_serial
             if nested:
                 nested_prompts.append(prompts)
             else:
                 # Reset cancellation state and track current task
                 self.cancelled = self.interrupted = False
                 self.task = run_task
+                self._run_serial = run_serial = run_serial + 1
+                self._nested_usage = RunUsage()
+                self.last_turn = None
                 self.injections.insert_queued(prompts)  # Queue the initial prompts
                 self._report_state("running")
-            self.last_turn = None
             stop_reason: StopReason = "cancelled"  # Unless the turn ends normally or fails
             error: str | None = None
             usage = RunUsage()
@@ -268,27 +277,30 @@ class SessionRuntime[TDeps = Any, TResult = Any]:
                 # The given IDs are the first group's: queued groups get their own
                 prompt_message_id, reply_message_id = user_message_id, message_id
                 own = nested_prompts if nested else None
-                while (current_prompts := self._next_prompts(own)) is not None:
-                    group_message_id, prompt_message_id = prompt_message_id, None
-                    group_reply_id, reply_message_id = reply_message_id, None
-                    async for event in self._run_once(
-                        *current_prompts,
-                        store_history=store_history,
-                        message_id=group_reply_id,
-                        user_message_id=group_message_id,
-                        session_id=effective_session_id,
-                        parent_id=parent_id,
-                        message_history=effective_history,
-                        input_provider=input_provider,
-                        deps=deps,
-                        event_handlers=event_handlers,
-                    ):
-                        if isinstance(event, StreamCompleteEvent):
-                            usage.incr(event.message.usage)
-                        self._report_event(event)
-                        yield event
-                    if not nested:  # Flush unconsumed injections to the queue
-                        self.injections.flush_pending_to_queue()
+                # Steered input waits for the turn: a nested run's tools leave it pending
+                with held_back(nested):
+                    while (current_prompts := self._next_prompts(own)) is not None:
+                        group_message_id, prompt_message_id = prompt_message_id, None
+                        group_reply_id, reply_message_id = reply_message_id, None
+                        async for event in self._run_once(
+                            *current_prompts,
+                            store_history=store_history,
+                            message_id=group_reply_id,
+                            user_message_id=group_message_id,
+                            session_id=effective_session_id,
+                            parent_id=parent_id,
+                            message_history=effective_history,
+                            input_provider=input_provider,
+                            deps=deps,
+                            event_handlers=event_handlers,
+                            nested=nested,
+                        ):
+                            if isinstance(event, StreamCompleteEvent):
+                                usage.incr(event.message.usage)
+                            self._report_event(event)
+                            yield event
+                        if not nested:  # Flush unconsumed injections to the queue
+                            self.injections.flush_pending_to_queue()
                 # Cancelled from outside, and the agent ended its turn instead of raising
                 # (native, Claude Code): the turn is stored, the cancellation goes on
                 swallowed = (
@@ -302,11 +314,13 @@ class SessionRuntime[TDeps = Any, TResult = Any]:
                 stop_reason, error = "error", str(e)
                 raise
             finally:
-                if nested:  # The turn goes on: its state is its own again
-                    self.turn_message_id, self.last_turn = outer_message_id, outer_turn
+                if nested:  # Its usage is the turn's (unless the turn ended meanwhile)
+                    if self._run_serial == run_serial:
+                        self._nested_usage.incr(usage)
                 else:
                     if (turn := self.last_turn) is not None:  # How its last turn ended
                         stop_reason = turn_stop_reason(turn.outcome)
+                    usage.incr(self._nested_usage)
                     self._report_state("idle", stop_reason=stop_reason, usage=usage, error=error)
                     self.task = None
                     self.turn_message_id = None
@@ -458,8 +472,13 @@ class SessionRuntime[TDeps = Any, TResult = Any]:
         input_provider: InputProvider | None,
         deps: TDeps | None,
         event_handlers: Sequence[AnyEventHandlerType] | None,
+        nested: bool = False,
     ) -> AsyncIterator[RichAgentStreamEvent[TResult]]:
-        """Process a single prompt group: hooks, the agent's events, history, connections."""
+        """Process a single prompt group: hooks, the agent's events, history, connections.
+
+        A nested group (see ``_run_stream_now``) keeps the turn's message ID: its file
+        changes are the turn's.
+        """
         from anyenv import MultiEventHandler
 
         from agentpool.agents.base_agent import BaseAgent
@@ -491,7 +510,8 @@ class SessionRuntime[TDeps = Any, TResult = Any]:
             session_id=effective_session_id,
             message_id=user_message_id,
         )
-        self.turn_message_id = user_msg.message_id
+        if not nested:
+            self.turn_message_id = user_msg.message_id
         resolved_handler = (
             MultiEventHandler(resolve_event_handlers(event_handlers))
             if event_handlers is not None

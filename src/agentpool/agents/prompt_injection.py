@@ -8,15 +8,41 @@ Provides unified handling for:
 
 from __future__ import annotations
 
+from contextlib import contextmanager
+from contextvars import ContextVar
 from typing import TYPE_CHECKING
 
 from agentpool.log import get_logger
 
 
 if TYPE_CHECKING:
+    from collections.abc import Generator
+
     from agentpool.common_types import PromptCompatible
 
 logger = get_logger(__name__)
+
+_HELD_BACK: ContextVar[bool] = ContextVar("agentpool_injections_held_back", default=False)
+"""Whether hooks in this context leave pending injections alone (see :func:`held_back`)."""
+
+
+@contextmanager
+def held_back(active: bool = True) -> Generator[None]:
+    """Leave pending injections to the turn while the block runs (when ``active``).
+
+    For a nested self-call: user input steered into the turn meanwhile is the turn's,
+    not the nested run's (its tools' hooks would take it in otherwise). Restores the
+    previous value by value, so leaving from another context can't fail.
+    """
+    if not active:
+        yield
+        return
+    previous = _HELD_BACK.get()
+    _HELD_BACK.set(True)
+    try:
+        yield
+    finally:
+        _HELD_BACK.set(previous)
 
 
 class PromptInjectionManager:
@@ -67,9 +93,10 @@ class PromptInjectionManager:
         is wrapped in XML tags for clear delineation.
 
         Returns:
-            The next injection message wrapped in XML tags, or None if none pending
+            The next injection message wrapped in XML tags, or None if none pending (or
+            held back for the turn, see :func:`held_back`)
         """
-        if self._pending_injections:
+        if self._pending_injections and not _HELD_BACK.get():
             msg = self._pending_injections.pop(0)
             logger.debug("Consumed injection", message_len=len(msg))
             return f"<injected-context>\n{msg}\n</injected-context>"
@@ -81,6 +108,8 @@ class PromptInjectionManager:
         Returns:
             List of all pending injection messages wrapped in XML tags (may be empty)
         """
+        if _HELD_BACK.get():
+            return []
         result = [f"<injected-context>\n{i}\n</injected-context>" for i in self._pending_injections]
         self._pending_injections.clear()
         if result:
