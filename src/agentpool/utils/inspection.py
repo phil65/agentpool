@@ -1,6 +1,6 @@
 import annotationlib
 import asyncio
-from collections.abc import Sequence
+from collections.abc import Awaitable, Coroutine, Sequence
 from dataclasses import fields
 import functools
 from importlib.util import find_spec
@@ -8,6 +8,7 @@ import inspect
 from types import UnionType
 from typing import (
     TYPE_CHECKING,
+    Annotated,
     Any,
     ForwardRef,
     Literal,
@@ -20,13 +21,15 @@ from typing import (
     overload,
 )
 
-from schemez.introspection import get_resolved_hints
-
-from agentpool.utils.signatures import annotation_names
+from agentpool.utils.signatures import (
+    annotation_names,
+    get_forwardref_signature,
+    resolve_type_hints,
+)
 
 
 if TYPE_CHECKING:
-    from collections.abc import Awaitable, Callable
+    from collections.abc import Callable
 
     from agentpool.agents import AgentContext
 
@@ -201,11 +204,40 @@ def _type_to_string(type_hint: Any) -> str:
             return str(type_hint)
 
 
-def has_return_type[T](  # noqa: PLR0911
+_COROUTINE_ARG_COUNT = 3
+
+
+def _matches_return_type(return_type: Any, expected_type: type[Any]) -> bool:
+    """Check whether a resolved return type annotation matches expected_type."""
+    while isinstance(return_type, TypeAliasType):
+        return_type = return_type.__value__
+
+    origin = get_origin(return_type)
+    if return_type is expected_type or (origin is not None and origin is expected_type):
+        return True
+
+    args = get_args(return_type)
+    if origin is Annotated:
+        return bool(args) and _matches_return_type(args[0], expected_type)
+    if origin is Union or origin is UnionType:
+        return any(_matches_return_type(arg, expected_type) for arg in args)
+    if origin is Coroutine:
+        return len(args) == _COROUTINE_ARG_COUNT and _matches_return_type(args[2], expected_type)
+    if isinstance(origin, type) and issubclass(origin, Awaitable):
+        return bool(args) and _matches_return_type(args[0], expected_type)
+    return False
+
+
+def has_return_type[T](
     func: Callable[..., Any],
     expected_type: type[T],
 ) -> TypeGuard[Callable[..., T | Awaitable[T]]]:
     """Check if a function has a specific return type annotation.
+
+    Unannotated callables (including lambdas) return ``False``. Handles unions,
+    generic origins, ``TypeAliasType``, ``Annotated``, ``Awaitable`` / ``Coroutine``
+    return annotations, ``async def`` functions, and ``TYPE_CHECKING``-only return
+    annotations.
 
     Args:
         func: Function to check
@@ -214,42 +246,38 @@ def has_return_type[T](  # noqa: PLR0911
     Returns:
         True if function returns the expected type (or Awaitable of it)
     """
-    hints = get_resolved_hints(func, include_extras=False)
+    target: Any = func
+    while isinstance(target, functools.partial):
+        target = target.func
+    if not isinstance(target, type) and not inspect.isroutine(target) and callable(target):
+        target = target.__call__
+
+    extra_globals: dict[str, Any] = {
+        "Awaitable": Awaitable,
+        "Coroutine": Coroutine,
+        expected_type.__name__: expected_type,
+    }
+    try:
+        hints = resolve_type_hints(target, extra_globals)
+    except TypeError:
+        return False
+
     if "return" not in hints:
         return False
 
     return_type = hints["return"]
-
-    # Handle direct match
-    if return_type is expected_type:
+    if _matches_return_type(return_type, expected_type):
         return True
 
-    # Handle TypeAliases
-    if isinstance(return_type, TypeAliasType):
-        return_type = return_type.__value__
-
-    # Handle Union types (including Optional)
-    origin = get_origin(return_type)
-    args = get_args(return_type)
-
-    if origin is Union or origin is UnionType:
-        # Check each union member
-        def check_type(t: Any) -> bool:
-            return has_return_type(lambda: t, expected_type)
-
-        return any(check_type(arg) for arg in args)
-
-    # Handle Awaitable/Coroutine types
-    if origin is not None and inspect.iscoroutinefunction(func):
-        # For async functions, check the first type argument
-        if args:
-            # Recursively check the awaited type
-            return has_return_type(lambda: args[0], expected_type)
-        return False
-
-    # Handle generic types (like list[str], etc)
-    if origin is not None:
-        return origin is expected_type
+    # Fallback when resolve_type_hints degraded an unresolvable ForwardRef (e.g. dotted
+    # `mod.Type` or a union mixing expected_type with another TYPE_CHECKING-only name) to Any.
+    if return_type is Any:
+        try:
+            raw_return = get_forwardref_signature(target).return_annotation
+        except ValueError, TypeError:
+            return False
+        if isinstance(raw_return, str | ForwardRef):
+            return expected_type.__name__ in annotation_names(raw_return)
 
     return False
 

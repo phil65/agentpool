@@ -9,6 +9,8 @@ from typing import TYPE_CHECKING, Any
 
 
 if TYPE_CHECKING:
+    from collections.abc import Awaitable
+    import pathlib
     from pathlib import Path
 
     from pydantic_ai import RunContext
@@ -67,3 +69,18 @@ async def second_node(first_node: Path, agent2: Agent[None] | None) -> str:
 def history_processor(ctx: RunContext, messages: list[ModelMessage]) -> list[ModelMessage]:
     """History processor."""
     return messages
+
+
+def tc_union_return() -> Path | None:
+    """Function returning a TYPE_CHECKING-only union."""
+    return None
+
+
+def tc_awaitable_return() -> Awaitable[Path]:
+    """Function returning an Awaitable of a TYPE_CHECKING-only type."""
+    raise NotImplementedError
+
+
+def tc_dotted_return() -> pathlib.Path:
+    """Function returning a dotted TYPE_CHECKING-only type."""
+    raise NotImplementedError
