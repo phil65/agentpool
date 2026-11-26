@@ -6,7 +6,6 @@ from typing import TYPE_CHECKING, Any, Literal
 
 from pydantic import ConfigDict, Field
 from schemez import Schema
-from tokonomics.model_names import AnthropicMaxModelName  # noqa: TC002
 
 from agentpool import log
 from agentpool.models.fields import OutputTypeField, SystemPromptField  # noqa: TC001
@@ -176,7 +175,7 @@ class ClaudeCodeAgentConfig(BaseAgentConfig):
     type: Literal["claude_code"] = Field(default="claude_code", init=False)
     """Top-level discriminator for agent type."""
 
-    model: AnthropicMaxModelName | str | None = Field(
+    model: str | None = Field(
         default="opus",
         title="Model",
         examples=["opus", "sonnet", "haiku", "claude-opus-5-5"],
@@ -302,7 +301,7 @@ class ClaudeCodeAgentConfig(BaseAgentConfig):
     Both LSP and Chrome require additional setup in your environment.
     """
 
-    fallback_model: AnthropicMaxModelName | str | None = Field(
+    fallback_model: str | None = Field(
         default=None,
         title="Fallback Model",
         examples=["sonnet", "haiku"],

@@ -7892,28 +7892,6 @@
           "type": "string"
         },
         "model": {
-          "anyOf": [
-            {
-              "enum": [
-                "claude-fable-5",
-                "claude-fable-5-1",
-                "claude-fable-5-2",
-                "claude-haiku-5-5",
-                "claude-opus-4-8",
-                "claude-opus-5",
-                "claude-opus-5-5",
-                "claude-sonnet-5",
-                "claude-sonnet-5-5"
-              ],
-              "type": "string"
-            },
-            {
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ],
           "default": "opus",
           "description": "Model to use for this agent. Defaults to Claude's default model.",
           "examples": [
@@ -7922,7 +7900,11 @@
             "haiku",
             "claude-opus-5-5"
           ],
-          "title": "Model"
+          "title": "Model",
+          "type": [
+            "string",
+            "null"
+          ]
         },
         "allowed_tools": {
           "anyOf": [
@@ -8306,35 +8288,17 @@
           "title": "Built-in Tools"
         },
         "fallback_model": {
-          "anyOf": [
-            {
-              "enum": [
-                "claude-fable-5",
-                "claude-fable-5-1",
-                "claude-fable-5-2",
-                "claude-haiku-5-5",
-                "claude-opus-4-8",
-                "claude-opus-5",
-                "claude-opus-5-5",
-                "claude-sonnet-5",
-                "claude-sonnet-5-5"
-              ],
-              "type": "string"
-            },
-            {
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ],
           "default": null,
           "description": "Fallback model when default is overloaded.",
           "examples": [
             "sonnet",
             "haiku"
           ],
-          "title": "Fallback Model"
+          "title": "Fallback Model",
+          "type": [
+            "string",
+            "null"
+          ]
         },
         "setting_sources": {
           "anyOf": [

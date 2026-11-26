@@ -85,7 +85,6 @@ if TYPE_CHECKING:
     from pydantic_ai import FinishReason, UserContent
     from slashed import BaseCommand
     from tokonomics.model_discovery.model_info import ModelInfo
-    from tokonomics.model_names import AnthropicMaxModelName
     from toprompt import AnyPromptType
 
     from agentpool.agents.agent_tasks import RunningTask, TaskOutput
@@ -200,7 +199,7 @@ class ClaudeCodeAgent[TDeps = None, TResult = str](BaseAgent[TDeps, TResult]):
         disallowed_tools: list[ToolName | str] | None = None,
         system_prompt: str | Sequence[str | AnyPromptType] | None = None,
         include_builtin_system_prompt: bool = True,
-        model: AnthropicMaxModelName | str | None = "opus",
+        model: str | None = "opus",
         max_turns: int | None = None,
         max_budget_usd: float | None = None,
         reasoning_effort: ReasoningEffort | None = None,
@@ -209,7 +208,7 @@ class ClaudeCodeAgent[TDeps = None, TResult = str](BaseAgent[TDeps, TResult]):
         env_vars: dict[str, str] | None = None,
         add_dir: list[str] | None = None,
         builtin_tools: list[ToolName | str] | None = None,
-        fallback_model: AnthropicMaxModelName | str | None = None,
+        fallback_model: str | None = None,
         setting_sources: list[SettingSource] | None = None,
         use_subscription: bool = False,
         prompt_suggestions: bool = False,
@@ -362,11 +361,11 @@ class ClaudeCodeAgent[TDeps = None, TResult = str](BaseAgent[TDeps, TResult]):
     # --- Settings: per session when set within one (``use_session``), else the agent's ---
 
     @property
-    def _model(self) -> AnthropicMaxModelName | str | None:
+    def _model(self) -> str | None:
         return self._session_model() or self._own_model
 
     @_model.setter
-    def _model(self, value: AnthropicMaxModelName | str) -> None:
+    def _model(self, value: str) -> None:
         if not self._set_session_model(value):
             self._own_model = value
 
@@ -1380,7 +1379,7 @@ class ClaudeCodeAgent[TDeps = None, TResult = str](BaseAgent[TDeps, TResult]):
             except Exception:
                 self.log.exception("Failed to interrupt Claude Code client")
 
-    async def set_model(self, model: AnthropicMaxModelName | str) -> None:
+    async def set_model(self, model: str) -> None:
         """Set the model for future requests."""
         await self._set_mode(model, "model")
 
