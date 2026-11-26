@@ -273,9 +273,10 @@ MAX_SESSIONS = 512
 class SessionRegistry:
     """In-memory registry of the live :class:`Session` objects in a pool.
 
-    Bounded: beyond ``max_sessions`` the least recently used sessions are dropped.
-    Servers keep the session of a running turn themselves and rebuild a missing one
-    from storage, so dropping only costs a reload (and unsaved overrides).
+    Bounded: beyond ``max_sessions`` the least recently used idle sessions are dropped
+    (never one with a running turn, as the activity feed reports it; the registry
+    grows past the bound instead). Servers rebuild a dropped session from storage, so
+    dropping only costs a reload (and unsaved overrides).
     """
 
     def __init__(
@@ -297,9 +298,22 @@ class SessionRegistry:
         """Register an existing session in the registry."""
         self._sessions[session.session_id] = session
         self._sessions.move_to_end(session.session_id)
-        while len(self._sessions) > self._max_sessions:
-            self._sessions.popitem(last=False)
+        self._evict()
         return session
+
+    def is_idle(self, session_id: str) -> bool:
+        """Whether no turn of ``session_id`` runs or waits (as the activity feed says)."""
+        return self.activity is None or self.activity.is_idle(session_id)
+
+    def _evict(self) -> None:
+        """Drop least recently used idle sessions until the registry fits its bound."""
+        excess = len(self._sessions) - self._max_sessions
+        if excess <= 0:
+            return
+        *older, _newest = self._sessions  # The one just registered stays
+        idle = [sid for sid in older if self.is_idle(sid)]
+        for session_id in idle[:excess]:
+            del self._sessions[session_id]
 
     def create(
         self,

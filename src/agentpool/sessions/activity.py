@@ -80,6 +80,8 @@ class ActivityFeed:
         self._position = 0
         self._compactions: dict[str, str] = {}
         """ID of the compaction in progress, per session."""
+        self._busy: dict[str, SessionState] = {}
+        """The sessions whose foreground state is not ``idle``, with that state."""
 
     def __repr__(self) -> str:
         return f"ActivityFeed(position={self._position}, kept={len(self._entries)})"
@@ -107,6 +109,10 @@ class ActivityFeed:
         error: str | None = None,
     ) -> None:
         """Record a change of a session's foreground state."""
+        if state == "idle":
+            self._busy.pop(session_id, None)
+        else:
+            self._busy[session_id] = state
         data: dict[str, Any] = {"state": state}
         if state == "idle":
             data["stop_reason"] = stop_reason
@@ -115,6 +121,14 @@ class ActivityFeed:
             if error is not None:
                 data["error"] = error
         self._add("state_update", session_id, agent, data)
+
+    def current_state(self, session_id: str) -> SessionState:
+        """The session's foreground state (``idle`` unless a turn runs or waits)."""
+        return self._busy.get(session_id, "idle")
+
+    def is_idle(self, session_id: str) -> bool:
+        """Whether the session has no turn running or waiting for the user."""
+        return session_id not in self._busy
 
     def info(
         self,
