@@ -22,6 +22,7 @@ async def run_nodes_async(
     functions: list[str] | None = None,
     inputs: dict[str, Any] | None = None,
     parallel: bool = False,
+    max_concurrency: int | None = None,
 ) -> dict[str, Any]:
     """Execute node functions with dependency handling.
 
@@ -31,6 +32,7 @@ async def run_nodes_async(
         functions: Optional list of function names to run (auto-discovers if None)
         inputs: Optional input values for function parameters
         parallel: Whether to run independent functions in parallel
+        max_concurrency: Most functions running at once in parallel mode (None: no limit)
 
     Returns:
         Dict mapping function names to their results
@@ -65,7 +67,9 @@ async def run_nodes_async(
 
     # Run with pool
     async with AgentPool(config) as pool:
-        return await execute_functions(discovered, pool, inputs=inputs, parallel=parallel)
+        return await execute_functions(
+            discovered, pool, inputs=inputs, parallel=parallel, max_concurrency=max_concurrency
+        )
 
 
 def run_nodes(config: JoinablePathLike | AgentsManifest, **kwargs: Any) -> dict[str, Any]:

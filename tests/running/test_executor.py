@@ -155,3 +155,55 @@ async def test_input_handling(pool):
     # Missing required
     with pytest.raises(ExecutionError):
         await execute_functions([func._node_function], pool)  # type: ignore
+
+
+@pytest.mark.parametrize("max_concurrency", [1, 3])
+async def test_parallel_max_concurrency(pool, max_concurrency: int):
+    """Parallel execution runs at most `max_concurrency` functions at once."""
+    active = peak = 0
+
+    async def work() -> str:
+        nonlocal active, peak
+        active += 1
+        peak = max(peak, active)
+        await anyio.sleep(0.01)
+        active -= 1
+        return "done"
+
+    funcs = []
+    for i in range(8):
+
+        async def func() -> str:
+            return await work()
+
+        func.__name__ = f"func_{i}"
+        funcs.append(node_function(func)._node_function)  # type: ignore[attr-defined]
+
+    results = await execute_functions(funcs, pool, parallel=True, max_concurrency=max_concurrency)
+    assert len(results) == 8
+    assert peak == max_concurrency
+
+
+async def test_parallel_without_limit_runs_group_at_once(pool):
+    active = peak = 0
+
+    funcs = []
+    for i in range(4):
+
+        async def func() -> None:
+            nonlocal active, peak
+            active += 1
+            peak = max(peak, active)
+            await anyio.sleep(0.01)
+            active -= 1
+
+        func.__name__ = f"func_{i}"
+        funcs.append(node_function(func)._node_function)  # type: ignore[attr-defined]
+
+    await execute_functions(funcs, pool, parallel=True)
+    assert peak == 4
+
+
+async def test_invalid_max_concurrency(pool):
+    with pytest.raises(ValueError, match="max_concurrency"):
+        await execute_functions([], pool, parallel=True, max_concurrency=0)

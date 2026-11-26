@@ -252,8 +252,20 @@ async def execute_functions(
     pool: AgentPool,
     inputs: dict[str, Any] | None = None,
     parallel: bool = False,
+    max_concurrency: int | None = None,
 ) -> dict[str, Any]:
-    """Execute discovered functions in the right order."""
+    """Execute discovered functions in the right order.
+
+    Args:
+        functions: Functions to execute
+        pool: Agent pool for injection
+        inputs: Optional input overrides
+        parallel: Run functions whose dependencies are met concurrently
+        max_concurrency: Most functions running at once in parallel mode (None: no limit)
+    """
+    if max_concurrency is not None and max_concurrency < 1:
+        msg = f"max_concurrency must be at least 1, got {max_concurrency}"
+        raise ValueError(msg)
     msg = "Executing functions"
     logger.info(msg, num_functions=len(functions), parallel=parallel)
     results: dict[str, Any] = {}
@@ -264,6 +276,14 @@ async def execute_functions(
     if parallel:
         # Group functions that can run in parallel
         groups = _group_parallel(sorted_funcs)
+        semaphore = asyncio.Semaphore(max_concurrency) if max_concurrency else None
+
+        async def run(func: NodeFunction) -> tuple[str, Any]:
+            if semaphore is None:
+                return await execute_single(func, pool, results, inputs)
+            async with semaphore:
+                return await execute_single(func, pool, results, inputs)
+
         for i, group in enumerate(groups):
             logger.debug(
                 "Executing parallel group",
@@ -275,8 +295,7 @@ async def execute_functions(
             # Ensure previous results are available
             logger.debug("Available results", results=sorted(results))
             # Run group in parallel
-            tasks = [execute_single(func, pool, results, inputs) for func in group]
-            group_results = await asyncio.gather(*tasks)
+            group_results = await asyncio.gather(*(run(func) for func in group))
             # Update results after group completes
             results.update(dict(group_results))
             logger.debug("Group complete", num=i + 1)
