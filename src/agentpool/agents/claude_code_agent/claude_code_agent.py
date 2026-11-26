@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import contextlib
 from contextlib import nullcontext
+from contextvars import ContextVar
 from dataclasses import replace
 from decimal import Decimal
 import os
@@ -107,6 +108,9 @@ if TYPE_CHECKING:
     from agentpool_config.mcp_server import MCPServerConfig
 
 logger = get_logger(__name__)
+
+_IN_PLACE: ContextVar[bool] = ContextVar("claude_code_in_place", default=False)
+"""Set while an unstored turn must run on the session itself instead of a fork."""
 
 _MCP_TOOL_PATTERN = re.compile(r"^mcp__agentpool-(.+)-tools__(.+)$")
 """Pattern to detect CC-provided tool names ( mcp__agentpool-{agent_name}-tools__{tool_name} )."""
@@ -1188,15 +1192,12 @@ class ClaudeCodeAgent[TDeps = None, TResult = str](BaseAgent[TDeps, TResult]):
         assert run_session_id is not None  # Initialized by BaseAgent.run_stream()
         yield RunStartedEvent(session_id=run_session_id, run_id=run_id, agent_name=self.name)
 
-        # Handle ephemeral execution (fork session if store_history=False)
+        # An unstored turn runs on a fork of the CLI session (FORKING.md): the session this
+        # agent resumes stays as it was. Commands meant for the session itself (`/compact`)
+        # run in place.
         fork_client = None
         client = self._client
-        if not store_history and self._sdk_session_id:
-            # Create fork client that shares parent's context but has separate session ID
-            # See: src/agentpool/agents/claude_code_agent/FORKING.md
-            fork_client = self._get_client(fork_session=True)
-            await fork_client.connect()
-            client = fork_client
+        fork = not store_history and self._sdk_session_id is not None and not _IN_PLACE.get()
 
         reconstructor = MessageReconstructor(initial_prompts=prompts)
         current = current_instructions()
@@ -1212,7 +1213,12 @@ class ClaudeCodeAgent[TDeps = None, TResult = str](BaseAgent[TDeps, TResult]):
             taken_in={prompt_uuid},
         )
         adapter: ClaudeCodeStreamedResponse | None = None  # Once the CLI answered
+        turn_sdk_session_id = self._sdk_session_id
         try:
+            if fork:
+                fork_client = self._get_client(fork_session=True)
+                await fork_client.connect()
+                client = steering.client = fork_client
             await client.query(*claude_prompts, uuid=prompt_uuid)
             self._steering = steering
             # Up to the result that answers the prompt (background work may run on)
@@ -1222,8 +1228,10 @@ class ClaudeCodeAgent[TDeps = None, TResult = str](BaseAgent[TDeps, TResult]):
             assert not isinstance(first_msg, AssistantMessage | UserMessage), (
                 f"invalid message type {type(first_msg)}"
             )
-            self._sdk_session_id = first_msg.session_id
-            await self._record_sdk_session_id()
+            turn_sdk_session_id = first_msg.session_id
+            if fork_client is None:  # A fork's ID is not the session's
+                self._sdk_session_id = first_msg.session_id
+                await self._record_sdk_session_id()
             if self.storage and store_history and process.titled_session != run_session_id:
                 process.titled_session = run_session_id
                 process.title_task = asyncio.create_task(
@@ -1252,8 +1260,8 @@ class ClaudeCodeAgent[TDeps = None, TResult = str](BaseAgent[TDeps, TResult]):
         except asyncio.CancelledError:
             self.log.info("Stream cancelled via CancelledError")
             msg_metadata: SimpleJsonType = {}
-            if self._sdk_session_id:
-                msg_metadata["sdk_session_id"] = self._sdk_session_id
+            if turn_sdk_session_id:
+                msg_metadata["sdk_session_id"] = turn_sdk_session_id
             reconstructor.flush()
             resolved = (adapter.model_name if adapter is not None else None) or self.model_name
             response_msg = ChatMessage[TResult](
@@ -1313,7 +1321,9 @@ class ClaudeCodeAgent[TDeps = None, TResult = str](BaseAgent[TDeps, TResult]):
         run_usage: RunUsage = RunUsage()
         stop_reason: StopReason | None = "end_turn"
         if result_message:
-            await self._follow_sdk_session(result_message.session_id)
+            if fork_client is None:
+                await self._follow_sdk_session(result_message.session_id)
+            turn_sdk_session_id = result_message.session_id
             self._learn_context_windows(result_message)
             run_usage = to_run_usage(client.query_usage)
             total_cost = Decimal(str(client.query_cost))
@@ -1321,8 +1331,8 @@ class ClaudeCodeAgent[TDeps = None, TResult = str](BaseAgent[TDeps, TResult]):
             stop_reason = result_message.stop_reason
         # Build metadata with SDK session ID
         final_metadata: SimpleJsonType = {}
-        if self._sdk_session_id:
-            final_metadata["sdk_session_id"] = self._sdk_session_id
+        if turn_sdk_session_id:
+            final_metadata["sdk_session_id"] = turn_sdk_session_id
         # The CLI stops fast mode by itself (e.g. at a model switch): follow it.
         if result_message and (fast_state := result_message.fast_mode_state) is not None:
             await self._follow_fast_mode(enabled=fast_state != "off")
@@ -1552,10 +1562,14 @@ class ClaudeCodeAgent[TDeps = None, TResult = str](BaseAgent[TDeps, TResult]):
             raise UnsupportedOperationError(self.name, "compact", reason)
         history = session.history if session is not None else self.conversation
         count = len(history.get_history())
-        async for event in self.run_stream("/compact", session=session, store_history=False):
-            if isinstance(event, CompactionEvent) and event.phase == "failed":
-                msg = f"Claude Code could not compact: {event.error or 'no reason given'}"
-                raise RuntimeError(msg)
+        token = _IN_PLACE.set(True)  # Compacts the session itself, not a fork of it
+        try:
+            async for event in self.run_stream("/compact", session=session, store_history=False):
+                if isinstance(event, CompactionEvent) and event.phase == "failed":
+                    msg = f"Claude Code could not compact: {event.error or 'no reason given'}"
+                    raise RuntimeError(msg)
+        finally:
+            _IN_PLACE.reset(token)
         return count, count
 
     async def fork_session(
