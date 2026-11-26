@@ -302,7 +302,7 @@ requires-dist = [
     { name = "structlog", specifier = ">=25.5.0" },
     { name = "sublime-search", specifier = ">=0.5.2" },
     { name = "tiktoken", marker = "extra == 'tiktoken'" },
-    { name = "tokonomics", specifier = ">=1.4.0" },
+    { name = "tokonomics", specifier = ">=1.5.1" },
     { name = "toprompt", specifier = ">=0.0.1" },
     { name = "tree-sitter", marker = "extra == 'coding'", specifier = ">=0.25.2" },
     { name = "tree-sitter-c", marker = "extra == 'coding'", specifier = ">=0.24.1" },
@@ -6375,17 +6375,16 @@ wheels = [
 
 [[package]]
 name = "tokonomics"
-version = "1.4.0"
+version = "1.5.1"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "anyenv", extra = ["httpx2"] },
-    { name = "platformdirs" },
     { name = "pydantic" },
     { name = "schemez" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/bd/a3/84049352619bd24cc991b12afb3dc5bbaf0ca577424d62bc3a4164605de2/tokonomics-1.4.0.tar.gz", hash = "sha256:b77af3550499083cb72ba6e65999ba54ab399c02306c93db8d9c5792973b438f", size = 103147, upload-time = "2026-11-23T16:33:26.307Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/a4/5a/8d20195bd46376257323c4a8440bbd881710c1278230c4a380a7b635b7b9/tokonomics-1.5.1.tar.gz", hash = "sha256:e2cb9051411e2b8d12b29368911c540bc7aa848f1d947737fc9927f556474ce6", size = 105752, upload-time = "2026-11-26T13:52:40.132Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/81/5a/ed6a904bc5fdc1a9b8d22901fda01692e573b016e0f6eb333c0e04ac050d/tokonomics-1.4.0-py3-none-any.whl", hash = "sha256:e12adb5b76c800a495171f8f6e61550d008d4148a00be819e034c241fe8b1b7d", size = 134347, upload-time = "2026-11-23T16:33:25.042Z" },
+    { url = "https://files.pythonhosted.org/packages/df/f0/3490b2626c14f99ad990dc9eae816f67a687064e79006e92b70d7e9ea575/tokonomics-1.5.1-py3-none-any.whl", hash = "sha256:41341586cd4ce8f200a8468600b7900c8f22285ca59d15906a5e6edefdd018e2", size = 136451, upload-time = "2026-11-26T13:52:38.89Z" },
 ]
 
 [[package]]
