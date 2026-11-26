@@ -48,7 +48,11 @@ class ConversionManager:
         # if it gets configured by user, that one gets preference.
 
     async def convert_file(self, path: JoinablePathLike) -> str:
-        """Convert file using first supporting converter."""
+        """Convert file using first supporting converter.
+
+        Raises:
+            ValueError: No converter supports the file's type
+        """
         loop = asyncio.get_running_loop()
         mime_type = guess_type(str(path)) or "text/plain"
 
@@ -59,14 +63,10 @@ class ConversionManager:
             )
             if not supports:
                 continue
-            # Run conversion in thread pool
-
-            content = await loop.run_in_executor(
-                self._executor,
-                converter.convert_file,
-                path,
-            )
-        return str(content)
+            content = await loop.run_in_executor(self._executor, converter.convert_file, path)
+            return str(content)
+        msg = f"No converter supports {mime_type!r} ({path})"
+        raise ValueError(msg)
 
     async def convert_content(self, content: Any, mime_type: str | None = None) -> str:
         """Convert content using first supporting converter."""
