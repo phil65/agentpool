@@ -8,6 +8,7 @@ everything, like upathtools' ``AsyncLocalFileSystem`` now does.
 from __future__ import annotations
 
 import os
+from pathlib import PurePath
 from typing import TYPE_CHECKING, Any
 
 from fsspec.implementations.asyn_wrapper import AsyncFileSystemWrapper
@@ -57,7 +58,7 @@ def _fs() -> AsyncFileSystemWrapper:
 
 
 def _rel(root: Path, paths: Any) -> set[str]:
-    return {os.path.relpath(str(p), root) for p in paths}
+    return {PurePath(os.path.relpath(str(p), root)).as_posix() for p in paths}
 
 
 async def test_filter_listing_drops_hidden_and_ignored(project: Path):
