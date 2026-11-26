@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+from collections import deque
 from contextlib import suppress
 import os
 from pathlib import Path
@@ -95,6 +96,9 @@ if TYPE_CHECKING:
 
 
 logger = get_logger(__name__)
+
+STDERR_TAIL_LINES = 50
+"""Lines of ``opencode serve``'s stderr kept for error messages."""
 
 _SSE_CONNECT_WAIT_SECONDS = 0.5
 _SSE_RECONNECT_DELAY_SECONDS = 0.25
@@ -230,6 +234,9 @@ class OpenCodeV2Agent[TDeps = None](BaseAgent[TDeps, str]):
         self._client = client
         self._owns_client = client is None
         self._process: Process | None = None
+        self._stderr_tail: deque[str] = deque(maxlen=STDERR_TAIL_LINES)
+        """The last lines ``opencode serve`` wrote to stderr (for errors)."""
+        self._stderr_task: asyncio.Task[None] | None = None
         self._sdk_session_id = session_id
         self._cached_models: list[ModelInfo] | None = None
         self._active_model_name: str | None = model
@@ -318,6 +325,10 @@ class OpenCodeV2Agent[TDeps = None](BaseAgent[TDeps, str]):
             # Its own process group: hard_kill SIGKILLs the group, which would be ours
             start_new_session=True,
         )
+        self._stderr_tail.clear()
+        self._stderr_task = asyncio.create_task(
+            self._drain_stderr(self._process), name=f"{self.name}-opencode-stderr"
+        )
         deadline = time.monotonic() + self._startup_timeout
         probe = OpenCodeV2Client(url, password=password, directory=self._directory(), timeout=2.0)
         try:
@@ -331,12 +342,12 @@ class OpenCodeV2Agent[TDeps = None](BaseAgent[TDeps, str]):
         async with probe:
             while time.monotonic() < deadline:
                 if self._process is not None and self._process.returncode is not None:
-                    stderr = b""
-                    if self._process.stderr is not None:
-                        stderr = await self._process.stderr.read()
+                    if self._stderr_task is not None:  # Read what it wrote until it exited
+                        with suppress(TimeoutError):
+                            await asyncio.wait_for(asyncio.shield(self._stderr_task), 1.0)
                     msg = (
                         f"`{self._command} serve` exited with code {self._process.returncode}: "
-                        f"{stderr.decode('utf-8', errors='replace').strip()}"
+                        + "\n".join(self._stderr_tail).strip()
                     )
                     raise RuntimeError(msg)
                 try:
@@ -350,11 +361,29 @@ class OpenCodeV2Agent[TDeps = None](BaseAgent[TDeps, str]):
         )
         raise TimeoutError(msg)
 
+    async def _drain_stderr(self, proc: Process) -> None:
+        """Read ``opencode serve``'s stderr as it comes (a full pipe would block it).
+
+        Logged at debug level; the last lines are kept for error messages.
+        """
+        if proc.stderr is None:
+            return
+        pending = ""
+        while chunk := await proc.stderr.read(65536):  # Chunks: a line may be any length
+            *lines, pending = (pending + chunk.decode("utf-8", errors="replace")).split("\n")
+            for line in lines:
+                self._stderr_tail.append(line[-2000:])
+                self.log.debug("opencode serve", stderr=line)
+            pending = pending[-65536:]
+        if pending:
+            self._stderr_tail.append(pending[-2000:])
+
     async def _stop_process(self) -> None:
         if self._process is None:
             return
         proc = self._process
         self._process = None
+        stderr_task, self._stderr_task = self._stderr_task, None
         if proc.returncode is None:
             with suppress(ProcessLookupError):
                 proc.terminate()
@@ -364,6 +393,10 @@ class OpenCodeV2Agent[TDeps = None](BaseAgent[TDeps, str]):
                 await hard_kill(proc)
                 with suppress(Exception):
                     await proc.wait()
+        if stderr_task is not None and not stderr_task.done():
+            stderr_task.cancel()
+            with suppress(asyncio.CancelledError):
+                await stderr_task
 
     async def _register_mcp_servers(self, client: OpenCodeV2Client) -> None:
         servers_to_add: list[tuple[str, Any]] = []
