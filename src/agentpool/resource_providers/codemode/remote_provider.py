@@ -102,7 +102,7 @@ class RemoteCodeModeResourceProvider(CodeModeResourceProvider):
         """Get cached code execution provider with thread-safe initialization."""
         async with self._provider_lock:
             if self._code_executor is None:
-                all_tools = await super().get_tools()
+                all_tools = await self.get_wrapped_tools()
                 self._code_executor = RemoteCodeExecutor.from_tools(
                     all_tools,
                     self.execution_config,

@@ -8,14 +8,16 @@ import inspect
 from typing import TYPE_CHECKING, Any
 
 import anyenv
+from schemez.code_generation.namespace_callable import NamespaceCallable
 
-from agentpool.agents.context import AgentContext  # noqa: TC001
+from agentpool.agents.context import AgentContext
 from agentpool.resource_providers import AggregatingResourceProvider
 from agentpool.resource_providers.codemode.default_prompt import USAGE
 from agentpool.resource_providers.codemode.helpers import (
     tools_to_codegen,
     validate_code,
 )
+from agentpool.utils.inspection import get_argument_key
 from agentpool_toolsets.fsspec_toolset.toolset import FSSpecTools
 
 
@@ -84,13 +86,13 @@ class CodeModeResourceProvider(AggregatingResourceProvider):
         toolset_generator = await self._get_code_generator()
         namespace = toolset_generator.generate_execution_namespace()
 
-        # Wrap namespace callables to inject AgentContext
+        # Inject the AgentContext into every tool taking one (found by annotation type,
+        # whatever the parameter is called, like the native agent's tool wrapping does).
         for value in namespace.values():
-            if callable(value) and hasattr(value, "callable"):
-                # It's a NamespaceCallable - wrap its underlying callable with ctx
-                original_callable = value.fn
-                if "agent_ctx" in inspect.signature(original_callable).parameters:
-                    value.fn = partial(original_callable, agent_ctx=ctx)
+            if isinstance(value, NamespaceCallable) and (
+                key := get_argument_key(value.callable, AgentContext)
+            ):
+                value.callable = partial(value.callable, **{key: ctx})
 
         # async def report_progress(current: int, total: int, message: str = ""):
         #     """Report progress during code execution."""
@@ -146,9 +148,13 @@ class CodeModeResourceProvider(AggregatingResourceProvider):
         self._cached_tool = None
         # Note: We no longer cache the toolset generator, so no need to clear it
 
+    async def get_wrapped_tools(self) -> Sequence[Tool]:
+        """Get the tools of the wrapped providers (not the meta tool)."""
+        return await super().get_tools()
+
     async def _get_code_generator(self) -> ToolsetCodeGenerator:
         """Get fresh toolset generator with current tools."""
-        tools = await super().get_tools()
+        tools = await self.get_wrapped_tools()
         return tools_to_codegen(tools=tools, include_docstrings=self.include_docstrings)
 
 
