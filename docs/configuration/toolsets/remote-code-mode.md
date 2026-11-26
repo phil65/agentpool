@@ -24,6 +24,11 @@ agents:
             fs: "file:///workspace"
 ```
 
+The wrapped tools are served over HTTP on localhost; the code calls them through
+generated client functions that agentpool puts in front of it. The server answers only
+requests carrying its random bearer token, which those functions send, so other local
+processes can't call the tools.
+
 ## Configuration Reference
 
 /// mknodes

@@ -6,12 +6,14 @@ import asyncio
 import contextlib
 from dataclasses import dataclass
 from datetime import UTC, datetime
+import secrets
 from typing import TYPE_CHECKING, Any, Self
 
 import anyenv
 import anyio
 
 from agentpool.log import get_logger
+from agentpool.utils.network import BearerAuth, wait_until_started
 
 
 if TYPE_CHECKING:
@@ -32,6 +34,14 @@ if TYPE_CHECKING:
 
 logger = get_logger(__name__)
 
+TOOLS_PREFIX = "/tools"
+_CLIENT_CALL = "httpx2.AsyncClient()"
+_AUTH_CLIENT = '''
+def _tool_server_client():
+    """HTTP client for the tool server, with its bearer token."""
+    return httpx2.AsyncClient(headers={{"Authorization": {auth!r}}})
+'''
+
 
 @dataclass
 class RemoteCodeExecutor:
@@ -48,6 +58,9 @@ class RemoteCodeExecutor:
 
     execution_env: ExecutionEnvironment
     """Execution environment for running code."""
+
+    server_handler: ToolServerLifecycleHandler | None = None
+    """The tool server the code calls (its client code is prepended to the code)."""
 
     def __post_init__(self) -> None:
         """Initialize filesystem for script history after dataclass init."""
@@ -82,7 +95,7 @@ class RemoteCodeExecutor:
         toolset_gen = tools_to_codegen(tools, include_docstrings)
         server_handler = ToolServerLifecycleHandler(toolset_gen, server_host, server_port)
         execution_env = env_config.get_provider(server_handler)
-        return cls(toolset_gen, execution_env)
+        return cls(toolset_gen, execution_env, server_handler)
 
     def get_tool_description(self) -> str:
         """Get comprehensive description of available tools."""
@@ -114,8 +127,11 @@ class RemoteCodeExecutor:
         exec_result = None
         result_str = ""
 
+        full_code = code
+        if self.server_handler is not None and self.server_handler.server is not None:
+            full_code = f"{self.server_handler.client_code()}\n\n{code}"
         try:
-            exec_result = await self.execution_env.execute(code)
+            exec_result = await self.execution_env.execute(full_code)
             result_str = str(exec_result)
             # Check if execution failed
             if exec_result.exit_code is not None and exec_result.exit_code != 0:
@@ -166,7 +182,12 @@ class RemoteCodeExecutor:
 
 
 class ToolServerLifecycleHandler:
-    """Manages FastAPI server lifecycle for tool access."""
+    """Manages FastAPI server lifecycle for tool access.
+
+    The server listens on localhost, where any local process could reach it: it serves
+    only requests carrying its random bearer token (:attr:`token`), which the generated
+    client code (:meth:`client_code`) sends.
+    """
 
     def __init__(
         self,
@@ -181,6 +202,23 @@ class ToolServerLifecycleHandler:
         self.server: uvicorn.Server | None = None
         self._server_task: asyncio.Task[None] | None = None
         self._socket: socket.socket | None = None
+        self.token = secrets.token_urlsafe(32)
+        """Bearer token a caller must send."""
+
+    @property
+    def url(self) -> str:
+        return f"http://{self.host}:{self.port}"
+
+    def client_code(self) -> str:
+        """Python code defining the tool functions, calling this server with the token."""
+        code = self.toolset_generator.generate_structured_code(self.url, TOOLS_PREFIX)
+        methods = code.clean_methods
+        if _CLIENT_CALL not in methods and self.toolset_generator.generators:
+            msg = f"Generated tool client code has no {_CLIENT_CALL} to authenticate"
+            raise RuntimeError(msg)
+        methods = methods.replace(_CLIENT_CALL, "_tool_server_client()")
+        auth = _AUTH_CLIENT.format(auth=f"Bearer {self.token}")
+        return f"{code.imports}\n{auth}\n{methods}"
 
     async def __aenter__(self) -> ServerInfo:
         """Start FastAPI server with tool routes."""
@@ -191,15 +229,15 @@ class ToolServerLifecycleHandler:
         from agentpool.utils.network import _create_socket
 
         if self.server is not None:
-            return ServerInfo(url=f"http://{self.host}:{self.port}", port=self.port)
+            return ServerInfo(url=self.url, port=self.port)
         # Create socket and get actual port
         self._socket, self.port = _create_socket(self.port)
         # Create FastAPI app
         self.app = FastAPI(title="Tool Server", description="Generated tool endpoints")
         # Add tool routes
-        self.toolset_generator.add_all_routes(self.app, "/tools")
+        self.toolset_generator.add_all_routes(self.app, TOOLS_PREFIX)
         config = uvicorn.Config(
-            self.app,
+            BearerAuth(self.app, self.token),
             log_level="error",  # Reduce log noise
             access_log=False,
             host=self.host,
@@ -209,16 +247,13 @@ class ToolServerLifecycleHandler:
         self.server = uvicorn.Server(config)
         # Start server in background with our socket
         self._server_task = asyncio.create_task(self.server.serve([self._socket]))
+        try:
+            await wait_until_started(self.server, self._server_task)
+        except BaseException:
+            await self.__aexit__(None, None, None)
+            raise
         logger.info("Started tool server", host=self.host, port=self.port)
-        await anyio.sleep(0.1)  # Wait for server to start properly
-        # Verify server is running
-        max_retries = 10
-        for _ in range(max_retries):
-            if self.server.started:
-                break
-            await anyio.sleep(0.1)
-
-        return ServerInfo(url=f"http://{self.host}:{self.port}", port=self.port)
+        return ServerInfo(url=self.url, port=self.port)
 
     async def __aexit__(
         self,

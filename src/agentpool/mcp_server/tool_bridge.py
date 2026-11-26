@@ -31,7 +31,6 @@ from typing import TYPE_CHECKING, Any, Self, cast, get_args, get_origin, get_typ
 from urllib.parse import quote
 from uuid import uuid4
 
-import anyio
 from pydantic_ai import RunContext, RunUsage
 from pydantic_ai.models.test import TestModel
 
@@ -42,6 +41,7 @@ from agentpool.sessions.environment import (
     current_session_environment,
     use_session_environment,
 )
+from agentpool.utils.network import BearerAuth, wait_until_started
 from agentpool.utils.signatures import filter_schema_params, get_params_matching_predicate
 
 
@@ -51,7 +51,6 @@ if TYPE_CHECKING:
     from fastmcp import Context, FastMCP
     from fastmcp.tools import ToolResult as FastMCPToolResult
     from pydantic_ai import UserContent
-    from starlette.types import ASGIApp, Receive, Scope, Send
     from uvicorn import Server
 
     from agentpool.agents import AgentContext
@@ -91,43 +90,6 @@ def _request_route() -> str:
     except RuntimeError:  # No HTTP request in this context
         return DEFAULT_ROUTE
     return request.query_params.get(ROUTE_PARAM, DEFAULT_ROUTE)
-
-
-class _BearerAuth:
-    """ASGI middleware: refuse HTTP requests that don't carry ``token`` as bearer token."""
-
-    def __init__(self, app: ASGIApp, token: str) -> None:
-        self.app = app
-        self._expected = f"Bearer {token}".encode()
-
-    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
-        if scope["type"] in ("http", "websocket"):
-            given = dict(scope["headers"]).get(b"authorization", b"")
-            if not secrets.compare_digest(given, self._expected):
-                await send({
-                    "type": "http.response.start",
-                    "status": 401,
-                    "headers": [
-                        (b"content-type", b"text/plain"),
-                        (b"www-authenticate", b"Bearer"),
-                    ],
-                })
-                await send({"type": "http.response.body", "body": b"Unauthorized"})
-                return
-        await self.app(scope, receive, send)
-
-
-async def _wait_until_started(server: Server, task: asyncio.Task[None]) -> None:
-    """Wait until uvicorn ``server`` (run by ``task``) serves.
-
-    Raises:
-        RuntimeError: It exited without starting (a failed startup it logged itself)
-    """
-    while not server.started:
-        if task.done():
-            task.result()  # Its error, if it raised one
-            raise RuntimeError("Tool bridge server exited during startup")
-        await anyio.sleep(0.01)
 
 
 def _is_annotation_of_type(annotation: Any, type_name: str) -> bool:
@@ -660,13 +622,13 @@ class ToolManagerBridge:
             sock.close()
             self._socket = None
             raise
-        app = _BearerAuth(self._mcp.http_app(transport="http"), self.token)
+        app = BearerAuth(self._mcp.http_app(transport="http"), self.token)
         cfg = uvicorn.Config(app=app, log_level="warning", ws="websockets-sansio")
         self._server = server = uvicorn.Server(cfg)
         name = f"mcp-bridge-{self.resolved_server_name}"
         self._server_task = task = asyncio.create_task(server.serve(sockets=[sock]), name=name)
         try:
-            await _wait_until_started(server, task)
+            await wait_until_started(server, task)
         except BaseException:
             await self.stop()
             raise
