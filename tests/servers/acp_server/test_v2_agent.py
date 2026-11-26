@@ -407,7 +407,11 @@ async def test_titles_and_replay_leave_out_the_injected_rules(
     monkeypatch.setattr(StorageManager, "_generate_title_core", title_model)
     monkeypatch.delenv("PYTEST_CURRENT_TEST")  # Titles are skipped in tests otherwise
     prompt = "Please read the README and tell me what this project is about, briefly"
-    async with _serve(FunctionModel(stream_function=stream)) as (conn, recorder, agent):
+    # A file database: the in-memory one is a single connection shared by every session
+    # (StaticPool), so a concurrent session's rollback could drop the stored turn
+    url = f"sqlite+aiosqlite:///{tmp_path}/history.db"
+    model = FunctionModel(stream_function=stream)
+    async with _serve(model, storage_url=url) as (conn, recorder, agent):
         monkeypatch.setattr(agent, "read_rules", rules)
         session_id = await _new_session(conn, str(tmp_path))
         await conn.prompt(_prompt(session_id, prompt))
