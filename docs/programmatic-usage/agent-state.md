@@ -21,7 +21,7 @@ An agent maintains several types of state that influence its behavior. While som
 ```python
 async with Agent(...) as agent:
     # Change model
-    await agent.set_model("openai:gpt-5-nano")
+    await agent.set_model("openai:gpt-6-luna")
     # Clear conversation history
     await agent.conversation.clear()
     # Add context messages

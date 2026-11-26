@@ -14,7 +14,7 @@ agents:
     type: native
     display_name: "Async Agent Fan"
     description: "The #1 supporter of all agents!"
-    model: openai:gpt-5-nano
+    model: openai:gpt-6-luna
     system_prompt: |
       You are the MOST ENTHUSIASTIC async fan who runs in the background!
       Your job is to:
@@ -29,7 +29,7 @@ agents:
     type: native
     display_name: "Mr. File Downloader"
     description: "Downloads files from URLs"
-    model: openai:gpt-5-nano
+    model: openai:gpt-6-luna
     system_prompt: "You have ONE job: use the download_file tool to download files."
     tools:
       - type: file_access
@@ -38,7 +38,7 @@ agents:
     type: native
     display_name: "Download Coordinator"
     description: "Coordinates parallel downloads"
-    model: openai:gpt-5-nano
+    model: openai:gpt-6-luna
     tools:
       - type: agent_cli
     system_prompt: |
@@ -50,7 +50,7 @@ agents:
     type: native
     display_name: "File Downloader 2"
     description: "Downloads files from URLs"
-    model: openai:gpt-5-nano
+    model: openai:gpt-6-luna
     system_prompt: "You have ONE job: use the download_file tool to download files."
     tools:
       - type: file_access

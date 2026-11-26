@@ -3,7 +3,7 @@ agents:
   file_scanner:
     type: native
     display_name: "File Scanner"
-    model: openai:gpt-5-nano
+    model: openai:gpt-6-luna
     system_prompt: You scan directories and list source files that need documentation.
     tools:
       - type: import
@@ -13,7 +13,7 @@ agents:
   doc_writer:
     type: native
     display_name: "Documentation Writer"
-    model: openai:gpt-5-nano
+    model: openai:gpt-6-luna
     system_prompt: You are a docs writer. Write markdown documentation for the files given to you.
     tools:
       - type: file_access
@@ -21,7 +21,7 @@ agents:
   error_checker:
     type: native
     display_name: "Code Validator"
-    model: openai:gpt-5-nano
+    model: openai:gpt-6-luna
     system_prompt: You validate Python source files for syntax errors.
     tools:
       - type: import

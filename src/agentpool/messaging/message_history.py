@@ -324,7 +324,7 @@ if __name__ == "__main__":
     from agentpool import Agent
 
     async def main() -> None:
-        async with Agent(model="openai:gpt-5-nano") as agent:
+        async with Agent(model="openai:gpt-6-luna") as agent:
             print(agent.conversation.get_history())
 
     anyio.run(main)

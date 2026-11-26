@@ -52,11 +52,11 @@ pool_server:
 agents:
   data_expert:
     type: native
-    model: openai:gpt-5-nano
+    model: openai:gpt-6-luna
     system_prompt: "Expert in data processing"
   api_expert:
     type: native
-    model: openai:gpt-5-nano
+    model: openai:gpt-6-luna
     system_prompt: "Expert in API design"
 ```
 

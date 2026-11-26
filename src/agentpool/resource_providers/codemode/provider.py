@@ -172,7 +172,7 @@ if __name__ == "__main__":
 
         async with AgentPool() as pool:
             agent: Agent[None, str] = Agent(
-                model="openai:gpt-5-nano", event_handlers=["simple"], retries=1
+                model="openai:gpt-6-luna", event_handlers=["simple"], retries=1
             )
             pool.register("test_agent", agent)
             async with agent:

@@ -406,8 +406,8 @@ if __name__ == "__main__":
     async def main() -> None:
         from agentpool import Agent, Team
 
-        agent = Agent("My Agent", model="openai:gpt-5-nano")
-        agent_2 = Agent("My Agent", model="openai:gpt-5-nano")
+        agent = Agent("My Agent", model="openai:gpt-6-luna")
+        agent_2 = Agent("My Agent", model="openai:gpt-6-luna")
         team = Team([agent, agent_2], mcp_servers=["uvx mcp-server-git"])
         async with team:
             print(await agent.tools.get_tools())

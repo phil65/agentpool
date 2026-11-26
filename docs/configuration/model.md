@@ -6,7 +6,7 @@ icon: material/cpu-64-bit
 
 ## Overview
 
-AgentPool supports a wide range of model types thanks to `Pydantic-AI`. In the simplest form, models are defined by their "identifier", which is defined as `PROVIDER_NAME:MODEL_NAME` (example: `"openai:gpt-5-nano"`).
+AgentPool supports a wide range of model types thanks to `Pydantic-AI`. In the simplest form, models are defined by their "identifier", which is defined as `PROVIDER_NAME:MODEL_NAME` (example: `"openai:gpt-6-luna"`).
 
 For more advanced scenarios, it is also possible to assign a more detailed model config including model settings like `temperature` etc.
 
@@ -17,17 +17,17 @@ These include models which let the user get into the role of an Agent, as well a
 ```yaml
 agents:
   my_agent:
-    model: openai:gpt-5-nano  # simple model identifier
+    model: openai:gpt-6-luna  # simple model identifier
   my_agent2:
     model:  # extended model config
       type: string
-      identifier: openai:gpt-5-nano
+      identifier: openai:gpt-6-luna
       temperature: 0.5
   my_agent3:
     model:  # a meta model: try models in order
       type: fallback
       models:
-        - openai:gpt-5-nano
+        - openai:gpt-6-luna
         - anthropic:claude-haiku-4-5
 ```
 
@@ -39,7 +39,7 @@ Named model configurations in the manifest's `model_variants` can be referenced 
 model_variants:
   fast:
     type: string
-    identifier: openai:gpt-5-nano
+    identifier: openai:gpt-6-luna
     temperature: 0.3
 
 agents:

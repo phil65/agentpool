@@ -56,7 +56,7 @@ async def demo_http_server_approach():
     toolset = RemoteCodeModeResourceProvider(
         providers=[StaticResourceProvider(tools=tools)], execution_config=config
     )
-    agent = Agent(model="openai:gpt-5-nano", toolsets=[toolset])
+    agent = Agent(model="openai:gpt-6-luna", toolsets=[toolset])
     async with agent:
         result = await agent.run(
             "What code is available for your execute tool? Which calls can you make?"

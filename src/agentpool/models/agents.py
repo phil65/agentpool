@@ -100,7 +100,7 @@ class NativeAgentConfig(BaseAgentConfig):
 
     model: AnyModelConfig | ModelId | str = Field(
         ...,
-        examples=["openai:gpt-5-nano"],
+        examples=["openai:gpt-6-luna"],
         title="Model configuration or name",
         json_schema_extra={
             "documentation_url": "https://phil65.github.io/agentpool/configuration/model/"
@@ -483,6 +483,6 @@ class NativeAgentConfig(BaseAgentConfig):
 
 
 if __name__ == "__main__":
-    model = "openai:gpt-5-nano"
+    model = "openai:gpt-6-luna"
     agent_cfg = NativeAgentConfig(name="test_agent", model=model)
     print(agent_cfg)

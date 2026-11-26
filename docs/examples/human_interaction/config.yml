@@ -2,7 +2,7 @@
 agents:
   assistant:
     type: native
-    model: openai:gpt-5-nano
+    model: openai:gpt-6-luna
     tools:
       - type: agent_cli
     system_prompt: |

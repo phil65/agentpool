@@ -146,7 +146,7 @@ By default an event runs in the node's own session. A trigger can pick another:
 ```yaml
 agents:
   monitor:
-    model: openai:gpt-5-nano
+    model: openai:gpt-6-luna
     triggers:
       - type: time
         name: daily_report
@@ -169,14 +169,14 @@ and runs its node in the background (the routing that caused the event doesn't w
 ```yaml
 agents:
   writer:
-    model: openai:gpt-5-nano
+    model: openai:gpt-6-luna
     connections:
       - type: node
         name: reviewer
   reviewer:
-    model: openai:gpt-5-nano
+    model: openai:gpt-6-luna
   auditor:
-    model: openai:gpt-5-nano
+    model: openai:gpt-6-luna
     triggers:
       - type: connection
         name: on_forward
@@ -197,7 +197,7 @@ experimental), and runs its node on each:
 ```yaml
 agents:
   triager:
-    model: openai:gpt-5-nano
+    model: openai:gpt-6-luna
     mcp_servers:
       - type: streamable-http
         name: incidents

@@ -1090,7 +1090,7 @@ if __name__ == "__main__":
     logfire.instrument_pydantic_ai()
     logging.basicConfig(handlers=[logfire.LogfireLoggingHandler()])
     sys_prompt = "Open browser with google,"
-    _model = "openai:gpt-5-nano"
+    _model = "openai:gpt-6-luna"
 
     async def handle_events(ctx: AgentContext[Any], event: RichAgentStreamEvent[Any]) -> None:
         print(f"[EVENT] {type(event).__name__}: {event}")

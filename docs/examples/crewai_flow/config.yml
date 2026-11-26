@@ -2,9 +2,9 @@
 agents:
   city_picker:
     type: native
-    model: gpt-5-nano
+    model: gpt-6-luna
     system_prompt: "You generate random city names."
   fact_finder:
     type: native
-    model: gpt-5-nano
+    model: gpt-6-luna
     system_prompt: "You provide interesting facts about cities."

@@ -4244,20 +4244,6 @@
               "type": "string"
             },
             {
-              "enum": [
-                "anthropic-max:claude-fable-5",
-                "anthropic-max:claude-fable-5-1",
-                "anthropic-max:claude-fable-5-2",
-                "anthropic-max:claude-haiku-5-5",
-                "anthropic-max:claude-opus-4-8",
-                "anthropic-max:claude-opus-5",
-                "anthropic-max:claude-opus-5-5",
-                "anthropic-max:claude-sonnet-5",
-                "anthropic-max:claude-sonnet-5-5"
-              ],
-              "type": "string"
-            },
-            {
               "const": "cerebras:qwen-3.8-27b",
               "type": "string"
             },
@@ -11813,20 +11799,6 @@
               "type": "string"
             },
             {
-              "enum": [
-                "anthropic-max:claude-fable-5",
-                "anthropic-max:claude-fable-5-1",
-                "anthropic-max:claude-fable-5-2",
-                "anthropic-max:claude-haiku-5-5",
-                "anthropic-max:claude-opus-4-8",
-                "anthropic-max:claude-opus-5",
-                "anthropic-max:claude-opus-5-5",
-                "anthropic-max:claude-sonnet-5",
-                "anthropic-max:claude-sonnet-5-5"
-              ],
-              "type": "string"
-            },
-            {
               "const": "cerebras:qwen-3.8-27b",
               "type": "string"
             },
@@ -13493,20 +13465,6 @@
                   "anthropic:claude-opus-5-5",
                   "anthropic:claude-sonnet-5",
                   "anthropic:claude-sonnet-5-5"
-                ],
-                "type": "string"
-              },
-              {
-                "enum": [
-                  "anthropic-max:claude-fable-5",
-                  "anthropic-max:claude-fable-5-1",
-                  "anthropic-max:claude-fable-5-2",
-                  "anthropic-max:claude-haiku-5-5",
-                  "anthropic-max:claude-opus-4-8",
-                  "anthropic-max:claude-opus-5",
-                  "anthropic-max:claude-opus-5-5",
-                  "anthropic-max:claude-sonnet-5",
-                  "anthropic-max:claude-sonnet-5-5"
                 ],
                 "type": "string"
               },
@@ -17280,20 +17238,6 @@
               "type": "string"
             },
             {
-              "enum": [
-                "anthropic-max:claude-fable-5",
-                "anthropic-max:claude-fable-5-1",
-                "anthropic-max:claude-fable-5-2",
-                "anthropic-max:claude-haiku-5-5",
-                "anthropic-max:claude-opus-4-8",
-                "anthropic-max:claude-opus-5",
-                "anthropic-max:claude-opus-5-5",
-                "anthropic-max:claude-sonnet-5",
-                "anthropic-max:claude-sonnet-5-5"
-              ],
-              "type": "string"
-            },
-            {
               "const": "cerebras:qwen-3.8-27b",
               "type": "string"
             },
@@ -19005,7 +18949,7 @@
           ],
           "default": null,
           "examples": [
-            "openai:gpt-5-nano"
+            "openai:gpt-6-luna"
           ],
           "title": "Model for edit sub-agent"
         },
@@ -19345,20 +19289,6 @@
                   "anthropic:claude-opus-5-5",
                   "anthropic:claude-sonnet-5",
                   "anthropic:claude-sonnet-5-5"
-                ],
-                "type": "string"
-              },
-              {
-                "enum": [
-                  "anthropic-max:claude-fable-5",
-                  "anthropic-max:claude-fable-5-1",
-                  "anthropic-max:claude-fable-5-2",
-                  "anthropic-max:claude-haiku-5-5",
-                  "anthropic-max:claude-opus-4-8",
-                  "anthropic-max:claude-opus-5",
-                  "anthropic-max:claude-opus-5-5",
-                  "anthropic-max:claude-sonnet-5",
-                  "anthropic-max:claude-sonnet-5-5"
                 ],
                 "type": "string"
               },
@@ -29131,20 +29061,6 @@
               "type": "string"
             },
             {
-              "enum": [
-                "anthropic-max:claude-fable-5",
-                "anthropic-max:claude-fable-5-1",
-                "anthropic-max:claude-fable-5-2",
-                "anthropic-max:claude-haiku-5-5",
-                "anthropic-max:claude-opus-4-8",
-                "anthropic-max:claude-opus-5",
-                "anthropic-max:claude-opus-5-5",
-                "anthropic-max:claude-sonnet-5",
-                "anthropic-max:claude-sonnet-5-5"
-              ],
-              "type": "string"
-            },
-            {
               "const": "cerebras:qwen-3.8-27b",
               "type": "string"
             },
@@ -30784,7 +30700,7 @@
           "description": "The model to use for this agent. Can be either a simple model name\nstring (e.g. 'openai:gpt-5') or a structured model definition.\n\nDocs: https://phil65.github.io/agentpool/configuration/model/",
           "documentation_url": "https://phil65.github.io/agentpool/configuration/model/",
           "examples": [
-            "openai:gpt-5-nano"
+            "openai:gpt-6-luna"
           ],
           "title": "Model configuration or name"
         },
@@ -34336,20 +34252,6 @@
                 "anthropic:claude-opus-5-5",
                 "anthropic:claude-sonnet-5",
                 "anthropic:claude-sonnet-5-5"
-              ],
-              "type": "string"
-            },
-            {
-              "enum": [
-                "anthropic-max:claude-fable-5",
-                "anthropic-max:claude-fable-5-1",
-                "anthropic-max:claude-fable-5-2",
-                "anthropic-max:claude-haiku-5-5",
-                "anthropic-max:claude-opus-4-8",
-                "anthropic-max:claude-opus-5",
-                "anthropic-max:claude-opus-5-5",
-                "anthropic-max:claude-sonnet-5",
-                "anthropic-max:claude-sonnet-5-5"
               ],
               "type": "string"
             },
@@ -41904,20 +41806,6 @@
               "type": "string"
             },
             {
-              "enum": [
-                "anthropic-max:claude-fable-5",
-                "anthropic-max:claude-fable-5-1",
-                "anthropic-max:claude-fable-5-2",
-                "anthropic-max:claude-haiku-5-5",
-                "anthropic-max:claude-opus-4-8",
-                "anthropic-max:claude-opus-5",
-                "anthropic-max:claude-opus-5-5",
-                "anthropic-max:claude-sonnet-5",
-                "anthropic-max:claude-sonnet-5-5"
-              ],
-              "type": "string"
-            },
-            {
               "const": "cerebras:qwen-3.8-27b",
               "type": "string"
             },
@@ -43785,20 +43673,6 @@
                 "anthropic:claude-opus-5-5",
                 "anthropic:claude-sonnet-5",
                 "anthropic:claude-sonnet-5-5"
-              ],
-              "type": "string"
-            },
-            {
-              "enum": [
-                "anthropic-max:claude-fable-5",
-                "anthropic-max:claude-fable-5-1",
-                "anthropic-max:claude-fable-5-2",
-                "anthropic-max:claude-haiku-5-5",
-                "anthropic-max:claude-opus-4-8",
-                "anthropic-max:claude-opus-5",
-                "anthropic-max:claude-opus-5-5",
-                "anthropic-max:claude-sonnet-5",
-                "anthropic-max:claude-sonnet-5-5"
               ],
               "type": "string"
             },
@@ -48071,20 +47945,6 @@
                   "anthropic:claude-opus-5-5",
                   "anthropic:claude-sonnet-5",
                   "anthropic:claude-sonnet-5-5"
-                ],
-                "type": "string"
-              },
-              {
-                "enum": [
-                  "anthropic-max:claude-fable-5",
-                  "anthropic-max:claude-fable-5-1",
-                  "anthropic-max:claude-fable-5-2",
-                  "anthropic-max:claude-haiku-5-5",
-                  "anthropic-max:claude-opus-4-8",
-                  "anthropic-max:claude-opus-5",
-                  "anthropic-max:claude-opus-5-5",
-                  "anthropic-max:claude-sonnet-5",
-                  "anthropic-max:claude-sonnet-5-5"
                 ],
                 "type": "string"
               },

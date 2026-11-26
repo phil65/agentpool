@@ -22,7 +22,7 @@ async def main() -> None:
     )
     agent = Agent(
         name="demo_agent",
-        model="openai:gpt-5-nano",
+        model="openai:gpt-6-luna",
         system_prompt="You are a helpful assistant with release tools.",
         mcp_servers=[mcp_server],
     )

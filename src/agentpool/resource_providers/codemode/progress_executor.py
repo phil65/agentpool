@@ -202,7 +202,7 @@ for i in range(3):
         from agentpool import Agent, AgentPool
 
         async with AgentPool() as pool:
-            agent = Agent("test-agent", model="openai:gpt-5-nano", tools=[run_me])
+            agent = Agent("test-agent", model="openai:gpt-6-luna", tools=[run_me])
             await pool.add_agent(agent)
             print("🚀 Testing unified progress system...")
             async for event in agent.run_stream("Run run_me and show progress."):

@@ -394,7 +394,7 @@ class FSSpecToolsetConfig(BaseToolsetConfig):
 
     model: str | ModelId | AnyModelConfig | None = Field(
         default=None,
-        examples=["openai:gpt-5-nano"],
+        examples=["openai:gpt-6-luna"],
         title="Model for edit sub-agent",
     )
 

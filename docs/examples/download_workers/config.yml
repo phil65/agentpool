@@ -4,14 +4,14 @@ agents:
     type: native
     display_name: "Download Coordinator"
     description: "Coordinates downloads using registered worker tools"
-    model: openai:gpt-5-nano
+    model: openai:gpt-6-luna
     system_prompt: "You coordinate file downloads using the worker tools registered with you. Use all available worker tools to download the requested file."
 
   file_getter_1:
     type: native
     display_name: "File Downloader Worker 1"
     description: "Downloads files from URLs"
-    model: openai:gpt-5-nano
+    model: openai:gpt-6-luna
     system_prompt: "You download files from URLs using the download_file tool."
     tools:
       - type: file_access
@@ -20,7 +20,7 @@ agents:
     type: native
     display_name: "File Downloader Worker 2"
     description: "Downloads files from URLs"
-    model: openai:gpt-5-nano
+    model: openai:gpt-6-luna
     system_prompt: "You download files from URLs using the download_file tool."
     tools:
       - type: file_access

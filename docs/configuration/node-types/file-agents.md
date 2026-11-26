@@ -24,7 +24,7 @@ file_agents:
 
 ```markdown title="agents/worker.md"
 ---
-model: openai:gpt-5-nano
+model: openai:gpt-6-luna
 tools:
   - type: file_access
 ---
