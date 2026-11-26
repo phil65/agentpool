@@ -41,10 +41,13 @@ async def merge_queue_into_iterator[T, V](  # noqa: PLR0915
     primary_exception: BaseException | None = None
     # Track if we've signaled the end of streams
     end_signaled = False
+    # The secondary task waits on the queue itself (no polling); the primary's end
+    # cancels that wait: these tell its own cancel from one from outside
+    secondary_started = stop_requested = False
 
     # Task to read from primary stream and put into merged queue
     async def primary_task() -> None:
-        nonlocal primary_exception, end_signaled
+        nonlocal primary_exception, end_signaled, stop_requested
         try:
             async for event in primary_stream:
                 await event_queue.put(event)
@@ -59,17 +62,25 @@ async def merge_queue_into_iterator[T, V](  # noqa: PLR0915
             primary_exception = e
         finally:
             primary_done.set()
+            if secondary_started and not secondary_task_obj.done():  # Else it sees done
+                stop_requested = True
+                secondary_task_obj.cancel()
 
     # Task to read from secondary queue and put into merged queue
     async def secondary_task() -> None:
-        nonlocal end_signaled
+        nonlocal end_signaled, secondary_started
+        secondary_started = True
         try:
             while not primary_done.is_set():
                 try:
-                    secondary_event = await asyncio.wait_for(secondary_queue.get(), timeout=0.01)
-                    await event_queue.put(secondary_event)
-                except TimeoutError:
-                    continue
+                    secondary_event = await secondary_queue.get()
+                except asyncio.CancelledError:
+                    if not stop_requested:  # From outside
+                        raise
+                    if (task := asyncio.current_task()) is not None:
+                        task.uncancel()
+                    break  # The primary ended (a cancelled get takes nothing)
+                await event_queue.put(secondary_event)
             # Drain any remaining events after primary completes
             while not secondary_queue.empty():
                 try:
