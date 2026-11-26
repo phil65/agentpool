@@ -695,33 +695,29 @@ class SQLModelProvider(StorageProvider):
 
     async def load_session(self, session_id: str) -> SessionData | None:
         """Load session data by ID."""
-        from agentpool.sessions.models import SessionData
-
         async with AsyncSession(self.engine) as session:
             row = await session.get(Conversation, session_id)
-            if row is None:
-                return None
-            metadata = dict(row.metadata_json or {})
-            definition_version = metadata.pop(DEFINITION_VERSION_KEY, None)
-            if row.title is not None:
-                metadata["title"] = row.title
-            return SessionData(
-                session_id=row.id,
-                agent_name=row.agent_name,
-                pool_id=row.pool_id,
-                project_id=row.project_id,
-                parent_id=row.parent_id,
-                version=row.version,
-                cwd=row.cwd,
-                agent_type=row.agent_type,
-                sdk_session_id=row.sdk_session_id,
-                definition_version=(
-                    definition_version if isinstance(definition_version, str) else None
-                ),
-                created_at=row.start_time,
-                last_active=row.last_active,
-                metadata=metadata,
-            )
+            return None if row is None else _session_data(row)
+
+    async def list_sessions(
+        self,
+        *,
+        agent_name: str | None = None,
+        cwd: str | None = None,
+        limit: int | None = None,
+    ) -> list[SessionData]:
+        """Sessions, most recently active first, with their titles: one query."""
+        async with AsyncSession(self.engine) as session:
+            stmt = select(Conversation)
+            if agent_name is not None:
+                stmt = stmt.where(Conversation.agent_name == agent_name)
+            if cwd is not None:
+                stmt = stmt.where(Conversation.cwd == cwd)
+            stmt = stmt.order_by(Conversation.last_active.desc())  # type: ignore[attr-defined]  # ty:ignore[missing-attribute]
+            if limit is not None:
+                stmt = stmt.limit(limit)
+            result = await session.execute(stmt)
+            return [_session_data(row) for row in result.scalars().all()]
 
     async def delete_session(self, session_id: str) -> bool:
         """Delete a session."""
@@ -768,3 +764,28 @@ class SQLModelProvider(StorageProvider):
             )
             await db.execute(stmt)
             await db.commit()
+
+
+def _session_data(row: Conversation) -> SessionData:
+    """The stored session of a ``Conversation`` row (its title in the metadata)."""
+    from agentpool.sessions.models import SessionData
+
+    metadata = dict(row.metadata_json or {})
+    definition_version = metadata.pop(DEFINITION_VERSION_KEY, None)
+    if row.title is not None:
+        metadata["title"] = row.title
+    return SessionData(
+        session_id=row.id,
+        agent_name=row.agent_name,
+        pool_id=row.pool_id,
+        project_id=row.project_id,
+        parent_id=row.parent_id,
+        version=row.version,
+        cwd=row.cwd,
+        agent_type=row.agent_type,
+        sdk_session_id=row.sdk_session_id,
+        definition_version=(definition_version if isinstance(definition_version, str) else None),
+        created_at=row.start_time,
+        last_active=row.last_active,
+        metadata=metadata,
+    )

@@ -972,6 +972,38 @@ class StorageManager:
         provider = self.get_project_provider()
         return await provider.list_session_ids(pool_id=pool_id, agent_name=agent_name)
 
+    async def list_sessions(
+        self,
+        *,
+        agent_name: str | None = None,
+        cwd: str | None = None,
+        limit: int | None = None,
+    ) -> list[SessionData]:
+        """Stored sessions, filtered by agent and working directory, with their titles.
+
+        One provider call (the SQL provider: one query) instead of loading each ID.
+        Titles missing from the session data come from the history provider, if that
+        is another one.
+        """
+        provider = self.get_project_provider()
+        sessions = await provider.list_sessions(agent_name=agent_name, cwd=cwd, limit=limit)
+        untitled = [i for i, data in enumerate(sessions) if not data.title]
+        if not untitled:
+            return sessions
+        try:
+            history = self.get_history_provider()
+        except RuntimeError:
+            return sessions
+        if history is provider:
+            return sessions
+        titles = await asyncio.gather(
+            *(history.get_session_title(sessions[i].session_id) for i in untitled)
+        )
+        for i, title in zip(untitled, titles, strict=True):
+            if title:
+                sessions[i] = sessions[i].with_metadata(title=title)
+        return sessions
+
     async def update_sdk_session_id(self, session_id: str, sdk_session_id: str) -> None:
         """Update the external SDK session ID for a session.
 

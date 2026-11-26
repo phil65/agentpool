@@ -1039,27 +1039,10 @@ class Agent[TDeps = None, OutputDataT = str](BaseAgent[TDeps, OutputDataT]):
         if not storage:
             return []
         try:
-            session_ids = await storage.list_session_ids(agent_name=self.name)
-            result: list[SessionData] = []
-            for session_id in session_ids:
-                if session_data := await storage.load_session(session_id):
-                    # Filter by cwd if specified
-                    if cwd is not None and session_data.cwd != cwd:
-                        continue
-                    # Fetch title from conversation storage if not in metadata
-                    if not session_data.title and (
-                        title := await storage.get_session_title(session_data.session_id)
-                    ):
-                        session_data = session_data.with_metadata(title=title)
-                    result.append(session_data)
-                    if limit is not None and len(result) >= limit:
-                        break
-
+            return await storage.list_sessions(agent_name=self.name, cwd=cwd, limit=limit)
         except Exception:
             self.log.exception("Failed to list sessions")
-            return []
-        else:
-            return result
+            raise
 
     async def load_session(self, session_id: str) -> SessionData | None:
         """Load and restore a session from storage.

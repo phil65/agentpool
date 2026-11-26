@@ -49,6 +49,10 @@ class StoredConversation:
     total_cost: float = 0.0
 
 
+LIST_SESSIONS_BATCH = 16
+"""Sessions the default ``list_sessions`` loads at once."""
+
+
 class StorageProvider:
     """Base class for storage providers."""
 
@@ -489,6 +493,38 @@ class StorageProvider:
             List of session IDs
         """
         return []
+
+    async def list_sessions(
+        self,
+        *,
+        agent_name: str | None = None,
+        cwd: str | None = None,
+        limit: int | None = None,
+    ) -> list[SessionData]:
+        """Sessions (in ``list_session_ids`` order), filtered by agent and cwd.
+
+        The default loads them by ID, a few at once, until ``limit`` matched; providers
+        that can should select them in one query.
+
+        Args:
+            agent_name: Only sessions of this agent
+            cwd: Only sessions in this working directory
+            limit: At most this many
+        """
+        import asyncio
+
+        session_ids = await self.list_session_ids(agent_name=agent_name)
+        result: list[SessionData] = []
+        for start in range(0, len(session_ids), LIST_SESSIONS_BATCH):
+            batch = session_ids[start : start + LIST_SESSIONS_BATCH]
+            loaded = await asyncio.gather(*(self.load_session(sid) for sid in batch))
+            for data in loaded:
+                if data is None or (cwd is not None and data.cwd != cwd):
+                    continue
+                result.append(data)
+                if limit is not None and len(result) >= limit:
+                    return result
+        return result
 
     async def update_sdk_session_id(
         self,
