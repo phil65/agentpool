@@ -136,20 +136,20 @@ class BaseTeam[TDeps, TResult](MessageNode[TDeps, TResult]):
 
     def add_node(self, node: MessageNode[Any, Any]) -> None:
         """Handler for adding new nodes to the team."""
-        from agentpool.agents import Agent
+        from agentpool.agents.base_agent import BaseAgent
 
         self._nodes.append(node)
-        if isinstance(node, Agent):
+        if isinstance(node, BaseAgent):
             # Add MCP aggregating provider from manager
             aggregating_provider = self.mcp.get_aggregating_provider()
             node.tools.add_provider(aggregating_provider)
 
     def remove_node(self, node: MessageNode[Any, Any]) -> None:
         """Handler for removing nodes from the team."""
-        from agentpool.agents import Agent
+        from agentpool.agents.base_agent import BaseAgent
 
         self._nodes.remove(node)
-        if isinstance(node, Agent):
+        if isinstance(node, BaseAgent):
             # Remove MCP aggregating provider
             aggregating_provider = self.mcp.get_aggregating_provider()
             node.tools.remove_provider(aggregating_provider.name)
@@ -191,7 +191,7 @@ class BaseTeam[TDeps, TResult](MessageNode[TDeps, TResult]):
             if self.validator:
                 # If we have a validator, create new TeamRun to preserve validation
                 return TeamRun([self, other])
-            self.nodes.append(other)
+            self.add_node(other)
             return self
         # Otherwise create new TeamRun
         return TeamRun([self, other])
@@ -308,7 +308,6 @@ class BaseTeam[TDeps, TResult](MessageNode[TDeps, TResult]):
         """Get current connection."""
         return self._team_talk
 
-    @property
     async def cancel(self) -> None:
         """Cancel execution and cleanup."""
         if self._main_task:

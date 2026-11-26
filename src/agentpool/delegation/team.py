@@ -102,7 +102,8 @@ class Team[TDeps = None](BaseTeam[TDeps, Any]):
                 # Put None to maintain queue count
                 await queue.put(None)
 
-        # Get nodes to run
+        if self.shared_prompt:
+            prompts = (self.shared_prompt, *prompts)
         all_nodes = list(self.nodes)
         # Start all agents
         tasks = [asyncio.create_task(_run(n), name=f"run_{n.name}") for n in all_nodes]
@@ -183,7 +184,8 @@ class Team[TDeps = None](BaseTeam[TDeps, Any]):
         Yields:
             RichAgentStreamEvent, with member events wrapped in SubAgentEvent
         """
-        # Get nodes to run
+        if self.shared_prompt:
+            prompts = (self.shared_prompt, *prompts)
         all_nodes = list(self.nodes)
 
         # Create list of streams

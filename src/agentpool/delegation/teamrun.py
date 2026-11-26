@@ -195,7 +195,9 @@ class TeamRun[TDeps, TResult](BaseTeam[TDeps, TResult]):
         prompts_ = list(prompts)
         if self.shared_prompt:
             prompts_.insert(0, self.shared_prompt)
-        responses = [i async for i in self.execute_iter(*prompts_) if isinstance(i, AgentResponse)]
+        responses = [
+            i async for i in self.execute_iter(*prompts_, **kwargs) if isinstance(i, AgentResponse)
+        ]
         return TeamResponse(responses, start_time)
 
     async def run_iter(
@@ -276,8 +278,11 @@ class TeamRun[TDeps, TResult](BaseTeam[TDeps, TResult]):
         from agentpool.agents.events import StreamCompleteEvent, SubAgentEvent
         from agentpool.delegation.team import Team
 
-        current_message = prompts
-        for node in self.nodes:
+        current_message: tuple[PromptCompatible, ...] = prompts
+        if self.shared_prompt:
+            current_message = (self.shared_prompt, *current_message)
+        chain = [*self.nodes, self.validator] if self.validator else list(self.nodes)
+        for node in chain:
             match node:
                 case Team():
                     source_type: SubAgentType = "team_parallel"
@@ -285,7 +290,8 @@ class TeamRun[TDeps, TResult](BaseTeam[TDeps, TResult]):
                     source_type = "team_sequential"
                 case _:
                     source_type = "agent"
-
+            # Final contents of a nested team's direct members (depth 1 in its stream)
+            member_results: list[Any] = []
             try:
                 async for event in self.member_stream(node, current_message, session, **kwargs):
                     # Handle already-wrapped SubAgentEvents (nested teams)
@@ -296,6 +302,8 @@ class TeamRun[TDeps, TResult](BaseTeam[TDeps, TResult]):
                             event=event.event,
                             depth=event.depth + 1,
                         )
+                        if event.depth == 1 and isinstance(event.event, StreamCompleteEvent):
+                            member_results.append(event.event.message.content)
                     else:
                         yield SubAgentEvent(
                             source_name=node.name,
@@ -306,6 +314,10 @@ class TeamRun[TDeps, TResult](BaseTeam[TDeps, TResult]):
                         # Extract content for next agent in chain
                         if isinstance(event, StreamCompleteEvent):
                             current_message = (event.message.content,)
+                # The next node gets a sequential team's last result, a parallel team's all
+                if member_results:
+                    is_parallel = source_type == "team_parallel"
+                    current_message = tuple(member_results if is_parallel else member_results[-1:])
 
             except Exception as e:
                 if require_all:

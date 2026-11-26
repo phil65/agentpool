@@ -18,7 +18,7 @@ from agentpool.delegation.message_flow_tracker import MessageFlowTracker
 from agentpool.log import get_logger
 from agentpool.messaging import MessageNode
 from agentpool.sessions.activity import ActivityFeed
-from agentpool.talk import TeamTalk
+from agentpool.talk import Talk, TeamTalk
 from agentpool.talk.router import Router
 from agentpool.tasks import TaskRegistry
 from agentpool.utils.baseregistry import BaseRegistry
@@ -140,8 +140,9 @@ class AgentPool[TPoolDeps = None](BaseRegistry[NodeName, MessageNode[Any, Any]])
         self.process_manager = ProcessManager()
         self.file_ops = FileOpsTracker()
         self.todos = TodoTracker()
-        # Create all agents from unified manifest.agents dict
-        for name, config in self.manifest.agents.items():
+        # Create all agents: manifest.agents and the file_agents parsed from their files
+        agent_configs = {**self.manifest.agents, **self.manifest._loaded_file_agents}
+        for name, config in agent_configs.items():
             # Ensure name is set on config
             cfg = config.model_copy(update={"name": name}) if config.name is None else config
             agent: BaseAgent[TPoolDeps] = cfg.get_agent(
@@ -475,7 +476,8 @@ class AgentPool[TPoolDeps = None](BaseRegistry[NodeName, MessageNode[Any, Any]])
                     members.append(empty_teams[member])
                 else:
                     raise ValueError(f"Unknown team member: {member}")
-            team.nodes.extend(members)
+            for member_node in members:
+                team.add_node(member_node)  # add_node gives members the team's MCP tools
             self[name] = team
 
     def _connect_nodes(self) -> None:
@@ -484,7 +486,7 @@ class AgentPool[TPoolDeps = None](BaseRegistry[NodeName, MessageNode[Any, Any]])
         for name, config in self.manifest.nodes.items():
             source = self[name]
             for target in config.connections or []:
-                target.connect_nodes(source, list(self.all_agents.values()), name)
+                target.connect_nodes(source, list(self.nodes.values()), name)
 
     @overload
     def get_agent[TResult = str](
@@ -508,7 +510,7 @@ class AgentPool[TPoolDeps = None](BaseRegistry[NodeName, MessageNode[Any, Any]])
         agent: AgentName | BaseAgent[Any, Any],
         *,
         deps_type: Any | None = None,
-        output_type: Any = str,
+        output_type: Any | None = None,
     ) -> BaseAgent[Any, Any]:
         """Get or configure an agent from the pool.
 
@@ -518,8 +520,8 @@ class AgentPool[TPoolDeps = None](BaseRegistry[NodeName, MessageNode[Any, Any]])
 
         Args:
             agent: Either agent name or instance
-            deps_type: Optional custom dependencies type (overrides shared deps)
-            output_type: Optional type for structured responses
+            deps_type: Optional custom dependencies type (None keeps the agent's)
+            output_type: Optional type for structured responses (None keeps the agent's)
 
         Returns:
             Either:
@@ -541,11 +543,11 @@ class AgentPool[TPoolDeps = None](BaseRegistry[NodeName, MessageNode[Any, Any]])
             case _ as unreachable:
                 assert_never(unreachable)
         self.check_node(base.name)
-        # Use custom deps if provided, otherwise use shared deps
-        # base.context.data = deps if deps is not None else self.shared_deps
-        base.deps_type = deps_type
+        # Only override what was passed: the agent keeps its configured deps / output type
+        if deps_type is not None:
+            base.deps_type = deps_type
         base.agent_pool = self
-        if isinstance(base, SupportsStructuredOutput):
+        if output_type is not None and isinstance(base, SupportsStructuredOutput):
             base.to_structured(output_type)
         return base
 
@@ -565,8 +567,15 @@ class AgentPool[TPoolDeps = None](BaseRegistry[NodeName, MessageNode[Any, Any]])
             agent.event_handler.add_handler(handler)
         # Add MCP aggregating provider from manager
         agent.tools.add_provider(self.mcp.get_aggregating_provider())
-        agent = await self.exit_stack.enter_async_context(agent)
+        # Register first: the agent sees its pool (``agent_pool``) while it initializes
         self.register(agent.name, agent)
+        try:
+            await self.exit_stack.enter_async_context(agent)
+        except BaseException:
+            del self._items[agent.name]
+            agent.agent_pool = None
+            raise
+        self.pool_talk.append(Talk(agent, []))
 
     def get_mermaid_diagram(self, include_details: bool = True) -> str:
         """Generate mermaid flowchart of all agents and their connections.
