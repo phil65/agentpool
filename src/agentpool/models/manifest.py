@@ -66,6 +66,11 @@ AnyAgentConfig = Annotated[
 ]
 
 
+EXTENSION_KEY_PREFIX = "x-"
+"""Top-level manifest keys with this prefix are ignored (e.g. to hold YAML anchors)."""
+EXTENSION_KEY_PATTERN = "^x-"
+
+
 class AgentsManifest(Schema):
     """Complete agent configuration manifest defining all available agents.
 
@@ -382,18 +387,24 @@ class AgentsManifest(Schema):
             "x-icon": "octicon:file-code-16",
             "x-doc-title": "Manifest Overview",
             "documentation_url": "https://phil65.github.io/agentpool/configuration/",
+            # Extension keys (Docker Compose style), e.g. to hold YAML anchors
+            "patternProperties": {
+                EXTENSION_KEY_PATTERN: {"description": "Extension field (ignored)"}
+            },
         },
     )
 
     @model_validator(mode="before")
     @classmethod
     def set_default_agent_type(cls, data: dict[str, Any]) -> dict[str, Any]:
-        """Set default type='native' for agents without a type field.
+        """Drop extension keys and set type='native' for agents without a type field.
 
         An empty ``agents:`` section (YAML ``None``) counts as no agents.
         """
         if not isinstance(data, dict):
             return data
+        # Extension keys ("x-...") only hold YAML anchors / metadata: drop them
+        data = {k: v for k, v in data.items() if not str(k).startswith(EXTENSION_KEY_PREFIX)}
         if "agents" in data and data["agents"] is None:
             data = {**data, "agents": {}}
         agents = data.get("agents") or {}

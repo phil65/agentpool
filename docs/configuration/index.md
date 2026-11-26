@@ -168,6 +168,30 @@ In addition to layered resolution, individual config files can use the `INHERIT`
 
 AgentPool supports UPaths (universal-pathlib) for `INHERIT`, allowing pointing to remote configurations (`http://path/to/config.yml`).
 
+## Reusing Settings with YAML Anchors
+
+Top-level keys starting with `x-` (the Docker Compose convention) are extension fields:
+AgentPool ignores them and the JSON schema allows them. Use one to hold shared settings as
+YAML anchors (`&name`) and merge them into agents with `<<: *name`:
+
+```yaml
+x-defaults: &defaults
+  model: openai:gpt-5-mini
+  retries: 2
+  description: "Shared defaults"
+
+agents:
+  reviewer:
+    <<: *defaults
+    system_prompt: "Review the code you are given."
+  writer:
+    <<: *defaults
+    model: openai:gpt-5  # keys next to the merge override it
+    system_prompt: "Write documentation."
+```
+
+Other unknown top-level keys are still rejected, so typos like `agent:` keep failing validation.
+
 ## Schema Validation
 
 You can get IDE linter support by adding this line at the top of your YAML:

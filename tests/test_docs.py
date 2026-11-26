@@ -19,6 +19,7 @@ import pytest
 import yaml
 
 from agentpool import AgentsManifest
+from agentpool.models.manifest import EXTENSION_KEY_PREFIX
 
 
 DOCS = Path(__file__).parent.parent / "docs"
@@ -28,6 +29,11 @@ SKIPPED_DIRS = {"proposals", "superpowers"}
 MANIFEST_KEYS = set(AgentsManifest.model_fields) - {"config_file_path"}
 FENCE = re.compile(r"^([ \t]*)```(yaml|yml)[^\n]*\n(.*?)^\1```[ \t]*$", re.DOTALL | re.MULTILINE)
 FILTER_REF = re.compile(r'\{\{\s*"([\w.:]+)"\s*\|\s*(union_to_markdown|schema_to_markdown)')
+
+
+def _manifest_keys(data: dict[Any, Any]) -> set[Any]:
+    """Top-level keys of a YAML example, without extension keys (``x-...``)."""
+    return {key for key in data if not str(key).startswith(EXTENSION_KEY_PREFIX)}
 
 
 def _doc_pages() -> list[Path]:
@@ -48,7 +54,7 @@ def _manifest_examples() -> list[Any]:
             except yaml.YAMLError:
                 continue
             # Snippets made of manifest sections only (agents, teams, jobs, storage, ...)
-            if not isinstance(data, dict) or not data or not set(data) <= MANIFEST_KEYS:
+            if not isinstance(data, dict) or not data or not _manifest_keys(data) <= MANIFEST_KEYS:
                 continue
             if "INHERIT" in data:  # refers to other files
                 continue
@@ -57,7 +63,7 @@ def _manifest_examples() -> list[Any]:
     # YAML files (included into pages, or example configs)
     for path in sorted([*DOCS.rglob("*.yml"), *DOCS.rglob("*.yaml")]):
         data = yaml.safe_load(path.read_text(encoding="utf-8"))
-        if isinstance(data, dict) and data and set(data) <= MANIFEST_KEYS:
+        if isinstance(data, dict) and data and _manifest_keys(data) <= MANIFEST_KEYS:
             params.append(pytest.param(data, id=str(path.relative_to(DOCS))))
     return params
 
