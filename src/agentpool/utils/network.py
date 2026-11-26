@@ -17,7 +17,7 @@ if TYPE_CHECKING:
 
 
 class BearerAuth:
-    """ASGI middleware: refuse HTTP requests that don't carry ``token`` as bearer token.
+    """ASGI middleware: refuse requests (HTTP, websocket) without ``token`` as bearer token.
 
     For servers on localhost, which any local process could reach otherwise.
     """
@@ -30,6 +30,9 @@ class BearerAuth:
         if scope["type"] in ("http", "websocket"):
             given = dict(scope["headers"]).get(b"authorization", b"")
             if not secrets.compare_digest(given, self._expected):
+                if scope["type"] == "websocket":  # Refuse the handshake (an HTTP 403)
+                    await send({"type": "websocket.close", "code": 1008})
+                    return
                 await send({
                     "type": "http.response.start",
                     "status": 401,

@@ -151,3 +151,71 @@ async def test_opencode_config_carries_the_token() -> None:
         assert cfg.headers == {"Authorization": _bearer(agent._tool_bridge)}
     finally:
         await agent._tool_bridge.stop()
+
+
+# --- Hardening (second-opinion review of 7a1a0b1b3) ---------------------------------
+
+
+async def test_bridge_socket_is_not_inherited_by_child_processes() -> None:
+    agent = Agent(name="bridged", model=TestModel())
+    async with agent, ToolManagerBridge(node=agent) as bridge:
+        assert bridge._socket is not None
+        assert not bridge._socket.get_inheritable()
+
+
+def test_token_is_left_out_of_the_repr() -> None:
+    bridge = ToolManagerBridge(node=Agent(name="bridged", model=TestModel()))
+    assert bridge.token not in repr(bridge)
+
+
+async def test_a_failed_startup_closes_the_socket(monkeypatch: pytest.MonkeyPatch) -> None:
+    import uvicorn
+
+    async def broken_serve(self: uvicorn.Server, sockets: Any = None) -> None:
+        raise RuntimeError("startup failed")
+
+    monkeypatch.setattr(uvicorn.Server, "serve", broken_serve)
+    agent = Agent(name="bridged", model=TestModel())
+    bridge = ToolManagerBridge(node=agent)
+    async with agent:
+        with pytest.raises(RuntimeError, match="startup failed"):
+            await bridge.start()
+    assert bridge._socket is None
+    assert bridge._server is None
+    assert bridge._server_task is None
+
+
+async def test_a_failing_app_setup_closes_the_socket(monkeypatch: pytest.MonkeyPatch) -> None:
+    import uvicorn
+
+    def broken_config(*args: Any, **kwargs: Any) -> None:
+        raise ValueError("bad config")
+
+    monkeypatch.setattr(uvicorn, "Config", broken_config)
+    agent = Agent(name="bridged", model=TestModel())
+    bridge = ToolManagerBridge(node=agent)
+    async with agent:
+        with pytest.raises(ValueError, match="bad config"):
+            await bridge.start()
+    assert bridge._socket is None
+
+
+async def test_websocket_without_the_token_is_closed_not_answered_with_http() -> None:
+    from agentpool.utils.network import BearerAuth
+
+    sent: list[dict[str, Any]] = []
+    reached: list[bool] = []
+
+    async def app(scope: Any, receive: Any, send: Any) -> None:
+        reached.append(True)
+
+    async def receive() -> dict[str, Any]:
+        return {"type": "websocket.connect"}
+
+    async def send(message: dict[str, Any]) -> None:
+        sent.append(message)
+
+    scope = {"type": "websocket", "headers": [], "path": "/mcp"}
+    await BearerAuth(app, "secret")(scope, receive, send)  # type: ignore[arg-type]  # ty:ignore[invalid-argument-type]
+    assert not reached
+    assert [m["type"] for m in sent] == ["websocket.close"]

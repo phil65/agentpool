@@ -31,6 +31,7 @@ from typing import TYPE_CHECKING, Any, Self, cast, get_args, get_origin, get_typ
 from urllib.parse import quote
 from uuid import uuid4
 
+import anyio
 from pydantic_ai import RunContext, RunUsage
 from pydantic_ai.models.test import TestModel
 
@@ -242,7 +243,7 @@ class ToolManagerBridge:
     server_name: str | None = None
     """Name for the MCP server."""
 
-    token: str = field(default_factory=lambda: secrets.token_urlsafe(32), init=False)
+    token: str = field(default_factory=lambda: secrets.token_urlsafe(32), init=False, repr=False)
     """Bearer token a caller must send (see :attr:`headers`)."""
 
     _routes: dict[str, BridgeRoute] = field(default_factory=dict, init=False, repr=False)
@@ -302,22 +303,26 @@ class ToolManagerBridge:
         # Unsubscribe from tool changes
         self._unsubscribe_from_tool_changes()
 
-        if self._server:
-            self._server.should_exit = True
-            if self._server_task:
-                try:
-                    await asyncio.wait_for(self._server_task, timeout=5.0)
-                except TimeoutError:
-                    self._server_task.cancel()
-                    with suppress(asyncio.CancelledError):
-                        await self._server_task
+        try:
+            if self._server:
+                self._server.should_exit = True
+                if self._server_task:
+                    try:
+                        await asyncio.wait_for(self._server_task, timeout=5.0)
+                    except TimeoutError:
+                        self._server_task.cancel()
+                        with suppress(asyncio.CancelledError):
+                            await self._server_task
+                    except Exception:  # The server failed: stopping it still goes on
+                        logger.exception("ToolManagerBridge server failed")
+        finally:
             self._server = None
             self._server_task = None
-        if self._socket is not None:
-            self._socket.close()
-            self._socket = None
-        self._mcp = None
-        self._actual_port = None
+            if self._socket is not None:
+                self._socket.close()
+                self._socket = None
+            self._mcp = None
+            self._actual_port = None
         logger.info("ToolManagerBridge stopped")
 
     def _subscribe_to_tool_changes(self) -> None:
@@ -614,23 +619,21 @@ class ToolManagerBridge:
 
         # Bind the port ourselves and hand uvicorn the bound socket: the port reported is
         # the one served on, with no gap in which another process could take it.
+        # It stays non-inheritable (uvicorn serves it in this process): a child process
+        # holding it could accept the backends' requests and read the token.
         self._socket = sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         try:
             sock.bind(("127.0.0.1", 0))
-            sock.set_inheritable(True)
-        except BaseException:
-            sock.close()
-            self._socket = None
-            raise
-        app = BearerAuth(self._mcp.http_app(transport="http"), self.token)
-        cfg = uvicorn.Config(app=app, log_level="warning", ws="websockets-sansio")
-        self._server = server = uvicorn.Server(cfg)
-        name = f"mcp-bridge-{self.resolved_server_name}"
-        self._server_task = task = asyncio.create_task(server.serve(sockets=[sock]), name=name)
-        try:
+            app = BearerAuth(self._mcp.http_app(transport="http"), self.token)
+            cfg = uvicorn.Config(app=app, log_level="warning", ws="websockets-sansio")
+            self._server = server = uvicorn.Server(cfg)
+            name = f"mcp-bridge-{self.resolved_server_name}"
+            coro = server.serve(sockets=[sock])
+            self._server_task = task = asyncio.create_task(coro, name=name)
             await wait_until_started(server, task)
         except BaseException:
-            await self.stop()
+            with anyio.CancelScope(shield=True):  # Cleanup survives a cancelled start
+                await self.stop()
             raise
         self._actual_port = sock.getsockname()[1]
         logger.info("ToolManagerBridge started", url=self.url)
