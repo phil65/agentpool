@@ -357,55 +357,7 @@ class AGUIPoolServerConfig(BasePoolServerConfig):
     """Whether to serve API documentation endpoints."""
 
 
-class OpenAIAPIPoolServerConfig(BasePoolServerConfig):
-    """Configuration for OpenAI-compatible API server."""
-
-    type: Literal["openai-api"] = Field("openai-api", init=False)
-    """OpenAI API server type."""
-
-    host: str = Field(
-        default="localhost",
-        title="Server host",
-        examples=["localhost", "0.0.0.0", "127.0.0.1"],
-    )
-    """Host to bind server to. A non-loopback host requires ``api_key``."""
-
-    port: int = Field(
-        default=8000,
-        gt=0,
-        title="Server port",
-        examples=[8000, 8080, 9000],
-    )
-    """Port to listen on."""
-
-    docs: bool = Field(default=True, title="Enable API docs")
-    """Whether to enable API documentation endpoints."""
-
-    api_key: SecretStr | None = Field(
-        default=None,
-        title="API key",
-    )
-    """Optional API key for authentication."""
-
-    raise_exceptions: bool = Field(
-        default=False,
-        title="Raise exceptions",
-    )
-    """Whether to raise exceptions during server start."""
-
-    cors_origins: list[str] = Field(
-        default_factory=list,
-        title="CORS origins",
-        examples=[["https://example.com", "https://app.com"]],
-    )
-    """Browser origins allowed to call the API (empty: no CORS; ``"*"`` requires ``api_key``)."""
-
-
 PoolServerConfig = Annotated[
-    MCPPoolServerConfig
-    | A2APoolServerConfig
-    | ACPPoolServerConfig
-    | AGUIPoolServerConfig
-    | OpenAIAPIPoolServerConfig,
+    MCPPoolServerConfig | A2APoolServerConfig | ACPPoolServerConfig | AGUIPoolServerConfig,
     Field(discriminator="type"),
 ]
