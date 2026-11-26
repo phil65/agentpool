@@ -15,6 +15,7 @@ from dataclasses import replace
 from typing import TYPE_CHECKING, Any, ClassVar, Self, cast
 from uuid import uuid4
 
+import anyenv
 from anyenv.processes import hard_kill
 import anyio
 import httpx2
@@ -296,7 +297,7 @@ class AGUIAgent[TDeps = None](BaseAgent[TDeps, str]):
         deps: TDeps | None = None,
         store_history: bool = True,
     ) -> AsyncIterator[RichAgentStreamEvent[str]]:
-        from ag_ui.core import RunAgentInput, UserMessage
+        from ag_ui.core import AssistantMessage, FunctionCall, RunAgentInput, ToolCall, UserMessage
 
         from agentpool.agents.agui_agent.agui_converters import (
             model_messages_to_agui,
@@ -310,15 +311,14 @@ class AGUIAgent[TDeps = None](BaseAgent[TDeps, str]):
         if not self._client:
             raise AgentNotInitializedError
 
-        # Set thread_id from session_id (needed for AG-UI protocol)
-        if self._sdk_session_id is None:
-            self._sdk_session_id = self.session_id
-
+        run_session_id = session_id or self._acting_session_id
+        assert run_session_id is not None  # Initialized by BaseAgent.run_stream()
+        # The AG-UI thread of the session acting: its pool session ID by default
+        thread_id = self._sdk_session_id or run_session_id
+        self._sdk_session_id = thread_id
         run_id = str(uuid4())  # New run ID for each run
         reconstructor = MessageReconstructor(initial_prompts=prompts)
-        assert self.session_id is not None  # Initialized by BaseAgent.run_stream()
-        thread_id = self._sdk_session_id or self.session_id
-        yield RunStartedEvent(session_id=thread_id, run_id=run_id, agent_name=self.name)
+        yield RunStartedEvent(session_id=run_session_id, run_id=run_id, agent_name=self.name)
         # Convert existing conversation history to AG-UI format
         # AG-UI protocol expects full history with each request (stateless server)
         # Extract ModelMessages from ChatMessages
@@ -339,7 +339,7 @@ class AGUIAgent[TDeps = None](BaseAgent[TDeps, str]):
                     break
 
                 request_data = RunAgentInput(
-                    thread_id=self._sdk_session_id or self.session_id,
+                    thread_id=thread_id,
                     run_id=run_id,
                     state={},
                     messages=messages,
@@ -350,6 +350,7 @@ class AGUIAgent[TDeps = None](BaseAgent[TDeps, str]):
 
                 data = request_data.model_dump(by_alias=True)
                 tool_calls_pending: dict[str, tuple[str, dict[str, Any]]] = {}
+                text_before = reconstructor.text_content
                 try:
                     async with self._client.stream("POST", self.endpoint, json=data) as response:
                         response.raise_for_status()
@@ -408,8 +409,22 @@ class AGUIAgent[TDeps = None](BaseAgent[TDeps, str]):
                         tool_call_id=r.tool_call_id,
                     )
                     reconstructor.model_messages.append(ModelRequest(parts=[return_part]))
-                # Add tool results to messages for next iteration
-                messages = [*pending_tool_results]
+                # The server is stateless: the next request carries the whole conversation,
+                # with the assistant's tool calls of this round before their results
+                answered = {r.tool_call_id for r in pending_tool_results}
+                round_text = reconstructor.text_content.removeprefix(text_before)
+                calls = [
+                    ToolCall(
+                        id=tc_id,
+                        function=FunctionCall(name=name, arguments=anyenv.dump_json(args)),
+                    )
+                    for tc_id, (name, args) in tool_calls_pending.items()
+                    if tc_id in answered
+                ]
+                assistant = AssistantMessage(
+                    id=str(uuid4()), content=round_text or None, tool_calls=calls
+                )
+                messages = [*messages, assistant, *pending_tool_results]
                 self.log.debug("Continuing with tool results", count=len(pending_tool_results))
         except asyncio.CancelledError:
             self.log.info("Stream cancelled via task cancellation")
@@ -423,7 +438,7 @@ class AGUIAgent[TDeps = None](BaseAgent[TDeps, str]):
                 role="assistant",
                 name=self.name,
                 message_id=message_id or str(uuid4()),
-                session_id=self.session_id,
+                session_id=run_session_id,
                 parent_id=user_msg.message_id,
                 messages=reconstructor.model_messages,
                 finish_reason="stop",
@@ -447,7 +462,7 @@ class AGUIAgent[TDeps = None](BaseAgent[TDeps, str]):
             role="assistant",
             name=self.name,
             message_id=message_id or str(uuid4()),
-            session_id=self.session_id,
+            session_id=run_session_id,
             parent_id=user_msg.message_id,
             messages=reconstructor.model_messages,
             usage=usage,
