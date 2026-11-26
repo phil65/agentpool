@@ -2,17 +2,23 @@
 
 from __future__ import annotations
 
+import annotationlib
+import ast
 from collections.abc import Awaitable
+import functools
 import inspect
-from typing import TYPE_CHECKING, Any, cast, get_args, get_origin
+import sys
+from types import UnionType
+import typing
+from typing import TYPE_CHECKING, Any, ForwardRef, Union, cast, get_args, get_origin
 
-from pydantic._internal import _typing_extra
+from schemez.introspection import get_resolved_hints, get_signature, resolve_annotation
 
 from agentpool.log import get_logger
 
 
 if TYPE_CHECKING:
-    from collections.abc import Callable
+    from collections.abc import Callable, Mapping
 
     from schemez.functionschema import ToolParameters
 
@@ -39,8 +45,7 @@ def get_return_type(
         get_return_type(foo)  # Returns: int
         get_return_type(foo, unwrap_awaitable=False)  # Returns: Awaitable[int]
     """
-    hints = _typing_extra.get_function_type_hints(fn)
-    return_type = hints.get("return")
+    return_type = get_resolved_hints(fn).get("return")
 
     if not return_type:
         return None
@@ -59,6 +64,99 @@ _CONTEXT_TYPE_NAMES = frozenset({
 })
 
 
+def get_forwardref_signature(fn: Callable[..., Any]) -> inspect.Signature:
+    """`inspect.signature` that doesn't evaluate names it can't resolve.
+
+    Annotations naming something only imported under ``TYPE_CHECKING`` come back as
+    ``ForwardRef`` (or as strings, if written as strings) instead of raising ``NameError``.
+    Use it to look at annotations by name (e.g. to find context parameters), and
+    `schemez.introspection.get_signature` where the annotations get used as types.
+    """
+    return inspect.signature(fn, annotation_format=annotationlib.Format.FORWARDREF)
+
+
+def resolve_type_hints(obj: Any, extra_globals: Mapping[str, Any] | None = None) -> dict[str, Any]:
+    """Type hints of a function or class, names unavailable at runtime looked up elsewhere.
+
+    Names ``obj``'s module doesn't define at runtime (``TYPE_CHECKING`` imports) are
+    looked up in ``extra_globals``; what is found nowhere becomes ``Any``.
+    """
+    globalns = {**(extra_globals or {}), **_globals_of(obj)}
+    hints = typing.get_type_hints(
+        obj, globalns=globalns, include_extras=True, format=annotationlib.Format.FORWARDREF
+    )
+    return {name: resolve_annotation(_evaluate(h, globalns), obj) for name, h in hints.items()}
+
+
+def _evaluate(hint: Any, globalns: dict[str, Any]) -> Any:
+    if not isinstance(hint, ForwardRef):
+        return hint
+    try:
+        return typing.evaluate_forward_ref(hint, globals=globalns)
+    except Exception:  # noqa: BLE001
+        return Any
+
+
+def _globals_of(obj: Any) -> dict[str, Any]:
+    obj = getattr(obj, "__func__", obj)
+    if isinstance(obj, functools.partial):
+        obj = obj.func
+    if isinstance(obj, type):
+        module = sys.modules.get(obj.__module__)
+        return dict(vars(module)) if module else {}
+    obj = inspect.unwrap(obj) if callable(obj) else obj
+    return dict(getattr(obj, "__globals__", {}))
+
+
+def annotation_names(annotation: Any) -> set[str]:  # noqa: PLR0911
+    """Names of the outer types of an annotation, union members each.
+
+    ``AgentContext[Deps] | None`` gives ``{"AgentContext", "None"}``. Works for evaluated
+    annotations, strings and ``ForwardRef`` objects (also nested ones, like
+    ``RunContext[ForwardRef("Deps")]``), so names that aren't available at runtime are
+    still found. Dotted names give their last part.
+    """
+    match annotation:
+        case ForwardRef():
+            return _expression_names(annotation.__forward_arg__)
+        case str():
+            return _expression_names(annotation)
+        case None:
+            return {"None"}
+        case type():
+            return {annotation.__name__}
+    origin = get_origin(annotation)
+    if origin is None:
+        return set()
+    if origin is Union or origin is UnionType:
+        return set().union(*(annotation_names(arg) for arg in get_args(annotation)))
+    return annotation_names(origin)
+
+
+def _expression_names(source: str) -> set[str]:
+    try:
+        return _node_names(ast.parse(source, mode="eval").body)
+    except SyntaxError:
+        return set()
+
+
+def _node_names(node: ast.expr) -> set[str]:  # noqa: PLR0911
+    match node:
+        case ast.BinOp(op=ast.BitOr()):
+            return _node_names(node.left) | _node_names(node.right)
+        case ast.Subscript():
+            return _node_names(node.value)
+        case ast.Attribute():
+            return {node.attr}
+        case ast.Name():
+            return {node.id}
+        case ast.Constant(value=None):
+            return {"None"}
+        case ast.Constant(value=str() as inner):
+            return _expression_names(inner)
+    return set()
+
+
 def is_context_type(annotation: Any) -> bool:
     """Check if an annotation is a context type (for auto-injection/hiding from agent).
 
@@ -67,39 +165,18 @@ def is_context_type(annotation: Any) -> bool:
     RunContext are detected.
 
     Uses name-based detection to avoid importing context classes, which would trigger
-    Pydantic schema generation for their fields.
+    Pydantic schema generation for their fields. Annotations that aren't available at
+    runtime (strings, ``ForwardRef`` from `get_forwardref_signature`) are detected too.
 
     Handles:
     - Direct AgentContext/NodeContext/RunContext references
-    - String annotations (forward references from `from __future__ import annotations`)
+    - String annotations and forward references
     - Generic forms like AgentContext[SomeDeps], RunContext[SomeDeps]
     - Union types containing context types
     """
     if annotation is None or annotation is inspect.Parameter.empty:
         return False
-
-    # Handle string annotations (forward references from `from __future__ import annotations`)
-    # Check if the string matches or starts with a known context type name
-    if isinstance(annotation, str):
-        # Handle plain names like "AgentContext" and generics like "AgentContext[Deps]"
-        base_name = annotation.split("[")[0].strip()
-        return base_name in _CONTEXT_TYPE_NAMES
-
-    # Check direct class match by name
-    if isinstance(annotation, type) and annotation.__name__ in _CONTEXT_TYPE_NAMES:
-        return True
-
-    # Check generic origin (e.g., AgentContext[SomeDeps], RunContext[SomeDeps])
-    origin = get_origin(annotation)
-    if origin is not None:
-        if isinstance(origin, type) and origin.__name__ in _CONTEXT_TYPE_NAMES:
-            return True
-        # Handle Union types
-        if origin is type(None) or str(origin) in ("typing.Union", "types.UnionType"):
-            args = get_args(annotation)
-            return any(is_context_type(arg) for arg in args)
-
-    return False
+    return not annotation_names(annotation).isdisjoint(_CONTEXT_TYPE_NAMES)
 
 
 def get_params_matching_predicate(
@@ -114,8 +191,10 @@ def get_params_matching_predicate(
 
     Returns:
         Set of parameter names that match the predicate
+
+    The parameters carry their annotations as `get_forwardref_signature` gives them.
     """
-    sig = inspect.signature(fn)
+    sig = get_forwardref_signature(fn)
     return {name for name, param in sig.parameters.items() if predicate(param)}
 
 
@@ -159,9 +238,10 @@ def create_modified_signature(
         inject: The parameter(s) to inject.
 
     Returns:
-        The modified signature.
+        The modified signature. Annotations of a function that can't be resolved (names
+        only imported under ``TYPE_CHECKING``) become ``Any``.
     """
-    sig = fn_or_sig if isinstance(fn_or_sig, inspect.Signature) else inspect.signature(fn_or_sig)
+    sig = fn_or_sig if isinstance(fn_or_sig, inspect.Signature) else get_signature(fn_or_sig)
     rem_keys = [remove] if isinstance(remove, str) else remove or []
     new_params = [p for p in sig.parameters.values() if p.name not in rem_keys]
     if inject:
@@ -222,8 +302,8 @@ def create_bound_callable(  # noqa: PLR0915
     Raises:
         ValueError: If the callable's signature cannot be inspected
     """
-    try:
-        sig = inspect.signature(original_callable)
+    try:  # annotations unavailable at runtime stay ForwardRefs: matched by name
+        sig = get_forwardref_signature(original_callable)
     except (ValueError, TypeError) as e:
         msg = f"Cannot inspect signature of {original_callable}. Ensure callable is inspectable."
         raise ValueError(msg) from e
@@ -304,13 +384,18 @@ def create_bound_callable(  # noqa: PLR0915
             for i, param in enumerate(params)
             if i not in context_positions and param.name not in bound_kwarg_names
         ]
-        new_sig = sig.replace(parameters=new_params)
+        resolved = get_signature(original_callable).parameters
+        new_params = [p.replace(annotation=resolved[p.name].annotation) for p in new_params]
+        new_sig = sig.replace(
+            parameters=new_params,
+            return_annotation=get_signature(original_callable).return_annotation,
+        )
         wrapper.__signature__ = new_sig  # type: ignore[attr-defined]  # ty:ignore[missing-attribute]
         wrapper.__annotations__ = {
             name: param.annotation for name, param in new_sig.parameters.items()
         }
-        if sig.return_annotation != inspect.Signature.empty:
-            wrapper.__annotations__["return"] = sig.return_annotation
+        if new_sig.return_annotation != inspect.Signature.empty:
+            wrapper.__annotations__["return"] = new_sig.return_annotation
 
     except ValueError, TypeError:
         logger.debug("Failed to update wrapper signature", original=original_callable)
@@ -338,5 +423,12 @@ def _find_matching_type(param_annotation: Any, by_type: dict[type, Any]) -> Any 
     param_origin = get_origin(param_annotation)
     if param_origin is not None and param_origin in by_type:
         return by_type[param_origin]
+
+    # Names not available at runtime (ForwardRef / string annotations): match by name
+    if isinstance(param_annotation, str | ForwardRef):
+        names = annotation_names(param_annotation)
+        for typ, value in by_type.items():
+            if getattr(typ, "__name__", None) in names:
+                return value
 
     return None

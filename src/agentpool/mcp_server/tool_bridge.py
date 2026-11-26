@@ -27,7 +27,7 @@ import inspect
 import secrets
 import socket
 import time
-from typing import TYPE_CHECKING, Any, Self, cast, get_args, get_origin, get_type_hints
+from typing import TYPE_CHECKING, Any, Self, cast, get_type_hints
 from urllib.parse import quote
 from uuid import uuid4
 
@@ -43,7 +43,11 @@ from agentpool.sessions.environment import (
     use_session_environment,
 )
 from agentpool.utils.network import BearerAuth, wait_until_started
-from agentpool.utils.signatures import filter_schema_params, get_params_matching_predicate
+from agentpool.utils.signatures import (
+    annotation_names,
+    filter_schema_params,
+    get_params_matching_predicate,
+)
 
 
 if TYPE_CHECKING:
@@ -100,21 +104,7 @@ def _is_annotation_of_type(annotation: Any, type_name: str) -> bool:
     """
     if annotation is None or annotation is inspect.Parameter.empty:
         return False
-    # Handle string annotations (forward references)
-    if isinstance(annotation, str):
-        base_name = annotation.split("[")[0].strip()
-        return base_name == type_name
-    # Check direct class match by name
-    if isinstance(annotation, type) and annotation.__name__ == type_name:
-        return True
-    # Check generic origin (e.g., SomeType[T])
-    if origin := get_origin(annotation):
-        if isinstance(origin, type) and origin.__name__ == type_name:
-            return True
-        # Handle Union types (e.g., SomeType | None)
-        if origin is type(None) or str(origin) in ("typing.Union", "types.UnionType"):
-            return any(_is_annotation_of_type(arg, type_name) for arg in get_args(annotation))
-    return False
+    return type_name in annotation_names(annotation)
 
 
 def _get_context_param_names(fn: Callable[..., Any], type_name: str) -> set[str]:

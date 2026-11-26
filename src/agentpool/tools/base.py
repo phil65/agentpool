@@ -21,6 +21,11 @@ from agentpool.utils.inspection import (
     get_fn_name,
     get_fn_qualname,
 )
+from agentpool.utils.signatures import (
+    filter_schema_params,
+    get_params_matching_predicate,
+    is_context_type,
+)
 from agentpool_config.tools import ToolHints
 
 
@@ -133,12 +138,30 @@ class Tool[TOutputType = Any]:
         """Get the OpenAI function schema for the tool."""
         from agentpool.agents.context import AgentContext
 
-        return schemez.create_schema(
-            self.get_callable(),
+        fn = self.get_callable()
+        schema = schemez.create_schema(
+            fn,
             name_override=self.name,
             description_override=self.description,
             exclude_types=[AgentContext, RunContext],
         )
+        # Context parameters typed with names unavailable at runtime (TYPE_CHECKING
+        # imports) escape exclude_types: drop them by name
+        try:
+            context_params = get_params_matching_predicate(
+                fn, lambda p: is_context_type(p.annotation)
+            )
+        except TypeError, ValueError:  # no inspectable signature
+            return schema
+        if context_params & schema.parameters.get("properties", {}).keys():
+            params = filter_schema_params(schema.parameters, context_params)  # type: ignore[arg-type]
+            schema = schema.model_copy(
+                update={
+                    "parameters": params,
+                    "required": [r for r in schema.required if r not in context_params],
+                }
+            )
+        return schema
 
     @property
     def output_schema(self) -> dict[str, Any] | None:

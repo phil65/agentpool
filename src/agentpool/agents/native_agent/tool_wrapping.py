@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from dataclasses import replace
 from functools import wraps
-import inspect
 import time
 from typing import TYPE_CHECKING, Any
 
@@ -19,7 +18,11 @@ from agentpool.tools.base import ToolResult
 from agentpool.tools.decisions import Approve, Deny
 from agentpool.utils.inspection import execute, get_argument_key
 from agentpool.utils.pydantic_ai_helpers import safe_args_as_dict
-from agentpool.utils.signatures import create_modified_signature, update_signature
+from agentpool.utils.signatures import (
+    create_modified_signature,
+    get_forwardref_signature,
+    update_signature,
+)
 
 
 if TYPE_CHECKING:
@@ -92,7 +95,7 @@ def wrap_tool[TReturn](
 
     # Validate parameter order if RunContext is present
     if run_ctx_key:
-        param_names = list(inspect.signature(fn).parameters.keys())
+        param_names = list(get_forwardref_signature(fn).parameters.keys())
         run_ctx_index = param_names.index(run_ctx_key)
         if run_ctx_index != 0:
             msg = f"Tool {tool.name!r}: RunContext param {run_ctx_key!r} must come first."
@@ -153,22 +156,17 @@ def wrap_tool[TReturn](
 
     # Apply wraps first
     wraps(fn)(wrapped)
-    # Python 3.14: functools.wraps copies __annotate__ but not __annotations__.
-    # Any subsequent assignment to __annotations__ destroys __annotate__ (PEP 649).
-    # Restore from original to preserve deferred annotation evaluation.
-    # TODO: probably review all wraps() calls in the codebase.
-    wrapped.__annotations__ = fn.__annotations__
     wrapped.__doc__ = tool.description
     wrapped.__name__ = tool.name
-    # Modify signature for pydantic-ai: hide AgentContext, add RunContext if needed
-    # Must be done AFTER wraps to prevent overwriting
-    # pydantic-ai sees a RunContext first (the wrapper needs it) and no AgentContext
-    if run_ctx_key:
-        new_sig = create_modified_signature(fn, remove=agent_ctx_key or None)
-    else:
-        new_sig = create_modified_signature(
-            fn, remove=agent_ctx_key or None, inject={RUN_CTX: RunContext}
-        )
+    # Signature for pydantic-ai (after wraps, which would overwrite it): a RunContext first
+    # (the wrapper needs it), no AgentContext. The RunContext parameter is re-added: its
+    # annotation may name RunContext only under TYPE_CHECKING (unresolvable names become
+    # Any). update_signature also replaces the annotations wraps copied (`__annotate__`),
+    # which would raise NameError for such names.
+    remove = [key for key in (agent_ctx_key, run_ctx_key) if key]
+    new_sig = create_modified_signature(
+        fn, remove=remove, inject={run_ctx_key or RUN_CTX: RunContext}
+    )
     update_signature(wrapped, new_sig)
     return wrapped
 

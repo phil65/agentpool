@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import annotationlib
 import asyncio
 from collections.abc import Sequence
 from dataclasses import fields
@@ -10,6 +11,7 @@ from types import UnionType
 from typing import (
     TYPE_CHECKING,
     Any,
+    ForwardRef,
     Literal,
     TypeAliasType,
     TypeGuard,
@@ -19,6 +21,10 @@ from typing import (
     get_type_hints,
     overload,
 )
+
+from schemez.introspection import get_resolved_hints
+
+from agentpool.utils.signatures import annotation_names
 
 
 if TYPE_CHECKING:
@@ -107,6 +113,8 @@ def get_argument_key(
         Parameter name (str) if a matching argument is found, False otherwise.
         Only checks the origin type for generics, not type arguments
         (e.g., list[int] matches 'list', but does not match 'int').
+        Annotations naming something not available at runtime (imported under
+        ``TYPE_CHECKING``) are matched by name.
     """
     # Convert target type(s) to set of normalized strings
     if isinstance(arg_type, Sequence) and not isinstance(arg_type, str | bytes):
@@ -114,8 +122,8 @@ def get_argument_key(
     else:
         target_types = {_type_to_string(arg_type)}
 
-    # Get type hints including return type if requested
-    hints = get_type_hints(func, include_extras=True)
+    # Get type hints including return type if requested (unresolvable names as ForwardRef)
+    hints = get_type_hints(func, include_extras=True, format=annotationlib.Format.FORWARDREF)
     if not include_return:
         hints.pop("return", None)
 
@@ -128,6 +136,12 @@ def get_argument_key(
         # Check for direct match
         if _type_to_string(param_type) in target_types:
             return key
+
+        # Not available at runtime: compare the names (`X | None`, `X[T]` give "X")
+        if isinstance(param_type, ForwardRef):
+            if not annotation_names(param_type).isdisjoint(target_types):
+                return key
+            continue
 
         # Handle Union types (both | and Union[...])
         origin = get_origin(param_type)
@@ -202,7 +216,7 @@ def has_return_type[T](  # noqa: PLR0911
     Returns:
         True if function returns the expected type (or Awaitable of it)
     """
-    hints = get_type_hints(func)
+    hints = get_resolved_hints(func, include_extras=False)
     if "return" not in hints:
         return False
 
