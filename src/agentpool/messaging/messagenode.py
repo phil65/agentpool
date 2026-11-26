@@ -260,7 +260,7 @@ class MessageNode[TDeps, TResult](ABC):
 
         Example:
             agent >> other_agent  # Connect to single agent
-            agent >> (agent2 & agent3)  # Connect to group
+            agent >> [agent2, agent3]  # Connect to several
             agent >> "other_agent"  # Connect by name (needs pool)
         """
         return self.connect_to(other)

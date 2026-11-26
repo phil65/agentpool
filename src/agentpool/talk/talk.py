@@ -173,7 +173,7 @@ class Talk[TTransmittedData = Any]:
 
         Example:
             connection >> other_agent  # Connect to single agent
-            connection >> (agent2 & agent3)  # Connect to group
+            connection >> Team([agent2, agent3])  # Connect to a team
         """
         from agentpool import Agent, MessageNode
         from agentpool.talk import TeamTalk
@@ -559,7 +559,7 @@ class TeamTalk[TTransmittedData = Any](list["Talk | TeamTalk"]):
 
         Example:
             connection >> other_agent  # Connect to single agent
-            connection >> (agent2 & agent3)  # Connect to group
+            connection >> Team([agent2, agent3])  # Connect to a team
         """
         from agentpool import Agent, MessageNode
         from agentpool.talk import TeamTalk

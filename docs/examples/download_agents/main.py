@@ -20,7 +20,7 @@ from dataclasses import dataclass
 import os
 from typing import TYPE_CHECKING, Any
 
-from agentpool import AgentPool, AgentsManifest
+from agentpool import AgentPool, AgentsManifest, Team, TeamRun
 from agentpool.agents.events import RichAgentStreamEvent
 from agentpool.docs.utils import get_config_path, is_pyodide, run
 
@@ -89,12 +89,12 @@ async def run_example() -> None:
 
         # Sequential downloads
         progress.update("Sequential downloads starting - let's see how they do!")
-        sequential_team = worker_1 | worker_2
+        sequential_team = TeamRun([worker_1, worker_2])
         sequential = await sequential_team.execute(TEAM_PROMPT)
         progress.update(f"Downloads completed in {sequential.duration:.2f} secs!")
 
         # Parallel downloads
-        parallel_team = worker_1 & worker_2
+        parallel_team = Team([worker_1, worker_2])
         parallel = await parallel_team.execute(TEAM_PROMPT)
         progress.update(f"Parallel downloads completed in {parallel.duration:.2f} secs!")
 

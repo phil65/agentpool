@@ -62,7 +62,7 @@ team = Team([agent1, agent2, agent3])
 result = await team.execute("Analyze this data")
 
 # Sequential execution (use TeamRun)
-run = agent1 | agent2 | agent3
+run = TeamRun([agent1, agent2, agent3])
 result = await run.run("Process this sequentially")
 ```
 

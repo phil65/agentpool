@@ -102,7 +102,7 @@ Connect an agent to multiple targets:
 
 ```python
 # Create team
-team = agent_b & agent_c & agent_d
+team = Team([agent_b, agent_c, agent_d])
 
 # Connect agent to team
 connection = agent_a.connect_to(team)
@@ -123,8 +123,8 @@ at_once = agent_a.connect_to([agent_b, agent_c], parallel=True)
 Connect groups of agents:
 
 ```python
-team_a = agent_1 & agent_2
-team_b = agent_3 & agent_4
+team_a = Team([agent_1, agent_2])
+team_b = Team([agent_3, agent_4])
 connection = team_a.connect_to(team_b)
 ```
 
@@ -134,15 +134,15 @@ Nodes can be combined in any way:
 
 ```python
 # Create teams for parallel execution
-team_1 = analyzer & planner  # Team of two agents
-team_2 = validator & reporter  # Another team
+team_1 = Team([analyzer, planner])  # Team of two agents
+team_2 = Team([validator, reporter])  # Another team
 
 # Create sequential chain
-chain = processor_1 | processor_2  # Sequential processing
+chain = TeamRun([processor_1, processor_2])  # Sequential processing
 
 # Combine in any way
 nested_team = Team([team_1, chain, team_2])  # Team containing teams and chains!
-complex_chain = team_1 | processor | team_2  # Teams in a chain
+complex_chain = TeamRun([team_1, processor, team_2])  # Teams in a chain
 
 # Connect complex structures
 connection = nested_team >> final_processor
@@ -158,9 +158,6 @@ Each connection tracks:
 - Token usage
 - Byte count
 - Timing information
-
-The counts and totals cover every message; `talk.stats.messages` keeps the last
-100 (`Talk(..., stats_history=...)`).
 
 ### Control Mechanisms
 
@@ -206,7 +203,7 @@ planner = Agent(name="planner")
 executor = Agent(name="executor")
 
 # Create team
-planning_team = planner & executor
+planning_team = Team([planner, executor])
 
 # Set up connection with control
 talk = analyzer.connect_to(

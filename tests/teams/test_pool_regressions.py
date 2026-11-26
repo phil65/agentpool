@@ -61,7 +61,7 @@ async def test_team_cancel_is_a_method():
         a, b = Agent("a", model="test"), Agent("b", model="test")
         await pool.add_agent(a)
         await pool.add_agent(b)
-        team = a & b
+        team = Team([a, b])
         await team.cancel()
 
 

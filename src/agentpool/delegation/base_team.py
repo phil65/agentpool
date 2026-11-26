@@ -6,7 +6,7 @@ from abc import abstractmethod
 import asyncio
 from contextlib import suppress
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any, overload
+from typing import TYPE_CHECKING, Any
 
 import anyio
 
@@ -20,11 +20,11 @@ if TYPE_CHECKING:
     from collections.abc import AsyncIterator, Iterator, Sequence
     from types import TracebackType
 
-    from agentpool import Agent, AgentPool, Team
+    from agentpool import AgentPool
     from agentpool.agents.base_agent import BaseAgent
     from agentpool.agents.events import RichAgentStreamEvent
-    from agentpool.common_types import ProcessorCallback, PromptCompatible
-    from agentpool.delegation.teamrun import ExtendedTeamTalk, TeamRun
+    from agentpool.common_types import PromptCompatible
+    from agentpool.delegation.teamrun import ExtendedTeamTalk
     from agentpool.messaging import ChatMessage, TeamResponse
     from agentpool.sessions import Session
     from agentpool.talk.stats import AggregatedTalkStats
@@ -175,59 +175,6 @@ class BaseTeam[TDeps, TResult](MessageNode[TDeps, TResult]):
         if isinstance(index_or_name, str):
             return next(node for node in self.nodes if node.name == index_or_name)
         return self.nodes[index_or_name]
-
-    def __or__(
-        self,
-        other: Agent[Any, Any] | ProcessorCallback[Any] | BaseTeam[Any, Any],
-    ) -> TeamRun[Any, Any]:
-        """Create a sequential pipeline."""
-        from agentpool.agents import Agent
-        from agentpool.delegation.teamrun import TeamRun
-
-        # Handle conversion of callables first
-        if callable(other):
-            other = Agent.from_callback(other, agent_pool=self.agent_pool)
-
-        # If we're already a TeamRun, extend it
-        if isinstance(self, TeamRun):
-            if self.validator:
-                # If we have a validator, create new TeamRun to preserve validation
-                return TeamRun([self, other])
-            self.add_node(other)
-            return self
-        # Otherwise create new TeamRun
-        return TeamRun([self, other])
-
-    @overload
-    def __and__(self, other: Team[None]) -> Team[None]: ...
-
-    @overload
-    def __and__(self, other: Team[TDeps]) -> Team[TDeps]: ...
-
-    @overload
-    def __and__(self, other: Team[Any]) -> Team[Any]: ...
-
-    @overload
-    def __and__(self, other: Agent[TDeps, Any]) -> Team[TDeps]: ...
-
-    @overload
-    def __and__(self, other: Agent[Any, Any]) -> Team[Any]: ...
-
-    def __and__(self, other: Team[Any] | Agent[Any, Any] | ProcessorCallback[Any]) -> Team[Any]:
-        """Combine teams, preserving type safety for same types."""
-        from agentpool.agents import Agent
-        from agentpool.delegation.team import Team
-
-        if callable(other):
-            other = Agent.from_callback(other, agent_pool=self.agent_pool)
-
-        match other:
-            case Team():
-                # Flatten when combining Teams
-                return Team([*self.nodes, *other.nodes])
-            case _:
-                # Everything else just becomes a member
-                return Team([*self.nodes, other])
 
     async def get_stats(self) -> AggregatedMessageStats:
         """Get aggregated stats from all team members."""

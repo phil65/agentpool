@@ -64,7 +64,7 @@ Connect an agent to multiple targets:
 
 ```python
 # Create team
-team = agent_b & agent_c & agent_d
+team = Team([agent_b, agent_c, agent_d])
 
 # Connect agent to team
 agent_a.connect_to(team)
@@ -75,8 +75,8 @@ agent_a.connect_to(team)
 Connect groups of agents:
 
 ```python
-team_a = agent_1 & agent_2
-team_b = agent_3 & agent_4
+team_a = Team([agent_1, agent_2])
+team_b = Team([agent_3, agent_4])
 team_a.connect_to(team_b)
 ```
 
@@ -335,7 +335,7 @@ planner = Agent(name="planner")
 executor = Agent(name="executor")
 
 # Create team
-planning_team = planner & executor
+planning_team = Team([planner, executor])
 
 # Set up connection
 talk =analyzer.connect_to(planning_team, connection_type="run")

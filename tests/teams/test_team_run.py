@@ -7,7 +7,7 @@ import anyio
 from llmling_models import function_to_model
 import pytest
 
-from agentpool import Agent, AgentPool, ChatMessage
+from agentpool import Agent, AgentPool, ChatMessage, Team, TeamRun
 from agentpool.utils.time_utils import get_now
 
 
@@ -28,7 +28,7 @@ async def test_single_execution():
         agent2 = Agent("agent2", model=model)
         await pool.add_agent(agent2)
 
-        run = agent1 | agent2
+        run = TeamRun([agent1, agent2])
         input_text = "test message"
 
         # Start background execution and get stats - now with await
@@ -140,7 +140,7 @@ async def test_background_run_can_start_again_after_it_finished():
         a, b = Agent("a1", model=model), Agent("a2", model=model)
         await pool.add_agent(a)
         await pool.add_agent(b)
-        team = a | b
+        team = TeamRun([a, b])
         await team.run_in_background("one")
         while team.is_running:
             await anyio.sleep(0.01)
@@ -151,7 +151,7 @@ async def test_background_run_can_start_again_after_it_finished():
 async def test_exiting_a_team_stops_its_endless_background_run():
     model = function_to_model(functools.partial(delayed_processor, delay=0))
     a, b = Agent("a1", model=model), Agent("a2", model=model)
-    team = a & b
+    team = Team([a, b])
     with anyio.fail_after(5):
         async with team:
             await team.run_in_background("go", max_count=None, interval=0.01)

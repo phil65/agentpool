@@ -33,20 +33,20 @@ run = pool.create_team_run(
 )
 ```
 
-### Using Pipeline Operator
+### From Agents and Functions
 
 ```python
 # Create sequential pipeline from agents
-pipeline = analyzer | planner | executor
+pipeline = TeamRun([analyzer, planner, executor])
 
 def clean_data(msg: str) -> str:
     return f"Cleaned: {msg}"
 
 # With function transformers
-pipeline = analyzer | clean_data | planner | execute_plan
+pipeline = TeamRun([analyzer, Agent.from_callback(clean_data), planner])
 
 # Mixing teams
-pipeline = analysis_team | planning_team | execution_team
+pipeline = TeamRun([analysis_team, planning_team, execution_team])
 ```
 
 ## Running a TeamRun

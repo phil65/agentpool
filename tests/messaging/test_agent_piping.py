@@ -5,7 +5,7 @@ import logging
 import anyio
 import pytest
 
-from agentpool import Agent
+from agentpool import Agent, TeamRun
 from agentpool.messaging import AgentResponse
 from agentpool.talk.talk import Talk
 
@@ -16,7 +16,7 @@ async def test_agent_piping():
     transform1 = Agent.from_callback(lambda x: f"transform1: {x}", name="transform1")
     transform2 = Agent.from_callback(lambda x: f"transform2: {x}", name="transform2")
 
-    pipeline = agent1 | transform1 | transform2
+    pipeline = TeamRun([agent1, transform1, transform2])
     result = await pipeline.execute("test")
 
     # Check message flow
@@ -39,7 +39,7 @@ async def test_agent_piping_with_monitoring():
         await anyio.sleep(0.1)  # Add a delay to ensure monitoring catches it
         return f"transform: {text}"
 
-    pipeline = agent1 | transform
+    pipeline = TeamRun([agent1, Agent.from_callback(transform)])
 
     # Get stats object directly from run_in_background
     stats = await pipeline.run_in_background("test")
@@ -62,7 +62,7 @@ async def test_agent_piping_errors(caplog):
         name="failing_transform",
     )
 
-    pipeline = agent1 | failing
+    pipeline = TeamRun([agent1, failing])
 
     # The pipeline should break at the failing transform
     with pytest.raises(RuntimeError, match="Transform error"):
@@ -83,7 +83,7 @@ async def test_agent_piping_iter(caplog):
         name="failing_transform",
     )
 
-    pipeline = agent1 | failing
+    pipeline = TeamRun([agent1, failing])
 
     items = []  # Define items before the try block
 
@@ -114,7 +114,7 @@ async def test_agent_piping_background_error(caplog):
         msg = "Transform error"
         raise ValueError(msg)
 
-    pipeline = agent1 | failing_transform
+    pipeline = TeamRun([agent1, Agent.from_callback(failing_transform)])
     talk = await pipeline.run_in_background("test")
 
     # Wait for execution to complete
@@ -134,7 +134,7 @@ async def test_agent_piping_async():
     async def transform(text: str) -> str:
         return f"transform: {text}"
 
-    pipeline = agent1 | transform
+    pipeline = TeamRun([agent1, Agent.from_callback(transform)])
     result = await pipeline.execute("test")
 
     assert result.success

@@ -33,9 +33,10 @@ agent = Agent.from_callback(analyze)
 
 ## Automatic Conversion in Workflows
 
-Callables are automatically converted to agents when used in:
+Teams and pipelines take agents: wrap a function with `Agent.from_callback`.
+Connections convert callables themselves.
 
-### Teams (using `&`)
+### Teams
 
 ```python
 def analyze(text: str) -> AnalysisResult:
@@ -45,14 +46,14 @@ def summarize(text: str) -> str:
     return "Summary: " + text
 
 # Both functions become agents in the team
-team = analyzer & analyze & summarize
+team = Team([analyzer, Agent.from_callback(analyze), Agent.from_callback(summarize)])
 ```
 
-### Pipelines (using `|`)
+### Pipelines
 
 ```python
 # Functions become agents in the pipeline
-pipeline = agent | analyze | summarize
+pipeline = TeamRun([agent, Agent.from_callback(analyze), Agent.from_callback(summarize)])
 ```
 
 ### Connections (using `>>`)

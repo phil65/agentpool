@@ -61,8 +61,8 @@ teams:
 
 ### Mode
 
-- `parallel`: Members execute simultaneously (like & operator)
-- `sequential`: Members execute in sequence (like | operator)
+- `parallel`: Members execute simultaneously (a `Team`)
+- `sequential`: Members execute in sequence (a `TeamRun`)
 
 ### Members
 

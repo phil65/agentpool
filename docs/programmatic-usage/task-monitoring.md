@@ -34,7 +34,7 @@ For monitored sequential processing, use TeamRun:
 
 ```python
 # Create execution pipeline
-run = agent1 | agent2 | agent3  # Direct creation
+run = TeamRun([agent1, agent2, agent3])  # Direct creation
 # or
 run = pool.create_team_run(["analyzer", "planner", "executor"])
 ```
@@ -96,7 +96,7 @@ async def main():
         critic = CodexAgent(name="critic", system_prompt="You evaluate and critique summaries.")
         await pool.add_agent(critic)
         # Create execution pipeline
-        run = agent1 | agent2 | agent3
+        run = TeamRun([agent1, agent2, agent3])
 
         # Start run and get stats object
         stats = await run.run_in_background("Process this text...")

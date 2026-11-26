@@ -3,7 +3,7 @@
 from pydantic_ai.models.test import TestModel
 import pytest
 
-from agentpool import Agent
+from agentpool import Agent, Team
 from agentpool.talk.talk import Talk, TeamTalk
 
 
@@ -134,7 +134,7 @@ async def test_group_stats_aggregation():
             Agent[str](model="test", name="team3") as team2_member1,
         ):
             # Create two teams
-            team1 = team1_member1 & team1_member2
+            team1 = Team([team1_member1, team1_member2])
             team2 = team2_member1
 
             # Connect to both teams directly

@@ -66,8 +66,6 @@ from agentpool import TeamRun
 
 # Create sequential pipeline
 run = TeamRun([agent1, agent2, agent3])
-# or use the pipe operator
-run = agent1 | agent2 | agent3
 
 # Execute sequentially
 result = await run.run("Review this PR")
@@ -99,7 +97,7 @@ agent >> team  # All team members receive results
 team >> other_agent
 
 # Create complex routing
-(team1 & team2) >> coordinator  # Union of teams
+Team([*team1.nodes, *team2.nodes]) >> coordinator  # Union of teams
 
 # Using connect_to
 agent.connect_to(
@@ -132,17 +130,18 @@ for response in team_response:
 
 ## Team Composition
 
-Teams can be composed using the `&` operator:
+Teams are nodes, so they can be members of other teams:
 
 ```python
 # Create combined team
-analysis_team = analyzer & researcher & summarizer
+analysis_team = Team([analyzer, researcher, summarizer])
 
-# Compose existing teams
-full_team = analysis_team & review_team
+# A team of teams, or one team with all their members
+full_team = Team([analysis_team, review_team])
+flat_team = Team([*analysis_team.nodes, *review_team.nodes])
 
 # Create groups inline
-(analyzer & researcher) >> reviewer
+Team([analyzer, researcher]) >> reviewer
 ```
 
 ## Routing Control

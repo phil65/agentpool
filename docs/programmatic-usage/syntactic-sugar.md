@@ -6,66 +6,50 @@ icon: material/code-block-braces
 
 # Syntactic Sugar in AgentPool
 
-AgentPool provides three operators for composing and connecting agents: `&`, `|`, and `>>`. These operators enable intuitive composition of agent workflows.
+Teams and pipelines are built explicitly, with `Team` and `TeamRun`; connections have
+one shortcut, the `>>` operator (`connect_to`).
 
-## Operators Overview
-
-### `&` (AND) - Team Composition
-
-Combines agents into a team that can work together in parallel or sequentially.
+## Teams and Pipelines
 
 ```python
-# Create team from agents
-team = analyzer & planner & executor
+from agentpool import Agent, Team, TeamRun
 
-# Returns: Team[list[TDeps]] for same dependency types
-# Returns: Team[list[Any]] for mixed dependency types
-# Returns: Team[None] if both sides have no dependencies
-```
+# A team: its members work in parallel
+team = Team([analyzer, planner, executor])
 
-When combining with `&`:
+# A pipeline: output flows from one node to the next
+pipeline = TeamRun([agent1, agent2])
 
-- Agents become part of the same team
-- System prompts are combined with line breaks
-- Dependencies are collected into a list (if present)
-- Team capabilities are merged
-
-### `|` (OR) - Pipeline Creation
-
-Creates sequential processing pipelines where output flows from one agent to the next.
-
-```python
-# Create pipeline with agents and transforms
-pipeline = agent1 | transform | agent2
-
-# Callables are automatically converted to agents
+# Functions become agents with Agent.from_callback
 def uppercase(text: str) -> str:
     return text.upper()
 
-pipeline = agent1 | uppercase | agent2
-
-# Returns: TeamRun[TDeps] with sequential execution mode
+pipeline = TeamRun([agent1, Agent.from_callback(uppercase), agent2])
 ```
 
-When creating pipelines with `|`:
+Teams and pipelines are nodes themselves, so they nest:
 
-- Each component processes the output of the previous one
-- Results flow through the pipeline in order
-- Monitoring is automatically set up
+```python
+analysis = Team([analyzer, researcher])
+workflow = TeamRun([input_agent, analysis, output_agent])
+```
 
-### `>>` (Forward) - Message Routing
+## `>>` (Forward) - Message Routing
 
-Sets up message forwarding between agents.
+Sets up message forwarding between nodes, like `connect_to`.
 
 ```python
 # Forward results from one agent to another
 agent1 >> agent2  # agent2 receives agent1's outputs
 
-# Forward to multiple targets
-agent1 >> (agent2 & agent3)  # Both receive outputs
+# Forward to several targets (one connection each)
+agent1 >> [agent2, agent3]
 
-# Returns: Talk for single target
-# Returns: TeamTalk for multiple targets
+# Forward to a team
+agent1 >> Team([agent2, agent3])
+
+# Returns: Talk for a single target
+# Returns: TeamTalk for several targets
 ```
 
 When setting up forwarding with `>>`:
@@ -75,40 +59,8 @@ When setting up forwarding with `>>`:
 - Multiple targets receive the same messages
 - No automatic response waiting
 
-## Combining Operators
-
-The operators can be combined for complex workflows:
-
-```python
-# Create team and forward to processor
-(analyzer & researcher) >> processor
-
-# Create pipeline with team in middle
-input_agent | (analyzer & researcher) | output_agent
-
-# Complex routing
-agent1 >> (transformer | (agent2 & agent3))
-```
-
-## Type Safety
-
-The operators maintain type safety where possible:
-
-```python
-# Same dependency types
-agent1 = Agent[ConfigDeps]()
-agent2 = Agent[ConfigDeps]()
-team = agent1 & agent2  # Team[list[ConfigDeps]]
-
-# Mixed dependency types
-agent3 = Agent[OtherDeps]()
-mixed = agent1 & agent3  # Team[list[Any]]
-
-# No dependencies
-agent4 = Agent()
-agent5 = Agent()
-clean = agent4 & agent5  # Team[None]
-```
+Options (filters, queueing, `parallel=True` for several targets, ...) need
+`connect_to`; see [Connections](../advanced/connections.md).
 
 ## Shared Team Context
 
@@ -120,19 +72,9 @@ agent2 = Agent(system_prompt="You are a summarizer.")
 
 # Create team with shared instructions
 team = Team(
-    agents=[agent1, agent2],
+    [agent1, agent2],
     shared_prompt="Some information both agents should know."
 )
-
-# When combining teams, shared prompts are combined:
-team1 = Team([agent1], shared_prompt="Focus on technical aspects")
-team2 = Team([agent2], shared_prompt="Ensure clarity")
-
-combined = team1 & team2
-print(combined.shared_prompt)
-# Output:
-# Focus on technical aspects
-# Ensure clarity
 
 # Individual agent system prompts remain unchanged
 print(agent1.sys_prompts.prompts)  # ["You are an analyzer."]
@@ -148,20 +90,18 @@ The shared prompt provides team-level instructions without modifying individual 
 
 ## Usage Examples
 
-Common patterns using the operators:
-
 ```python
-# Analysis pipeline with transforms
-analyzer = Agent(name="analyzer")
+# Analysis pipeline with a transform
 def clean_text(text: str) -> str:
     return text.strip().lower()
 
-pipeline = analyzer | clean_text | summarizer
+pipeline = TeamRun([analyzer, Agent.from_callback(clean_text), summarizer])
 
 # Parallel processing with forwarding
-processors = agent1 & agent2 & agent3
+processors = Team([agent1, agent2, agent3])
 processors >> collector
 
-# Complex workflow
-input_agent | (analyzer & researcher) | formatter >> storage
+# A workflow whose result goes to storage
+workflow = TeamRun([input_agent, Team([analyzer, researcher]), formatter])
+workflow >> storage
 ```

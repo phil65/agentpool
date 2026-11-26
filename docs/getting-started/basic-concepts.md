@@ -55,8 +55,8 @@ them over an MCP bridge and translates their events into its own.
 
 Groups of nodes that execute together:
 
-- **Parallel teams** (`agent1 & agent2`, `mode: parallel`): all nodes run simultaneously
-- **Sequential pipelines** (`agent1 | agent2`, `mode: sequential`): output flows from one to the next
+- **Parallel teams** (`Team([agent1, agent2])`, `mode: parallel`): all nodes run simultaneously
+- **Sequential pipelines** (`TeamRun([agent1, agent2])`, `mode: sequential`): output flows from one to the next
 
 Teams themselves are nodes, enabling nested composition.
 

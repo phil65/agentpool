@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from abc import abstractmethod
 import asyncio
-from collections.abc import Callable
 from contextlib import contextmanager, nullcontext, suppress
 from contextvars import ContextVar
 from dataclasses import dataclass, field, replace
@@ -34,7 +33,7 @@ from agentpool.utils.time_utils import get_now
 
 
 if TYPE_CHECKING:
-    from collections.abc import AsyncIterator, Awaitable, Generator, Sequence
+    from collections.abc import AsyncIterator, Awaitable, Callable, Generator, Sequence
     from contextlib import AbstractAsyncContextManager
     from datetime import datetime
     from types import TracebackType
@@ -71,11 +70,10 @@ if TYPE_CHECKING:
         AnyEventHandlerType,
         IndividualEventHandler,
         MCPServerStatus,
-        ProcessorCallback,
         PromptCompatible,
         StrPath,
     )
-    from agentpool.delegation import AgentPool, Team, TeamRun
+    from agentpool.delegation import AgentPool
     from agentpool.messaging import ChatMessage
     from agentpool.messaging.compaction import CompactionPipeline
     from agentpool.resource_providers.mcp_provider import MCPResourceProvider
@@ -684,56 +682,6 @@ class BaseAgent[TDeps = None, TResult = str](MessageNode[TDeps, TResult]):
             parts.append(f"Description: {self.description}")
         parts.extend([await self.tools.__prompt__(), self.conversation.__prompt__()])
         return "\n".join(parts)
-
-    @overload
-    def __and__(  # if other doesnt define deps, we take the agents one
-        self, other: ProcessorCallback[Any] | MessageNode[TDeps, Any]
-    ) -> Team[TDeps]: ...
-
-    @overload
-    def __and__(  # otherwise, we dont know and deps is Any
-        self, other: ProcessorCallback[Any] | MessageNode[Any, Any]
-    ) -> Team[Any]: ...
-
-    def __and__(self, other: MessageNode[Any, Any] | ProcessorCallback[Any]) -> Team[Any]:
-        """Create sequential team using & operator.
-
-        Example:
-            group = analyzer & planner & executor  # Create group of 3
-            group = analyzer & existing_group  # Add to existing group
-        """
-        from agentpool.agents.native_agent import Agent
-        from agentpool.delegation.team import Team
-
-        match other:
-            case Team():
-                return Team([self, *other.nodes])
-            case Callable():
-                agent_2 = Agent.from_callback(other, agent_pool=self.agent_pool)
-                return Team([self, agent_2])
-            case MessageNode():
-                return Team([self, other])
-            case _:
-                raise ValueError(f"Invalid agent type: {type(other)}")
-
-    @overload
-    def __or__(self, other: MessageNode[TDeps, Any]) -> TeamRun[TDeps, Any]: ...
-
-    @overload
-    def __or__[TOtherDeps](self, other: MessageNode[TOtherDeps, Any]) -> TeamRun[Any, Any]: ...
-
-    @overload
-    def __or__(self, other: ProcessorCallback[Any]) -> TeamRun[Any, Any]: ...
-
-    def __or__(self, other: MessageNode[Any, Any] | ProcessorCallback[Any]) -> TeamRun[Any, Any]:
-        # Create new execution with sequential mode (for piping)
-        from agentpool import TeamRun
-        from agentpool.agents.native_agent import Agent
-
-        if callable(other):
-            other = Agent.from_callback(other, agent_pool=self.agent_pool)
-
-        return TeamRun([self, other])
 
     async def update_state(
         self, config_id: str, value_id: str | bool, *, session_id: str | None = None
