@@ -313,8 +313,10 @@ class OpenCodeV2Agent[TDeps = None](BaseAgent[TDeps, str]):
             str(port),
             cwd=self._directory(),
             env=proc_env,
-            stdout=asyncio.subprocess.PIPE,
+            stdout=asyncio.subprocess.DEVNULL,  # Never read: a full pipe would block it
             stderr=asyncio.subprocess.PIPE,
+            # Its own process group: hard_kill SIGKILLs the group, which would be ours
+            start_new_session=True,
         )
         deadline = time.monotonic() + self._startup_timeout
         probe = OpenCodeV2Client(url, password=password, directory=self._directory(), timeout=2.0)
