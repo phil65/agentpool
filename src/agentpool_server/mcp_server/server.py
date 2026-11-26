@@ -289,6 +289,11 @@ class MCPServer(BaseServer):
                 **self.http_options(),
             )
 
+    async def shutdown(self) -> None:
+        """Cancel the served runs still waiting for their user's answer, then shut down."""
+        self.runs.close()
+        await super().shutdown()
+
     def http_options(self) -> dict[str, Any]:
         """HTTP transport options: CORS for ``cors_origins``, which pass the origin check."""
         if not (origins := self.config.cors_origins):

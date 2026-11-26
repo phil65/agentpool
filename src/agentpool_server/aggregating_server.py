@@ -108,8 +108,9 @@ class AggregatingServer(BaseServer):
                 failed=len(self.servers) - len(self._initialized_servers),
             )
 
-        except Exception:
+        except BaseException as e:  # Also cancelled: leave nothing entered
             await self.exit_stack.aclose()
+            await super().__aexit__(type(e), e, e.__traceback__)
             raise
 
         return self
@@ -205,6 +206,8 @@ class AggregatingServer(BaseServer):
                     server.stop()
                 except Exception:
                     self.log.exception("Error stopping server during cancellation")
+            # Let them stop before the cancellation goes on (else their tasks outlive us)
+            await asyncio.gather(*tasks, return_exceptions=True)
             raise
 
     def add_server(self, server: BaseServer) -> None:

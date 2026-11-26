@@ -171,3 +171,41 @@ async def test_aggregating_server_running_count(simple_agent_pool: AgentPool):
 
 if __name__ == "__main__":
     pytest.main(["-v", __file__])
+
+
+class _FailingServer(AGUIServer):
+    async def __aenter__(self):  # type: ignore[override]
+        raise RuntimeError("cannot start")
+
+
+async def test_a_failed_enter_leaves_the_pool_exited(simple_agent_pool: AgentPool):
+    """#61.4b: the aggregating server's own pool entry is undone on a failed enter."""
+    failing = _FailingServer(simple_agent_pool, port=TEST_PORT_BASE + 20)
+    server = AggregatingServer(simple_agent_pool, servers=[failing], raise_exceptions=True)
+    with pytest.raises(RuntimeError, match="cannot start"):
+        await server.__aenter__()
+    assert not simple_agent_pool.is_running
+
+
+async def test_cancelling_waits_for_the_stopped_servers(simple_agent_pool: AgentPool):
+    """#61.4b: after a cancel, the child servers' tasks have ended (not left running)."""
+    import asyncio
+
+    from agentpool_server.base import BaseServer
+
+    class _Forever(BaseServer):
+        async def _start_async(self) -> None:
+            try:
+                await asyncio.Event().wait()
+            except asyncio.CancelledError:
+                await asyncio.sleep(0.05)  # Takes a moment to stop
+                raise
+
+    children = [_Forever(simple_agent_pool), _Forever(simple_agent_pool)]
+    async with AggregatingServer(simple_agent_pool, servers=children) as server:
+        running = asyncio.create_task(server._start_async())
+        await asyncio.sleep(0.05)
+        running.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await running
+        assert all(c._server_task is not None and c._server_task.done() for c in children)

@@ -180,3 +180,24 @@ async def test_served_runs_report_their_progress(mode: str) -> None:
     assert "build" in messages[0]
     assert messages[1:] == ["builder: compiling"]
     assert [progress for progress, _ in reported] == [1, 2]
+
+
+async def test_shutdown_cancels_the_runs_waiting_for_an_answer() -> None:
+    """#61.3b: a waiting served run doesn't outlive the server."""
+    from mcp import InputRequiredRoundsExceededError
+
+    calls: list[str] = []
+    pool, server = await _served(calls)
+    try:
+        async with Client(server.fastmcp, input_required_max_rounds=0) as client:
+            with pytest.raises(InputRequiredRoundsExceededError):
+                await client.call_tool("ask_cleaner", {"prompt": "clean up"})
+        [run] = server.runs._waiting.values()
+        await server.shutdown()
+        assert server.runs._waiting == {}
+        assert run.task is not None
+        await asyncio.wait({run.task}, timeout=5)
+        assert run.task.done()
+    finally:
+        await pool.__aexit__(None, None, None)
+    assert calls == []
