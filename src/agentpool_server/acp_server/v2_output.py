@@ -15,6 +15,7 @@ from aclientp.schema import v2
 from agentpool.agents.events import ProcessSignal, TextContentItem, ToolCallProgressEvent
 from agentpool.agents.modes import ConfigOptionChanged, ModeInfo
 from agentpool.turns import TurnCancelled
+from agentpool.utils.streams import closing
 from agentpool_server.acp_server.v1_output import V1SessionOutput, V1TurnOutput
 from agentpool_server.acp_server.v2_client import V2ClientAdapter
 from agentpool_server.acp_server.v2_tasks import CancellableToolCalls
@@ -65,9 +66,10 @@ class V2SessionOutput(V1SessionOutput):
         await self.send_to(pending.out)
         if (child := pending.child) is None or pending.inner is None:
             return False
-        async for update in child.converter.convert(pending.inner):
-            if (translated := child.translator.translate(update)) is not None:
-                await self._client.send_update(child.session_id, translated)
+        async with closing(child.converter.convert(pending.inner)) as updates:
+            async for update in updates:
+                if (translated := child.translator.translate(update)) is not None:
+                    await self._client.send_update(child.session_id, translated)
         if pending.ends is not None:
             await self.send_to(registry.finish(child, pending.ends))
         return True

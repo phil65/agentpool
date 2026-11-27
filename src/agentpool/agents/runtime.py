@@ -52,6 +52,7 @@ from agentpool.turns import (
     stop_reason as turn_stop_reason,
     turn_metadata,
 )
+from agentpool.utils.streams import closing
 from agentpool.utils.time_utils import get_now
 
 
@@ -168,12 +169,14 @@ class SessionRuntime[TDeps = Any, TResult = Any]:
         Runs from inside the running turn (same context) run nested at once.
         """
         if active_runtime(self.agent) is self:  # A nested self-call: don't wait for itself
-            async for event in self._run_stream_now(*prompts, nested=True, **kwargs):
-                yield event
+            async with closing(self._run_stream_now(*prompts, nested=True, **kwargs)) as stream:
+                async for event in stream:
+                    yield event
             return
         if mode == "steer" and self.running and (text := self._steerable(prompts)) is not None:
-            async for event in self._steer(text):
-                yield event
+            async with closing(self._steer(text)) as stream:
+                async for event in stream:
+                    yield event
             return
         self.waiting += 1
         try:
@@ -184,8 +187,9 @@ class SessionRuntime[TDeps = Any, TResult = Any]:
         done: asyncio.Future[Turn[TResult] | None] = loop.create_future()
         self._run_done = done
         try:
-            async for event in self._run_stream_now(*prompts, **kwargs):
-                yield event
+            async with closing(self._run_stream_now(*prompts, **kwargs)) as stream:
+                async for event in stream:
+                    yield event
         finally:
             if not done.done():
                 done.set_result(self.last_turn)
@@ -280,23 +284,26 @@ class SessionRuntime[TDeps = Any, TResult = Any]:
                     while (current_prompts := self._next_prompts(own)) is not None:
                         group_message_id, prompt_message_id = prompt_message_id, None
                         group_reply_id, reply_message_id = reply_message_id, None
-                        async for event in self._run_once(
-                            *current_prompts,
-                            store_history=store_history,
-                            message_id=group_reply_id,
-                            user_message_id=group_message_id,
-                            session_id=effective_session_id,
-                            parent_id=parent_id,
-                            message_history=effective_history,
-                            input_provider=input_provider,
-                            deps=deps,
-                            event_handlers=event_handlers,
-                            nested=nested,
-                        ):
-                            if isinstance(event, StreamCompleteEvent):
-                                usage.incr(event.message.usage)
-                            self._report_event(event)
-                            yield event
+                        async with closing(
+                            self._run_once(
+                                *current_prompts,
+                                store_history=store_history,
+                                message_id=group_reply_id,
+                                user_message_id=group_message_id,
+                                session_id=effective_session_id,
+                                parent_id=parent_id,
+                                message_history=effective_history,
+                                input_provider=input_provider,
+                                deps=deps,
+                                event_handlers=event_handlers,
+                                nested=nested,
+                            )
+                        ) as run_events:
+                            async for event in run_events:
+                                if isinstance(event, StreamCompleteEvent):
+                                    usage.incr(event.message.usage)
+                                self._report_event(event)
+                                yield event
                         if not nested:  # Flush unconsumed injections to the queue
                             self.injections.flush_pending_to_queue()
                 # Cancelled from outside, and the agent ended its turn instead of raising
@@ -571,45 +578,48 @@ class SessionRuntime[TDeps = Any, TResult = Any]:
                         raise RuntimeError(f"Run blocked: {reason}")  # noqa: TRY301
 
                 context = agent.get_context(input_provider=input_provider)
-                async for raw in agent._stream_events(
-                    [*pending_parts, *converted_prompts],
-                    user_msg=user_msg,
-                    effective_parent_id=effective_parent_id,
-                    store_history=store_history,
-                    message_id=message_id,
-                    session_id=effective_session_id,
-                    parent_id=parent_id,
-                    message_history=conversation,
-                    input_provider=input_provider,
-                    deps=deps,
-                ):
-                    event = raw
-                    if isinstance(raw, StreamCompleteEvent):  # The turn's end: with its Turn
-                        if _cancel_requested():
-                            # Cancelled from outside, and the agent ended its turn with what
-                            # it had
-                            await self._stop_backend()
-                        final_message = raw.message
-                        outcome = TurnCancelled() if self.cancelled else TurnCompleted()
-                        turn = end_turn(outcome, final_message)
-                        event = replace(raw, turn=turn)
-                        await resolved_handler(context, event)
-                        # Stored and announced before the consumer sees the end: one that
-                        # stops iterating there (``break``) must not lose the turn
-                        await self._finalize(
-                            user_msg=user_msg,
-                            final_message=final_message,
-                            conversation=conversation,
-                            session_id=effective_session_id,
-                            store_history=store_history,
-                        )
-                        announced = True
-                        await agent.turn_completed.emit(turn)
-                    else:
-                        await resolved_handler(context, event)
-                    self._record_file_changes(event)
-                    self.track_task(event)
-                    yield event
+                async with closing(
+                    agent._stream_events(
+                        [*pending_parts, *converted_prompts],
+                        user_msg=user_msg,
+                        effective_parent_id=effective_parent_id,
+                        store_history=store_history,
+                        message_id=message_id,
+                        session_id=effective_session_id,
+                        parent_id=parent_id,
+                        message_history=conversation,
+                        input_provider=input_provider,
+                        deps=deps,
+                    )
+                ) as raw_events:
+                    async for raw in raw_events:
+                        event = raw
+                        if isinstance(raw, StreamCompleteEvent):  # The turn's end: with its Turn
+                            if _cancel_requested():
+                                # Cancelled from outside, and the agent ended its turn with what
+                                # it had
+                                await self._stop_backend()
+                            final_message = raw.message
+                            outcome = TurnCancelled() if self.cancelled else TurnCompleted()
+                            turn = end_turn(outcome, final_message)
+                            event = replace(raw, turn=turn)
+                            await resolved_handler(context, event)
+                            # Stored and announced before the consumer sees the end: one that
+                            # stops iterating there (``break``) must not lose the turn
+                            await self._finalize(
+                                user_msg=user_msg,
+                                final_message=final_message,
+                                conversation=conversation,
+                                session_id=effective_session_id,
+                                store_history=store_history,
+                            )
+                            announced = True
+                            await agent.turn_completed.emit(turn)
+                        else:
+                            await resolved_handler(context, event)
+                        self._record_file_changes(event)
+                        self.track_task(event)
+                        yield event
                 if _cancel_requested():
                     # Cancelled from outside, and the agent ended its turn with what it had
                     await self._stop_backend()
