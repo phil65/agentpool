@@ -10,6 +10,18 @@ from typing import TYPE_CHECKING, Any
 
 from upathtools import register_http_filesystems
 
+__lazy_modules__ = [
+    "agentpool.agents",
+    "agentpool.delegation",
+    "agentpool.messaging.messages",
+    "agentpool.messaging.messagenode",
+    "agentpool.models.agents",
+    "agentpool.models.manifest",
+    "agentpool.testing",
+    "agentpool.tools",
+    "pydantic_ai",
+]
+
 
 def _light_import() -> bool:
     """Whether this process runs the repomap CLI, which needs none of the framework.
@@ -59,6 +71,9 @@ register_http_filesystems()
 
 def __getattr__(name: str) -> Any:
     """Import the public names on first use (light-import mode only)."""
+    if name not in __all__:
+        msg = f"module {__name__!r} has no attribute {name!r}"
+        raise AttributeError(msg)
     from importlib import import_module
 
     for module_name in _PUBLIC_MODULES:

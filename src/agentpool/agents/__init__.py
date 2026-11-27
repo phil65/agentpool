@@ -1,5 +1,22 @@
 """CLI commands for agentpool."""
 
+__lazy_modules__ = [
+    "agentpool.agents.acp_agent",
+    "agentpool.agents.agui_agent",
+    "agentpool.agents.antigravity_agent",
+    "agentpool.agents.capabilities",
+    "agentpool.agents.claude_code_agent",
+    "agentpool.agents.codex_agent",
+    "agentpool.agents.context",
+    "agentpool.agents.events",
+    "agentpool.agents.interactions",
+    "agentpool.agents.native_agent",
+    "agentpool.agents.opencode_v2_agent",
+    "agentpool.agents.prompt_injection",
+    "agentpool.agents.sys_prompts",
+    "agentpool.agents.t3_agent",
+]
+
 from agentpool.agents.native_agent import Agent
 from agentpool.agents.agui_agent import AGUIAgent
 from agentpool.agents.antigravity_agent import AntigravityAgent
