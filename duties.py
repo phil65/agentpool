@@ -321,3 +321,71 @@ def bump_opencode(ctx, version: str):
     ctx.run(f"uv run python scripts/generate_opencode_v2_models.py --version {version}")
     ctx.run("git diff --stat -- schema/opencode-v2 src/opencode_v2_sdk")
     ctx.run("uv run pytest -q tests/servers/opencode_v2_server tests/agents/opencode_v2_agent")
+
+
+@duty(capture=False)
+def acp_tck(  # noqa: D417
+    ctx,
+    *args: str,
+    version: int = 1,
+    k: str | None = None,
+    config: str | None = None,
+    report_json: str | None = None,
+    tck_ref: str = "v0.5.0",
+    verbose: bool = False,
+):
+    """Run the ACP Test Compatibility Kit (acp-tck) against ``agentpool serve-acp``.
+
+    Args:
+        version: ACP protocol version to test (1 or 2).
+        k: Optional pytest ``-k`` filter expression.
+        config: Optional path to an agentpool YAML config (defaults to a temporary
+            minimal ``TestModel`` config).
+        report_json: Optional path to write the JSON conformance report.
+        tck_ref: Git tag or ref of ``agentclientprotocol/acp-tck`` to run.
+        verbose: Pass ``-v`` to ``acp-tck``.
+    """
+    import contextlib
+    import shlex
+    import shutil
+    import tempfile
+
+    agentpool_bin = shutil.which("agentpool")
+    serve_cmd = (
+        [agentpool_bin, "serve-acp"]
+        if agentpool_bin is not None
+        else ["uv", "run", "agentpool", "serve-acp"]
+    )
+
+    with contextlib.ExitStack() as stack:
+        if config is None:
+            tmpdir = stack.enter_context(tempfile.TemporaryDirectory(prefix="acp-tck-"))
+            cfg_path = Path(tmpdir) / "test_agent.yml"
+            cfg_path.write_text(
+                "agents:\n  test_agent:\n    type: native\n    model: test\n",
+                encoding="utf-8",
+            )
+            config_path = str(cfg_path)
+        else:
+            config_path = config
+
+        cmd: list[str] = [
+            "uvx",
+            "--from",
+            f"git+https://github.com/agentclientprotocol/acp-tck@{tck_ref}",
+            "acp-tck",
+            "--protocol-version",
+            str(version),
+        ]
+        if k:
+            cmd.extend(["-k", k])
+        if report_json:
+            cmd.extend(["--report-json", report_json])
+        if verbose:
+            cmd.append("-v")
+        cmd.extend(args)
+        cmd.append("--")
+        cmd.extend(serve_cmd)
+        cmd.append(config_path)
+
+        ctx.run(shlex.join(cmd))
