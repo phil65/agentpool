@@ -495,6 +495,23 @@ async def test_a_fork_has_the_history_and_the_options(connected: Any, tmp_path: 
     assert replayed == "remember this"
 
 
+async def test_fork_with_unissued_cursor_id_is_invalid_params(
+    connected: Any, tmp_path: Any
+) -> None:
+    """Forking with an unissued cursorId fails with -32602 (ACP-CURSOR-003)."""
+    conn, _, _ = connected
+    session_id = await _new_session(conn, str(tmp_path))
+    with pytest.raises(RequestError) as exc_info:
+        await conn.fork_session(
+            v2.ForkSessionRequest(
+                session_id=session_id,
+                cursor_id="unissued-cursor-id",
+                cwd=str(tmp_path),
+            )
+        )
+    assert exc_info.value.code == -32602
+
+
 async def test_session_responses_carry_the_commands(connected: Any, tmp_path: Any) -> None:
     """The commands update at setup may precede the response naming the session."""
     conn, _, _ = connected

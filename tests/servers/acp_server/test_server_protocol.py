@@ -13,6 +13,7 @@ from aclientp.schema import (
     CancelNotification,
     Cost,
     DeniedOutcome,
+    ForkSessionRequest,
     InitializeRequest,
     LoadSessionRequest,
     NewSessionRequest,
@@ -591,3 +592,18 @@ async def test_acp_sessions_record_the_definition_version(server: AgentPoolACPAg
     assert stored is not None
     assert stored.definition_version == agent.definition.version
     assert stored.metadata.get("protocol") == "acp"  # The server's record is kept
+
+
+async def test_fork_session_rejects_unissued_cursor_id(server: AgentPoolACPAgent) -> None:
+    """Forking with a cursorId the server never issued must fail with -32602."""
+    session_id = await _new_session(server)
+    with pytest.raises(RequestError) as exc_info:
+        await server.fork_session(
+            ForkSessionRequest(
+                session_id=session_id,
+                cursor_id="unissued-cursor-id",
+                cwd=".",
+                mcp_servers=[],
+            )
+        )
+    assert exc_info.value.code == INVALID_PARAMS

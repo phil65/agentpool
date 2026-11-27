@@ -473,6 +473,12 @@ class AgentPoolACPAgent(ACPAgent):
             params.session_id
         ):
             raise RequestError.resource_not_found(params.session_id)
+        if params.cursor_id is not None:
+            # No session cursors are issued yet, so any supplied cursorId is invalid.
+            raise RequestError.invalid_params({
+                "cursorId": params.cursor_id,
+                "details": f"Unknown session cursor: {params.cursor_id}",
+            })
         forked_id = await self._fork_history(params)
         session = await self._create_session(params, session_id=forked_id)
         if source is not None:
