@@ -27,6 +27,7 @@ from agentpool.messaging import ChatMessage, MessageHistory, MessageNode
 from agentpool.sessions.environment import current_session_environment
 from agentpool.tools.manager import ToolManager
 from agentpool.utils.inspection import call_with_context
+from agentpool.utils.streams import closing
 from agentpool.utils.time_utils import get_now
 
 
@@ -1172,20 +1173,23 @@ class BaseAgent[TDeps = None, TResult = str](MessageNode[TDeps, TResult]):
         Yields:
             Stream events during execution
         """
-        async for event in self.runtime(session).run_stream(
-            *prompts,
-            mode=mode,
-            store_history=store_history,
-            message_id=message_id,
-            user_message_id=user_message_id,
-            session_id=session_id,
-            parent_id=parent_id,
-            message_history=message_history,
-            input_provider=input_provider,
-            deps=deps,
-            event_handlers=event_handlers,
-        ):
-            yield event
+        async with closing(
+            self.runtime(session).run_stream(
+                *prompts,
+                mode=mode,
+                store_history=store_history,
+                message_id=message_id,
+                user_message_id=user_message_id,
+                session_id=session_id,
+                parent_id=parent_id,
+                message_history=message_history,
+                input_provider=input_provider,
+                deps=deps,
+                event_handlers=event_handlers,
+            )
+        ) as stream:
+            async for event in stream:
+                yield event
 
     async def _execute_slash_command_streaming(
         self, command_text: str

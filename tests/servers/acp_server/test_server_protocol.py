@@ -607,3 +607,36 @@ async def test_fork_session_rejects_unissued_cursor_id(server: AgentPoolACPAgent
             )
         )
     assert exc_info.value.code == INVALID_PARAMS
+
+
+async def test_cancel_mid_stream_closes_generator_in_same_task(tmp_path: Path) -> None:
+    """Cancelling while yielding must close the stream in the prompt task, not via GC."""
+    first_chunk_sent = asyncio.Event()
+
+    async def slow_stream(messages: list[ModelMessage], info: AgentInfo) -> AsyncIterator[str]:
+        yield "chunk-1 "
+        await asyncio.sleep(10)
+        yield "chunk-2"
+
+    async with AgentPool(AgentsManifest()) as pool:
+        agent = Agent(name="a", model=FunctionModel(stream_function=slow_stream), agent_pool=pool)
+        pool.register("a", agent)
+        async with agent:
+            client = AsyncMock()
+
+            async def on_update(notification: SessionNotification) -> None:
+                if isinstance(notification.update, AgentMessageChunk):
+                    first_chunk_sent.set()
+                    # Give session/cancel a chance to cancel while inside output.event()
+                    await asyncio.sleep(0.05)
+
+            client.session_update = AsyncMock(side_effect=on_update)
+            server = AgentPoolACPAgent(client=client, default_agent=agent, load_skills=False)
+            await server.initialize(InitializeRequest(protocol_version=1))
+            sess = await server.new_session(NewSessionRequest(cwd=str(tmp_path), mcp_servers=[]))
+            turn = asyncio.create_task(server.prompt(_prompt(sess.session_id)))
+            await asyncio.wait_for(first_chunk_sent.wait(), 2)
+            await server.cancel(CancelNotification(session_id=sess.session_id))
+            response = await asyncio.wait_for(turn, 2)
+            assert response.stop_reason == "cancelled"
+            await server.session_manager.close_all_sessions()

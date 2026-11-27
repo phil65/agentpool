@@ -13,6 +13,7 @@ from agentpool.turns import (
     TurnLimitReached,
     TurnRefused,
 )
+from agentpool.utils.streams import closing
 from agentpool_server.acp_server.event_converter import ACPEventConverter
 
 
@@ -181,8 +182,9 @@ class V1TurnOutput:
 
     async def event(self, event: RichAgentStreamEvent[Any]) -> None:
         assert self._converter is not None, "start() comes first"
-        async for update in self._converter.convert(event):
-            await self._session.notifications.send_update(update)
+        async with closing(self._converter.convert(event)) as updates:
+            async for update in updates:
+                await self._session.notifications.send_update(update)
 
     async def finish(self, outcome: TurnOutcome) -> None:
         converter = self._converter

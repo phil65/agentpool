@@ -19,6 +19,7 @@ from aclientp.agent.acp_requests import ACPRequests
 from aclientp.agent.notifications import ACPNotifications
 from aclientp.filesystem import ACPFileSystem
 from aclientp.schema import ClientCapabilities
+from anyenv.calling.async_executor import AsyncIteratorExecutor
 from exxec.acp_provider import ACPExecutionEnvironment
 from exxec.local_provider import LocalExecutionEnvironment
 import logfire
@@ -41,6 +42,7 @@ from agentpool.turns import (
     TurnRefused,
     outcome_of_error,
 )
+from agentpool.utils.streams import closing
 from agentpool_commands.base import NodeCommand
 from agentpool_server.acp_server.converters import (
     convert_acp_mcp_server_to_config,
@@ -794,14 +796,32 @@ class ACPSession:
         outcome: TurnOutcome | None = None  # The agent turn's own (its final event's)
         try:  # Use the session's persistent input provider
             # Staged content is automatically injected by run_stream
-            async with self.agent.session_turn():  # Sessions share pool agents
-                async for event in self.agent.run_stream(
+            pool_session = await self.pool_session()
+            # Bypass anyenv's AsyncIteratorExecutor when it has no observers: its
+            # __call__ does not close the inner async generator on GeneratorExit,
+            # leaving pydantic-ai's anyio cancel scopes to GC in another task.
+            run_stream = self.agent.run_stream
+            raw_stream = (
+                self.agent.runtime(pool_session).run_stream(
                     *contents,
                     input_provider=self.input_provider,
                     deps=self,
-                    session=await self.pool_session(),
                     session_id=self.session_id,
-                ):
+                )
+                if isinstance(run_stream, AsyncIteratorExecutor) and not run_stream.observer_count
+                else run_stream(
+                    *contents,
+                    input_provider=self.input_provider,
+                    deps=self,
+                    session=pool_session,
+                    session_id=self.session_id,
+                )
+            )
+            async with (
+                self.agent.session_turn(),  # Sessions share pool agents
+                closing(raw_stream) as stream,
+            ):
+                async for event in stream:
                     if self._cancelled:
                         # Interrupted agents end their stream: let it end here instead of
                         # leaving it to the garbage collector, whose cleanup in another
@@ -814,6 +834,8 @@ class ACPSession:
         except asyncio.CancelledError:
             # Task was cancelled (e.g., via interrupt() or `$/cancel_request`). Answer
             # with the proper outcome instead of propagating the cancellation.
+            if (task := asyncio.current_task()) is not None:
+                task.uncancel()
             self.log.info("Stream cancelled via CancelledError, cleaning up tool calls")
             return TurnCancelled()
         except Exception as e:  # The turn's outcome, as every server maps it

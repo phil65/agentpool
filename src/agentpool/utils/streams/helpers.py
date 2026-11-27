@@ -47,8 +47,9 @@ async def merge_queue_into_iterator[T, V](  # noqa: PLR0915
     async def primary_task() -> None:
         nonlocal primary_exception, end_signaled, stop_requested
         try:
-            async for event in primary_stream:
-                await event_queue.put(event)
+            async with closing(aiter(primary_stream)) as primary:
+                async for event in primary:
+                    await event_queue.put(event)
         except asyncio.CancelledError:
             # Signal completion and unblock merged_events before re-raising
             primary_done.set()

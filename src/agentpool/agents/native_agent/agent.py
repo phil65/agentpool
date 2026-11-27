@@ -42,7 +42,7 @@ from agentpool.tools.base import FunctionTool
 from agentpool.tools.exceptions import ToolError
 from agentpool.utils.inspection import get_argument_key
 from agentpool.utils.result_utils import to_type
-from agentpool.utils.streams import merge_queue_into_iterator
+from agentpool.utils.streams import closing, merge_queue_into_iterator
 
 
 if TYPE_CHECKING:
@@ -803,8 +803,11 @@ class Agent[TDeps = None, OutputDataT = str](BaseAgent[TDeps, OutputDataT]):
                             step_id = str(uuid4())
                             step_model = model_override or self.model_name
                             yield StepStartedEvent(step_id=step_id, model_name=step_model)
-                            async for event in self._stream_node(node, agent_run, tool_events):
-                                yield event
+                            async with closing(
+                                self._stream_node(node, agent_run, tool_events)
+                            ) as node_events:
+                                async for event in node_events:
+                                    yield event
                             history = agent_run.ctx.state.message_history
                             if not self._cancelled and isinstance(history[-1], ModelResponse):
                                 last = history[-1]
@@ -817,8 +820,11 @@ class Agent[TDeps = None, OutputDataT = str](BaseAgent[TDeps, OutputDataT]):
                                 )
                         # Stream events from tool call nodes
                         case CallToolsNode():
-                            async for event in self._stream_node(node, agent_run, tool_events):
-                                yield event
+                            async with closing(
+                                self._stream_node(node, agent_run, tool_events)
+                            ) as node_events:
+                                async for event in node_events:
+                                    yield event
             except asyncio.CancelledError:
                 self.log.info("Stream cancelled via task cancellation")
                 self._cancelled = True
@@ -869,6 +875,7 @@ class Agent[TDeps = None, OutputDataT = str](BaseAgent[TDeps, OutputDataT]):
             merge_queue_into_iterator(
                 forward_supported_events(stream), self._event_queue
             ) as merged,
+            closing(merged),
         ):
             async for event in merged:
                 if self._cancelled:

@@ -72,19 +72,22 @@ async def forward_supported_events(
     pydantic-ai also emits realtime, capability, deferred-tool and enqueued-message
     events, which have no agentpool counterpart and are not forwarded.
     """
-    async for event in stream:
-        match event:
-            case (
-                PartStartEvent()
-                | PartDeltaEvent()
-                | PartEndEvent()
-                | FinalResultEvent()
-                | FunctionToolCallEvent()
-                | FunctionToolResultEvent()
-            ):
-                yield event
-            case _:
-                pass
+    from agentpool.utils.streams import closing
+
+    async with closing(aiter(stream)) as events:
+        async for event in events:
+            match event:
+                case (
+                    PartStartEvent()
+                    | PartDeltaEvent()
+                    | PartEndEvent()
+                    | FinalResultEvent()
+                    | FunctionToolCallEvent()
+                    | FunctionToolResultEvent()
+                ):
+                    yield event
+                case _:
+                    pass
 
 
 @dataclass
