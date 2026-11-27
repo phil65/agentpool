@@ -36,7 +36,7 @@ dependencies = [
   "bashkit>=0.1.11",
   "clawd-code-sdk>=1.5.2",  # 1.5.2: permission mode honoured (--allow-dangerously-…)
   # "clawd-code-sdk@git+https://github.com/phil65/claude-agent-sdk-python.git@efbaa798",
-  "codexed>=1.4.0",  # 1.4.0: default_tools_approval_mode (the bridge's tools run)
+  "codexed>=1.4.2",  # 1.4.2: split scalar types & PEP 810 __lazy_modules__
   "docler>=2.2.0",
   "docstring-parser>=0.17.0",
   "evented>=1.0.5",

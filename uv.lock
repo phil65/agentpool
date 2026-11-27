@@ -247,7 +247,7 @@ requires-dist = [
     { name = "bashkit", specifier = ">=0.1.11" },
     { name = "braintrust", marker = "extra == 'braintrust'" },
     { name = "clawd-code-sdk", specifier = ">=1.5.2" },
-    { name = "codexed", specifier = ">=1.4.0" },
+    { name = "codexed", specifier = ">=1.4.2" },
     { name = "composio", marker = "extra == 'composio'" },
     { name = "copykitten", marker = "extra == 'clipboard'" },
     { name = "croniter", marker = "extra == 'bot'", specifier = ">=2.0.0" },
@@ -1270,16 +1270,16 @@ wheels = [
 
 [[package]]
 name = "codexed"
-version = "1.4.0"
+version = "1.4.2"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "anyenv" },
     { name = "mcp" },
     { name = "pydantic" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/34/d1/130fcc245e0e5ad66e24410c33dc0f93f1c4b418d3a49754f6a24752fd74/codexed-1.4.0.tar.gz", hash = "sha256:f0dcec8ea1e98b2126368219734621c969d9d0fad5c89c2de6870f7d7d5a4e7d", size = 121209, upload-time = "2026-11-22T16:00:10.769Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/8a/1e/703530ae80db2416c17aa2fbbd60efb82ff1dd182658b4d1b9fea764d624/codexed-1.4.2.tar.gz", hash = "sha256:a498325b96fdb7beb225531b1f042b42d2546640d4c41b25722c2c6edeefff60", size = 128813, upload-time = "2026-11-27T23:44:53.559Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/e0/9f/83e94a3cd9c472654b41df23ee934dca31dcbe31883ade6b379d4e31235d/codexed-1.4.0-py3-none-any.whl", hash = "sha256:f93fd90d159611bc3fd579c7edd4902e3c2334647f0262f3ba807a0efdeca7d1", size = 129015, upload-time = "2026-11-22T16:00:09.112Z" },
+    { url = "https://files.pythonhosted.org/packages/d7/ea/71c43626e0ee61d3d5a48e08e89686b53a42cdf09cbc5774ebc04559238e/codexed-1.4.2-py3-none-any.whl", hash = "sha256:7369086de43de0516f180b7b16be9c2c9db9146a162f7810f3e18be445ee2018", size = 136939, upload-time = "2026-11-27T23:44:52.376Z" },
 ]
 
 [[package]]
@@ -5908,7 +5908,7 @@ wheels = [
 
 [[package]]
 name = "schemez"
-version = "2.5.0"
+version = "2.6.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "docstring-parser" },
@@ -5919,9 +5919,9 @@ dependencies = [
     { name = "typing-extensions" },
     { name = "universal-pathlib" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/91/84/12f9f9e6a0f4bb6f226d74c92df6d8ed8d0dc6ebc37399f994c94772e4aa/schemez-2.5.0.tar.gz", hash = "sha256:18135ebde40e6a6f1950bd1f1929a1d91ff538c7dd2ce9b5110a59ade8b30f76", size = 89164, upload-time = "2026-11-26T13:23:25.423Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/29/2e/0f4065d4400d99e508bbf7a3f6ca50c98bf5ae5b93c8407664ae6aa4c9bd/schemez-2.6.0.tar.gz", hash = "sha256:db3455e387a6bb1d40f7646c9e46dfbc01384a10fb63c4f88eff51266f81d6f9", size = 93440, upload-time = "2026-11-27T23:45:26.025Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/87/5e/d6c3d9fccb2f4afa4e77c410dc85a0c26e98ef85ccbb3a4bedf6d3bb8218/schemez-2.5.0-py3-none-any.whl", hash = "sha256:91e0fff2c058de9715b58757f585830b503b649d8152e380ad299721fab0ed15", size = 100826, upload-time = "2026-11-26T13:23:24.054Z" },
+    { url = "https://files.pythonhosted.org/packages/7b/48/f66d30ce9077564afd503ee8b585244b6c7ec4355d5dcbc5eaefcc2ec31d/schemez-2.6.0-py3-none-any.whl", hash = "sha256:0add3cc1bfc94ee315d078d2f5a2806d619870e32ae597b80501325cd80f9af5", size = 105457, upload-time = "2026-11-27T23:45:24.508Z" },
 ]
 
 [package.optional-dependencies]
