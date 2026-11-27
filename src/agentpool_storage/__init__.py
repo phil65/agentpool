@@ -1,5 +1,10 @@
 """Storage provider package."""
 
+__lazy_modules__ = [
+    "agentpool_storage.base",
+    "agentpool_storage.project_store",
+]
+
 from agentpool_storage.base import StorageProvider
 from agentpool_storage.project_store import (
     ProjectStore,
